@@ -54,8 +54,8 @@ function renderFeed(): void {
 	root.innerHTML = feed
 		.map((e) => {
 			const klass = e.kind === "success" ? "success" : e.kind === "error" ? "error" : "";
-			return `<div class="event ${klass}"><span class="ts">${formatTime(e.ts)}</span>${escape(e.message)}${
-				e.detail ? `<pre>${escape(e.detail)}</pre>` : ""
+			return `<div class="event ${klass}"><span class="ts">${formatTime(e.ts)}</span>${escapeHtml(e.message)}${
+				e.detail ? `<pre>${escapeHtml(e.detail)}</pre>` : ""
 			}</div>`;
 		})
 		.join("");
@@ -66,7 +66,7 @@ function formatTime(iso: string): string {
 	return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 }
 
-function escape(s: string): string {
+function escapeHtml(s: string): string {
 	return s.replace(
 		/[&<>"']/g,
 		(c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,

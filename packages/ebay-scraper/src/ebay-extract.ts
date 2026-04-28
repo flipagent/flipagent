@@ -292,16 +292,16 @@ function extractSemanticData(root: ParentNode): Record<string, unknown> | null {
 		if (objStart === -1) continue;
 		let depth = 0;
 		let inString = false;
-		let escape = false;
+		let escaped = false;
 		let objEnd = -1;
 		for (let i = objStart; i < text.length; i++) {
 			const c = text[i];
-			if (escape) {
-				escape = false;
+			if (escaped) {
+				escaped = false;
 				continue;
 			}
 			if (c === "\\") {
-				escape = true;
+				escaped = true;
 				continue;
 			}
 			if (c === '"') {
