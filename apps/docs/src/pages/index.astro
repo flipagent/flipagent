@@ -1,0 +1,123 @@
+---
+import Layout from "../layouts/Layout.astro";
+import AgentInstall from "../components/AgentInstall.tsx";
+import ChatDemo from "../components/ChatDemo.tsx";
+import PipelineCode from "../components/PipelineCode.tsx";
+import Faq from "../components/Faq.tsx";
+import Reveal from "../components/Reveal.tsx";
+import HeadChip from "../components/HeadChip.astro";
+import MainFeatures from "../components/MainFeatures.astro";
+import "../components/TrustStrip.css";
+import "../components/MainFeatures.css";
+---
+<Layout title="flipagent — an eBay reselling business that runs itself">
+	<section class="hero">
+		<div class="cmw cmw-bordered" style="padding-top:64px; padding-bottom:48px;">
+			<a href="/docs/" class="eyebrow-pill">
+				<span class="pill-text">Public preview is live</span>
+				<span class="pill-arrow" aria-hidden="true">
+					<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+				</span>
+			</a>
+			<h1>Let your agent run the <span class="accent">eBay reselling business</span>.</h1>
+			<p class="lead">
+				It sources, lists, and ships every order while you sleep.
+			</p>
+			<ChatDemo client:load />
+		</div>
+	</section>
+
+	<!-- §01 — How it works ================================================== -->
+	<section class="section lined">
+		<span class="section-num"><span class="num">01</span><span class="label">HOW IT WORKS</span></span>
+		<div class="cmw cmw-bordered">
+			<Reveal client:visible>
+				<div class="section-head section-head--no-rule-bottom">
+					<HeadChip label="Source to ship" icon="loop" />
+					<h2>The whole loop, <span class="accent">one API</span>.</h2>
+					<p>The infrastructure layer for AI-driven reselling.</p>
+				</div>
+			</Reveal>
+			<Reveal client:visible delay={0.05}>
+				<PipelineCode client:visible />
+			</Reveal>
+		</div>
+	</section>
+
+	<!-- §02 — Power your agent ============================================= -->
+	<section class="section lined section--flush-bottom">
+		<span class="section-num"><span class="num">02</span><span class="label">AGENT-FIRST</span></span>
+		<div class="cmw cmw-bordered">
+			<Reveal client:visible>
+				<div class="section-head section-head--flush-bottom">
+					<HeadChip label="Bring your agent" icon="terminal" />
+					<h2>One-command setup for your <span class="accent">AI agents</span>.</h2>
+					<p>Works with any AI agent or MCP client.</p>
+				</div>
+			</Reveal>
+			<AgentInstall client:visible />
+		</div>
+	</section>
+
+	<!-- §03 — Main features ================================================= -->
+	<section class="section lined section--flush-bottom">
+		<span class="section-num"><span class="num">03</span><span class="label">MAIN FEATURES</span></span>
+		<div class="cmw cmw-bordered">
+			<Reveal client:visible>
+				<div class="section-head section-head--flush-bottom">
+					<HeadChip label="Hands-off" icon="grid" />
+					<h2>Resell like a <span class="accent">quant</span>.</h2>
+					<p>flipagent handles every physical step: buying, storing, listing, shipping. You only see the numbers.</p>
+				</div>
+			</Reveal>
+			<Reveal client:visible delay={0.05}>
+				<MainFeatures />
+			</Reveal>
+		</div>
+	</section>
+
+	<!-- Final CTA — sits above FAQ so the page closes on a question, not a sales pitch -->
+	<section class="section lined final-cta">
+		<div class="cta-glow" aria-hidden="true"></div>
+		<div class="cmw cmw-bordered">
+			<Reveal client:visible>
+				<HeadChip label="Get started" icon="spark" />
+				<h2 class="final-cta-h">
+					Ready when <span class="accent">you</span> are.
+				</h2>
+				<p class="final-cta-p">
+					Free key in thirty seconds. No card, no eBay developer account.
+				</p>
+				<a href="/signup/" class="btn heat">Get a free key <span class="arrow">→</span></a>
+			</Reveal>
+		</div>
+	</section>
+
+	<!-- §04 — FAQ ========================================================== -->
+	<section class="section lined section--flush-bottom">
+		<span class="section-num"><span class="num">04</span><span class="label">FAQ</span></span>
+		<div class="cmw cmw-bordered">
+			<Reveal client:visible>
+				<div class="section-head section-head--flush-bottom">
+					<HeadChip label="FAQ" icon="help" />
+					<h2>Questions everyone asks <span class="accent">first</span>.</h2>
+				</div>
+			</Reveal>
+			<Reveal client:visible delay={0.05}>
+				<Faq client:visible />
+			</Reveal>
+		</div>
+	</section>
+
+	<script>
+		// Header gets a subtle glass treatment when the user scrolls past the top
+		const header = document.querySelector("header.site");
+		const onScroll = () => {
+			if (!header) return;
+			if (window.scrollY > 8) header.classList.add("scrolled");
+			else header.classList.remove("scrolled");
+		};
+		onScroll();
+		window.addEventListener("scroll", onScroll, { passive: true });
+	</script>
+</Layout>

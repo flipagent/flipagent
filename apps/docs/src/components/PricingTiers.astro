@@ -1,0 +1,77 @@
+---
+type Tier = {
+	name: string;
+	tagline: string;
+	calls: string;
+	price: string;
+	per?: string;
+	cta: { label: string; href: string; heat?: boolean };
+	badge?: string;
+	features: string[];
+};
+
+const tiers: Tier[] = [
+	{
+		name: "Free",
+		tagline: "Kick the tires. No card, no eBay developer account.",
+		calls: "100 calls / month",
+		price: "$0",
+		per: "/forever",
+		cta: { label: "Get started", href: "/signup/" },
+		features: ["1 concurrent request", "60 min cache", "Community support", "Cached responses included"],
+	},
+	{
+		name: "Hobby",
+		tagline: "Side projects and personal flipping. Just enough headroom.",
+		calls: "5,000 calls / month",
+		price: "$19",
+		per: "/mo",
+		badge: "Most popular",
+		cta: { label: "Start free", href: "/signup/", heat: true },
+		features: ["4 concurrent requests", "60 min cache", "Email support", "Pay-as-you-grow"],
+	},
+	{
+		name: "Pro",
+		tagline: "Production agents and customer-facing apps at real volume.",
+		calls: "50,000 calls / month",
+		price: "$99",
+		per: "/mo",
+		cta: { label: "Start free", href: "/signup/" },
+		features: ["16 concurrent requests", "60 min cache", "Priority support", "Customer-facing"],
+	},
+	{
+		name: "Business",
+		tagline: "Custom limits, dedicated quota, and a contract you can sign.",
+		calls: "Custom volume",
+		price: "Talk",
+		cta: { label: "Contact", href: "mailto:hello@flipagent.dev" },
+		features: ["SLA", "White-label", "Dedicated quota", "Tunable cache TTL"],
+	},
+];
+---
+<div class="tiers">
+	{tiers.map((t) => (
+		<div class="tier">
+			<div class="tier-head">
+				<div class="name-row">
+					<span class="name">{t.name}</span>
+					{t.badge && <span class="badge">{t.badge}</span>}
+				</div>
+				<div class="tagline">{t.tagline}</div>
+				<div class="calls">{t.calls}</div>
+			</div>
+			<div class="tier-buy">
+				<div class="price">
+					{t.price}
+					{t.per && <span class="per">{t.per}</span>}
+				</div>
+				<a href={t.cta.href} class={`btn block${t.cta.heat ? " heat" : ""}`}>{t.cta.label}</a>
+			</div>
+			<div class="tier-features">
+				<ul>
+					{t.features.map((f) => <li>{f}</li>)}
+				</ul>
+			</div>
+		</div>
+	))}
+</div>

@@ -1,0 +1,29 @@
+All Rights Reserved.
+
+Copyright (c) 2026 flipagent
+
+This directory (`apps/docs/`) contains the source for flipagent's
+marketing and dashboard site at flipagent.dev. The source is published
+in this repository for transparency and to support contributors who want
+to file issues or pull requests against the public-facing site.
+
+Permission is NOT granted to:
+
+  - Redistribute, mirror, or republish this code as your own
+  - Use the source as a template for a competing or look-alike site
+  - Use the flipagent name, logo, mark, or trade dress in any product
+    you ship
+
+Permission IS granted to:
+
+  - Read the source
+  - Submit bug reports, suggestions, and pull requests via the public
+    GitHub repository
+  - Run a local development copy for the sole purpose of contributing
+    back
+
+For any other use — including but not limited to commercial use,
+redistribution, or derivative works — contact hello@flipagent.dev.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED.

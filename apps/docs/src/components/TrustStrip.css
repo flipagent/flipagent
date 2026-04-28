@@ -1,0 +1,98 @@
+/* Trust strip — single row: caption text on left, marquee on right.
+   Caption sits in a fixed-width cell with a vertical divider on its right;
+   marquee fills the remaining width with logos that scroll horizontally. */
+
+.trust-grid {
+	display: flex;
+	align-items: stretch;
+	margin: 56px -32px 0;
+	width: calc(100% + 64px);
+	border-top: 1px solid var(--border-faint);
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.trust-caption {
+	flex: 0 0 auto;
+	width: 300px;
+	display: flex;
+	align-items: center;
+	padding: 26px 28px;
+	border-right: 1px solid var(--border-faint);
+}
+
+.trust-caption p {
+	margin: 0;
+	font-size: 14px;
+	line-height: 1.45;
+	color: var(--text-2);
+	letter-spacing: -0.005em;
+}
+
+.trust-caption .accent {
+	color: var(--brand);
+	font-weight: 500;
+}
+
+.trust-marquee {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	position: relative;
+	display: flex;
+	align-items: center;
+	mask-image: linear-gradient(to right, transparent 0, black 60px, black calc(100% - 60px), transparent 100%);
+	-webkit-mask-image: linear-gradient(to right, transparent 0, black 60px, black calc(100% - 60px), transparent 100%);
+}
+
+.trust-track {
+	display: flex;
+	width: max-content;
+	animation: trust-scroll 28s linear infinite;
+}
+
+@keyframes trust-scroll {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(-50%);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.trust-track {
+		animation: none;
+	}
+}
+
+.trust-item {
+	flex: 0 0 auto;
+	padding: 38px 64px;
+	font-size: 24px;
+	font-weight: 700;
+	letter-spacing: -0.032em;
+	color: var(--text);
+	white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+	.trust-grid {
+		flex-direction: column;
+		align-items: stretch;
+		margin-left: -16px;
+		margin-right: -16px;
+		width: calc(100% + 32px);
+	}
+	.trust-caption {
+		width: auto;
+		text-align: center;
+		justify-content: center;
+		padding: 22px 24px;
+		border-right: none;
+		border-bottom: 1px solid var(--border-faint);
+	}
+	.trust-item {
+		padding: 28px 40px;
+		font-size: 20px;
+	}
+}

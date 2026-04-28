@@ -1,0 +1,42 @@
+---
+import Layout from "../../../layouts/Layout.astro";
+---
+<Layout title="API reference · flipagent docs">
+	<style>
+		body { background: var(--surface); }
+		main { padding: 0; }
+		/* Scalar mounts its own white panel with !important background, which
+		   sits above the page-frame's vertical pseudo-borders in the stacking
+		   context — the rails go invisible. Re-emit them on the shell itself
+		   at the same x-positions so the page chrome stays consistent. */
+		.scalar-shell {
+			min-height: calc(100vh - 56px);
+			border-left: 1px solid var(--border-faint);
+			border-right: 1px solid var(--border-faint);
+		}
+	</style>
+	<div class="scalar-shell">
+		<script
+			id="api-reference"
+			data-url="/openapi.json"
+			data-configuration={JSON.stringify({
+				theme: "default",
+				layout: "modern",
+				hideDownloadButton: false,
+				hideTestRequestButton: false,
+				hideClientButton: false,
+				darkMode: false,
+				customCss: `
+					.scalar-app, .references-rendered, .references-classic, .references-layout {
+						background: var(--bg, #fafaf9) !important;
+						font-family: "Inter","Pretendard",-apple-system,BlinkMacSystemFont,system-ui,sans-serif !important;
+					}
+					.t-doc, .references-classic, .references-layout {
+						--scalar-radius: 8px !important;
+					}
+				`,
+			})}
+		></script>
+		<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+	</div>
+</Layout>

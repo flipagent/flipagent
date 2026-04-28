@@ -1,0 +1,78 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+---
+<Layout title="MCP server · flipagent docs">
+	<div class="cmw cmw-bordered">
+		<div class="docs-shell">
+			<DocsSidebar />
+			<article class="docs-content">
+				<h1>MCP server</h1>
+				<p class="lead">flipagent-mcp is a Model Context Protocol server that exposes 18 reseller tools to any compatible AI client — Claude Desktop, Cursor, Cline, Zed, Windsurf.</p>
+
+				<h2>Install</h2>
+				<p>The MCP server is published on npm and runs through <code>npx</code> — no global install needed. The fastest path is the CLI:</p>
+				<div class="code"><pre><code>{`npx -y flipagent-cli init --mcp`}</code></pre></div>
+				<p>It auto-detects every supported client and writes the config in one go.</p>
+
+				<h2>Claude Desktop (manual)</h2>
+				<p>Edit <code>~/Library/Application Support/Claude/claude_desktop_config.json</code>:</p>
+				<div class="code"><pre><code>{`{
+  "mcpServers": {
+    "flipagent": {
+      "command": "npx",
+      "args": ["-y", "flipagent-mcp"],
+      "env": { "FLIPAGENT_API_KEY": "fa_free_xxx" }
+    }
+  }
+}`}</code></pre></div>
+				<p>Restart Claude. The tools below show up in any chat.</p>
+
+				<h2>Cursor / Cline / Zed / Windsurf</h2>
+				<p>Same JSON, different file:</p>
+				<table class="api">
+					<thead><tr><th>Client</th><th>Config file</th></tr></thead>
+					<tbody>
+						<tr><td>Cursor</td><td><code>.cursor/mcp.json</code> (in workspace)</td></tr>
+						<tr><td>Cline</td><td><code>~/.cline/mcp.json</code></td></tr>
+						<tr><td>Zed</td><td>Settings → MCP servers</td></tr>
+						<tr><td>Windsurf</td><td>Settings → Cascade → MCP servers</td></tr>
+					</tbody>
+				</table>
+
+				<h2>Tools exposed</h2>
+				<table class="api">
+					<thead><tr><th>Tool</th><th>Backed by</th></tr></thead>
+					<tbody>
+						<tr><td colspan="2"><strong>Discovery</strong></td></tr>
+						<tr><td><code>ebay_search</code></td><td><code>GET /v1/listings/search</code></td></tr>
+						<tr><td><code>ebay_item_detail</code></td><td><code>GET /v1/listings/&#123;itemId&#125;</code></td></tr>
+						<tr><td><code>ebay_sold_search</code></td><td><code>GET /v1/sold/search</code></td></tr>
+						<tr><td><code>ebay_taxonomy_default_id</code></td><td><code>GET /v1/markets/taxonomy/get_default_category_tree_id</code></td></tr>
+						<tr><td><code>ebay_taxonomy_suggest</code></td><td><code>GET /v1/markets/taxonomy/category_tree/&#123;id&#125;/get_category_suggestions</code></td></tr>
+						<tr><td><code>ebay_taxonomy_aspects</code></td><td><code>GET /v1/markets/taxonomy/category_tree/&#123;id&#125;/get_item_aspects_for_category</code></td></tr>
+						<tr><td colspan="2"><strong>Decisions</strong></td></tr>
+						<tr><td><code>evaluate_listing</code></td><td><code>POST /v1/evaluate</code></td></tr>
+						<tr><td><code>evaluate_signals</code></td><td><code>POST /v1/evaluate/signals</code></td></tr>
+						<tr><td colspan="2"><strong>Overnight</strong></td></tr>
+						<tr><td><code>discover_deals</code></td><td><code>POST /v1/discover</code></td></tr>
+						<tr><td colspan="2"><strong>Operations</strong></td></tr>
+						<tr><td><code>ship_quote</code></td><td><code>POST /v1/ship/quote</code></td></tr>
+						<tr><td><code>ship_providers</code></td><td><code>GET /v1/ship/providers</code></td></tr>
+						<tr><td colspan="2"><strong>Sell-side</strong> (eBay OAuth required via <code>/v1/connect/ebay</code>)</td></tr>
+						<tr><td><code>flipagent_connect_status</code></td><td><code>GET /v1/connect/ebay/status</code></td></tr>
+						<tr><td><code>ebay_create_inventory_item</code></td><td><code>PUT /v1/inventory/inventory_item/&#123;sku&#125;</code></td></tr>
+						<tr><td><code>ebay_create_offer</code></td><td><code>POST /v1/inventory/offer</code></td></tr>
+						<tr><td><code>ebay_publish_offer</code></td><td><code>POST /v1/inventory/offer/&#123;offerId&#125;/publish</code></td></tr>
+						<tr><td><code>ebay_list_orders</code></td><td><code>GET /v1/fulfillment/order</code></td></tr>
+						<tr><td><code>ebay_mark_shipped</code></td><td><code>POST /v1/fulfillment/order/&#123;orderId&#125;/shipping_fulfillment</code></td></tr>
+						<tr><td><code>ebay_list_payouts</code></td><td><code>GET /v1/finance/payout</code></td></tr>
+					</tbody>
+				</table>
+
+				<h2>Compose your own logic</h2>
+				<p>Tools are typed and orthogonal — agents can chain <code>ebay_search</code> → <code>ebay_sold_search</code> → <code>discover_deals</code> → <code>ship_quote</code> to assemble end-to-end reselling workflows. See the <a href="/docs/api/">API reference</a> for request shapes.</p>
+			</article>
+		</div>
+	</div>
+</Layout>

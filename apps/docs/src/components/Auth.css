@@ -1,0 +1,349 @@
+/* Page surface — soft neutral, no chrome. */
+.auth-body {
+	margin: 0;
+	background: var(--surface-2);
+	color: var(--text);
+	font-family: var(--font, system-ui, -apple-system, sans-serif);
+}
+.auth-page {
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	/* Symmetric breathing space above the first rule and below the last rule. */
+	padding-top: 56px;
+	padding-bottom: 56px;
+}
+
+/* Full-height vertical guides at the rail's left/right edges. They extend
+ * past the top/bottom horizontal rules into the page padding so the cross
+ * grid stays continuous. The math (50% ± 240px) tracks the rail's
+ * max-width of 480px (border-box). */
+.auth-page::before,
+.auth-page::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: var(--border-faint);
+	pointer-events: none;
+	z-index: 0;
+}
+.auth-page::before {
+	left: calc(50% - 240px);
+}
+.auth-page::after {
+	right: calc(50% - 240px);
+}
+
+/* ─── Sections + rail ────────────────────────────────────────────────────
+ * Same pattern as `cmw-bordered + section.lined` on the marketing site:
+ * full-bleed horizontal rules at section tops, fixed-width vertical rails
+ * with their own borders. The two intersect to draw `+` corners. Every
+ * section gets the top rule including the brand — that line sits above the
+ * logo with `padding-top` on `.auth-page` providing the breathing space.
+ */
+
+.auth-section {
+	border-top: 1px solid var(--border-faint);
+}
+.auth-section--brand {
+	flex: 0 0 auto;
+}
+/* Closing rule below the footer mirrors the opening rule above the brand. */
+.auth-section--foot {
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.auth-rail {
+	width: 100%;
+	max-width: 480px;
+	margin: 0 auto;
+	padding: 0 40px;
+	border-left: 1px solid var(--border-faint);
+	border-right: 1px solid var(--border-faint);
+	box-sizing: border-box;
+}
+
+/* Section-specific vertical rhythm */
+.auth-section--brand   .auth-rail { padding-top: 44px; padding-bottom: 32px; }
+.auth-section--form    .auth-rail { padding-top: 22px; padding-bottom: 32px; }
+.auth-section--socials .auth-rail { padding-top: 26px; padding-bottom: 26px; }
+.auth-section--foot    .auth-rail { padding-top: 14px; padding-bottom: 20px; }
+
+/* ─── Brand ──────────────────────────────────────────────────────────── */
+
+.auth-brand {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	font-size: 28px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	color: var(--text);
+	text-decoration: none;
+}
+.auth-brand svg { color: var(--text); }
+.auth-brand:hover { text-decoration: none; }
+
+/* ─── Tabs ───────────────────────────────────────────────────────────── */
+
+.auth-tabs {
+	display: flex;
+	background: var(--surface-3);
+	border-radius: 999px;
+	padding: 3px;
+	width: fit-content;
+	margin: 0 auto 16px;
+}
+.auth-tab {
+	background: transparent;
+	border: 0;
+	padding: 7px 20px;
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text-3);
+	border-radius: 999px;
+	cursor: pointer;
+	transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.auth-tab.active {
+	background: var(--surface);
+	color: var(--text);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.03);
+}
+.auth-tab:not(.active):hover { color: var(--text); }
+
+/* ─── Form ───────────────────────────────────────────────────────────── */
+
+.auth-form {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.auth-field {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+.auth-field > span {
+	font-size: 12.5px;
+	font-weight: 500;
+	color: var(--text);
+}
+.auth-field input {
+	font: inherit;
+	font-size: 13.5px;
+	padding: 9px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--border-faint);
+	background: var(--surface);
+	color: var(--text);
+	outline: none;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.auth-field input::placeholder { color: var(--text-4); }
+.auth-field input:focus {
+	border-color: var(--text-3);
+	box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+}
+
+.auth-cta {
+	margin-top: 4px;
+	background: var(--brand);
+	color: white;
+	border: 0;
+	padding: 10px 20px;
+	border-radius: 999px;
+	font: inherit;
+	font-size: 13.5px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.15s ease, opacity 0.15s ease;
+}
+.auth-cta:hover:not(:disabled) { background: var(--brand-hover); }
+.auth-cta:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ─── Pill chips below CTA ───────────────────────────────────────────── */
+
+.auth-pills {
+	display: flex;
+	justify-content: center;
+	margin-top: 12px;
+}
+.auth-pill {
+	background: transparent;
+	color: var(--text-3);
+	border: 0;
+	padding: 2px 4px;
+	font: inherit;
+	font-size: 12px;
+	font-weight: 400;
+	cursor: pointer;
+	text-decoration: none;
+	transition: color 0.15s ease;
+}
+.auth-pill:hover {
+	color: var(--brand);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	text-decoration-thickness: 1px;
+}
+
+/* ─── SSO buttons ────────────────────────────────────────────────────── */
+
+.auth-socials {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.auth-social {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 9px;
+	background: var(--text);
+	color: white;
+	border: 0;
+	padding: 10px 16px;
+	border-radius: 999px;
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.15s ease, opacity 0.15s ease;
+}
+.auth-social:hover:not(:disabled) { background: #1a1a1a; }
+.auth-social:disabled { opacity: 0.5; cursor: not-allowed; }
+.auth-social-icon { display: inline-flex; align-items: center; }
+.auth-social-badge {
+	position: absolute;
+	right: 8px;
+	top: 50%;
+	transform: translateY(-50%);
+	background: rgba(255, 255, 255, 0.95);
+	color: var(--text);
+	font-size: 10.5px;
+	font-weight: 500;
+	padding: 3px 8px;
+	border-radius: 999px;
+}
+.auth-social--sso {
+	background: var(--surface);
+	color: var(--text);
+	border: 1px solid var(--border-faint);
+}
+.auth-social--sso:hover:not(:disabled) { background: var(--surface-2); }
+
+/* ─── Footer micro-links ─────────────────────────────────────────────── */
+
+.auth-foot {
+	display: flex;
+	gap: 8px;
+	justify-content: center;
+	font-size: 12.5px;
+	color: var(--text-3);
+}
+.auth-foot a { color: var(--text-3); text-decoration: none; }
+.auth-foot a:hover { color: var(--text); }
+.auth-foot span { color: var(--text-4); }
+
+/* ─── Toast ─────────────────────────────────────────────────────────── */
+
+.auth-toast {
+	position: fixed;
+	bottom: 24px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 14px;
+	background: var(--surface);
+	border-radius: 8px;
+	font-size: 13px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+	max-width: 90vw;
+	z-index: 10;
+}
+.auth-toast--error { border: 1px solid #dc2626; color: #dc2626; }
+.auth-toast--info  { border: 1px solid var(--border-faint); color: var(--text-2); }
+.auth-toast button {
+	background: none;
+	border: 0;
+	font: inherit;
+	font-size: 16px;
+	line-height: 1;
+	color: inherit;
+	cursor: pointer;
+}
+
+/* ─── Mobile ───────────────────────────────────────────────────────── */
+
+@media (max-width: 520px) {
+	.auth-page { padding-top: 32px; padding-bottom: 32px; }
+	.auth-page::before,
+	.auth-page::after { display: none; }
+	.auth-rail { padding-left: 24px; padding-right: 24px; border-left: 0; border-right: 0; }
+	.auth-section--brand .auth-rail { padding-top: 36px; padding-bottom: 28px; }
+	.auth-section--form .auth-rail { padding-top: 20px; padding-bottom: 32px; }
+	.auth-section--socials .auth-rail { padding-top: 24px; padding-bottom: 24px; }
+	.auth-brand { font-size: 24px; }
+}
+
+/* ─── Reset password ──────────────────────────────────────────────── */
+.auth-reset-head {
+	text-align: center;
+	margin-bottom: 4px;
+}
+.auth-reset-title {
+	font-size: 17px;
+	font-weight: 600;
+	margin: 0 0 4px;
+	color: var(--text);
+}
+.auth-reset-sub {
+	font-size: 12.5px;
+	color: var(--text-3);
+	margin: 0;
+}
+.auth-done {
+	text-align: center;
+	padding: 8px 0;
+}
+.auth-done-h {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--text);
+	margin: 0 0 6px;
+}
+.auth-done-p {
+	font-size: 13px;
+	color: var(--text-3);
+	margin: 0;
+}
+
+/* ─── Terminal panels (missing / expired token) ───────────────────── */
+.auth-terminal {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	text-align: center;
+	padding: 4px 0;
+}
+.auth-terminal-body {
+	font-size: 13px;
+	color: var(--text-2);
+	margin: 0;
+	line-height: 1.5;
+}
+.auth-cta-link {
+	display: inline-block;
+	text-align: center;
+	text-decoration: none;
+	margin-top: 8px;
+}

@@ -1,0 +1,89 @@
+/*
+ * Skin for the ui/* primitives. Behaviour comes from Radix where used;
+ * visual language stays consistent with the rest of the dashboard via
+ * the tokens defined in src/styles/global.css (--surface, --text,
+ * --border, --brand, --mono, …). Single source of truth — no other
+ * file styles `.ui-*` classes.
+ */
+
+/* ====================================================================
+   Field — two-column row primitive (label / control)
+   ==================================================================== */
+
+.ui-field {
+	display: grid;
+	grid-template-columns: 130px 1fr;
+	gap: 16px;
+	align-items: start;
+}
+
+.ui-field-label {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding-top: 9px;
+	font-size: 13px;
+	color: var(--text);
+}
+
+.ui-field-hint {
+	font-size: 11px;
+	line-height: 1.4;
+	color: var(--text-3);
+}
+
+.ui-field-control { min-width: 0; }
+
+/* Plain text/number inputs inside a field's control area inherit the
+   form skin. Descendant selector so inputs nested inside wrappers
+   (.pg-range and friends) still pick up the skin. */
+.ui-field-control input {
+	width: 100%;
+	font: inherit;
+	font-size: 13px;
+	padding: 8px 12px;
+	border: 1px solid var(--border);
+	background: var(--surface);
+	color: var(--text);
+	border-radius: 6px;
+	outline: none;
+}
+
+.ui-field-control input:focus {
+	border-color: var(--text);
+	box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+}
+
+/* ====================================================================
+   Chips — multi-select chip group on Radix ToggleGroup
+   ==================================================================== */
+
+.ui-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.ui-chip {
+	font: inherit;
+	font-size: 12px;
+	padding: 5px 12px;
+	border: 1px solid var(--border);
+	background: var(--surface);
+	color: var(--text-2);
+	border-radius: 999px;
+	cursor: pointer;
+	outline: none;
+}
+
+.ui-chip:hover { background: var(--surface-2); }
+.ui-chip:focus-visible {
+	box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+	border-color: var(--text);
+}
+
+.ui-chip[data-state="on"] {
+	border-color: var(--brand);
+	background: var(--brand-soft);
+	color: var(--brand);
+}

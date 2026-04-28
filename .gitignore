@@ -1,0 +1,57 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+*.tsbuildinfo
+packages/*/dist/
+packages/*/node_modules/
+apps/*/dist/
+apps/*/.astro/
+apps/*/node_modules/
+shared/*/dist/
+shared/*/node_modules/
+
+# Environment
+.env
+.env.local
+
+# Editor
+.vscode/
+.zed/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local agent / tooling configs
+.claude/
+.gstack/
+
+# Package specific
+coverage/
+.nyc_output/
+
+# flipagent runtime
+.flipagent/
+flipagent.db
+flipagent.db-journal
+references/
+
+# Generated at docs build time from packages/api's Hono routes.
+apps/docs/public/openapi.json
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Build caches
+.turbo/

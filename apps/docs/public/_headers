@@ -1,0 +1,18 @@
+# Cloudflare edge cache rules for the marketing/docs site.
+#
+# HTML documents must always reflect the latest deploy (the GitHub star
+# count, OpenAPI spec, marketing copy edits) — without these rules the
+# edge holds a 'cf-cache-status: HIT' on stale HTML for hours after a
+# build, even though Cache-Control says max-age=0. CDN-Cache-Control is
+# the directive Cloudflare's edge actually obeys.
+#
+# Hashed assets (Astro emits everything under /_astro/ with a content
+# hash in the filename) are immutable per build, so we keep the long
+# edge cache there.
+
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+  CDN-Cache-Control: no-store

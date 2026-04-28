@@ -1,0 +1,30 @@
+{
+	"name": "flipagent-monorepo",
+	"private": true,
+	"type": "module",
+	"version": "0.0.1",
+	"workspaces": [
+		"packages/*",
+		"apps/*"
+	],
+	"scripts": {
+		"clean": "npm run clean --workspaces --if-present",
+		"build": "cd packages/types && npm run build && cd ../ebay-scraper && npm run build && cd ../sdk && npm run build && cd ../api && npm run build && cd ../mcp && npm run build && cd ../cli && npm run build && cd ../extension && npm run build && cd ../../apps/docs && npm run build",
+		"dev": "concurrently --names \"types,scraper,sdk,api,mcp\" --prefix-colors \"gray,magenta,cyan,green,white\" \"cd packages/types && npm run dev\" \"cd packages/ebay-scraper && npm run dev\" \"cd packages/sdk && npm run dev\" \"cd packages/api && npm run dev\" \"cd packages/mcp && npm run dev\"",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"check": "biome check --write --error-on-warnings . && npm run typecheck",
+		"test": "npm run test --workspaces --if-present"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.3.5",
+		"@changesets/cli": "^2.31.0",
+		"@types/node": "^22.10.5",
+		"concurrently": "^9.2.1",
+		"shx": "^0.4.0",
+		"tsx": "^4.20.3",
+		"typescript": "^5.9.2"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	}
+}

@@ -1,0 +1,263 @@
+/**
+ * TypeBox schemas mirroring eBay's Browse + Marketplace Insights response
+ * shapes. We don't ship a full eBay OpenAPI port — only the fields used by
+ * mcp tools and api routes. Field names + nesting match eBay verbatim
+ * so callers using the official eBay SDK at api.ebay.com see the same shape
+ * when pointed at api.flipagent.dev.
+ *
+ * @see https://developer.ebay.com/api-docs/buy/browse/resources/item_summary/methods/search
+ */
+
+import { type Static, Type } from "@sinclair/typebox";
+
+export const Money = Type.Object(
+	{
+		value: Type.String(),
+		currency: Type.String(),
+	},
+	{ $id: "Money" },
+);
+export type Money = Static<typeof Money>;
+
+export const Image = Type.Object(
+	{
+		imageUrl: Type.String(),
+	},
+	{ $id: "Image" },
+);
+
+export const ShippingOption = Type.Object(
+	{
+		shippingCost: Type.Optional(Money),
+		shippingCostType: Type.Optional(Type.String()),
+	},
+	{ $id: "ShippingOption" },
+);
+
+export const Seller = Type.Object(
+	{
+		username: Type.Optional(Type.String()),
+		feedbackScore: Type.Optional(Type.Integer()),
+		feedbackPercentage: Type.Optional(Type.String()),
+	},
+	{ $id: "Seller" },
+);
+
+const BuyingOptions = Type.Array(
+	Type.Union([Type.Literal("AUCTION"), Type.Literal("FIXED_PRICE"), Type.Literal("BEST_OFFER")]),
+);
+
+/**
+ * `ItemSummary` — element of search results. Mirror of eBay Browse
+ * `ItemSummary`, augmented with the sold-only fields from
+ * Marketplace Insights `getItemSales` (`lastSoldDate`, `lastSoldPrice`,
+ * `totalSoldQuantity`) so the same shape carries both `itemSummaries[]`
+ * (active) and `itemSales[]` (sold).
+ *
+ * Strict eBay-shape parity — every field below appears in either Browse
+ * `ItemSummary` or Marketplace Insights `getItemSales`. We do not add
+ * flipagent-specific fields here; structured sub-SKU descriptors live
+ * on `ItemDetail.localizedAspects` (Browse `getItem` spec).
+ */
+export const ItemSummary = Type.Object(
+	{
+		itemId: Type.String(),
+		legacyItemId: Type.Optional(Type.String()),
+		title: Type.String(),
+		itemWebUrl: Type.String(),
+		condition: Type.Optional(Type.String()),
+		conditionId: Type.Optional(Type.String()),
+		price: Type.Optional(Money),
+		lastSoldPrice: Type.Optional(Money),
+		shippingOptions: Type.Optional(Type.Array(ShippingOption)),
+		buyingOptions: Type.Optional(BuyingOptions),
+		bidCount: Type.Optional(Type.Integer()),
+		currentBidPrice: Type.Optional(Money),
+		watchCount: Type.Optional(Type.Integer()),
+		itemEndDate: Type.Optional(Type.String()),
+		lastSoldDate: Type.Optional(Type.String()),
+		totalSoldQuantity: Type.Optional(Type.Integer()),
+		seller: Type.Optional(Seller),
+		image: Type.Optional(Image),
+		thumbnailImages: Type.Optional(Type.Array(Image)),
+		topRatedBuyingExperience: Type.Optional(Type.Boolean()),
+	},
+	{ $id: "ItemSummary" },
+);
+export type ItemSummary = Static<typeof ItemSummary>;
+
+/**
+ * `SearchPagedCollection` envelope. Active searches populate `itemSummaries`;
+ * sold (Marketplace Insights) populate `itemSales`. Same shape, different field.
+ *
+ * `source` mirrors the `X-Flipagent-Source` header so consumers reading the
+ * JSON body don't have to inspect headers. `"scrape"` = HTML parser path,
+ * `"rest"` = eBay REST passthrough (Insights-approved tenants), `"cache:*"`
+ * = served from the response cache. Optional for forward compatibility with
+ * pre-source-field clients; fresh responses always set it.
+ */
+export const BrowseSearchSource = Type.Union(
+	[
+		Type.Literal("rest"),
+		Type.Literal("scrape"),
+		Type.Literal("bridge"),
+		Type.Literal("cache:rest"),
+		Type.Literal("cache:scrape"),
+		Type.Literal("cache:bridge"),
+	],
+	{ $id: "BrowseSearchSource" },
+);
+export type BrowseSearchSource = Static<typeof BrowseSearchSource>;
+
+export const BrowseSearchResponse = Type.Object(
+	{
+		href: Type.Optional(Type.String()),
+		total: Type.Optional(Type.Integer()),
+		limit: Type.Optional(Type.Integer()),
+		offset: Type.Optional(Type.Integer()),
+		itemSummaries: Type.Optional(Type.Array(ItemSummary)),
+		itemSales: Type.Optional(Type.Array(ItemSummary)),
+		source: Type.Optional(BrowseSearchSource),
+	},
+	{ $id: "BrowseSearchResponse" },
+);
+export type BrowseSearchResponse = Static<typeof BrowseSearchResponse>;
+
+export const ItemLocation = Type.Object(
+	{
+		city: Type.Optional(Type.String()),
+		stateOrProvince: Type.Optional(Type.String()),
+		postalCode: Type.Optional(Type.String()),
+		country: Type.Optional(Type.String()),
+	},
+	{ $id: "ItemLocation" },
+);
+export type ItemLocation = Static<typeof ItemLocation>;
+
+export const EstimatedAvailability = Type.Object(
+	{
+		estimatedAvailabilityStatus: Type.Optional(Type.String()),
+		estimatedAvailableQuantity: Type.Optional(Type.Integer()),
+		estimatedSoldQuantity: Type.Optional(Type.Integer()),
+		estimatedRemainingQuantity: Type.Optional(Type.Integer()),
+	},
+	{ $id: "EstimatedAvailability" },
+);
+
+/**
+ * One row of the Item Specifics table on a listing's detail page.
+ * Mirror of Browse REST `getItem.localizedAspects[]`. `type` is a
+ * pass-through label ("STRING", "MEASUREMENT", "DATE") eBay attaches
+ * for display formatting; we only emit `STRING` since the search-page
+ * scraper has no other signal.
+ */
+export const LocalizedAspect = Type.Object(
+	{
+		name: Type.String(),
+		value: Type.String(),
+		type: Type.Optional(Type.String()),
+	},
+	{ $id: "LocalizedAspect" },
+);
+export type LocalizedAspect = Static<typeof LocalizedAspect>;
+
+export const ItemDetail = Type.Object(
+	{
+		itemId: Type.String(),
+		legacyItemId: Type.Optional(Type.String()),
+		title: Type.String(),
+		itemWebUrl: Type.String(),
+		condition: Type.Optional(Type.String()),
+		conditionId: Type.Optional(Type.String()),
+		price: Type.Optional(Money),
+		shippingOptions: Type.Optional(Type.Array(ShippingOption)),
+		buyingOptions: Type.Optional(BuyingOptions),
+		bidCount: Type.Optional(Type.Integer()),
+		currentBidPrice: Type.Optional(Money),
+		watchCount: Type.Optional(Type.Integer()),
+		/** ISO 8601 listing end timestamp (sold/ended date for completed items). */
+		itemEndDate: Type.Optional(Type.String()),
+		/** ISO 8601 listing creation timestamp. Together with itemEndDate, gives time-to-sell. */
+		itemCreationDate: Type.Optional(Type.String()),
+		/** "EBAY_US", "EBAY_DE", … — listing's home marketplace. */
+		listingMarketplaceId: Type.Optional(Type.String()),
+		/** Number of times the seller has revised the listing. */
+		sellerItemRevision: Type.Optional(Type.String()),
+		seller: Type.Optional(Seller),
+		itemLocation: Type.Optional(ItemLocation),
+		description: Type.Optional(Type.String()),
+		shortDescription: Type.Optional(Type.String()),
+		categoryPath: Type.Optional(Type.String()),
+		categoryId: Type.Optional(Type.String()),
+		categoryIdPath: Type.Optional(Type.String()),
+		/**
+		 * Item Specifics — Browse REST `localizedAspects`. Structured
+		 * key/value pairs (Brand, Model, Movement, Case Material, …).
+		 * Replaces the older flat `brand` / `color` / `material` fields:
+		 * those covered three aspects in a category (watches, fashion);
+		 * `localizedAspects` carries every aspect the listing has for
+		 * any category, matching what eBay actually returns.
+		 */
+		localizedAspects: Type.Optional(Type.Array(LocalizedAspect)),
+		/** Top-level promotion of `localizedAspects` "Brand". Browse REST exposes both. */
+		brand: Type.Optional(Type.String()),
+		/** Top-level promotion of `localizedAspects` "UPC" / "EAN" / "ISBN". */
+		gtin: Type.Optional(Type.String()),
+		topRatedBuyingExperience: Type.Optional(Type.Boolean()),
+		image: Type.Optional(Image),
+		additionalImages: Type.Optional(Type.Array(Image)),
+		estimatedAvailabilities: Type.Optional(Type.Array(EstimatedAvailability)),
+	},
+	{ $id: "ItemDetail" },
+);
+export type ItemDetail = Static<typeof ItemDetail>;
+
+/* -------------------------- request param schemas -------------------------- */
+
+/** Query parameters for /buy/browse/v1/item_summary/search. */
+export const BrowseSearchQuery = Type.Object(
+	{
+		q: Type.String({ description: "Search keywords." }),
+		filter: Type.Optional(
+			Type.String({
+				description:
+					'eBay filter expression, e.g. "buyingOptions:{FIXED_PRICE}" or "conditionIds:{3000}". See eBay docs.',
+			}),
+		),
+		sort: Type.Optional(
+			Type.String({
+				description: 'Sort key. Common values: "newlyListed", "endingSoonest", "pricePlusShippingLowest".',
+			}),
+		),
+		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 25 })),
+		offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+	},
+	{ $id: "BrowseSearchQuery" },
+);
+export type BrowseSearchQuery = Static<typeof BrowseSearchQuery>;
+
+/** Query parameters for /buy/marketplace_insights/v1_beta/item_sales/search. */
+export const SoldSearchQuery = Type.Object(
+	{
+		q: Type.String({ description: "Keyword for sold listings." }),
+		filter: Type.Optional(Type.String()),
+		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+	},
+	{ $id: "SoldSearchQuery" },
+);
+export type SoldSearchQuery = Static<typeof SoldSearchQuery>;
+
+/** Path parameter for /buy/browse/v1/item/{itemId}. */
+export const ItemDetailParams = Type.Object(
+	{
+		itemId: Type.String({
+			description: "eBay item id, e.g. 'v1|123456789|0'. Returned by ebay_search results.",
+		}),
+	},
+	{ $id: "ItemDetailParams" },
+);
+export type ItemDetailParams = Static<typeof ItemDetailParams>;
+
+/** Backwards-compat alias kept for any external import. */
+export const SearchQuery = BrowseSearchQuery;
+export type SearchQuery = BrowseSearchQuery;

@@ -1,0 +1,43 @@
+.user-menu {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
+	padding: 0 10px 0 4px;
+	border-radius: 8px;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text);
+	border: 1px solid var(--border-faint);
+	background: var(--surface);
+	transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.user-menu:hover {
+	background: var(--bg-soft);
+	color: var(--text);
+}
+
+.user-menu-avatar {
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	object-fit: cover;
+}
+
+.user-menu-fallback {
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	background: var(--brand);
+	color: white;
+	font-size: 12px;
+	font-weight: 500;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.user-menu-label {
+	letter-spacing: -0.005em;
+}

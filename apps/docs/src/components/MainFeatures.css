@@ -1,0 +1,520 @@
+/* MainFeatures — asymmetric grid:
+     row 1: lead card (full width) — Card 1: distribution
+     row 2: two cards side-by-side — Card 2: ops, Card 3: queue
+   Edge-flush panel; internal dividers are solid 1px lines that
+   visually continue the page-frame line system. No rounded
+   containers, no card-in-card boxes, no decorative backgrounds. */
+
+.main-features {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	grid-template-areas:
+		"lead lead"
+		"col-a col-b";
+	margin: 0 -32px;
+	background: var(--surface);
+}
+
+.main-feature {
+	padding: 56px 48px;
+	display: flex;
+	flex-direction: column;
+	gap: 36px;
+}
+
+.main-feature--lead {
+	grid-area: lead;
+	border-bottom: 1px solid var(--border-faint);
+	align-items: center;
+	padding: 64px 48px 72px;
+}
+
+.main-feature:nth-of-type(2) {
+	grid-area: col-a;
+	border-right: 1px solid var(--border-faint);
+}
+
+.main-feature:nth-of-type(3) {
+	grid-area: col-b;
+}
+
+/* === Text section ================================================ */
+
+.feat-text {
+	max-width: 720px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.main-feature--lead .feat-text {
+	margin: 0 auto;
+	text-align: center;
+}
+
+.feat-text--col {
+	max-width: none;
+}
+
+.feat-meta {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	font-family: var(--mono);
+	font-size: 11px;
+	letter-spacing: 0.18em;
+	color: var(--text-3);
+	text-transform: uppercase;
+}
+
+.main-feature--lead .feat-meta {
+	justify-content: center;
+}
+
+.feat-meta-icon {
+	display: inline-flex;
+	align-items: center;
+	color: var(--brand);
+}
+
+.feat-meta-num {
+	color: var(--text-4);
+}
+
+.feat-meta-label {
+	color: var(--text-2);
+}
+
+.feat-lede {
+	font-size: 22px;
+	line-height: 1.45;
+	letter-spacing: -0.01em;
+	color: var(--text-2);
+	margin: 0;
+}
+
+.main-feature:not(.main-feature--lead) .feat-lede {
+	font-size: 18px;
+	line-height: 1.5;
+}
+
+.feat-lede strong {
+	color: var(--text);
+	font-weight: 500;
+}
+
+/* === Viz section (no wrapper styling — just layout) ============== */
+
+.feat-viz {
+	display: flex;
+	flex-direction: column;
+	gap: 22px;
+	width: 100%;
+}
+
+.main-feature--lead .feat-viz {
+	max-width: 880px;
+	margin: 0 auto;
+}
+
+.feat-caption {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	font-family: var(--mono);
+	font-size: 12px;
+	color: var(--text-3);
+	letter-spacing: -0.005em;
+}
+
+.main-feature--lead .feat-caption {
+	justify-content: center;
+}
+
+.feat-caption strong {
+	color: var(--text);
+	font-weight: 500;
+}
+
+.feat-caption-dim {
+	color: var(--text-4);
+}
+
+/* === Card 1 — distribution: histogram + smooth curve ============= */
+
+.dist-svg {
+	display: block;
+	width: 100%;
+	height: auto;
+	max-height: 280px;
+}
+
+.dist-axis {
+	stroke: var(--border);
+	stroke-width: 1;
+}
+
+.dist-hist-bar {
+	fill: var(--brand);
+	opacity: 0;
+	transform-box: fill-box;
+	transform-origin: bottom;
+	animation: dist-bar-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes dist-bar-rise {
+	from { opacity: 0; transform: scaleY(0); }
+	to   { opacity: 0.18; transform: scaleY(1); }
+}
+
+.dist-curve-stroke {
+	stroke: var(--brand);
+	stroke-width: 2;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+	stroke-dasharray: 1500;
+	stroke-dashoffset: 1500;
+	animation: dist-stroke-in 1.4s cubic-bezier(0.65, 0, 0.35, 1) 0.7s forwards;
+}
+
+@keyframes dist-stroke-in {
+	to { stroke-dashoffset: 0; }
+}
+
+.dist-pmark {
+	stroke: var(--text-4);
+	stroke-width: 1;
+	opacity: 0;
+	animation: dist-fade 0.5s ease-out 1.7s forwards;
+}
+
+.dist-median-line {
+	stroke: var(--brand);
+	stroke-width: 1.5;
+	opacity: 0;
+	animation: dist-fade 0.5s ease-out 1.9s forwards;
+}
+
+.dist-median-dot {
+	fill: var(--brand);
+	opacity: 0;
+	transform-box: fill-box;
+	transform-origin: center;
+	animation: dist-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 2.0s forwards;
+}
+
+.dist-median-label {
+	font-family: var(--mono);
+	font-size: 12px;
+	font-weight: 500;
+	fill: var(--brand);
+	letter-spacing: -0.005em;
+	opacity: 0;
+	animation: dist-fade 0.5s ease-out 2.15s forwards;
+}
+
+.dist-tick {
+	font-family: var(--mono);
+	font-size: 11px;
+	fill: var(--text-3);
+	letter-spacing: 0.04em;
+}
+
+.dist-pmark-label {
+	font-family: var(--mono);
+	font-size: 10px;
+	fill: var(--text-4);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	opacity: 0;
+	animation: dist-fade 0.5s ease-out 1.8s forwards;
+}
+
+@keyframes dist-fade { to { opacity: 1; } }
+
+@keyframes dist-pop {
+	from { opacity: 0; transform: scale(0); }
+	to   { opacity: 1; transform: scale(1); }
+}
+
+/* === Card 2 — forwarder route diagram ============================ */
+
+.route {
+	display: flex;
+	flex-direction: column;
+	gap: 26px;
+	padding: 18px 0 8px;
+}
+
+.route-track {
+	display: flex;
+	align-items: center;
+}
+
+.route-stop {
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	width: 110px;
+	z-index: 2;
+}
+
+.route-dot {
+	width: 12px;
+	height: 12px;
+	background: var(--text-3);
+	border-radius: 50%;
+	border: 2px solid var(--surface);
+	box-shadow: 0 0 0 1px var(--border);
+}
+
+.route-dot--brand {
+	width: 14px;
+	height: 14px;
+	background: var(--brand);
+	box-shadow: 0 0 0 1px var(--brand);
+	animation: route-hub-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes route-hub-pulse {
+	0%, 100% { box-shadow: 0 0 0 1px var(--brand), 0 0 0 0 rgba(255, 76, 0, 0.4); }
+	50%      { box-shadow: 0 0 0 1px var(--brand), 0 0 0 6px rgba(255, 76, 0, 0); }
+}
+
+.route-stop-label {
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--text-2);
+}
+
+.route-stop-loc {
+	font-size: 12px;
+	color: var(--text-3);
+	letter-spacing: -0.005em;
+	white-space: nowrap;
+}
+
+.route-line {
+	flex: 1;
+	height: 1px;
+	background: var(--border);
+	position: relative;
+	margin: 0 -8px;
+	z-index: 1;
+}
+
+.route-pkg {
+	position: absolute;
+	top: -3px;
+	left: -8px;
+	width: 8px;
+	height: 7px;
+	background: var(--brand);
+	border-radius: 1px;
+	opacity: 0;
+	animation: route-pkg-slide 5s linear infinite;
+}
+
+/* Sequence the two segments so segment 2's package only departs the
+   forwarder AFTER segment 1's package has arrived. Seg 1 active 0s–2s,
+   then seg 2 active 2.5s–4.5s, repeat every 5s. */
+.route-track > .route-line:nth-child(2) .route-pkg { animation-delay: 0s; }
+.route-track > .route-line:nth-child(4) .route-pkg { animation-delay: 2.5s; }
+
+@keyframes route-pkg-slide {
+	0%   { left: -8px;             opacity: 0; }
+	4%   { left: -8px;             opacity: 1; }
+	40%  { left: calc(100% - 4px); opacity: 1; }
+	46%  { left: calc(100% - 4px); opacity: 0; }
+	100% { left: calc(100% - 4px); opacity: 0; }
+}
+
+
+/* === Card 3 — morning approval queue ============================= */
+
+.queue-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 0 0 14px;
+	border-bottom: 1px solid var(--border-faint);
+	font-family: var(--mono);
+	font-size: 11px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+
+.queue-head-label {
+	color: var(--text-2);
+}
+
+.queue-head-stats {
+	color: var(--text-3);
+	letter-spacing: 0.04em;
+	font-variant-numeric: tabular-nums;
+}
+
+.queue-head-stats strong {
+	color: var(--text);
+	font-weight: 500;
+}
+
+.queue-head-dim {
+	color: var(--text-4);
+	margin: 0 4px;
+}
+
+.queue-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.queue-row {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	column-gap: 18px;
+	align-items: center;
+	padding: 14px 0;
+	border-bottom: 1px dashed var(--border-faint);
+	opacity: 0;
+	animation: queue-row-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.queue-row:last-child {
+	border-bottom: none;
+}
+
+@keyframes queue-row-in {
+	from { opacity: 0; transform: translateY(4px); }
+	to   { opacity: 1; transform: translateY(0); }
+}
+
+.queue-id {
+	font-family: var(--mono);
+	font-size: 12px;
+	letter-spacing: 0.06em;
+	color: var(--text-2);
+	text-transform: uppercase;
+}
+
+.queue-stats {
+	display: flex;
+	gap: 8px;
+	font-family: var(--mono);
+	font-size: 12px;
+	color: var(--text-3);
+	font-variant-numeric: tabular-nums;
+}
+
+.queue-stats strong {
+	color: var(--text);
+	font-weight: 500;
+}
+
+.queue-stats-dim {
+	color: var(--text-4);
+}
+
+.queue-actions {
+	display: inline-flex;
+	gap: 6px;
+}
+
+.queue-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	border: 1px solid var(--border);
+	font-family: var(--mono);
+	font-size: 11.5px;
+	line-height: 1;
+	color: var(--text-3);
+	user-select: none;
+}
+
+.queue-btn--ok {
+	color: var(--brand);
+	border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+}
+
+/* === Reduced motion ============================================== */
+
+@media (prefers-reduced-motion: reduce) {
+	.dist-hist-bar,
+	.dist-curve-stroke,
+	.dist-pmark,
+	.dist-median-line,
+	.dist-median-dot,
+	.dist-median-label,
+	.dist-pmark-label,
+	.queue-row,
+	.route-pkg,
+	.route-dot--brand {
+		animation: none;
+		opacity: 1;
+		transform: none;
+	}
+	.dist-hist-bar { opacity: 0.18; }
+	.dist-curve-stroke { stroke-dashoffset: 0; }
+	.dist-median-dot { transform: scale(1); }
+	.route-pkg { left: 46%; opacity: 0.7; }
+}
+
+/* === Mobile ====================================================== */
+
+@media (max-width: 880px) {
+	.main-features {
+		grid-template-columns: 1fr;
+		grid-template-areas:
+			"lead"
+			"col-a"
+			"col-b";
+	}
+	.main-feature {
+		padding: 48px 24px;
+		gap: 28px;
+	}
+	.main-feature--lead {
+		padding: 52px 24px 56px;
+	}
+	.main-feature:nth-of-type(2) {
+		border-right: none;
+		border-bottom: 1px solid var(--border-faint);
+	}
+	.feat-lede {
+		font-size: 19px;
+	}
+	.main-feature:not(.main-feature--lead) .feat-lede {
+		font-size: 17px;
+	}
+	.queue-row {
+		grid-template-columns: auto 1fr auto;
+		column-gap: 12px;
+	}
+	.queue-stats {
+		font-size: 11.5px;
+		gap: 6px;
+	}
+}
+
+@media (max-width: 720px) {
+	.main-features {
+		margin: 0 -16px;
+	}
+	.main-feature,
+	.main-feature--lead {
+		padding-left: 18px;
+		padding-right: 18px;
+	}
+}

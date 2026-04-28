@@ -1,0 +1,171 @@
+---
+import Layout from "../../layouts/Layout.astro";
+const updated = "2026-04-26";
+---
+<Layout title="Compliance · flipagent">
+	<div class="cmw cmw-bordered">
+		<article class="docs-content" style="max-width:760px;margin:64px auto;">
+			<h1>Compliance &amp; operational hygiene</h1>
+			<p class="lead">
+				What flipagent does and does not do when retrieving public eBay listing data. Last updated {updated}.
+			</p>
+
+			<p>
+				flipagent operates a hosted cache + parser for publicly accessible eBay listings. We aggregate
+				sold-comp data on behalf of resellers, deal-finding agents, and analytics tools. This page
+				documents the technical posture we maintain so partners, sellers, and platform operators can
+				see the limits of what we do.
+			</p>
+
+			<h2>What we do not do</h2>
+			<ul>
+				<li>
+					<strong>No logged-in access.</strong> No flipagent-operated process logs into eBay or
+					retrieves data behind authentication. All scraping is against pages publicly viewable
+					without an account.
+				</li>
+				<li>
+					<strong>No DMCA §1201 circumvention.</strong> No CAPTCHA solvers, no browser-fingerprint
+					spoofing (no Canvas / WebGL / audio-API tampering), no anti-bot JavaScript bypass libraries
+					(Akamai, PerimeterX, Cloudflare bot management), no headless-stealth plugins. The scraper
+					is plain HTTP + jsdom; see <a href="https://github.com/flipagent/flipagent/tree/main/packages/ebay-scraper">@flipagent/ebay-scraper</a>.
+				</li>
+				<li>
+					<strong>No prohibited user agents.</strong> The OSS scraper hard-blocks the User-Agent
+					tokens eBay's robots.txt explicitly Disallows site-wide
+					(<code>Bytespider</code>, <code>CCBot</code>, <code>ChatGLM-Spider</code>,
+					<code>ClaudeBot</code>, <code>PerplexityBot</code>, <code>anthropic-ai</code>,
+					<code>AmazonBot</code>). Attempting to send any of these throws before the request
+					leaves the process.
+				</li>
+				<li>
+					<strong>No image bytes stored.</strong> We retain image URLs (which point at eBay's CDN);
+					we do not download, transcode, or rehost photo bytes. Seller photo copyrights are not
+					implicated by URL references.
+				</li>
+				<li>
+					<strong>No durable archive.</strong> The response cache exists for anti-thundering-herd
+					and latency reasons, not as an archival product. Active-search TTL is 60 minutes; sold
+					searches and item details rotate within hours, not days.
+				</li>
+			</ul>
+
+			<h2>Paths we respect</h2>
+			<p>
+				The OSS scraper rejects URLs matching subpaths under eBay's <code>User-agent: *</code>
+				Disallow list that have no read-only product purpose:
+				<code>/itm/addToCart</code>, <code>/itm/watch/</code>, <code>/itm/*action=BESTOFFER</code>,
+				<code>/itm/sellerInfoV2</code>, <code>/itm/soi</code>, <code>/itm/variationlogistics</code>,
+				image URLs ending in <code>.jpg</code> under <code>/itm/</code>, plus all of <code>/atc/</code>,
+				<code>/act/</code>, <code>/cart</code>, <code>/sl/</code>, <code>/myb*</code>,
+				<code>/feed/</code>, <code>/fdbk/</code>, <code>/ecaptcha/</code>. These are seller-tools,
+				cart, feedback, captcha, and operational endpoints we have no reason to touch.
+			</p>
+
+			<h2>Path we knowingly operate on</h2>
+			<p>
+				We do retrieve the public search-results page at <code>/sch/i.html?_nkw=…</code>, which
+				eBay's robots.txt v24.5 (December 2025) lists under its <code>User-agent: *</code> Disallow
+				block. We document this knowingly rather than obscure it. Our position:
+			</p>
+			<ul>
+				<li>
+					Sold-comp aggregation has no equivalent legitimate channel for non-Marketplace-Insights
+					tenants. eBay's Marketplace Insights API is a Limited Release program with high
+					rejection rates for new applicants; commercial sold-data licensing for eBay does not
+					exist as a buyable product at the time of writing.
+				</li>
+				<li>
+					We minimize impact: short cache TTLs amortize requests across all callers, residential
+					IP rotation distributes load, and we never poll faster than necessary to serve a real
+					user request.
+				</li>
+				<li>
+					Robots.txt is a notice signal under U.S. case law, not a contract; <em>hiQ Labs v.
+					LinkedIn</em> (9th Cir. 2022) confirmed that public data on the public internet does not
+					trigger CFAA liability. We continue to honor takedown requests, C&amp;D notices, and
+					seller opt-outs as described below.
+				</li>
+			</ul>
+
+			<h2>Takedown &amp; rights-holder process</h2>
+			<p>
+				One endpoint, three regulatory regimes, one SLA.
+			</p>
+			<ul>
+				<li>
+					<strong>Endpoint:</strong> <code>POST /v1/takedown</code> — see
+					<a href="/api">API reference</a> for the schema. Unauthenticated; no API key required.
+				</li>
+				<li>
+					<strong>Triage SLA:</strong> 48 business hours. Approved requests flush the cache and
+					blocklist the itemId from re-fetching.
+				</li>
+				<li>
+					<strong>DMCA §512(c)(3):</strong> set <code>kind: "dmca_copyright"</code> and include the
+					<code>dmca</code> attestation block (good-faith statement, accuracy statement under
+					penalty of perjury, signature, identification of copyrighted work).
+				</li>
+				<li>
+					<strong>GDPR Art. 17:</strong> set <code>kind: "gdpr_erasure"</code>. Same pipeline.
+				</li>
+				<li>
+					<strong>CCPA §1798.105:</strong> set <code>kind: "ccpa_deletion"</code>. Same pipeline.
+				</li>
+				<li>
+					<strong>Seller opt-out:</strong> set <code>kind: "seller_optout"</code>. Honored by
+					policy.
+				</li>
+			</ul>
+
+			<h2>DMCA-style notices</h2>
+			<p>
+				flipagent is not currently registered with the U.S. Copyright Office's DMCA designated-agent
+				directory under 17 U.S.C. §512(c)(2). We do not, in this posture, claim §512(c) safe harbor;
+				the bulk of our infrastructure is a scraper + cache rather than a UGC host, so the safe
+				harbor does not naturally apply to our model.
+			</p>
+			<p>
+				We do operate a private takedown channel that accepts notices in the §512(c)(3) shape so
+				rights holders have a clean path that does not require a lawsuit:
+			</p>
+			<ul>
+				<li>
+					<strong>Endpoint:</strong> <code>POST /v1/takedown</code> with
+					<code>kind: "dmca_copyright"</code> and the <code>dmca</code> attestation block.
+				</li>
+				<li>
+					<strong>Email fallback:</strong> <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a>
+					— include the §512(c)(3) elements (identification of the work, identification of the
+					infringing material via itemId, contact info, good-faith statement, accuracy statement
+					under penalty of perjury, signature).
+				</li>
+				<li>
+					<strong>Triage SLA:</strong> 48 business hours. Approved notices flush the cache and
+					blocklist the itemId.
+				</li>
+			</ul>
+
+			<h2>Cease-and-desist response</h2>
+			<p>
+				If you are a platform or rights holder and believe specific itemIds, sellers, or queries
+				should not be retrieved, email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a>.
+				Our standard response is to apply the requested blocklist within 5 business days while we
+				review the underlying claim. We do not ignore C&amp;D notices.
+			</p>
+
+			<h2>Open-source surface</h2>
+			<p>
+				The scraper, parsers, schemas, recipes, and SDK are MIT-licensed and live on GitHub. Anyone
+				running them outside flipagent's hosted API is operating their own instance with their
+				own infrastructure (BYO HTTP proxy, BYO User-Agent policy, BYO rate limit). flipagent does
+				not direct, control, or benefit from third-party deployments of these packages.
+			</p>
+
+			<p style="color:var(--text-3);font-size:0.875rem;margin-top:48px;">
+				This page is a description of operational practice, not a legal disclaimer. Nothing here
+				waives any defense available under applicable law.
+			</p>
+		</article>
+	</div>
+</Layout>

@@ -1,0 +1,82 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+---
+<Layout title="REST quickstart · flipagent docs">
+	<div class="cmw cmw-bordered">
+		<div class="docs-shell">
+			<DocsSidebar />
+			<article class="docs-content">
+				<h1>REST quickstart</h1>
+				<p class="lead">flipagent exposes one unified surface under <code>/v1/*</code>. Every resource is marketplace-agnostic; today eBay-shape responses, future Amazon / Mercari adapters reuse the same paths via a <code>marketplace</code> parameter.</p>
+
+				<h2>Search active listings</h2>
+				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/listings/search?q=canon%2050mm&limit=5" \\
+  -H "Authorization: Bearer fa_free_xxx"`}</code></pre></div>
+				<p>Returns a <code>SearchPagedCollection</code>-shaped envelope (<code>itemSummaries[]</code>, <code>total</code>).</p>
+
+				<h2>Listing detail</h2>
+				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/listings/v1%7C123456789%7C0" \\
+  -H "Authorization: Bearer fa_free_xxx"`}</code></pre></div>
+
+				<h2>Sold comps</h2>
+				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/sold/search?q=canon%2050mm&limit=50" \\
+  -H "Authorization: Bearer fa_free_xxx"`}</code></pre></div>
+				<p>Returns <code>itemSales[]</code> — Marketplace-Insights-shape entries with <code>lastSoldDate</code>.</p>
+
+				<h2>Score one listing</h2>
+				<div class="code"><pre><code>{`curl -X POST "https://api.flipagent.dev/v1/evaluate" \\
+  -H "Authorization: Bearer fa_free_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"item": {...}, "opts": {"comps": [...]}}'`}</code></pre></div>
+				<p>Returns a <code>DealVerdict</code> with <code>rating: "buy" | "watch" | "skip"</code>, signals, and net margin.</p>
+
+				<h2>Rank deals across a search</h2>
+				<div class="code"><pre><code>{`curl -X POST "https://api.flipagent.dev/v1/discover" \\
+  -H "Authorization: Bearer fa_free_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"results": {"itemSummaries": [...]}, "opts": {"minNetCents": 2000}}'`}</code></pre></div>
+				<p>Returns <code>{`{ deals: RankedDeal[] }`}</code> sorted by margin × confidence. One usage event regardless of how many items are scored. Capped at 200 items per call.</p>
+
+				<h2>Forwarder quote</h2>
+				<div class="code"><pre><code>{`curl -X POST "https://api.flipagent.dev/v1/ship/quote" \\
+  -H "Authorization: Bearer fa_free_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"item": {...}, "forwarder": {"destState": "NY", "weightG": 500}}'`}</code></pre></div>
+
+				<h2>Use it from Node</h2>
+				<div class="code"><pre><code>{`const res = await fetch(
+  "https://api.flipagent.dev/v1/listings/search?q=canon%2050mm",
+  { headers: { Authorization: \`Bearer \${process.env.FLIPAGENT_API_KEY}\` } }
+);
+const { itemSummaries, total } = await res.json();`}</code></pre></div>
+				<p>Or use <a href="/docs/quickstart/"><code>@flipagent/sdk</code></a> for typed namespaces.</p>
+
+				<h2>Response headers</h2>
+				<table class="api">
+					<thead><tr><th>Header</th><th>Meaning</th></tr></thead>
+					<tbody>
+						<tr><td><code>X-RateLimit-Limit</code></td><td>Calls per month for your tier.</td></tr>
+						<tr><td><code>X-RateLimit-Remaining</code></td><td>Calls left in the current period.</td></tr>
+						<tr><td><code>X-RateLimit-Reset</code></td><td>ISO-8601 timestamp of the next monthly reset (UTC).</td></tr>
+						<tr><td><code>X-Flipagent-Source</code></td><td><code>scrape</code>, <code>cache:scrape</code>, or <code>ebay-passthrough</code>. Tells you whether the response was freshly fetched, served from cache, or routed through our official-API pool.</td></tr>
+						<tr><td><code>X-Flipagent-Cached-At</code></td><td>ISO-8601 timestamp of when the cached response was first written. Only set on cache hits.</td></tr>
+					</tbody>
+				</table>
+
+				<h2>Errors</h2>
+				<p>JSON body with <code>error</code> + optional <code>message</code>. Common codes:</p>
+				<table class="api">
+					<thead><tr><th>Status</th><th>Body.error</th><th>Cause</th></tr></thead>
+					<tbody>
+						<tr><td>400</td><td><code>validation_failed</code></td><td>Body / query failed schema validation.</td></tr>
+						<tr><td>401</td><td><code>unauthorized</code> / <code>invalid_key</code></td><td>Missing or revoked key.</td></tr>
+						<tr><td>429</td><td><code>rate_limited</code></td><td>Tier monthly quota exhausted.</td></tr>
+						<tr><td>502</td><td><code>upstream_failed</code></td><td>eBay returned an error or our scrape was blocked.</td></tr>
+						<tr><td>503</td><td><code>billing_not_configured</code></td><td>Stripe isn't enabled on the server. Hosted users won't see this.</td></tr>
+					</tbody>
+				</table>
+			</article>
+		</div>
+	</div>
+</Layout>

@@ -1,0 +1,30 @@
+---
+import Layout from "../layouts/Layout.astro";
+import PricingTiers from "../components/PricingTiers.astro";
+---
+<Layout title="Pricing · flipagent">
+	<section class="hero" style="padding:64px 0 32px;">
+		<div class="cmw cmw-bordered">
+			<h1>Start free. Pay when you scale.</h1>
+			<p class="lead">Per-call against the eBay-compat endpoints. Management routes are free.</p>
+		</div>
+	</section>
+
+	<section class="section" style="padding-top:24px;">
+		<div class="cmw cmw-bordered">
+			<PricingTiers />
+		</div>
+	</section>
+
+	<section class="section" style="padding-top:32px; padding-bottom:96px;">
+		<div class="cmw" style="max-width:760px;">
+			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">What counts as a call</h2>
+			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
+				Each <code>GET /buy/*</code> request — fresh or cached — increments your monthly counter. Cache hits still count: the value is latency, not free calls. The infra cost is the same either way.
+			</p>
+			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
+				Free: <code>/healthz</code>, <code>/v1/keys</code>, <code>/v1/keys/me</code>, <code>/v1/takedown</code>, billing.
+			</p>
+		</div>
+	</section>
+</Layout>

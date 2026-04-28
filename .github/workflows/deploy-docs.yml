@@ -1,0 +1,43 @@
+name: Deploy docs (Cloudflare Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/docs/**"
+      # Docs build runs `gen:spec` which dumps the OpenAPI doc from
+      # the live Hono app — route metadata in packages/api and TypeBox
+      # shapes in packages/types change the published spec.
+      - "packages/api/**"
+      - "packages/types/**"
+      - ".github/workflows/deploy-docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Build docs site
+        run: npm run build -w @flipagent/docs
+        env:
+          PUBLIC_API_BASE_URL: https://api.flipagent.dev
+
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/docs/dist --project-name=flipagent-docs --branch=main

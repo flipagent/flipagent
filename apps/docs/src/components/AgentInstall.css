@@ -1,0 +1,112 @@
+/* AgentInstall — two side-by-side install cards (e.g., MCP config + npm). */
+
+.install-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	margin: 0 -32px;
+}
+
+.install-grid > .install-card {
+	border-right: 1px solid var(--border-faint);
+}
+
+.install-grid > .install-card:last-child {
+	border-right: 0;
+}
+
+.install-card {
+	padding: 36px 36px 28px;
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+.install-eyebrow {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-family: var(--mono);
+	font-size: 11px;
+	letter-spacing: 0.06em;
+	color: var(--text-3);
+}
+
+.install-eyebrow-icon {
+	display: inline-flex;
+	color: var(--text-3);
+}
+
+.install-body {
+	margin: 0;
+	font-size: 16px;
+	line-height: 1.5;
+	color: var(--text-2);
+	letter-spacing: -0.012em;
+}
+
+.install-body strong {
+	color: var(--text);
+	font-weight: 500;
+}
+
+.install-code {
+	margin-top: auto;
+	background: var(--bg-soft);
+	border: 1px solid var(--border-faint);
+	border-radius: 10px;
+	overflow: hidden;
+	min-height: 240px;
+	display: flex;
+	flex-direction: column;
+}
+
+.install-code-head {
+	display: flex;
+	justify-content: flex-end;
+	padding: 10px 12px 0;
+}
+
+.install-copy {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 12px;
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 999px;
+	font-family: var(--sans);
+	font-size: 12px;
+	color: var(--text);
+	cursor: pointer;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.install-copy:hover {
+	border-color: var(--border);
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.install-code .cp-code {
+	flex: 1;
+	padding: 6px 0 16px;
+}
+
+@media (max-width: 880px) {
+	.install-grid {
+		grid-template-columns: 1fr;
+	}
+	.install-grid > .install-card {
+		border-right: 0;
+		border-bottom: 1px solid var(--border-faint);
+	}
+	.install-grid > .install-card:last-child {
+		border-bottom: 0;
+	}
+}
+
+@media (max-width: 720px) {
+	.install-grid {
+		margin: 0 -16px;
+	}
+}

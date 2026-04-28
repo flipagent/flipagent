@@ -1,0 +1,24 @@
+{
+	"name": "@flipagent/extension",
+	"version": "0.0.1",
+	"private": true,
+	"license": "MIT",
+	"description": "flipagent Chrome extension — local executor for /v1/orders/*. Polls the hosted bridge protocol, drives buy-flow clicks inside the user's real eBay session. No Playwright, no Akamai battle.",
+	"type": "module",
+	"scripts": {
+		"clean": "shx rm -rf dist *.tsbuildinfo",
+		"build": "node build.mjs",
+		"watch": "node build.mjs --watch",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@flipagent/ebay-scraper": "*"
+	},
+	"devDependencies": {
+		"@flipagent/types": "*",
+		"@types/chrome": "^0.0.287",
+		"esbuild": "^0.25.0",
+		"shx": "^0.4.0",
+		"typescript": "^5.9.2"
+	}
+}

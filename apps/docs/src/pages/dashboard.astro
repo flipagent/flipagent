@@ -1,0 +1,24 @@
+---
+/**
+ * Chrome-less full-bleed dashboard. Sidebar lives inside <Dashboard/>; the
+ * marketing site header/footer are intentionally absent so the dash feels
+ * like an app, not a doc page.
+ */
+import "../styles/global.css";
+import "../components/Dashboard.css";
+import Dashboard from "../components/Dashboard.tsx";
+---
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Dashboard · flipagent</title>
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	</head>
+	<body style="margin:0;">
+		<Dashboard client:only="react" />
+	</body>
+</html>

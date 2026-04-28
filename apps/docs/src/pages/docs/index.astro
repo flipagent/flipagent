@@ -1,0 +1,64 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+---
+<Layout title="Docs · flipagent">
+	<div class="cmw cmw-bordered">
+		<div class="docs-shell">
+			<DocsSidebar />
+			<article class="docs-content">
+				<h1>Docs</h1>
+				<p class="lead">
+					ONE API for online reselling. Pick how you want to call it.
+				</p>
+
+				<div class="features" style="margin:32px 0 56px;">
+					<div class="feature">
+						<div class="ic">i.</div>
+						<h3>MCP server</h3>
+						<p><code>flipagent-mcp</code> for Claude Desktop / Cursor / Cline. Eighteen tools across discovery, evaluation, sell-side, and forwarder.</p>
+						<div style="margin-top:14px;"><a href="/docs/mcp/">MCP setup →</a></div>
+					</div>
+					<div class="feature">
+						<div class="ic">ii.</div>
+						<h3>REST API</h3>
+						<p>Unified <code>/v1/*</code> surface at <code>api.flipagent.dev</code>: listings, sold comps, evaluate, discover, ship, orders, inventory, fulfillment, finance, markets.</p>
+						<div style="margin-top:14px;"><a href="/docs/rest/">REST quickstart →</a></div>
+					</div>
+					<div class="feature">
+						<div class="ic">iii.</div>
+						<h3>TypeScript SDK</h3>
+						<p><code>@flipagent/sdk</code>. One client, every namespace. Auto-typed responses, server-side scoring.</p>
+						<div style="margin-top:14px;"><a href="/docs/quickstart/">Quickstart →</a></div>
+					</div>
+					<div class="feature">
+						<div class="ic">iv.</div>
+						<h3>Scraper</h3>
+						<p><code>@flipagent/ebay-scraper</code>. Standalone eBay HTML parsers. BYO proxy.</p>
+						<div style="margin-top:14px;"><a href="https://github.com/flipagent/flipagent/tree/main/packages/ebay-scraper">Source →</a></div>
+					</div>
+				</div>
+
+				<h2>Quickstart</h2>
+
+				<table class="api">
+					<thead>
+						<tr><th>Goal</th><th>Path</th><th>Time</th></tr>
+					</thead>
+					<tbody>
+						<tr><td>Try from Claude Desktop</td><td><a href="/docs/mcp/">MCP setup</a></td><td>30s</td></tr>
+						<tr><td>Call from your backend</td><td><a href="/docs/rest/">REST quickstart</a></td><td>1m</td></tr>
+						<tr><td>TypeScript SDK</td><td><a href="/docs/quickstart/">Quickstart</a></td><td>2m</td></tr>
+						<tr><td>Browse the API</td><td><a href="/docs/api/">API reference</a></td><td>—</td></tr>
+					</tbody>
+				</table>
+
+				<h2>What you'll need</h2>
+				<ul>
+					<li>A free API key from <a href="/signup/">flipagent.dev/signup</a></li>
+					<li>Optional: your own eBay developer OAuth — required for sell-side endpoints (<code>/v1/inventory</code>, <code>/v1/orders</code>, <code>/v1/fulfillment</code>, etc.)</li>
+				</ul>
+			</article>
+		</div>
+	</div>
+</Layout>

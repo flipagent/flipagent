@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Changesets needs to commit the version-bump PR back to main; npm
+# trusted publishing + provenance needs id-token write (no NPM_TOKEN).
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    if: github.repository == 'flipagent/flipagent'
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: flipagent
+          POSTGRES_PASSWORD: flipagent
+          POSTGRES_DB: flipagent
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flipagent -d flipagent"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://flipagent:flipagent@localhost:5432/flipagent
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Apply DB migrations
+        run: npm run --workspace @flipagent/api db:migrate
+
+      - name: Test all packages
+        run: npm test
+
+      # Two modes:
+      #   1. Pending changesets exist → open/update a "Version Packages"
+      #      PR. Reviewers eyeball the version bumps, then merge.
+      #   2. No pending changesets but the previous merge bumped versions
+      #      → publish each updated package to npm with provenance.
+      #
+      # Auth: npm Trusted Publishing (OIDC). No NPM_TOKEN secret stored.
+      # Configure once per package on npmjs.com → Settings → Trusted
+      # Publisher → GitHub Actions, repo flipagent/flipagent,
+      # workflow release.yml. id-token:write above + NPM_CONFIG_PROVENANCE=true
+      # is the OIDC handshake.
+      - name: Version or publish
+        uses: changesets/action@v1
+        with:
+          publish: npx changeset publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"

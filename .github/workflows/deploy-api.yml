@@ -1,0 +1,73 @@
+name: Deploy api (Azure)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/api/**"
+      - "packages/ebay-scraper/**"
+      - "packages/types/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch:
+
+# OIDC-only auth — no long-lived Azure secrets in GH.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_RESOURCE_GROUP: flipagent-prod
+  CONTAINER_APP_NAME: flipagent-prod-api
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve ACR login server
+        id: acr
+        run: |
+          server=$(az acr list -g "$AZURE_RESOURCE_GROUP" --query "[0].loginServer" -o tsv)
+          if [ -z "$server" ]; then echo "no ACR in $AZURE_RESOURCE_GROUP" >&2; exit 1; fi
+          echo "server=$server" >> "$GITHUB_OUTPUT"
+
+      - name: ACR build (no local docker daemon)
+        run: |
+          az acr build \
+            --registry "${{ steps.acr.outputs.server }}" \
+            --image "api:${{ github.sha }}" \
+            --image "api:latest" \
+            --file packages/api/Dockerfile \
+            .
+
+      - name: Roll Container App revision
+        run: |
+          az containerapp update \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "${{ steps.acr.outputs.server }}/api:${{ github.sha }}"
+
+      - name: Wait for healthy
+        run: |
+          fqdn=$(az containerapp show --name "$CONTAINER_APP_NAME" -g "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
+          for i in $(seq 1 30); do
+            if curl -fsS "https://$fqdn/healthz" >/dev/null 2>&1; then
+              echo "healthy after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "did not become healthy within 60s" >&2
+          exit 1

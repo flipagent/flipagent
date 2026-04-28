@@ -1,0 +1,56 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+---
+<Layout title="Authentication · flipagent docs">
+	<div class="cmw cmw-bordered">
+		<div class="docs-shell">
+			<DocsSidebar />
+			<article class="docs-content">
+				<h1>Authentication</h1>
+				<p class="lead">Bearer tokens. Hashed at rest. Shown once at creation.</p>
+
+				<h2>Key format</h2>
+				<p>API keys are 38-char strings prefixed with the tier:</p>
+				<div class="code"><pre><code>{`fa_free_a3b1XK0_abcdefghijklmnopqrstuv
+fa_hobby_a3b1XK0_...
+fa_pro_a3b1XK0_...`}</code></pre></div>
+				<p>The plaintext is shown to you exactly once at creation. We persist only an SHA-256 digest. The first 12 characters of the plaintext are stored separately as a display prefix so you can identify keys later.</p>
+
+				<h2>Send the key</h2>
+				<p>Either header works:</p>
+				<div class="code"><pre><code>{`Authorization: Bearer fa_free_xxx
+X-API-Key: fa_free_xxx`}</code></pre></div>
+
+				<h2>Inspect a key</h2>
+				<div class="code"><pre><code>{`curl https://api.flipagent.dev/v1/keys/me \\
+  -H "Authorization: Bearer fa_free_xxx"`}</code></pre></div>
+				<p>Returns tier, name, owner email, the display prefix, and the current month's usage:</p>
+				<div class="code"><pre><code>{`{
+  "id": "9cb48add-...",
+  "tier": "free",
+  "prefix": "fa_free_a3b1",
+  "ownerEmail": "you@example.com",
+  "usage": {
+    "used": 17,
+    "limit": 100,
+    "remaining": 83,
+    "resetAt": "2026-05-01T00:00:00.000Z"
+  }
+}`}</code></pre></div>
+
+				<h2>Revoke</h2>
+				<div class="code"><pre><code>{`curl -X POST https://api.flipagent.dev/v1/keys/revoke \\
+  -H "Authorization: Bearer fa_free_xxx"`}</code></pre></div>
+				<p>Revoked keys return <code>401 invalid_key</code> on subsequent calls. Issue a new one from your <a href="/dashboard/">dashboard</a>.</p>
+
+				<h2>Rate-limit headers</h2>
+				<p>Every authenticated response carries:</p>
+				<div class="code"><pre><code>{`X-RateLimit-Limit:     100
+X-RateLimit-Remaining: 83
+X-RateLimit-Reset:     2026-05-01T00:00:00.000Z`}</code></pre></div>
+				<p>Hit zero and you'll get a <code>429</code> with the same headers and a JSON body pointing at the upgrade page.</p>
+			</article>
+		</div>
+	</div>
+</Layout>

@@ -1,0 +1,19 @@
+---
+const path = Astro.url.pathname.replace(/\/$/, "");
+---
+<aside class="docs-side">
+	<h4>Get started</h4>
+	<a href="/docs/" class={path === "/docs" ? "active" : ""}>Overview</a>
+	<a href="/docs/quickstart/" class={path === "/docs/quickstart" ? "active" : ""}>Quickstart</a>
+	<a href="/docs/auth/" class={path === "/docs/auth" ? "active" : ""}>Authentication</a>
+	<h4>Integration</h4>
+	<a href="/docs/mcp/" class={path === "/docs/mcp" ? "active" : ""}>MCP server</a>
+	<a href="/docs/rest/" class={path === "/docs/rest" ? "active" : ""}>REST quickstart</a>
+	<a href="/docs/extension/" class={path === "/docs/extension" ? "active" : ""}>Chrome extension</a>
+	<h4>Reference</h4>
+	<a href="/docs/api/" class={path === "/docs/api" ? "active" : ""}>API reference</a>
+	<a href="/docs/rate-limits/" class={path === "/docs/rate-limits" ? "active" : ""}>Rate limits</a>
+	<a href="/docs/errors/" class={path === "/docs/errors" ? "active" : ""}>Errors</a>
+	<h4>Self-host</h4>
+	<a href="/docs/self-host/" class={path === "/docs/self-host" ? "active" : ""}>Run your own</a>
+</aside>

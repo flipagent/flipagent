@@ -1,0 +1,45 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+---
+<Layout title="Rate limits · flipagent docs">
+	<div class="cmw cmw-bordered">
+		<div class="docs-shell">
+			<DocsSidebar />
+			<article class="docs-content">
+				<h1>Rate limits</h1>
+				<p class="lead">Per calendar month, UTC. Counted at every marketplace and value-add endpoint under <code>/v1/*</code>; management endpoints (<code>/v1/keys/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/healthz</code>) are uncounted.</p>
+
+				<h2>Tier table</h2>
+				<table class="api">
+					<thead><tr><th>Tier</th><th>Calls / month</th><th>Notes</th></tr></thead>
+					<tbody>
+						<tr><td>Free</td><td>100</td><td>No card. <a href="/signup/">Sign up</a> for a key.</td></tr>
+						<tr><td>Hobby ($19/mo)</td><td>5,000</td><td>Side projects, weekend builds.</td></tr>
+						<tr><td>Pro ($99/mo)</td><td>50,000</td><td>Production integrations.</td></tr>
+						<tr><td>Business</td><td>Custom</td><td>SLA, white-label, dedicated quota.</td></tr>
+					</tbody>
+				</table>
+
+				<h2>What counts</h2>
+				<p>Every request to a marketplace or value-add endpoint — <code>/v1/listings/*</code>, <code>/v1/sold/*</code>, <code>/v1/orders/*</code>, <code>/v1/inventory/*</code>, <code>/v1/fulfillment/*</code>, <code>/v1/finance/*</code>, <code>/v1/markets/*</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/ship/*</code> — fresh or cache-served — increments your monthly counter by one. The cache reduces latency, not your bill, because the hosted infrastructure cost is the same regardless.</p>
+				<p>Free entries (uncounted): <code>/healthz</code>, <code>/v1/health/*</code>, <code>/v1/keys/me</code>, <code>/v1/keys/revoke</code>, <code>/v1/takedown</code>, <code>/v1/billing/*</code>, <code>/v1/connect/*</code>, <code>/v1/me/*</code>.</p>
+
+				<h2>Headers on every authed response</h2>
+				<div class="code"><pre><code>{`X-RateLimit-Limit:     100
+X-RateLimit-Remaining: 73
+X-RateLimit-Reset:     2026-05-01T00:00:00.000Z`}</code></pre></div>
+
+				<h2>Hitting the limit</h2>
+				<p>Once your counter reaches the tier limit, you'll get a <code>429</code> with the same headers and a JSON body:</p>
+				<div class="code"><pre><code>{`{
+  "error": "rate_limited",
+  "message": "Tier \\"free\\" allows 100/mo; you've used 100.",
+  "resetAt": "2026-05-01T00:00:00.000Z",
+  "upgrade": "https://flipagent.dev/pricing"
+}`}</code></pre></div>
+				<p>The counter resets at <code>00:00 UTC</code> on the first of the next month. To raise the ceiling sooner, hit <code>POST /v1/billing/checkout</code> with <code>tier: "hobby"</code> or <code>"pro"</code>.</p>
+			</article>
+		</div>
+	</div>
+</Layout>

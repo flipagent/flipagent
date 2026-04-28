@@ -1,0 +1,39 @@
+{
+	"name": "@flipagent/docs",
+	"version": "0.0.1",
+	"private": true,
+	"description": "flipagent.dev marketing + docs site. Astro static.",
+	"type": "module",
+	"scripts": {
+		"gen:spec": "npm run --workspace @flipagent/api gen:spec -- ../../apps/docs/public/openapi.json",
+		"predev": "npm run gen:spec",
+		"prebuild": "npm run gen:spec",
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "astro preview",
+		"check": "astro check"
+	},
+	"dependencies": {
+		"@astrojs/react": "^5.0.4",
+		"@radix-ui/react-collapsible": "^1.1.12",
+		"@radix-ui/react-select": "^2.2.6",
+		"@radix-ui/react-toggle-group": "^1.1.11",
+		"@tailwindcss/vite": "^4.2.4",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"astro": "^5.0.0",
+		"better-auth": "^1.6.9",
+		"motion": "^12.38.0",
+		"react": "^19.2.5",
+		"react-dom": "^19.2.5",
+		"tailwindcss": "^4.2.4"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.5",
+		"typescript": "^5.9.2"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"license": "SEE LICENSE IN ./LICENSE"
+}

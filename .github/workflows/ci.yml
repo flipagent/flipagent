@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: flipagent
+          POSTGRES_PASSWORD: flipagent
+          POSTGRES_DB: flipagent
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flipagent -d flipagent"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://flipagent:flipagent@localhost:5432/flipagent
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Biome lint
+        run: npx biome check .
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Apply DB migrations
+        run: npm run --workspace @flipagent/api db:migrate
+
+      - name: Test — all workspaces
+        run: npm test

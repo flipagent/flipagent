@@ -1,0 +1,46 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+environment  = "prod"
+location     = "eastus2"
+postgres_sku = "B_Standard_B1ms"
+
+# Custom domain. Leave empty to skip; bind later.
+# custom_domain = "api.flipagent.dev"
+
+# Managed scraper vendor for eBay HTML fetches. Today only `oxylabs` is wired
+# (Web Scraper API). Leaving username/password empty disables managed scraping
+# — fine for low-volume but expect to hit eBay's bot wall fast.
+# scraper_api_vendor   = "oxylabs"
+# scraper_api_username = "USER"
+# scraper_api_password = "PASS"
+
+# Stripe — leave empty to ship with /v1/billing/* returning 503.
+# stripe_secret_key     = "sk_live_..."
+# stripe_webhook_secret = "whsec_..."
+# stripe_price_hobby    = "price_..."
+# stripe_price_pro      = "price_..."
+
+# eBay OAuth — leave empty to ship with /sell/*, /commerce/*, /v1/connect/ebay
+# returning 503 not_configured. Register the keyset + RuName at developer.ebay.com.
+# Sandbox: swap api.ebay.com → api.sandbox.ebay.com and auth.ebay.com → auth.sandbox.ebay.com.
+# ebay_client_id          = "YourApp-PRD-..."
+# ebay_client_secret      = "PRD-..."
+# ebay_ru_name            = "Your_App-RuName"
+# ebay_base_url           = "https://api.ebay.com"
+# ebay_auth_url           = "https://auth.ebay.com"
+# ebay_order_api_approved = false   # flip to true ONLY after eBay grants approval
+
+# Better-Auth + dashboard sign-in. Leave empty to ship with /v1/me/* + /api/auth/*
+# returning 503. APP_URL is the dashboard origin; BETTER_AUTH_URL is this api's
+# external URL (must match GitHub/Google OAuth callback URL).
+# better_auth_secret   = "..."   # openssl rand -base64 32
+# app_url              = "https://flipagent.dev"
+# better_auth_url      = "https://api.flipagent.dev"
+# github_client_id     = ""
+# github_client_secret = ""
+# google_client_id     = ""
+# google_client_secret = ""
+
+# Email (Resend) — required for password reset.
+# resend_api_key = "re_..."
+# email_from     = "flipagent <noreply@flipagent.dev>"

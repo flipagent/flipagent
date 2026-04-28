@@ -1,0 +1,65 @@
+---
+import Layout from "../../layouts/Layout.astro";
+---
+<Layout title="Seller opt-out · flipagent">
+	<section class="hero" style="padding-top:64px; padding-bottom:32px;">
+		<div class="cmw cmw-bordered">
+			<div class="eyebrow-pill"><span class="pill-dot"></span> Policy</div>
+			<h1>Seller opt-out</h1>
+			<p class="lead">
+				If you're an eBay seller and would prefer that your listings not appear
+				through our cache or scraper, submit a takedown below. Approved
+				requests flush the cache immediately and blocklist the itemId.
+			</p>
+		</div>
+	</section>
+
+	<section class="section" style="padding-top:32px; padding-bottom:96px;">
+		<div class="cmw cmw-bordered" style="max-width:560px;">
+			<form id="takedown" class="signup-form">
+				<label for="itemId">eBay itemId</label>
+				<input id="itemId" name="itemId" type="text" placeholder="v1|123456789|0" required />
+				<label for="contactEmail">Contact email</label>
+				<input id="contactEmail" name="contactEmail" type="email" placeholder="you@example.com" required />
+				<label for="reason">Reason <span style="color:var(--text-3); font-weight:400;">(optional)</span></label>
+				<input id="reason" name="reason" type="text" placeholder="brief context" />
+				<button type="submit" class="btn heat" style="margin-top:6px; width:100%; justify-content:center;">Submit takedown</button>
+				<div id="result" class="result"></div>
+			</form>
+		</div>
+	</section>
+
+	<script>
+		const apiBase = (import.meta.env.PUBLIC_API_BASE_URL ?? "https://api.flipagent.dev").replace(/\/+$/, "");
+		const form = document.getElementById("takedown");
+		const result = document.getElementById("result");
+		form?.addEventListener("submit", async (ev) => {
+			ev.preventDefault();
+			result.className = "result";
+			result.textContent = "";
+			const formEl = ev.target;
+			if (!(formEl instanceof HTMLFormElement)) return;
+			const itemId = formEl.querySelector("#itemId").value.trim();
+			const contactEmail = formEl.querySelector("#contactEmail").value.trim();
+			const reason = formEl.querySelector("#reason").value.trim();
+			try {
+				const res = await fetch(`${apiBase}/v1/takedown`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ itemId, contactEmail, reason: reason || undefined }),
+				});
+				const body = await res.json();
+				if (!res.ok) {
+					result.className = "result err";
+					result.textContent = JSON.stringify(body, null, 2);
+					return;
+				}
+				result.className = "result ok";
+				result.textContent = `Takedown received. Status: ${body.status}\nID: ${body.id}\n\nWe'll review and reply via the contact email.`;
+			} catch (err) {
+				result.className = "result err";
+				result.textContent = err instanceof Error ? err.message : String(err);
+			}
+		});
+	</script>
+</Layout>

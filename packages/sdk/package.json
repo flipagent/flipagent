@@ -1,0 +1,51 @@
+{
+	"name": "@flipagent/sdk",
+	"version": "0.0.1",
+	"description": "Official SDK for api.flipagent.dev — the eBay-compatible reseller API. Typed namespaces for marketplace passthrough (listings, sold, orders, inventory, fulfillment, finance, markets) plus flipagent intelligence (research, match, evaluate, discover, ship, draft, reprice, expenses) and ops (webhooks, capabilities). One client, one API key.",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"clean": "shx rm -rf dist *.tsbuildinfo",
+		"build": "tsc -p tsconfig.build.json",
+		"dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+		"test": "vitest --run"
+	},
+	"dependencies": {
+		"@flipagent/types": "^0.0.1"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.5",
+		"shx": "^0.4.0",
+		"typescript": "^5.9.2",
+		"vitest": "^3.2.4"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"keywords": [
+		"ebay",
+		"flipagent",
+		"sdk",
+		"client"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/flipagent/flipagent.git",
+		"directory": "packages/sdk"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

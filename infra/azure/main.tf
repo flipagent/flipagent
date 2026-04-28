@@ -1,0 +1,420 @@
+locals {
+  prefix = "flipagent-${var.environment}"
+  # ACR + Postgres need globally-unique, no-hyphen names.
+  flat_prefix = "flipagent${var.environment}"
+  tags = {
+    project     = "flipagent"
+    environment = var.environment
+    managed_by  = "terraform"
+  }
+}
+
+# --- Resource group ------------------------------------------------------------
+
+resource "azurerm_resource_group" "rg" {
+  name     = local.prefix
+  location = var.location
+  tags     = local.tags
+}
+
+# --- Container Registry --------------------------------------------------------
+
+resource "azurerm_container_registry" "acr" {
+  name                = local.flat_prefix
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  sku                 = "Basic"
+  admin_enabled       = false
+  tags                = local.tags
+}
+
+# --- Postgres Flexible Server -------------------------------------------------
+
+resource "random_password" "pg_admin" {
+  length           = 32
+  special          = true
+  override_special = "!#$%&*()-_=+:?"
+}
+
+resource "azurerm_postgresql_flexible_server" "pg" {
+  name                          = "${local.prefix}-pg"
+  resource_group_name           = azurerm_resource_group.rg.name
+  location                      = azurerm_resource_group.rg.location
+  version                       = "16"
+  administrator_login           = "flipagent"
+  administrator_password        = random_password.pg_admin.result
+  sku_name                      = var.postgres_sku
+  storage_mb                    = var.postgres_storage_mb
+  backup_retention_days         = 7
+  public_network_access_enabled = true
+  zone                          = "1"
+  tags                          = local.tags
+}
+
+resource "azurerm_postgresql_flexible_server_database" "appdb" {
+  name      = "flipagent"
+  server_id = azurerm_postgresql_flexible_server.pg.id
+  charset   = "UTF8"
+  collation = "en_US.utf8"
+}
+
+# Allow other Azure services (including our Container App) to reach Postgres.
+# 0.0.0.0–0.0.0.0 is the special "Allow Azure services" sentinel rule.
+resource "azurerm_postgresql_flexible_server_firewall_rule" "allow_azure" {
+  name             = "allow-azure-services"
+  server_id        = azurerm_postgresql_flexible_server.pg.id
+  start_ip_address = "0.0.0.0"
+  end_ip_address   = "0.0.0.0"
+}
+
+locals {
+  # urlencode the password — random_password emits chars like :?+ that
+  # collide with URL grammar, so the postgres-js client throws "URI
+  # malformed" without encoding.
+  database_url = format(
+    "postgres://%s:%s@%s:5432/%s?sslmode=require",
+    azurerm_postgresql_flexible_server.pg.administrator_login,
+    urlencode(random_password.pg_admin.result),
+    azurerm_postgresql_flexible_server.pg.fqdn,
+    azurerm_postgresql_flexible_server_database.appdb.name,
+  )
+}
+
+# --- Log Analytics workspace (required by Container Apps) ---------------------
+
+resource "azurerm_log_analytics_workspace" "logs" {
+  name                = "${local.prefix}-logs"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+  tags                = local.tags
+}
+
+# --- User-assigned managed identity for the api ------------------------------
+# We use a UAMI (not system-assigned) so the AcrPull role can be granted
+# BEFORE the Container App tries to validate its registry config. With a
+# system identity, the Container App's principal_id only exists after
+# creation — but the registry binding is validated at create time, so the
+# pull fails with a 401 chicken-and-egg loop.
+
+resource "azurerm_user_assigned_identity" "api" {
+  name                = "${local.prefix}-api-identity"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  tags                = local.tags
+}
+
+resource "azurerm_role_assignment" "api_acr_pull" {
+  scope                = azurerm_container_registry.acr.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.api.principal_id
+}
+
+# --- GitHub Actions OIDC ------------------------------------------------------
+# App Registration + Service Principal that GH Actions assumes via federated
+# identity. Three GH secrets (AZURE_CLIENT_ID / TENANT_ID / SUBSCRIPTION_ID)
+# point the `azure/login@v2` action at this SP — no client secret stored.
+# Subject must match the workflow's GITHUB_TOKEN claims; widen the federated
+# credential list when you add more triggers (PRs, tags, environments).
+
+data "azurerm_client_config" "current" {}
+
+resource "azuread_application" "github_oidc" {
+  display_name = "${local.prefix}-github-oidc"
+}
+
+resource "azuread_service_principal" "github_oidc" {
+  client_id = azuread_application.github_oidc.client_id
+}
+
+resource "azuread_application_federated_identity_credential" "github_main" {
+  application_id = azuread_application.github_oidc.id
+  display_name   = "github-main"
+  audiences      = ["api://AzureADTokenExchange"]
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "repo:flipagent/flipagent:ref:refs/heads/main"
+}
+
+resource "azurerm_role_assignment" "github_rg_contributor" {
+  scope                = azurerm_resource_group.rg.id
+  role_definition_name = "Contributor"
+  principal_id         = azuread_service_principal.github_oidc.object_id
+}
+
+resource "azurerm_role_assignment" "github_acr_push" {
+  scope                = azurerm_container_registry.acr.id
+  role_definition_name = "AcrPush"
+  principal_id         = azuread_service_principal.github_oidc.object_id
+}
+
+# --- Container Apps environment -----------------------------------------------
+
+resource "azurerm_container_app_environment" "env" {
+  name                       = "${local.prefix}-env"
+  resource_group_name        = azurerm_resource_group.rg.name
+  location                   = azurerm_resource_group.rg.location
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.logs.id
+  tags                       = local.tags
+}
+
+# --- API Container App --------------------------------------------------------
+
+resource "azurerm_container_app" "api" {
+  name                         = "${local.prefix}-api"
+  container_app_environment_id = azurerm_container_app_environment.env.id
+  resource_group_name          = azurerm_resource_group.rg.name
+  revision_mode                = "Single"
+  tags                         = local.tags
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.api.id]
+  }
+
+  registry {
+    server   = azurerm_container_registry.acr.login_server
+    identity = azurerm_user_assigned_identity.api.id
+  }
+
+  # Wait for AcrPull on the UAMI before Azure validates the registry binding.
+  depends_on = [azurerm_role_assignment.api_acr_pull]
+
+  secret {
+    name  = "database-url"
+    value = local.database_url
+  }
+  secret {
+    name  = "scraper-api-username"
+    value = var.scraper_api_username
+  }
+  secret {
+    name  = "scraper-api-password"
+    value = var.scraper_api_password
+  }
+  secret {
+    name  = "stripe-secret-key"
+    value = var.stripe_secret_key
+  }
+  secret {
+    name  = "stripe-webhook-secret"
+    value = var.stripe_webhook_secret
+  }
+  secret {
+    name  = "stripe-price-hobby"
+    value = var.stripe_price_hobby
+  }
+  secret {
+    name  = "stripe-price-pro"
+    value = var.stripe_price_pro
+  }
+
+  # eBay OAuth — empty values are fine; the api gracefully 503s downstream.
+  secret {
+    name  = "ebay-client-id"
+    value = var.ebay_client_id
+  }
+  secret {
+    name  = "ebay-client-secret"
+    value = var.ebay_client_secret
+  }
+  secret {
+    name  = "ebay-ru-name"
+    value = var.ebay_ru_name
+  }
+
+  # Better-Auth + GitHub/Google OAuth + email.
+  secret {
+    name  = "better-auth-secret"
+    value = var.better_auth_secret
+  }
+  secret {
+    name  = "github-client-id"
+    value = var.github_client_id
+  }
+  secret {
+    name  = "github-client-secret"
+    value = var.github_client_secret
+  }
+  secret {
+    name  = "google-client-id"
+    value = var.google_client_id
+  }
+  secret {
+    name  = "google-client-secret"
+    value = var.google_client_secret
+  }
+  secret {
+    name  = "resend-api-key"
+    value = var.resend_api_key
+  }
+
+  template {
+    min_replicas = var.api_min_replicas
+    max_replicas = var.api_max_replicas
+
+    container {
+      name   = "api"
+      image  = var.api_image
+      cpu    = var.api_cpu
+      memory = var.api_memory
+
+      env {
+        name  = "PORT"
+        value = "4000"
+      }
+      env {
+        name  = "NODE_ENV"
+        value = "production"
+      }
+      env {
+        name  = "MIGRATE_ON_BOOT"
+        value = "1"
+      }
+      env {
+        name        = "DATABASE_URL"
+        secret_name = "database-url"
+      }
+      env {
+        name  = "SCRAPER_API_VENDOR"
+        value = var.scraper_api_vendor
+      }
+      env {
+        name        = "SCRAPER_API_USERNAME"
+        secret_name = "scraper-api-username"
+      }
+      env {
+        name        = "SCRAPER_API_PASSWORD"
+        secret_name = "scraper-api-password"
+      }
+      env {
+        name        = "STRIPE_SECRET_KEY"
+        secret_name = "stripe-secret-key"
+      }
+      env {
+        name        = "STRIPE_WEBHOOK_SECRET"
+        secret_name = "stripe-webhook-secret"
+      }
+      env {
+        name        = "STRIPE_PRICE_HOBBY"
+        secret_name = "stripe-price-hobby"
+      }
+      env {
+        name        = "STRIPE_PRICE_PRO"
+        secret_name = "stripe-price-pro"
+      }
+
+      # eBay OAuth.
+      env {
+        name        = "EBAY_CLIENT_ID"
+        secret_name = "ebay-client-id"
+      }
+      env {
+        name        = "EBAY_CLIENT_SECRET"
+        secret_name = "ebay-client-secret"
+      }
+      env {
+        name        = "EBAY_RU_NAME"
+        secret_name = "ebay-ru-name"
+      }
+      env {
+        name  = "EBAY_BASE_URL"
+        value = var.ebay_base_url
+      }
+      env {
+        name  = "EBAY_AUTH_URL"
+        value = var.ebay_auth_url
+      }
+      env {
+        name  = "EBAY_SCOPES"
+        value = var.ebay_scopes
+      }
+      env {
+        name  = "EBAY_ORDER_API_APPROVED"
+        value = var.ebay_order_api_approved ? "1" : "0"
+      }
+
+      # Better-Auth + GitHub/Google OAuth.
+      env {
+        name        = "BETTER_AUTH_SECRET"
+        secret_name = "better-auth-secret"
+      }
+      env {
+        name  = "APP_URL"
+        value = var.app_url
+      }
+      env {
+        name  = "BETTER_AUTH_URL"
+        value = var.better_auth_url
+      }
+      env {
+        name        = "GITHUB_CLIENT_ID"
+        secret_name = "github-client-id"
+      }
+      env {
+        name        = "GITHUB_CLIENT_SECRET"
+        secret_name = "github-client-secret"
+      }
+      env {
+        name        = "GOOGLE_CLIENT_ID"
+        secret_name = "google-client-id"
+      }
+      env {
+        name        = "GOOGLE_CLIENT_SECRET"
+        secret_name = "google-client-secret"
+      }
+
+      # Email (Resend).
+      env {
+        name        = "RESEND_API_KEY"
+        secret_name = "resend-api-key"
+      }
+      env {
+        name  = "EMAIL_FROM"
+        value = var.email_from
+      }
+    }
+
+    http_scale_rule {
+      name                = "http-scale"
+      concurrent_requests = 50
+    }
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 4000
+    transport        = "auto"
+
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+
+  lifecycle {
+    # CI updates the image on every push; don't fight it from TF after the
+    # first apply. Re-apply with -replace if you need to reset the spec.
+    ignore_changes = [
+      template[0].container[0].image,
+    ]
+  }
+}
+
+# --- Custom domain (optional) -------------------------------------------------
+
+resource "azurerm_container_app_custom_domain" "api_domain" {
+  count                    = var.custom_domain == "" ? 0 : 1
+  name                     = var.custom_domain
+  container_app_id         = azurerm_container_app.api.id
+  certificate_binding_type = "SniEnabled"
+
+  # Container Apps will provision a free managed cert once the
+  # asuid TXT + CNAME records exist on your DNS.
+  lifecycle {
+    ignore_changes = [
+      container_app_environment_certificate_id,
+      certificate_binding_type,
+    ]
+  }
+}

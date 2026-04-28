@@ -1,0 +1,8 @@
+cloudflare_api_token = "fill-in-from-dash.cloudflare.com/profile/api-tokens"
+zone_id              = "fill-in-from-flipagent.dev-zone-overview-API-section"
+
+# Pull these from `terraform output` in ../azure after the api is up:
+# api_target_fqdn            : terraform -chdir=../azure output -raw api_fqdn
+# api_domain_verification_id : terraform -chdir=../azure output -raw custom_domain_verification_id
+api_target_fqdn            = "flipagent-prod-api.calmisland-4be10b26.eastus2.azurecontainerapps.io"
+api_domain_verification_id = "A8988CC0106CCDF3EDC7277EB48F45EBC82A6C6215A99AB40B313D9734C9599E"

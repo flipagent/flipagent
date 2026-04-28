@@ -1,0 +1,55 @@
+{
+	"name": "@flipagent/ebay-scraper",
+	"version": "0.0.1",
+	"description": "Plain-HTTP fetch + DOM-based parsers for eBay public pages. Standalone — bring your own HTTP client / proxy / OAuth.",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"sideEffects": false,
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"clean": "shx rm -rf dist *.tsbuildinfo",
+		"build": "tsc -p tsconfig.build.json",
+		"dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+		"test": "vitest --run",
+		"check:robots": "tsx scripts/check-robots.ts"
+	},
+	"dependencies": {},
+	"devDependencies": {
+		"@types/jsdom": "^21.1.7",
+		"jsdom": "^25.0.1",
+		"@types/node": "^22.10.5",
+		"shx": "^0.4.0",
+		"tsx": "^4.20.3",
+		"typescript": "^5.9.2",
+		"vitest": "^3.2.4"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"keywords": [
+		"ebay",
+		"scraper",
+		"parser",
+		"deal-finding",
+		"flipagent"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/flipagent/flipagent.git",
+		"directory": "packages/ebay-scraper"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

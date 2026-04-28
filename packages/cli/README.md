@@ -1,0 +1,107 @@
+# flipagent-cli
+
+Set up flipagent for AI agents and drive the API from your shell.
+Zero runtime deps — node built-ins only — so `npx -y` is fast.
+
+```bash
+npm install -g flipagent-cli   # or just use npx -y flipagent-cli
+```
+
+## Auth (one-time)
+
+```bash
+# Get a free key at https://flipagent.dev/signup, then:
+flipagent login --key fa_free_xxx
+
+# Verify
+flipagent whoami
+```
+
+Stored at `~/.flipagent/config.json` (mode 0600). Subsequent commands
+pick it up automatically. Auth precedence: `--key` flag > `FLIPAGENT_API_KEY`
+env > stored config.
+
+## Drive the API
+
+```bash
+# Search active listings (eBay-shape envelope)
+flipagent search "canon ef 50mm 1.8" --limit 10
+
+# Sold-comps for the last 90 days
+flipagent sold "canon ef 50mm 1.8" --limit 50
+
+# Score one listing — fetches detail, optionally pulls comps
+flipagent evaluate v1|123456789|0
+flipagent evaluate v1|123456789|0 --comps-q "canon ef 50mm 1.8"
+
+# Full pipeline: search + sold + ranked deals
+flipagent discover "canon ef 50mm 1.8" --min-net 2000
+
+# Forwarder catalog + per-item quote
+flipagent ship providers
+flipagent ship quote --item v1|123456789|0 --weight 500 --dest NY
+```
+
+All commands print JSON to stdout — pipe to `jq`, redirect to a file,
+or read from another script.
+
+## Set up MCP for Claude Desktop / Cursor / Cline / Zed / Windsurf
+
+```bash
+flipagent init --mcp
+```
+
+Detects every supported MCP client on the machine, writes the flipagent
+server entry, and backs up the original config (`<path>.bak`) on first
+touch. Restart your AI client after running.
+
+Re-running is idempotent — only the `flipagent` entry is replaced.
+
+## All commands
+
+```
+flipagent login [--key <value>] [--base-url <url>]
+flipagent logout
+flipagent whoami
+
+flipagent search <query> [--limit N] [--filter <expr>] [--sort <key>]
+flipagent sold <query> [--limit N]
+flipagent evaluate <itemId> [--comps-q <query>]
+flipagent discover <query> [--limit N] [--min-net <cents>]
+flipagent ship providers
+flipagent ship quote --item <id> --weight <g> --dest <state> [--provider <id>]
+
+flipagent init [--mcp] [--keys] [--key <value>]
+```
+
+## Manual MCP setup
+
+If you'd rather paste it yourself, drop this into your client's MCP config:
+
+```jsonc
+{
+  "mcpServers": {
+    "flipagent": {
+      "command": "npx",
+      "args": ["-y", "flipagent-mcp"],
+      "env": { "FLIPAGENT_API_KEY": "fa_free_xxx" }
+    }
+  }
+}
+```
+
+| Client | Config file |
+|---|---|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) |
+| Cursor | `.cursor/mcp.json` (in workspace) |
+| Cline | `~/.cline/mcp.json` |
+| Zed | Settings → MCP servers |
+| Windsurf | Settings → Cascade → MCP servers |
+
+## Get a key
+
+[flipagent.dev/signup](https://flipagent.dev/signup) — free tier (100 calls / month, no card).
+
+## License
+
+MIT.

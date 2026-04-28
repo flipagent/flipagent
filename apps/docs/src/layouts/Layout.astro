@@ -1,0 +1,113 @@
+---
+import UserMenu from "../components/UserMenu.tsx";
+import "../styles/global.css";
+
+interface Props {
+	title: string;
+	description?: string;
+}
+
+const {
+	title,
+	description = "An AI agent that runs your eBay reselling business — finds underpriced listings, estimates fair value, lists at market, and reconciles payments. Connect via MCP, REST, or our hosted dashboard.",
+} = Astro.props;
+const path = Astro.url.pathname;
+
+// GitHub star count, baked at build time. Refreshes on every docs deploy,
+// so it's never more stale than the next ship. Failures fall back to 0
+// so a rate-limited build doesn't break the page.
+const stars: number = await fetch(
+	"https://api.github.com/repos/flipagent/flipagent",
+	{ headers: { Accept: "application/vnd.github+json" } },
+)
+	.then((r) => (r.ok ? r.json() : null))
+	.then((d: { stargazers_count?: number } | null) => d?.stargazers_count ?? 0)
+	.catch(() => 0);
+---
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:type" content="website" />
+		<meta property="og:url" content={Astro.url.toString()} />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	</head>
+	<body>
+		<!-- Top announcement banner — full-bleed thin strip -->
+		{path === "/" && (
+			<div class="banner">
+				<span class="banner-text">Now backed by <span class="banner-name">Founders, Inc.</span></span>
+				<span class="banner-sep">·</span>
+				<a href="/signup/">Get early access →</a>
+			</div>
+		)}
+
+		<!-- Sticky header -->
+		<header class="site">
+			<div class="cmw cmw-bordered header-row">
+				<a href="/" class="brand">
+					<img class="logo" src="/logo-32.png" width="72" height="20" alt="" aria-hidden="true" />
+					flipagent
+				</a>
+				<nav class="site">
+					<a href="/docs/" class={`nav-link ${path.startsWith("/docs") && !path.startsWith("/docs/api") ? "active" : ""}`}>Docs</a>
+					<a href="/docs/api/" class={`nav-link ${path.startsWith("/docs/api") ? "active" : ""}`}>API</a>
+					<a href="/pricing/" class={`nav-link ${path.startsWith("/pricing") ? "active" : ""}`}>Pricing</a>
+				</nav>
+				<div class="header-right">
+					<a href="https://github.com/flipagent/flipagent" class="icon-btn" aria-label="GitHub">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.6 0-12 5.4-12 12 0 5.3 3.4 9.8 8.2 11.4.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.9 1.2 1.9 1.2 1.1 1.9 2.9 1.4 3.6 1 .1-.8.4-1.4.8-1.7-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2 1-.3 2-.4 3-.4s2 .1 3 .4c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 6 .4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6C20.6 21.8 24 17.3 24 12c0-6.6-5.4-12-12-12z"/></svg>
+						<span>{stars}</span>
+					</a>
+					<UserMenu client:load />
+				</div>
+			</div>
+		</header>
+
+		<main>
+			<div class="page-frame">
+				<slot />
+			</div>
+		</main>
+
+		<footer class="site">
+			<div class="page-frame">
+				<div class="cmw">
+					<div class="foot-grid">
+						<h5 class="foot-cell foot-h">Product</h5>
+						<h5 class="foot-cell foot-h">Developers</h5>
+						<h5 class="foot-cell foot-h">Policies</h5>
+
+						<a class="foot-cell" href="/docs/">Docs</a>
+						<a class="foot-cell" href="/docs/quickstart/">Quickstart</a>
+						<a class="foot-cell" href="/legal/compliance/">Compliance</a>
+
+						<a class="foot-cell" href="/docs/api/">API</a>
+						<a class="foot-cell" href="/docs/mcp/">MCP setup</a>
+						<a class="foot-cell" href="/legal/privacy/">Privacy</a>
+
+						<a class="foot-cell" href="/pricing/">Pricing</a>
+						<a class="foot-cell" href="https://github.com/flipagent/flipagent">GitHub</a>
+						<a class="foot-cell" href="/legal/terms/">Terms</a>
+
+						<a class="foot-cell" href="/signup/">Get a key</a>
+						<span class="foot-cell foot-empty" aria-hidden="true"></span>
+						<a class="foot-cell" href="mailto:hello@flipagent.dev">Contact</a>
+					</div>
+					<div class="foot-bottom">
+						<span>© 2026 FLIPAGENT</span>
+						<span>HELLO@FLIPAGENT.IO</span>
+						<span>NOT AFFILIATED WITH EBAY INC.</span>
+					</div>
+				</div>
+			</div>
+		</footer>
+	</body>
+</html>

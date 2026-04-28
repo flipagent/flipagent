@@ -1,0 +1,59 @@
+# Local dev infra for flipagent.
+#
+# `docker compose up -d postgres`           — just the database
+# `docker compose up -d`                    — postgres + api (built from source)
+# `docker compose run --rm api-migrate`     — apply pending drizzle migrations
+#
+# The api container runs production-mode against the same postgres. For
+# tsx-watch hot reload, keep postgres in compose and run the api locally:
+#   cd packages/api && npm run dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: flipagent-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flipagent
+      POSTGRES_PASSWORD: flipagent
+      POSTGRES_DB: flipagent
+    ports:
+      - "55432:5432"
+    volumes:
+      - flipagent-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flipagent -d flipagent"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    container_name: flipagent-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://flipagent:flipagent@postgres:5432/flipagent
+      PORT: "4000"
+      NODE_ENV: production
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+
+  api-migrate:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://flipagent:flipagent@postgres:5432/flipagent
+    command: ["node", "packages/api/dist/db/migrate.js"]
+    profiles: ["migrate"]
+
+volumes:
+  flipagent-pgdata:

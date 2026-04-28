@@ -1,0 +1,1582 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+
+@theme {
+	--color-bg: #ffffff;
+	--color-surface: #ffffff;
+	--color-bg-soft: #fafafa;
+	--color-text: #0a0a0a;
+	--color-text-2: #525252;
+	--color-text-3: #737373;
+	--color-text-4: #a3a3a3;
+	--color-border: #e5e5e5;
+	--color-border-faint: #ececec;
+	--color-border-strong: #d4d4d4;
+	--color-brand: #ff4c00;
+	--color-brand-hover: #e84200;
+	--color-brand-soft: #fff1e8;
+
+	/* Code panel + syntax tokens */
+	--color-code-bg: #f7f7f6;
+	--color-syntax-key: #5b3da7;
+
+	--font-sans: "Geist", "Suisse Int'l", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+	--font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+:root {
+	--bg: #ffffff;
+	--bg-soft: #fafafa;
+	--surface: #ffffff;
+	--surface-2: #fafafa;
+	--surface-3: #f5f5f5;
+	--text: #0a0a0a;
+	--text-2: #525252;
+	--text-3: #737373;
+	--text-4: #a3a3a3;
+	--border: #e5e5e5;
+	--border-faint: #ececec;
+	--border-strong: #d4d4d4;
+	--brand: #ff4c00;
+	--brand-hover: #e84200;
+	--brand-soft: #fff1e8;
+	--code-bg: #f7f7f6;
+	--syntax-key: #5b3da7;
+	--black-alpha-4: rgba(0, 0, 0, 0.04);
+	--black-alpha-7: rgba(0, 0, 0, 0.07);
+	--black-alpha-12: rgba(0, 0, 0, 0.12);
+	--black-alpha-16: rgba(0, 0, 0, 0.16);
+	--black-alpha-48: rgba(0, 0, 0, 0.48);
+	--success: #15803d;
+	--danger: #b91c1c;
+
+	--radius-sm: 4px;
+	--radius: 6px;
+	--radius-md: 8px;
+	--radius-lg: 10px;
+
+	/* Container width — matches firecrawl's cmw-container */
+	--cmw: 1144px;
+
+	--sans: "Geist", "Suisse Int'l", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+	--mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--sans);
+	font-size: 15px;
+	font-weight: 400;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	letter-spacing: -0.01em;
+	text-rendering: optimizeLegibility;
+}
+
+a {
+	color: var(--text);
+	text-decoration: none;
+	transition: color 0.15s ease;
+}
+
+a:hover {
+	color: var(--brand);
+}
+
+p {
+	margin: 0 0 1em 0;
+}
+
+h1,
+h2,
+h3,
+h4 {
+	margin: 0;
+	font-weight: 500;
+	letter-spacing: -0.022em;
+	line-height: 1.06;
+}
+
+ul,
+ol {
+	margin: 0 0 1em 0;
+}
+
+img,
+svg {
+	display: block;
+}
+
+::selection {
+	background: var(--brand);
+	color: white;
+}
+
+/* Firecrawl-style framed container ====================================== */
+
+/* The outer container with vertical border-x lines extending full height */
+.cmw {
+	width: 100%;
+	max-width: var(--cmw);
+	margin: 0 auto;
+	padding: 0 32px;
+	position: relative;
+}
+
+@media (max-width: 720px) {
+	.cmw {
+		padding: 0 16px;
+	}
+}
+
+.cmw-bordered {
+	position: relative;
+}
+
+.cmw-bordered::before,
+.cmw-bordered::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: var(--border-faint);
+	pointer-events: none;
+}
+
+.cmw-bordered::before {
+	left: 0;
+}
+
+.cmw-bordered::after {
+	right: 0;
+}
+
+/* Top announcement banner ============================================== */
+
+.banner {
+	background: var(--brand);
+	color: white;
+	padding: 6px 18px;
+	margin: 0;
+	border-radius: 0;
+	font-size: 12.5px;
+	text-align: center;
+	letter-spacing: -0.005em;
+	line-height: 1.4;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.banner .banner-name {
+	font-weight: 500;
+	color: white;
+}
+
+.banner .banner-sep {
+	color: rgba(255, 255, 255, 0.5);
+}
+
+.banner a {
+	color: white;
+	font-weight: 500;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.banner a:hover {
+	color: white;
+	opacity: 0.86;
+}
+
+/* Header ============================================================== */
+
+header.site {
+	position: sticky;
+	top: 0;
+	z-index: 50;
+	background: var(--bg);
+	transition: background 0.18s ease, backdrop-filter 0.18s ease, box-shadow 0.18s ease;
+}
+
+header.site.scrolled {
+	background: color-mix(in srgb, var(--bg) 78%, transparent);
+	backdrop-filter: saturate(160%) blur(10px);
+	-webkit-backdrop-filter: saturate(160%) blur(10px);
+	box-shadow: 0 1px 0 var(--border-faint), 0 4px 14px rgba(0, 0, 0, 0.03);
+}
+
+/* Bottom divider — drawn inside the bordered row so it ends at the vertical lines */
+header.site .header-row {
+	border-bottom: 1px solid var(--border-faint);
+}
+
+header.site.scrolled .header-row {
+	border-bottom-color: transparent;
+}
+
+.header-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: 64px;
+	gap: 24px;
+}
+
+.brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 16px;
+	font-weight: 500;
+	letter-spacing: -0.03em;
+	color: var(--text);
+	padding: 6px 8px;
+	border-radius: var(--radius-md);
+}
+
+.brand:hover {
+	color: var(--text);
+}
+
+.brand .logo {
+	color: var(--text);
+}
+
+nav.site {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 1;
+}
+
+nav.site a.nav-link {
+	display: flex;
+	align-items: center;
+	height: 32px;
+	padding: 0 14px;
+	border-radius: var(--radius-md);
+	font-size: 13.5px;
+	font-weight: 500;
+	color: var(--text);
+	transition: background 0.15s ease, transform 50ms ease;
+	will-change: transform;
+}
+
+nav.site a.nav-link:hover {
+	background: var(--black-alpha-4);
+	color: var(--text);
+}
+
+nav.site a.nav-link:active {
+	transform: scale(0.98);
+	background: var(--black-alpha-7);
+}
+
+.header-right {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.icon-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 32px;
+	padding: 0 10px;
+	border-radius: 8px;
+	color: var(--text-2);
+	background: transparent;
+	border: 0;
+	font-size: 12px;
+	font-weight: 500;
+	transition: background 0.15s ease, color 0.15s ease, transform 50ms ease;
+	will-change: transform;
+}
+
+.icon-btn:hover {
+	background: var(--black-alpha-4);
+	color: var(--text);
+}
+
+.icon-btn:active {
+	transform: scale(0.94);
+}
+
+@media (max-width: 720px) {
+	nav.site {
+		justify-content: flex-end;
+	}
+	nav.site a.nav-link:not(.always) {
+		display: none;
+	}
+}
+
+main {
+	overflow-x: clip;
+}
+
+/* Continuous page-wide vertical frame — runs the full height of main so
+   inter-section padding stays inside the borders. Inner .cmw-bordered
+   borders overlap these at the same x, which is fine. Subtle dot-grid
+   bg gives the blueprint feel inside the frame. */
+.page-frame {
+	position: relative;
+	width: 100%;
+	max-width: var(--cmw);
+	margin: 0 auto;
+	background-image: radial-gradient(circle, rgba(0, 0, 0, 0.045) 1px, transparent 1px);
+	background-size: 28px 28px;
+	background-position: 14px 14px;
+}
+
+.page-frame::before,
+.page-frame::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: var(--border-faint);
+	pointer-events: none;
+	z-index: 1;
+}
+
+.page-frame::before {
+	left: 0;
+}
+
+.page-frame::after {
+	right: 0;
+}
+
+
+/* Hero ================================================================ */
+
+.hero {
+	padding: 80px 0 64px;
+	text-align: center;
+	position: relative;
+}
+
+.eyebrow-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 11.5px;
+	font-weight: 500;
+	color: var(--text);
+	background: var(--bg);
+	border: 1px solid var(--border-faint);
+	padding: 3px 3px 3px 11px;
+	border-radius: 999px;
+	margin-bottom: 28px;
+	letter-spacing: -0.005em;
+	transition: background 0.15s ease, border-color 0.15s ease, transform 80ms ease, box-shadow 0.15s ease;
+	will-change: transform;
+}
+
+.eyebrow-pill:hover {
+	color: var(--text);
+	background: var(--bg-soft);
+	border-color: var(--border);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.eyebrow-pill:active {
+	transform: scale(0.98);
+}
+
+.eyebrow-pill .pill-arrow {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	border-radius: 999px;
+	background: var(--brand);
+	color: white;
+	transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.eyebrow-pill .pill-arrow svg {
+	width: 10px;
+	height: 10px;
+}
+
+.eyebrow-pill:hover .pill-arrow {
+	transform: translateX(2px);
+	background: var(--brand-hover);
+}
+
+/* Legacy dot used by inner pages */
+.eyebrow-pill .pill-dot {
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: var(--brand);
+	margin-left: 4px;
+}
+
+.hero h1 {
+	font-size: clamp(40px, 6.5vw, 60px);
+	line-height: 1.067;
+	letter-spacing: -0.005em;
+	font-weight: 500;
+	max-width: 900px;
+	margin: 0 auto 20px;
+	color: var(--text);
+}
+
+.hero p.lead {
+	font-size: 16px;
+	line-height: 1.5;
+	color: var(--text-2);
+	max-width: 580px;
+	margin: 0 auto 28px;
+}
+
+
+/* Buttons ============================================================= */
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 36px;
+	padding: 0 14px;
+	border-radius: 8px;
+	font-size: 13.5px;
+	line-height: 1;
+	font-weight: 500;
+	border: 1px solid var(--border-strong);
+	background: var(--surface);
+	color: var(--text);
+	cursor: pointer;
+	font-family: var(--sans);
+	letter-spacing: -0.005em;
+	transition: background 0.15s ease, border-color 0.15s ease, transform 50ms ease, box-shadow 0.15s ease;
+	will-change: transform;
+}
+
+.btn:hover {
+	color: var(--text);
+	background: var(--black-alpha-4);
+	border-color: var(--border-strong);
+}
+
+.btn:active {
+	transform: scale(0.98);
+}
+
+/* Heat (orange) primary — multi-layer shadow, lifted from firecrawl's button-primary */
+.btn.heat {
+	background: var(--brand);
+	color: white;
+	border-color: transparent;
+	box-shadow:
+		inset 0 -6px 12px rgba(255, 0, 0, 0.2),
+		0 2px 4px rgba(255, 77, 0, 0.12),
+		0 1px 1px rgba(255, 77, 0, 0.12),
+		0 0.5px 0.5px rgba(255, 77, 0, 0.16),
+		0 0.25px 0.25px rgba(255, 77, 0, 0.2);
+}
+
+.btn.heat:hover {
+	background: var(--brand);
+	color: white;
+	box-shadow:
+		inset 0 -6px 12px rgba(255, 0, 0, 0.2),
+		0 4px 8px rgba(255, 77, 0, 0.16),
+		0 1px 1px rgba(255, 77, 0, 0.12),
+		0 0.5px 0.5px rgba(255, 77, 0, 0.16),
+		0 0.25px 0.25px rgba(255, 77, 0, 0.2);
+}
+
+.btn.sm {
+	height: 32px;
+	padding: 0 12px;
+	font-size: 13px;
+}
+
+.btn.block {
+	width: 100%;
+	justify-content: center;
+}
+
+.btn .arrow {
+	margin-left: 2px;
+	transition: transform 0.15s ease;
+}
+
+.btn:hover .arrow {
+	transform: translateX(2px);
+}
+
+/* Code ================================================================ */
+
+code:not(pre code) {
+	background: var(--surface-3);
+	padding: 1px 6px;
+	border-radius: 4px;
+	font-size: 13px;
+	color: var(--text);
+	font-family: var(--mono);
+}
+
+pre,
+code {
+	font-family: var(--mono);
+	font-size: 13px;
+	line-height: 1.65;
+}
+
+/* Firecrawl-style code card with mac-dot header */
+.code {
+	border: 1px solid var(--border-faint);
+	border-radius: var(--radius-md);
+	background: var(--surface);
+	overflow: hidden;
+	font-size: 12.5px;
+}
+
+.code .code-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 14px;
+	border-bottom: 1px solid var(--border-faint);
+	background: var(--bg-soft);
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--text-3);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.code .dot-row {
+	display: inline-flex;
+	gap: 5px;
+}
+
+.code .dot-row span {
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	background: var(--border-strong);
+	display: inline-block;
+}
+
+.code pre {
+	margin: 0;
+	padding: 14px 16px;
+	overflow-x: auto;
+	background: var(--surface);
+	color: var(--text);
+}
+
+.code pre code {
+	background: transparent;
+	padding: 0;
+	font-size: 12.5px;
+	color: var(--text);
+}
+
+/* Sections ============================================================ */
+
+/* Section rhythm — change these to retune all sections at once.
+   --section-pad : top/bottom whitespace inside a section (above/below section-num band)
+   --head-gap    : extra gap between section-num band and the title block's top rule
+   --head-pad    : internal padding above title and below subtitle
+   --section-num-h : approx rendered height of section-num text (used to vertically center it)
+   --section-num-top is derived so section-num is centered between the section's top
+   border and the title block's top rule — keep it as calc(). */
+.section {
+	--section-pad: 56px;
+	--head-gap: 24px;
+	--head-pad: 72px;
+	--section-num-h: 16px;
+	--section-num-top: calc((var(--section-pad) + var(--head-gap) - var(--section-num-h)) / 2);
+	padding: var(--section-pad) 0;
+	position: relative;
+}
+
+@media (max-width: 720px) {
+	.section {
+		--head-pad: 52px;
+	}
+}
+
+.section.tight {
+	--section-pad: 40px;
+	--head-gap: 20px;
+	--head-pad: 40px;
+}
+
+/* Modifier: drop section's bottom padding so a full-bleed grid inside reaches
+   the section's bottom edge — its bottom border then merges with the next
+   section's `.section.lined` border-top into a single shared horizontal line. */
+.section.section--flush-bottom {
+	padding-bottom: 0;
+}
+
+.section.lined {
+	border-top: 1px solid var(--border-faint);
+	position: relative;
+}
+
+/* Bracket-curve corners where the section's horizontal top border meets
+   the page-frame's vertical lines — Firecrawl signature. */
+.section.lined::before,
+.section.lined::after {
+	content: "";
+	position: absolute;
+	top: -5.5px;
+	width: 11px;
+	height: 11px;
+	background-repeat: no-repeat;
+	background-size: 11px 11px;
+	pointer-events: none;
+	z-index: 2;
+}
+
+.section.lined::before {
+	left: -5.5px;
+	background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 11 11' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5.5 0L5.5 5.5L0 5.5' stroke='%23ececec' fill='none'/%3E%3Cpath d='M5.5 11L5.5 5.5L11 5.5' stroke='%23ececec' fill='none'/%3E%3C/svg%3E");
+}
+
+.section.lined::after {
+	right: -5.5px;
+	background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 11 11' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5.5 0L5.5 5.5L11 5.5' stroke='%23ececec' fill='none'/%3E%3Cpath d='M5.5 11L5.5 5.5L0 5.5' stroke='%23ececec' fill='none'/%3E%3C/svg%3E");
+}
+
+.section-head {
+	margin: var(--head-gap) -32px;
+	padding: var(--head-pad) 32px;
+	text-align: center;
+	position: relative;
+	border-top: 1px solid var(--border-faint);
+	border-bottom: 1px solid var(--border-faint);
+}
+
+/* Modifier: drop the bottom rule so the next block (e.g. pipeline cards) flows
+   straight into the title block without a divider between them. */
+.section-head.section-head--no-rule-bottom {
+	border-bottom: 0;
+	margin-bottom: 0;
+}
+
+/* Modifier: keep the bottom rule but eliminate the gap below it, so the next
+   block (e.g. install grid) butts directly against the rule and any vertical
+   dividers inside the next block touch this horizontal rule. */
+.section-head.section-head--flush-bottom {
+	margin-bottom: 0;
+}
+
+@media (max-width: 720px) {
+	.section-head {
+		margin-left: -16px;
+		margin-right: -16px;
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+}
+
+/* Section number annotation — minimal mono mark at the left gutter:
+   brand-orange number, gray label, nothing else. */
+.section-num {
+	position: absolute;
+	top: var(--section-num-top);
+	left: 32px;
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	font-family: var(--mono);
+	font-size: 11px;
+	letter-spacing: 0.04em;
+	color: var(--text-3);
+	z-index: 5;
+	pointer-events: none;
+}
+
+.section-num .num {
+	color: var(--brand);
+	font-weight: 600;
+}
+
+.section-num .num::before {
+	content: "[";
+}
+
+.section-num .num::after {
+	content: "]";
+}
+
+@media (max-width: 720px) {
+	.section-num {
+		left: 16px;
+	}
+}
+
+.section-head .eyebrow {
+	display: inline-block;
+	font-family: var(--mono);
+	font-size: 11px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--text-3);
+	margin-bottom: 16px;
+}
+
+.section-head h2 {
+	font-size: clamp(32px, 4.4vw, 46px);
+	line-height: 1.1;
+	letter-spacing: -0.01em;
+	font-weight: 500;
+	margin-bottom: 24px;
+	color: var(--text);
+}
+
+.section-head p {
+	font-size: 16px;
+	color: var(--text-2);
+	max-width: 600px;
+	margin: 0 auto;
+	line-height: 1.55;
+}
+
+/* Features grid (Firecrawl-style framed cards) ======================== */
+
+.features {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	border: 1px solid var(--border-faint);
+	border-radius: var(--radius-lg);
+	overflow: hidden;
+	max-width: 980px;
+	margin: 0 auto;
+	background: var(--surface);
+}
+
+@media (max-width: 720px) {
+	.features {
+		grid-template-columns: 1fr;
+	}
+}
+
+.feature {
+	padding: 28px;
+	border-right: 1px solid var(--border-faint);
+	border-bottom: 1px solid var(--border-faint);
+	transition: background 0.15s ease;
+}
+
+.feature:hover {
+	background: var(--bg-soft);
+}
+
+.feature:nth-child(2n) {
+	border-right: none;
+}
+.feature:nth-last-child(-n + 2) {
+	border-bottom: none;
+}
+@media (max-width: 720px) {
+	.feature {
+		border-right: none;
+	}
+	.feature:last-child {
+		border-bottom: none;
+	}
+}
+
+.feature .ic {
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--brand);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	margin-bottom: 14px;
+}
+
+.feature h3 {
+	font-size: 16px;
+	font-weight: 600;
+	margin-bottom: 8px;
+	letter-spacing: -0.012em;
+}
+
+.feature p {
+	font-size: 14px;
+	line-height: 1.55;
+	color: var(--text-2);
+	margin: 0;
+}
+
+/* Steps =============================================================== */
+
+.steps {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	border: 1px solid var(--border-faint);
+	border-radius: var(--radius-lg);
+	overflow: hidden;
+	max-width: 980px;
+	margin: 0 auto;
+	background: var(--surface);
+}
+
+@media (max-width: 720px) {
+	.steps {
+		grid-template-columns: 1fr;
+	}
+}
+
+.step {
+	padding: 28px;
+	border-right: 1px solid var(--border-faint);
+	transition: background 0.15s ease;
+}
+
+.step:last-child {
+	border-right: none;
+}
+
+@media (max-width: 720px) {
+	.step {
+		border-right: none;
+		border-bottom: 1px solid var(--border-faint);
+	}
+	.step:last-child {
+		border-bottom: none;
+	}
+}
+
+.step:hover {
+	background: var(--bg-soft);
+}
+
+.step .num {
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--brand);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	margin-bottom: 12px;
+}
+
+.step h3 {
+	font-size: 15.5px;
+	font-weight: 600;
+	margin-bottom: 8px;
+}
+
+.step p {
+	font-size: 14px;
+	line-height: 1.55;
+	color: var(--text-2);
+	margin: 0;
+}
+
+/* Tiers =============================================================== */
+/* Edge-flush 4-cell grid (matches MainFeatures, StatRow). Each tier is a
+   subgrid column with three rows so horizontal dividers between header,
+   price, and features align across all columns. */
+
+.tiers {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	grid-template-rows: auto auto 1fr;
+	background: var(--surface);
+	border-top: 1px solid var(--border-faint);
+	border-bottom: 1px solid var(--border-faint);
+	margin: 0 -32px;
+}
+
+.tier {
+	display: grid;
+	grid-template-rows: subgrid;
+	grid-row: span 3;
+	border-right: 1px solid var(--border-faint);
+	min-width: 0;
+}
+
+.tier:last-child {
+	border-right: none;
+}
+
+.tier-head,
+.tier-buy,
+.tier-features {
+	padding: 22px 24px;
+}
+
+.tier-head {
+	border-bottom: 1px solid var(--border-faint);
+	display: flex;
+	flex-direction: column;
+}
+
+.tier-head .name-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.tier-head .name {
+	font-size: 17px;
+	font-weight: 500;
+	letter-spacing: -0.01em;
+	color: var(--text);
+}
+
+.tier-head .badge {
+	display: inline-flex;
+	align-items: center;
+	background: var(--brand-soft);
+	color: var(--brand);
+	font-size: 10.5px;
+	font-weight: 500;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	padding: 3px 8px;
+	border-radius: 100px;
+}
+
+.tier-head .tagline {
+	color: var(--text-2);
+	font-size: 13.5px;
+	line-height: 1.55;
+	margin-top: 8px;
+}
+
+.tier-head .calls {
+	margin-top: auto;
+	padding-top: 18px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-family: var(--mono);
+	font-size: 12px;
+	color: var(--text-2);
+	letter-spacing: 0.01em;
+}
+
+.tier-head .calls::before {
+	content: "";
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: var(--surface-3);
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23737373' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M8 2 9.6 6.4 14 8l-4.4 1.6L8 14 6.4 9.6 2 8l4.4-1.6z'/></svg>");
+	background-size: 10px;
+	background-position: center;
+	background-repeat: no-repeat;
+	flex: 0 0 14px;
+}
+
+.tier-buy {
+	border-bottom: 1px solid var(--border-faint);
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+.tier-buy .price {
+	font-family: var(--sans);
+	font-size: 38px;
+	font-weight: 500;
+	letter-spacing: -0.025em;
+	line-height: 1;
+}
+
+.tier-buy .price .per {
+	font-size: 13px;
+	color: var(--text-3);
+	font-weight: 400;
+	margin-left: 6px;
+	letter-spacing: 0;
+}
+
+.tier-features ul {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.tier-features li {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 13.5px;
+	line-height: 1.4;
+	color: var(--text);
+}
+
+.tier-features li::before {
+	content: "";
+	width: 16px;
+	height: 16px;
+	flex: 0 0 16px;
+	border-radius: 50%;
+	background: var(--surface-3);
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23525252' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='3.5 8.5 6.8 11.5 12.5 5'/></svg>");
+	background-size: 10px;
+	background-position: center;
+	background-repeat: no-repeat;
+}
+
+@media (max-width: 960px) {
+	.tiers {
+		grid-template-columns: repeat(2, 1fr);
+		grid-template-rows: repeat(6, auto) 1fr;
+	}
+	.tier:nth-child(2n) {
+		border-right: none;
+	}
+	.tier:nth-child(-n + 2) .tier-features {
+		border-bottom: 1px solid var(--border-faint);
+	}
+}
+
+@media (max-width: 720px) {
+	.tiers {
+		margin: 0 -16px;
+	}
+}
+
+@media (max-width: 560px) {
+	.tiers {
+		grid-template-columns: 1fr;
+		grid-template-rows: none;
+	}
+	.tier {
+		grid-template-rows: auto auto auto;
+		border-right: none;
+	}
+	.tier:not(:last-child) .tier-features {
+		border-bottom: 1px solid var(--border-faint);
+	}
+	.tier-head,
+	.tier-buy,
+	.tier-features {
+		padding: 20px 16px;
+	}
+}
+
+/* Form ================================================================ */
+
+.signup-form {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	max-width: 440px;
+	margin: 0 auto;
+}
+
+.signup-form label {
+	font-size: 13px;
+	color: var(--text-2);
+	margin-bottom: -4px;
+	font-weight: 500;
+}
+
+.signup-form input {
+	background: var(--surface);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-md);
+	color: var(--text);
+	font-size: 14px;
+	padding: 10px 14px;
+	font-family: inherit;
+	transition: border-color 0.15s ease;
+}
+
+.signup-form input:focus {
+	outline: none;
+	border-color: var(--brand);
+}
+
+.signup-form .result {
+	background: var(--surface-2);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-md);
+	padding: 14px;
+	font-family: var(--mono);
+	font-size: 12.5px;
+	white-space: pre-wrap;
+	word-break: break-all;
+	display: none;
+	line-height: 1.5;
+}
+
+.signup-form .result.ok {
+	display: block;
+	border-color: var(--success);
+}
+
+.signup-form .result.err {
+	display: block;
+	border-color: var(--danger);
+	color: var(--danger);
+}
+
+.note {
+	font-size: 13.5px;
+	color: var(--text-2);
+}
+
+/* Tables ============================================================== */
+
+table.api {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 14px;
+}
+
+table.api th,
+table.api td {
+	padding: 10px 0;
+	text-align: left;
+	border-bottom: 1px solid var(--border-faint);
+}
+
+table.api th {
+	font-weight: 500;
+	color: var(--text-3);
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	font-family: var(--mono);
+}
+
+table.api td {
+	color: var(--text-2);
+}
+
+table.api td code {
+	background: transparent;
+	padding: 0;
+	color: var(--text);
+}
+
+/* Docs sidebar ======================================================== */
+
+.docs-shell {
+	display: grid;
+	grid-template-columns: 220px 1fr;
+	gap: 56px;
+	padding: 40px 0 88px;
+}
+
+@media (max-width: 960px) {
+	.docs-shell {
+		grid-template-columns: 1fr;
+		gap: 24px;
+	}
+}
+
+.docs-side {
+	font-size: 13.5px;
+	position: sticky;
+	top: 80px;
+	align-self: start;
+}
+
+@media (max-width: 960px) {
+	.docs-side {
+		border-bottom: 1px solid var(--border-faint);
+		padding-bottom: 16px;
+		position: static;
+	}
+}
+
+.docs-side h4 {
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--text-3);
+	font-weight: 500;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	margin: 22px 0 10px;
+}
+
+.docs-side h4:first-child {
+	margin-top: 0;
+}
+
+.docs-side a {
+	display: block;
+	padding: 5px 0;
+	color: var(--text-2);
+}
+
+.docs-side a:hover {
+	color: var(--brand);
+}
+
+.docs-side a.active {
+	color: var(--text);
+	font-weight: 500;
+}
+
+.docs-content {
+	min-width: 0;
+	max-width: var(--max-prose, 720px);
+}
+
+.docs-content h1 {
+	font-size: 36px;
+	letter-spacing: -0.025em;
+	font-weight: 600;
+	margin-bottom: 10px;
+}
+
+.docs-content > .lead {
+	font-size: 16.5px;
+	color: var(--text-2);
+	margin-bottom: 36px;
+	line-height: 1.55;
+}
+
+.docs-content h2 {
+	font-size: 20px;
+	margin: 48px 0 12px;
+	font-weight: 600;
+	letter-spacing: -0.015em;
+}
+
+.docs-content h3 {
+	font-size: 16px;
+	margin: 28px 0 10px;
+	font-weight: 600;
+}
+
+.docs-content p,
+.docs-content li {
+	font-size: 15px;
+	color: var(--text);
+	line-height: 1.7;
+}
+
+.docs-content .code {
+	margin: 16px 0;
+}
+
+.docs-content table.api {
+	margin: 14px 0 8px;
+}
+
+
+
+
+
+/* Section head chip — [ icon LABEL ] flanked by brand-orange brackets.
+   The brackets echo the [NN] gutter section-num motif so the page carries a
+   single bracket-frame rhythm. Used inside .section-head, replacing the older
+   .eyebrow inline label. */
+
+.head-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 12px;
+	color: var(--text-2);
+	letter-spacing: -0.005em;
+	margin: 0 auto 22px;
+}
+
+.head-chip::before,
+.head-chip::after {
+	font-family: var(--mono);
+	font-size: 16px;
+	font-weight: 500;
+	line-height: 1;
+	color: var(--brand);
+}
+
+.head-chip::before { content: "["; }
+.head-chip::after { content: "]"; }
+
+.head-chip-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--brand);
+	flex-shrink: 0;
+}
+
+
+
+
+
+/* Inline brand accent for prose */
+.accent {
+	color: var(--brand);
+	font-weight: 500;
+}
+
+
+/* Firecrawl-style animations =========================================== */
+
+.fc-thinking {
+	background: linear-gradient(
+			to right,
+			transparent 0%,
+			rgba(0, 0, 0, 0.6) 25%,
+			transparent 50%,
+			transparent 100%
+		),
+		rgba(0, 0, 0, 0.48);
+	-webkit-text-fill-color: transparent;
+	background-position: 100% 0;
+	background-size: 200% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	animation: fc-shine 3.5s linear infinite;
+	display: inline-block;
+}
+
+@keyframes fc-shine {
+	0% { background-position: 100% 0; }
+	50%, 100% { background-position: -100% 0; }
+}
+
+.fc-pulse {
+	animation: fc-pulse 3s infinite;
+	transform: scale(0.5);
+}
+
+@keyframes fc-pulse {
+	0% { opacity: 0.5; transform: scale(0.5); }
+	60% { opacity: 0; }
+	75%, 100% { opacity: 0; filter: blur(4px); transform: scale(4); }
+}
+
+/* Final CTA =========================================================== */
+
+.section.final-cta {
+	padding: 176px 0;
+	text-align: center;
+}
+
+@media (max-width: 720px) {
+	.section.final-cta {
+		padding: 112px 0;
+	}
+}
+
+/* Inner content sits above the glow layer. */
+.section.final-cta > .cmw {
+	position: relative;
+	z-index: 1;
+}
+
+/* Radar-ping rings — thin 1px brand-orange circles emanating from center.
+   Lives in its own div because .section.lined and .cmw-bordered already use
+   ::before/::after for corner brackets and rails. */
+.cta-glow {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+	pointer-events: none;
+	z-index: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.cta-glow::before,
+.cta-glow::after {
+	content: "";
+	position: absolute;
+	width: 220px;
+	height: 220px;
+	border: 1px solid var(--brand);
+	border-radius: 50%;
+	opacity: 0;
+	animation: cta-ping 5s ease-out infinite;
+}
+
+.cta-glow::after {
+	animation-delay: 2.5s;
+}
+
+@keyframes cta-ping {
+	0%   { transform: scale(0.4); opacity: 0; }
+	15%  { opacity: 0.5; }
+	100% { transform: scale(4); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cta-glow::before,
+	.cta-glow::after {
+		animation: none;
+	}
+}
+
+.final-cta-h {
+	font-size: clamp(28px, 3.6vw, 40px);
+	line-height: 1.12;
+	letter-spacing: -0.025em;
+	font-weight: 600;
+	margin: 28px 0 12px;
+}
+
+.final-cta-p {
+	color: var(--text-2);
+	max-width: 460px;
+	margin: 0 auto 24px;
+	font-size: 15px;
+	line-height: 1.55;
+}
+
+/* Footer ============================================================== */
+
+footer.site {
+	color: var(--text-2);
+	font-size: 13px;
+	background: var(--bg);
+}
+
+/* Footer's page-frame inherits the global vertical-rail pseudos so the side
+   lines run continuously from header → main → footer without breaks. The
+   top divider is drawn on the .foot-grid below so it always meets the
+   vertical rails cleanly at the corners. */
+footer.site .page-frame {
+	position: relative;
+}
+
+/* Link grid — every cell sits inside one continuous boxed grid so vertical
+   and horizontal dividers always meet (per STYLEGUIDE §6). The grid's own
+   top + bottom borders meet the page-frame's vertical rails at the corners. */
+.foot-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	margin: 0 -32px;
+	border-top: 1px solid var(--border-faint);
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.foot-cell {
+	padding: 18px 32px;
+	border-right: 1px solid var(--border-faint);
+	border-top: 1px solid var(--border-faint);
+	color: var(--text-2);
+	font-size: 13.5px;
+	display: flex;
+	align-items: center;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+
+/* Last column of every row gets no right border — page-frame owns that line */
+.foot-cell:nth-child(3n) {
+	border-right: none;
+}
+
+/* First row (header row) sits flush under the footer's page-frame border-top */
+.foot-cell:nth-child(-n + 3) {
+	border-top: none;
+}
+
+.foot-grid > .foot-h {
+	padding-top: 24px;
+	padding-bottom: 24px;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	color: var(--text-4);
+	font-weight: 500;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	margin: 0;
+}
+
+a.foot-cell:hover {
+	background: var(--bg-soft);
+	color: var(--brand);
+}
+
+.foot-empty {
+	pointer-events: none;
+}
+
+/* Bottom strip — same column grid as foot-grid so cells line up vertically */
+.foot-bottom {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	margin: 0 -32px;
+}
+
+.foot-bottom > span {
+	padding: 22px 32px;
+	border-right: 1px solid var(--border-faint);
+	color: var(--text-4);
+	font-size: 11px;
+	font-family: var(--mono);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	display: flex;
+	align-items: center;
+}
+
+.foot-bottom > span:last-child {
+	border-right: none;
+}
+
+@media (max-width: 720px) {
+	.foot-brand-row,
+	.foot-grid,
+	.foot-bottom {
+		margin: 0 -16px;
+	}
+	.foot-brand-row {
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+	.foot-cell,
+	.foot-bottom > span {
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+}
+
+@media (max-width: 560px) {
+	.foot-grid {
+		grid-template-columns: 1fr;
+	}
+	.foot-cell {
+		border-right: none;
+	}
+	.foot-empty {
+		display: none;
+	}
+	.foot-bottom {
+		grid-template-columns: 1fr;
+	}
+	.foot-bottom > span {
+		border-right: none;
+		border-top: 1px solid var(--border-faint);
+	}
+	.foot-bottom > span:first-child {
+		border-top: none;
+	}
+}

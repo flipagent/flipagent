@@ -1,0 +1,191 @@
+---
+// MainFeatures — three cards in an asymmetric grid:
+//   ┌────────── lead (full row) ──────────┐
+//   │  Card 1: distribution density        │
+//   ├──────────────────┬──────────────────┤
+//   │  Card 2: ops     │  Card 3: night   │
+//   └──────────────────┴──────────────────┘
+
+// Card 1 histogram (14 bins across $30–$70, bell with peak at ~$48)
+const distBins = [12, 18, 28, 42, 64, 92, 122, 148, 152, 132, 100, 70, 42, 22];
+// scale: max height 160; baseline y=220; bin width 42, gap 4, start x=60
+
+
+// Card 3 morning queue — abstract demo deals (no real eBay listings).
+// Story: agent scanned overnight, surfaced above-margin candidates,
+// they sit in your queue waiting for approval.
+const queueDeals = [
+	{ id: "Deal #1", margin: "+$36", conf: "88%" },
+	{ id: "Deal #2", margin: "+$16", conf: "92%" },
+	{ id: "Deal #3", margin: "+$31", conf: "78%" },
+];
+---
+
+<section class="main-features">
+	<!-- Card 1 — Decisions / probabilistic edge (full width) -->
+	<article class="main-feature main-feature--lead">
+		<header class="feat-text">
+			<div class="feat-meta">
+				<span class="feat-meta-icon" aria-hidden="true">
+					<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+						<polyline points="3 17 9 11 13 15 21 7"/>
+						<polyline points="14 7 21 7 21 14"/>
+					</svg>
+				</span>
+				<span class="feat-meta-num">#01</span>
+				<span class="feat-meta-label">Decisions</span>
+			</div>
+			<p class="feat-lede">
+				<strong>Numbers, not vibes.</strong>
+				Every match comes with a probability of payoff and an expected profit. Trade on data, not feel.
+			</p>
+		</header>
+		<div class="feat-viz feat-viz-distribution" aria-hidden="true">
+			<svg viewBox="0 0 800 280" preserveAspectRatio="xMidYMid meet" class="dist-svg">
+				<!-- baseline -->
+				<line class="dist-axis" x1="40" y1="220" x2="760" y2="220"/>
+
+				<!-- histogram bars (the actual data, behind the smooth curve) -->
+				<g class="dist-hist">
+					{distBins.map((h, i) => (
+						<rect
+							class="dist-hist-bar"
+							x={60 + i * 46}
+							y={220 - h}
+							width="42"
+							height={h}
+							style={`animation-delay: ${0.05 + i * 0.04}s`}
+						/>
+					))}
+				</g>
+
+				<!-- smooth density curve (fitted line, peak at $48) -->
+				<path class="dist-curve-stroke"
+					d="M 60 220
+					   C 180 220, 250 214, 290 192
+					   C 320 170, 340 130, 358 86
+					   C 364 76, 372 70, 376 68
+					   C 384 70, 396 88, 414 124
+					   C 440 168, 490 200, 560 216
+					   C 620 222, 680 220, 700 220"
+					fill="none"/>
+
+				<!-- p25 / p75 dashed verticals -->
+				<line class="dist-pmark" x1="298" y1="100" x2="298" y2="220" stroke-dasharray="3 5"/>
+				<line class="dist-pmark" x1="436" y1="100" x2="436" y2="220" stroke-dasharray="3 5"/>
+
+				<!-- median solid + dot + label (at $48 → x=348) -->
+				<line class="dist-median-line" x1="348" y1="38" x2="348" y2="220"/>
+				<circle class="dist-median-dot" cx="348" cy="38" r="4"/>
+				<text class="dist-median-label" x="348" y="22" text-anchor="middle">Median $48</text>
+
+				<!-- x-axis tick labels -->
+				<text class="dist-tick" x="60"  y="244" text-anchor="middle">$30</text>
+				<text class="dist-tick" x="220" y="244" text-anchor="middle">$40</text>
+				<text class="dist-tick" x="380" y="244" text-anchor="middle">$50</text>
+				<text class="dist-tick" x="540" y="244" text-anchor="middle">$60</text>
+				<text class="dist-tick" x="700" y="244" text-anchor="middle">$70</text>
+
+				<!-- p25 / p75 corner labels -->
+				<text class="dist-pmark-label" x="298" y="92" text-anchor="middle">p25</text>
+				<text class="dist-pmark-label" x="436" y="92" text-anchor="middle">p75</text>
+			</svg>
+			<div class="feat-caption">
+				<span><strong>n = 42</strong> sales</span>
+				<span class="feat-caption-dim">·</span>
+				<span><strong>$6</strong> spread</span>
+				<span class="feat-caption-dim">·</span>
+				<span><strong>86%</strong> confidence</span>
+			</div>
+		</div>
+	</article>
+
+	<!-- Card 2 — Operations / hands-off vertical flow -->
+	<article class="main-feature">
+		<header class="feat-text feat-text--col">
+			<div class="feat-meta">
+				<span class="feat-meta-icon" aria-hidden="true">
+					<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+						<polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+						<line x1="12" y1="22.08" x2="12" y2="12"/>
+					</svg>
+				</span>
+				<span class="feat-meta-num">#02</span>
+				<span class="feat-meta-label">Operations</span>
+			</div>
+			<p class="feat-lede">
+				<strong>Hands off the boxes.</strong>
+				Every package routes through a US forwarder. They receive, repack, and ship every order. You handle nothing.
+			</p>
+		</header>
+		<div class="feat-viz feat-viz-ops" aria-hidden="true">
+			<div class="route">
+				<div class="route-track">
+					<div class="route-stop">
+						<span class="route-dot"></span>
+						<span class="route-stop-label">Seller</span>
+						<span class="route-stop-loc">Cleveland, OH</span>
+					</div>
+					<div class="route-line"><span class="route-pkg"></span></div>
+					<div class="route-stop">
+						<span class="route-dot route-dot--brand"></span>
+						<span class="route-stop-label">Forwarder</span>
+						<span class="route-stop-loc">Wilmington, DE</span>
+					</div>
+					<div class="route-line"><span class="route-pkg"></span></div>
+					<div class="route-stop">
+						<span class="route-dot"></span>
+						<span class="route-stop-label">Buyer</span>
+						<span class="route-stop-loc">Phoenix, AZ</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</article>
+
+	<!-- Card 3 — Overnight / hunts while you sleep -->
+	<article class="main-feature">
+		<header class="feat-text feat-text--col">
+			<div class="feat-meta">
+				<span class="feat-meta-icon" aria-hidden="true">
+					<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+					</svg>
+				</span>
+				<span class="feat-meta-num">#03</span>
+				<span class="feat-meta-label">Overnight</span>
+			</div>
+			<p class="feat-lede">
+				<strong>Wake up to a queue.</strong>
+				The agent scans through the night and queues every above-margin deal it finds. You wake up, approve in seconds, and the forwarder takes it from there.
+			</p>
+		</header>
+		<div class="feat-viz feat-viz-queue" aria-hidden="true">
+			<div class="queue-head">
+				<span class="queue-head-label">Pending approval</span>
+				<span class="queue-head-stats">
+					<strong>3</strong> queued
+					<span class="queue-head-dim">·</span>
+					<strong>2,847</strong> scanned overnight
+				</span>
+			</div>
+			<ol class="queue-list">
+				{queueDeals.map((d, i) => (
+					<li class="queue-row" style={`animation-delay: ${0.1 + i * 0.12}s`}>
+						<span class="queue-id">{d.id}</span>
+						<span class="queue-stats">
+							<span><strong>{d.margin}</strong> expected</span>
+							<span class="queue-stats-dim">·</span>
+							<span><strong>{d.conf}</strong> conf</span>
+						</span>
+						<span class="queue-actions">
+							<span class="queue-btn queue-btn--ok"  aria-label="approve">✓</span>
+							<span class="queue-btn queue-btn--skip" aria-label="skip">✕</span>
+						</span>
+					</li>
+				))}
+			</ol>
+		</div>
+	</article>
+</section>

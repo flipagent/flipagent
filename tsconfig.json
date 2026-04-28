@@ -1,0 +1,26 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"lib": ["ES2022", "DOM"],
+		"paths": {
+			"@flipagent/types": ["./packages/types/src/index.ts"],
+			"@flipagent/types/ebay": ["./packages/types/src/ebay/index.ts"],
+			"@flipagent/types/ebay/buy": ["./packages/types/src/ebay/buy.ts"],
+			"@flipagent/types/ebay/sell": ["./packages/types/src/ebay/sell.ts"],
+			"@flipagent/ebay-scraper": ["./packages/ebay-scraper/src/index.ts"],
+			"@flipagent/ebay-scraper/*": ["./packages/ebay-scraper/src/*"],
+			"@flipagent/sdk": ["./packages/sdk/src/index.ts"],
+			"@flipagent/sdk/*": ["./packages/sdk/src/*"],
+			"@flipagent/api": ["./packages/api/src/server.ts"],
+			"@flipagent/api/*": ["./packages/api/src/*"]
+		}
+	},
+	"include": ["packages/*/src/**/*", "packages/*/test/**/*"],
+	"exclude": [
+		"**/dist/**",
+		"**/node_modules/**",
+		"references/**",
+		"packages/extension/**"
+	]
+}

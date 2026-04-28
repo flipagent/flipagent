@@ -1,0 +1,8 @@
+name = "flipagent-docs"
+compatibility_date = "2025-01-01"
+
+# Astro static build output. Wrangler serves these files directly from
+# Cloudflare's edge — no Worker code needed for the marketing site.
+[assets]
+directory = "./dist"
+not_found_handling = "404-page"

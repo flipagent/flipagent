@@ -1,0 +1,69 @@
+---
+import Layout from "../../layouts/Layout.astro";
+const updated = "2026-04-26";
+---
+<Layout title="Terms of Service · flipagent">
+	<div class="cmw cmw-bordered">
+		<article class="docs-content" style="max-width:720px;margin:64px auto;">
+			<h1>Terms of Service</h1>
+			<p class="lead">
+				Plain-language terms for using <code>api.flipagent.dev</code>, the dashboard, and our open-source packages. Last updated {updated}.
+			</p>
+
+			<h2>What flipagent provides</h2>
+			<p>A unified HTTP API at <code>api.flipagent.dev</code> for the online reselling cycle (discovery, evaluation, forwarder quoting, sell-side passthrough), an MCP server for AI-agent integrations, and open-source TypeScript packages including the SDK (<code>@flipagent/sdk</code>), MCP server (<code>flipagent-mcp</code>), and CLI installer (<code>flipagent-cli</code>). The hosted service caches eBay public listing data, proxies eBay OAuth on your behalf, runs server-side deal-scoring math, and meters per-call usage by tier.</p>
+
+			<h2>Your account</h2>
+			<ul>
+				<li>You're responsible for keeping API keys + your eBay account credentials secure. Revoke at the dashboard immediately if you suspect a leak.</li>
+				<li>One account per person or organization. Don't share keys across multiple businesses on the same plan.</li>
+				<li>You must be 18+ and able to enter into binding agreements.</li>
+			</ul>
+
+			<h2>Acceptable use</h2>
+			<p>Don't use flipagent to:</p>
+			<ul>
+				<li>Generate volume that exceeds your tier's monthly allowance (we throttle).</li>
+				<li>Redistribute raw eBay listing content (titles, descriptions, photos, seller details) divorced from the original <code>ebay.com/itm/...</code> URL.</li>
+				<li>Build derivative datasets for resale outside the eBay context.</li>
+				<li>Circumvent eBay's seller opt-out — if a seller submits a takedown via <a href="/legal/takedown/">/legal/takedown</a>, that itemId is blocklisted.</li>
+				<li>Place a load on eBay that violates eBay's own developer terms; we proxy through residential IPs in part to avoid concentrating load on a single source.</li>
+				<li>Resell raw access to <code>api.flipagent.dev</code> as your own service.</li>
+			</ul>
+
+			<h2>Tier limits + billing</h2>
+			<ul>
+				<li>Tier allowances reset monthly (UTC calendar month) and are counted by metered API call against the marketplace and value-add endpoints under <code>/v1/*</code> (listings, sold, orders, inventory, fulfillment, finance, markets, evaluate, discover, ship). Management routes (<code>/v1/me/*</code>, <code>/v1/connect/*</code>, <code>/v1/keys/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/healthz</code>) are free.</li>
+				<li>Stripe handles payment. Subscription changes take effect immediately for upgrades and at the end of the billing period for downgrades.</li>
+				<li>Refunds: pro-rated on cancellation only when the cause is a service-side outage or material breach of these terms. Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>.</li>
+			</ul>
+
+			<h2>Open-source packages</h2>
+			<p>The MIT-licensed packages (<code>@flipagent/sdk</code>, <code>flipagent-mcp</code>, <code>flipagent-cli</code>, <code>@flipagent/ebay-scraper</code>, <code>@flipagent/types/ebay</code>, <code>@flipagent/types</code>, and the <code>@flipagent/api</code> backend source) are governed by their own LICENSE files, not these terms. You can use them with or without an account here.</p>
+
+			<h2>eBay-compat passthrough</h2>
+			<p>When you connect an eBay account at <code>/v1/connect/ebay</code>, you authorize flipagent to forward your sell-side and (when approved) Order API calls to <code>api.ebay.com</code> using the OAuth refresh token you grant. Tokens stay in our database; we don't share them with third parties. Disconnect any time at the dashboard.</p>
+
+			<h2>Service availability</h2>
+			<p>We aim for 99.5% monthly uptime on the hosted API. We don't currently offer a contractual SLA. Status updates go on <a href="https://github.com/flipagent/flipagent">our GitHub</a> until a status page is live.</p>
+
+			<h2>Termination</h2>
+			<p>You can close your account anytime by emailing <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>. We may suspend or terminate accounts that violate the acceptable-use rules above; we'll explain why and give you a chance to rectify unless the breach is severe (e.g. abuse, fraud, court order).</p>
+
+			<h2>Disclaimer</h2>
+			<p>flipagent is provided "as is" without warranty. We don't guarantee deal-finding accuracy, sale prices, or eBay's underlying API behavior. <strong>NOT AFFILIATED WITH EBAY INC.</strong></p>
+
+			<h2>Liability</h2>
+			<p>To the maximum extent permitted by law, our aggregate liability for any claim is limited to the amount you've paid us in the prior 12 months.</p>
+
+			<h2>Governing law</h2>
+			<p>These terms are governed by the laws of the State of Delaware, USA. Disputes go to the state and federal courts located in Wilmington, Delaware.</p>
+
+			<h2>Changes</h2>
+			<p>If we change these terms materially, we'll send a heads-up to your account email at least 14 days before the change takes effect.</p>
+
+			<h2>Contact</h2>
+			<p><a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>.</p>
+		</article>
+	</div>
+</Layout>

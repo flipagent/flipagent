@@ -1,0 +1,55 @@
+{
+	"name": "flipagent-mcp",
+	"version": "0.0.1",
+	"description": "MCP server exposing eBay deal-finding tools to Claude Desktop, Cursor, Cline, Zed, Continue, Windsurf, and any MCP-compatible AI client. Drop-in compatible with eBay's Browse + Marketplace Insights APIs (set EBAY_BASE_URL to point at api.flipagent.dev or api.ebay.com).",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"bin": {
+		"flipagent-mcp": "./dist/index.js"
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"clean": "shx rm -rf dist *.tsbuildinfo",
+		"build": "tsc -p tsconfig.build.json && shx chmod +x dist/index.js",
+		"dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+		"test": "vitest --run"
+	},
+	"dependencies": {
+		"@flipagent/types": "^0.0.1",
+		"@flipagent/sdk": "^0.0.1",
+		"@modelcontextprotocol/sdk": "^1.0.0",
+		"@sinclair/typebox": "^0.34.41"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.5",
+		"shx": "^0.4.0",
+		"typescript": "^5.9.2",
+		"vitest": "^3.2.4"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"keywords": [
+		"mcp",
+		"model-context-protocol",
+		"claude",
+		"cursor",
+		"ebay",
+		"deal-finding",
+		"arbitrage",
+		"flipagent"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/flipagent/flipagent.git",
+		"directory": "packages/mcp"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}
