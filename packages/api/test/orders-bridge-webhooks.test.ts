@@ -1,6 +1,7 @@
 /**
  * Integration tests for the bridge-client (Chrome extension) surface:
- *   /v1/orders/*    — caller queues + reads + cancels
+ *   /v1/buy/order/* — eBay Buy Order API mirror; bridge mode when
+ *                    EBAY_ORDER_API_APPROVED=0 (default in tests)
  *   /v1/bridge/*    — bridge client issues token + longpolls + reports
  *   /v1/webhooks/*  — caller registers + lists + revokes; signed delivery
  *
@@ -50,8 +51,25 @@ afterAll(async () => {
 	await closeDb();
 });
 
-describe("/v1/orders + /v1/bridge — happy path", () => {
-	it("queue → poll → claim → result(completed) flips status and returns receipt fields", async () => {
+describe("/v1/buy/order + /v1/bridge — happy path", () => {
+	/** Helper: 2-step initiate + place_order, returns the eBay PurchaseOrder. */
+	async function quickCheckout(key: string, itemId: string, quantity = 1) {
+		const initRes = await call("/v1/buy/order/checkout_session/initiate", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+			body: JSON.stringify({ lineItems: [{ itemId, quantity }] }),
+		});
+		expect(initRes.status).toBe(200);
+		const session = await readJson<{ checkoutSessionId: string }>(initRes);
+		const placeRes = await call(`/v1/buy/order/checkout_session/${session.checkoutSessionId}/place_order`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${key}` },
+		});
+		expect(placeRes.status).toBe(200);
+		return readJson<{ purchaseOrderId: string; purchaseOrderStatus: string }>(placeRes);
+	}
+
+	it("initiate → place_order → bridge claim → result(completed) flips status to PROCESSED with receipt fields", async () => {
 		const { key } = await freshKey("integration-bridge+happy@example.com");
 
 		// 1. Issue a bridge token for the extension/bridge client.
@@ -64,15 +82,9 @@ describe("/v1/orders + /v1/bridge — happy path", () => {
 		const tok = await readJson<{ token: string; id: string; prefix: string }>(tokRes);
 		expect(tok.token.startsWith("fbt_")).toBe(true);
 
-		// 2. Caller queues an order.
-		const checkoutRes = await call("/v1/orders/checkout", {
-			method: "POST",
-			headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-			body: JSON.stringify({ source: "ebay", itemId: "v1|ITEM01|0", maxPriceCents: 9_000 }),
-		});
-		expect(checkoutRes.status).toBe(201);
-		const queued = await readJson<{ purchaseOrderId: string; status: string }>(checkoutRes);
-		expect(queued.status).toBe("queued");
+		// 2. Caller initiates + places an order (quickCheckout = 2-step in 1 helper).
+		const queued = await quickCheckout(key, "v1|ITEM01|0");
+		expect(queued.purchaseOrderStatus).toBe("QUEUED_FOR_PROCESSING");
 
 		// 3. Daemon longpolls and immediately picks it up.
 		const pollRes = await call("/v1/bridge/poll", {
@@ -84,12 +96,12 @@ describe("/v1/orders + /v1/bridge — happy path", () => {
 		expect(job.task).toBe("ebay_buy_item");
 		expect(job.args.itemId).toBe("v1|ITEM01|0");
 
-		// 4. Status reflects the claim.
-		const claimedRes = await call(`/v1/orders/${queued.purchaseOrderId}`, {
+		// 4. Status reflects the claim (QUEUED_FOR_PROCESSING covers both internal queued + claimed).
+		const claimedRes = await call(`/v1/buy/order/purchase_order/${queued.purchaseOrderId}`, {
 			headers: { Authorization: `Bearer ${key}` },
 		});
-		const claimed = await readJson<{ status: string }>(claimedRes);
-		expect(claimed.status).toBe("claimed");
+		const claimed = await readJson<{ purchaseOrderStatus: string }>(claimedRes);
+		expect(claimed.purchaseOrderStatus).toBe("QUEUED_FOR_PROCESSING");
 
 		// 5. Daemon reports completion.
 		const resultRes = await call("/v1/bridge/result", {
@@ -105,51 +117,59 @@ describe("/v1/orders + /v1/bridge — happy path", () => {
 		});
 		expect(resultRes.status).toBe(200);
 
-		// 6. Public read shows terminal state + receipt fields.
-		const finalRes = await call(`/v1/orders/${queued.purchaseOrderId}`, {
+		// 6. Public read shows terminal state + receipt fields in eBay shape.
+		const finalRes = await call(`/v1/buy/order/purchase_order/${queued.purchaseOrderId}`, {
 			headers: { Authorization: `Bearer ${key}` },
 		});
-		const final = await readJson<{ status: string; ebayOrderId: string; totalCents: number }>(finalRes);
-		expect(final.status).toBe("completed");
+		const final = await readJson<{
+			purchaseOrderStatus: string;
+			ebayOrderId?: string;
+			receiptUrl?: string;
+		}>(finalRes);
+		expect(final.purchaseOrderStatus).toBe("PROCESSED");
 		expect(final.ebayOrderId).toBe("EBAY-ABC-001");
-		expect(final.totalCents).toBe(8_750);
+		expect(final.receiptUrl).toBe("https://www.ebay.com/vod/...");
 	});
 
-	it("idempotencyKey returns the same purchase order on repeat", async () => {
+	it("place_order is idempotent on the same session (returns the same purchase order)", async () => {
 		const { key } = await freshKey("integration-bridge+idem@example.com");
-		const body = JSON.stringify({ itemId: "v1|IDEMP|0", idempotencyKey: "test-idem-key-001" });
 		const headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
-
-		const a = await call("/v1/orders/checkout", { method: "POST", headers, body });
-		const b = await call("/v1/orders/checkout", { method: "POST", headers, body });
+		const initRes = await call("/v1/buy/order/checkout_session/initiate", {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ lineItems: [{ itemId: "v1|IDEMP|0", quantity: 1 }] }),
+		});
+		const { checkoutSessionId } = await readJson<{ checkoutSessionId: string }>(initRes);
+		const a = await call(`/v1/buy/order/checkout_session/${checkoutSessionId}/place_order`, {
+			method: "POST",
+			headers,
+		});
+		const b = await call(`/v1/buy/order/checkout_session/${checkoutSessionId}/place_order`, {
+			method: "POST",
+			headers,
+		});
 		const aBody = await readJson<{ purchaseOrderId: string }>(a);
 		const bBody = await readJson<{ purchaseOrderId: string }>(b);
 		expect(aBody.purchaseOrderId).toBe(bBody.purchaseOrderId);
 	});
 
-	it("cancel flips a queued order to cancelled and is idempotent on a terminal one", async () => {
+	it("cancel flips a queued order to CANCELED and is idempotent on a terminal one", async () => {
 		const { key } = await freshKey("integration-bridge+cancel@example.com");
-		const checkout = await call("/v1/orders/checkout", {
-			method: "POST",
-			headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-			body: JSON.stringify({ itemId: "v1|CANCEL|0" }),
-		});
-		const { purchaseOrderId } = await readJson<{ purchaseOrderId: string }>(checkout);
-
-		const c1 = await call(`/v1/orders/${purchaseOrderId}/cancel`, {
+		const queued = await quickCheckout(key, "v1|CANCEL|0");
+		const c1 = await call(`/v1/buy/order/purchase_order/${queued.purchaseOrderId}/cancel`, {
 			method: "POST",
 			headers: { Authorization: `Bearer ${key}` },
 		});
 		expect(c1.status).toBe(200);
-		expect((await readJson<{ status: string }>(c1)).status).toBe("cancelled");
+		expect((await readJson<{ purchaseOrderStatus: string }>(c1)).purchaseOrderStatus).toBe("CANCELED");
 
 		// Second cancel returns the current state without flipping it.
-		const c2 = await call(`/v1/orders/${purchaseOrderId}/cancel`, {
+		const c2 = await call(`/v1/buy/order/purchase_order/${queued.purchaseOrderId}/cancel`, {
 			method: "POST",
 			headers: { Authorization: `Bearer ${key}` },
 		});
 		expect(c2.status).toBe(200);
-		expect((await readJson<{ status: string }>(c2)).status).toBe("cancelled");
+		expect((await readJson<{ purchaseOrderStatus: string }>(c2)).purchaseOrderStatus).toBe("CANCELED");
 	});
 });
 
@@ -184,12 +204,17 @@ describe("/v1/bridge — auth + ownership", () => {
 			}),
 		);
 
-		// A queues, A's bridge client claims.
+		// A initiates + places, A's bridge client claims.
+		const initRes = await call("/v1/buy/order/checkout_session/initiate", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Authorization: `Bearer ${keyA}` },
+			body: JSON.stringify({ lineItems: [{ itemId: "v1|OWNER|0", quantity: 1 }] }),
+		});
+		const session = await readJson<{ checkoutSessionId: string }>(initRes);
 		const queued = await readJson<{ purchaseOrderId: string }>(
-			await call("/v1/orders/checkout", {
+			await call(`/v1/buy/order/checkout_session/${session.checkoutSessionId}/place_order`, {
 				method: "POST",
-				headers: { "Content-Type": "application/json", Authorization: `Bearer ${keyA}` },
-				body: JSON.stringify({ itemId: "v1|OWNER|0" }),
+				headers: { Authorization: `Bearer ${keyA}` },
 			}),
 		);
 		await call("/v1/bridge/poll", { headers: { Authorization: `Bearer ${tokA.token}` } });

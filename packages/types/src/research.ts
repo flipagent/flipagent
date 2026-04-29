@@ -1,8 +1,8 @@
 /**
- * `/v1/research/*` schemas — market thesis. Aggregates sold-side stats
- * (and optionally active asks) into a single bundle the agent can pass
- * to `/v1/draft`, `/v1/reprice`, and `/v1/discover` without re-fetching
- * comps for every call.
+ * `/v1/research/*` schemas — market summary + recovery probability.
+ * Aggregates sold-side stats (and optionally active asks) into a single
+ * bundle the agent can pass to `/v1/draft`, `/v1/reprice`, and
+ * `/v1/discover` without re-fetching comparables for every call.
  */
 
 import { type Static, Type } from "@sinclair/typebox";
@@ -29,7 +29,7 @@ export type AskStats = Static<typeof AskStats>;
  * Aggregated sold-price stats for a keyword + marketplace + window.
  * Mean is the probability-weighted expectation of sale price under
  * the empirical distribution. `meanDaysToSell` populates only when at
- * least one comp carried duration data; `asks` populates only when
+ * least one comparable carried duration data; `asks` populates only when
  * the caller passed active listings.
  */
 export const MarketStats = Type.Object(
@@ -63,11 +63,11 @@ export type MarketStats = Static<typeof MarketStats>;
 
 /**
  * Recommended list price + the expected outcomes at that price.
- * Returned by `/v1/draft` and folded into `/v1/research/thesis` for
+ * Returned by `/v1/draft` and folded into `/v1/research/summary` for
  * convenience. Null when the market lacks `meanDaysToSell` (no
  * time-to-sell data, no model).
  */
-export const ListPriceAdvice = Type.Object(
+export const ListPriceRecommendation = Type.Object(
 	{
 		listPriceCents: Type.Integer(),
 		expectedDaysToSell: Type.Number(),
@@ -78,21 +78,22 @@ export const ListPriceAdvice = Type.Object(
 		dollarsPerDay: Type.Integer(),
 		annualizedRoi: Type.Number(),
 	},
-	{ $id: "ListPriceAdvice" },
+	{ $id: "ListPriceRecommendation" },
 );
-export type ListPriceAdvice = Static<typeof ListPriceAdvice>;
+export type ListPriceRecommendation = Static<typeof ListPriceRecommendation>;
 
-/* ------------------------ POST /v1/research/thesis ------------------------ */
+/* ------------------------ POST /v1/research/summary ------------------------ */
 
-export const ResearchThesisRequest = Type.Object(
+export const MarketSummaryRequest = Type.Object(
 	{
-		comps: Type.Array(ItemSummary, {
-			description: "Sold listings (from /v1/sold/search). Drives the price distribution.",
+		comparables: Type.Array(ItemSummary, {
+			description:
+				"Sold listings (from /v1/buy/marketplace_insights/item_sales/search). Drives the price distribution.",
 		}),
 		asks: Type.Optional(
 			Type.Array(ItemSummary, {
 				description:
-					"Active listings (from /v1/listings/search). Populates the asks side and unlocks the below_asks signal.",
+					"Active listings (from /v1/buy/browse/item_summary/search). Populates the asks side and unlocks the below_asks signal.",
 			}),
 		),
 		context: Type.Optional(
@@ -103,22 +104,22 @@ export const ResearchThesisRequest = Type.Object(
 			}),
 		),
 	},
-	{ $id: "ResearchThesisRequest" },
+	{ $id: "MarketSummaryRequest" },
 );
-export type ResearchThesisRequest = Static<typeof ResearchThesisRequest>;
+export type MarketSummaryRequest = Static<typeof MarketSummaryRequest>;
 
-export const ResearchThesisResponse = Type.Object(
+export const MarketSummaryResponse = Type.Object(
 	{
 		market: MarketStats,
 		/**
-		 * EV-optimal list price advice when comps carry duration data;
+		 * EV-optimal list price advice when comparables carry duration data;
 		 * null when no `meanDaysToSell` could be derived.
 		 */
-		listPriceAdvice: Type.Union([ListPriceAdvice, Type.Null()]),
+		listPriceRecommendation: Type.Union([ListPriceRecommendation, Type.Null()]),
 	},
-	{ $id: "ResearchThesisResponse" },
+	{ $id: "MarketSummaryResponse" },
 );
-export type ResearchThesisResponse = Static<typeof ResearchThesisResponse>;
+export type MarketSummaryResponse = Static<typeof MarketSummaryResponse>;
 
 /* ----------------- POST /v1/research/recovery_probability ----------------- */
 
@@ -133,8 +134,8 @@ export type ResearchThesisResponse = Static<typeof ResearchThesisResponse>;
  */
 export const RecoveryRequest = Type.Object(
 	{
-		comps: Type.Array(ItemSummary, {
-			description: "Sold listings for the same SKU. Same shape as /v1/research/thesis.",
+		comparables: Type.Array(ItemSummary, {
+			description: "Sold listings for the same SKU. Same shape as /v1/research/summary.",
 		}),
 		costBasisCents: Type.Integer({ description: "What the user paid (cents)." }),
 		withinDays: Type.Integer({ minimum: 1, maximum: 365 }),

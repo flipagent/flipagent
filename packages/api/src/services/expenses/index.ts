@@ -2,7 +2,7 @@
  * Expenses service — append-only cost-side event log + aggregated cost
  * summary. Records what eBay's Finances API doesn't know about
  * (acquisition, forwarder, external expenses); sales / refunds /
- * eBay fees are read separately from the `/v1/finance/*` mirror.
+ * eBay fees are read separately from the `/v1/sell/finances/*` mirror.
  *
  *   record(apiKey, body)     — insert one cost event (amountCents
  *                              stored as positive magnitude).

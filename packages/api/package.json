@@ -25,6 +25,8 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "tsx src/db/migrate.ts",
 		"issue-key": "tsx src/scripts/issue-key.ts",
+		"fit-beta": "tsx src/scripts/fit-beta.ts",
+		"prefetch-taxonomy": "tsx src/scripts/prefetch-taxonomy.ts",
 		"gen:spec": "DATABASE_URL=postgres://spec-gen:noop@nowhere/none tsx src/scripts/dump-spec.ts",
 		"tunnel": "bash scripts/dev-tunnel.sh",
 		"test": "vitest --run"

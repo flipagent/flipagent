@@ -3,7 +3,7 @@
  * search."
  *
  *   POST /v1/discover           — rank a Browse search response
- *   (future: GET /v1/discover/scan — overnight queue for scheduled discovery)
+ *   (future: GET /v1/discover/scan — watchlist queue for scheduled discovery)
  *
  * Maps to the Overnight pillar on the marketing site (#03: scan while
  * you sleep, wake to a ranked queue).
@@ -13,7 +13,7 @@ import { DiscoverRequest, DiscoverResponse } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { find } from "../../services/scoring/index.js";
+import { discoverDeals } from "../../services/evaluate/discover-deals.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const discoverRoute = new Hono();
@@ -24,7 +24,7 @@ discoverRoute.post(
 		tags: ["Discover"],
 		summary: "Rank deals across a Browse search response",
 		description:
-			"Maps `evaluate` over `results.itemSummaries` (or `results.itemSales` for sold searches), filters by `isDeal`, and sorts by `marginCents × confidence`. Same `opts` semantics as `/v1/evaluate`. Capped at 200 items per call (matches eBay Browse's max page size).",
+			"Maps `evaluate` over `results.itemSummaries` (or `results.itemSales` for sold searches), filters out items without a profitable `recommendedExit`, and sorts by `recommendedExit.dollarsPerDay` (capital efficiency). Same `opts` semantics as `/v1/evaluate`. Capped at 200 items per call (matches eBay Browse's max page size).",
 		responses: {
 			200: jsonResponse("Ranked deals.", DiscoverResponse),
 			400: errorResponse("Validation failed."),
@@ -46,7 +46,7 @@ discoverRoute.post(
 				400,
 			);
 		}
-		const deals = find(results, opts);
+		const deals = await discoverDeals(results, opts);
 		return c.json({ deals });
 	},
 );

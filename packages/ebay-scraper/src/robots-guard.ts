@@ -8,7 +8,7 @@
  * Scope and honesty: this guard does NOT block `/sch/i.html?_nkw=...`, eBay's
  * keyword search results page. That path IS formally Disallowed under
  * `User-agent: *`, and it is also our primary scraping path — there is no
- * legitimate equivalent for sold-listing comp aggregation outside the gated
+ * legitimate equivalent for sold-listing comparable aggregation outside the gated
  * Marketplace Insights API. We document this knowingly in /docs/legal/compliance
  * and accept the residual posture; we do not pretend the guard hides it.
  *

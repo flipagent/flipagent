@@ -1,5 +1,7 @@
 /**
- * eBay Trading API Platform Notifications.
+ * `/v1/notifications/*` — **inbound** events from marketplaces (eBay etc.)
+ * → flipagent. Distinct from `/v1/webhooks/*`, which is **outbound**
+ * (flipagent → caller).
  *
  *   POST /v1/notifications/ebay/inbound   ← public, called by eBay
  *   POST /v1/notifications/ebay/subscribe ← auth, run after /v1/connect/ebay
@@ -15,11 +17,11 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
-import { getUserAccessToken } from "../../auth/ebay-oauth.js";
 import { config, isEbayNotificationsConfigured, isEbayOAuthConfigured } from "../../config.js";
 import { db } from "../../db/client.js";
 import { marketplaceNotifications } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
+import { getUserAccessToken } from "../../services/ebay/oauth.js";
 import { dispatchNotification } from "../../services/notifications/dispatch.js";
 import {
 	dedupeKey,
@@ -36,7 +38,7 @@ export const notificationsRoute = new Hono();
 notificationsRoute.post(
 	"/ebay/inbound",
 	describeRoute({
-		tags: ["webhooks"],
+		tags: ["Notifications"],
 		summary: "eBay Trading API Platform Notifications receiver",
 		description:
 			"Public endpoint eBay POSTs SOAP/XML envelopes to. Signature verified locally via DevID + AppID + CertID + message Timestamp. Always returns 200 once the row is logged so eBay does not retry — replays are dropped via sha256 dedupe.",
@@ -95,7 +97,7 @@ notificationsRoute.post(
 notificationsRoute.post(
 	"/ebay/subscribe",
 	describeRoute({
-		tags: ["flipagent"],
+		tags: ["Notifications"],
 		summary: "Subscribe the connected eBay seller to flipagent notifications",
 		description:
 			"Calls Trading API SetNotificationPreferences with EBAY_NOTIFY_URL as the callback and enables ItemSold + AuctionCheckoutComplete + FixedPriceTransaction + OutBid + ItemUnsold for this user. Idempotent — safe to retry.",
@@ -147,7 +149,7 @@ notificationsRoute.post(
 notificationsRoute.get(
 	"/ebay/subscribe",
 	describeRoute({
-		tags: ["flipagent"],
+		tags: ["Notifications"],
 		summary: "Read the current eBay notification subscription for this seller",
 		responses: {
 			200: { description: "Current ApplicationURL + enabled events." },
@@ -193,7 +195,7 @@ notificationsRoute.get(
 notificationsRoute.get(
 	"/recent",
 	describeRoute({
-		tags: ["flipagent"],
+		tags: ["Notifications"],
 		summary: "Last 50 inbound platform notifications for this account (debug)",
 		responses: { 200: { description: "Recent notifications." } },
 	}),

@@ -15,8 +15,7 @@ function fakeFetchOk(body: unknown): { calls: Captured[]; fetch: typeof globalTh
 	return { calls, fetch };
 }
 
-const STUB_VERDICT = {
-	isDeal: true,
+const STUB_EVALUATION = {
 	netCents: 1840,
 	confidence: 0.82,
 	landedCostCents: 4280,
@@ -33,7 +32,7 @@ const STUB_ITEM = {
 };
 
 describe("createFlipagentClient", () => {
-	it("listings.search hits /v1/listings/search with bearer auth", async () => {
+	it("listings.search hits /v1/buy/browse/item_summary/search with bearer auth", async () => {
 		const { calls, fetch } = fakeFetchOk({ itemSummaries: [STUB_ITEM], total: 1 });
 		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
 
@@ -42,37 +41,37 @@ describe("createFlipagentClient", () => {
 		expect(res.itemSummaries).toHaveLength(1);
 		expect(calls).toHaveLength(1);
 		const url = new URL(calls[0].url);
-		expect(url.pathname).toBe("/v1/listings/search");
+		expect(url.pathname).toBe("/v1/buy/browse/item_summary/search");
 		expect(url.searchParams.get("q")).toBe("canon 50mm");
 		expect(calls[0].init.method).toBe("GET");
 		expect((calls[0].init.headers as Record<string, string>).Authorization).toBe("Bearer fk_test");
 	});
 
-	it("listings.get hits /v1/listings/{itemId}", async () => {
+	it("listings.get hits /v1/buy/browse/item/{itemId}", async () => {
 		const { calls, fetch } = fakeFetchOk({ itemId: "v1|123|0", title: "test" });
 		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
 
 		await client.listings.get("v1|123|0");
 
-		expect(new URL(calls[0].url).pathname).toBe("/v1/listings/v1%7C123%7C0");
+		expect(new URL(calls[0].url).pathname).toBe("/v1/buy/browse/item/v1%7C123%7C0");
 	});
 
-	it("sold.search hits /v1/sold/search", async () => {
+	it("sold.search hits /v1/buy/marketplace_insights/item_sales/search", async () => {
 		const { calls, fetch } = fakeFetchOk({ itemSales: [], total: 0 });
 		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
 
 		await client.sold.search({ q: "canon" });
 
-		expect(new URL(calls[0].url).pathname).toBe("/v1/sold/search");
+		expect(new URL(calls[0].url).pathname).toBe("/v1/buy/marketplace_insights/item_sales/search");
 	});
 
 	it("evaluate.listing posts /v1/evaluate", async () => {
-		const { calls, fetch } = fakeFetchOk(STUB_VERDICT);
+		const { calls, fetch } = fakeFetchOk(STUB_EVALUATION);
 		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
 
-		const verdict = await client.evaluate.listing({ item: STUB_ITEM });
+		const evaluation = await client.evaluate.listing({ item: STUB_ITEM });
 
-		expect(verdict).toEqual(STUB_VERDICT);
+		expect(evaluation).toEqual(STUB_EVALUATION);
 		expect(new URL(calls[0].url).pathname).toBe("/v1/evaluate");
 		expect(calls[0].init.method).toBe("POST");
 		expect((calls[0].init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
@@ -82,13 +81,13 @@ describe("createFlipagentClient", () => {
 		const { calls, fetch } = fakeFetchOk({ signals: [] });
 		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
 
-		await client.evaluate.signals({ item: STUB_ITEM, comps: [] });
+		await client.evaluate.signals({ item: STUB_ITEM, comparables: [] });
 
 		expect(new URL(calls[0].url).pathname).toBe("/v1/evaluate/signals");
 	});
 
 	it("discover.deals posts /v1/discover", async () => {
-		const { calls, fetch } = fakeFetchOk({ deals: [{ itemId: "v1|123|0", verdict: STUB_VERDICT }] });
+		const { calls, fetch } = fakeFetchOk({ deals: [{ itemId: "v1|123|0", evaluation: STUB_EVALUATION }] });
 		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
 
 		const res = await client.discover.deals({ results: { itemSummaries: [STUB_ITEM] } });
@@ -137,7 +136,7 @@ describe("createFlipagentClient", () => {
 		await client.listings.search({ q: "x" });
 
 		expect(new URL(calls[0].url).origin).toBe("http://localhost:4000");
-		expect(new URL(calls[0].url).pathname).toBe("/v1/listings/search");
+		expect(new URL(calls[0].url).pathname).toBe("/v1/buy/browse/item_summary/search");
 	});
 
 	it("throws FlipagentApiError on non-2xx with upstream payload", async () => {

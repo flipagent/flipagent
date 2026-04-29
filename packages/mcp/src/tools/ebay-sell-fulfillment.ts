@@ -17,7 +17,7 @@ export const ebayListOrdersInput = Type.Object({
 });
 
 export const ebayListOrdersDescription =
-	"List the connected seller's eBay orders. Calls GET /v1/fulfillment/order. Filter to find ones that need shipping.";
+	"List the connected seller's eBay orders. Calls GET /v1/sell/fulfillment/order. Filter to find ones that need shipping.";
 
 export async function ebayListOrdersExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
@@ -28,7 +28,7 @@ export async function ebayListOrdersExecute(config: Config, args: Record<string,
 		if (args.offset !== undefined) query.offset = args.offset as number;
 		return await client.fulfillment.listOrders(query);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/fulfillment/order");
+		const e = toApiCallError(err, "/v1/sell/fulfillment/order");
 		return { error: "list_orders_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
@@ -39,14 +39,14 @@ export const ebayMarkShippedInput = Type.Object({
 });
 
 export const ebayMarkShippedDescription =
-	"Mark an eBay order as shipped (creates a shippingFulfillment). Calls POST /v1/fulfillment/order/{orderId}/shipping_fulfillment.";
+	"Mark an eBay order as shipped (creates a shippingFulfillment). Calls POST /v1/sell/fulfillment/order/{orderId}/shipping_fulfillment.";
 
 export async function ebayMarkShippedExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.fulfillment.ship(args.orderId as string, args.body);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/fulfillment/order/{orderId}/shipping_fulfillment");
+		const e = toApiCallError(err, "/v1/sell/fulfillment/order/{orderId}/shipping_fulfillment");
 		return { error: "mark_shipped_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

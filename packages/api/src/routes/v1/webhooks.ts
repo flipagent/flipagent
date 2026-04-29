@@ -1,5 +1,8 @@
 /**
- * `/v1/webhooks/*` — outbound event subscriptions.
+ * `/v1/webhooks/*` — **outbound** event subscriptions. flipagent → caller.
+ * The caller registers a delivery URL here and we sign + POST events to
+ * it. Distinct from `/v1/notifications/*`, which is **inbound** from
+ * marketplaces (eBay → flipagent).
  *
  *   POST   /v1/webhooks       — register a delivery URL + event filter.
  *                                Returns the row plus the shared HMAC secret;

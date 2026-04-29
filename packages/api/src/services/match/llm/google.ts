@@ -31,7 +31,7 @@ export function createGoogleProvider(): LlmProvider {
 					maxOutputTokens: maxTokens,
 					// Disable extended thinking — for our matching task, hidden
 					// reasoning eats output budget and silently truncates the
-					// JSON array. The verify call wants a structured verdict,
+					// JSON array. The verify call wants a structured decision,
 					// not chain-of-thought.
 					thinkingConfig: { thinkingBudget: 0 },
 				},

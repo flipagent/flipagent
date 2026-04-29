@@ -26,10 +26,11 @@ export interface ListingsClient {
 
 export function createListingsClient(http: FlipagentHttp): ListingsClient {
 	return {
-		search: (params) => http.get("/v1/listings/search", { ...params }),
+		search: (params) => http.get("/v1/buy/browse/item_summary/search", { ...params }),
 		get: (itemId, fieldgroups) =>
-			http.get(`/v1/listings/${encodeURIComponent(itemId)}`, fieldgroups ? { fieldgroups } : undefined),
-		byIds: (itemIds, fieldgroups) => http.get("/v1/listings/get_items", { item_ids: itemIds.join(","), fieldgroups }),
-		byGroup: (itemGroupId) => http.get("/v1/listings/get_items_by_item_group", { item_group_id: itemGroupId }),
+			http.get(`/v1/buy/browse/item/${encodeURIComponent(itemId)}`, fieldgroups ? { fieldgroups } : undefined),
+		byIds: (itemIds, fieldgroups) =>
+			http.get("/v1/buy/browse/item/get_items", { item_ids: itemIds.join(","), fieldgroups }),
+		byGroup: (itemGroupId) => http.get("/v1/buy/browse/item/get_items_by_item_group", { item_group_id: itemGroupId }),
 	};
 }

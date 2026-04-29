@@ -19,10 +19,12 @@
  */
 
 import { TakedownRequest, TakedownResponse } from "@flipagent/types";
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { db } from "../../db/client.js";
-import { takedownRequests } from "../../db/schema.js";
+import { listingObservations, takedownRequests } from "../../db/schema.js";
+import { legacyFromV1 } from "../../utils/item-id.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 const SLA_HOURS = 48;
@@ -72,6 +74,25 @@ takedownRoute.post(
 			.insert(takedownRequests)
 			.values({ itemId: valid.itemId, reason: persistedReason, contactEmail: valid.contactEmail })
 			.returning();
+		// Conservative: hide matching observations from live queries the
+		// moment a takedown is filed, before manual review. Status flips to
+		// approved or rejected later; rejected requests can have the flag
+		// cleared via operator script. Audit trail (the row itself) stays.
+		// Match by exact legacyItemId (numeric) — the takedown form accepts
+		// either a v1 or legacy id; normalise so the WHERE matches archive's
+		// canonical column.
+		const legacyId = legacyFromV1(valid.itemId);
+		if (!legacyId) {
+			return c.json({ id: row?.id ?? "", status: "pending" as const, slaHours: SLA_HOURS }, 201);
+		}
+		try {
+			await db
+				.update(listingObservations)
+				.set({ takedownAt: sql`now()` })
+				.where(eq(listingObservations.legacyItemId, legacyId));
+		} catch (err) {
+			console.error("[takedown] observation flag failed:", err);
+		}
 		return c.json({ id: row?.id ?? "", status: "pending" as const, slaHours: SLA_HOURS }, 201);
 	},
 );

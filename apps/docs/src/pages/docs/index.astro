@@ -22,7 +22,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 					<div class="feature">
 						<div class="ic">ii.</div>
 						<h3>REST API</h3>
-						<p>Unified <code>/v1/*</code> surface at <code>api.flipagent.dev</code>: listings, sold comps, evaluate, discover, ship, orders, inventory, fulfillment, finance, markets.</p>
+						<p>Unified <code>/v1/*</code> surface at <code>api.flipagent.dev</code>: listings, sold comparables, evaluate, discover, ship, orders, inventory, fulfillment, finance, markets.</p>
 						<div style="margin-top:14px;"><a href="/docs/rest/">REST quickstart →</a></div>
 					</div>
 					<div class="feature">
@@ -34,7 +34,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 					<div class="feature">
 						<div class="ic">iv.</div>
 						<h3>Chrome extension</h3>
-						<p>Bridges <code>/v1/orders/*</code> through your real Chrome so eBay sees a normal session. Required for the buy-flow until eBay grants Order API access.</p>
+						<p>Bridges <code>/v1/buy/order/*</code> through your real Chrome (bridge fallback when EBAY_ORDER_API_APPROVED=0) so eBay sees a normal session. Required for the buy-flow until eBay grants Order API access.</p>
 						<div style="margin-top:14px;"><a href="/docs/extension/">Extension setup →</a></div>
 					</div>
 					<div class="feature">
@@ -62,8 +62,8 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<h2>What you'll need</h2>
 				<ul>
 					<li>A free API key from <a href="/signup/">flipagent.dev/signup</a>.</li>
-					<li>For sell-side endpoints (<code>/v1/inventory</code>, <code>/v1/fulfillment</code>, <code>/v1/finance</code>, <code>/v1/markets</code>): connect your regular eBay account once at <code>/v1/connect/ebay</code>. flipagent owns the eBay developer keyset, so you do not need an eBay developer account of your own.</li>
-					<li>For the buy-flow (<code>/v1/orders/*</code>): the <a href="/docs/extension/">Chrome extension</a> runs the BIN clicks inside your real Chrome session.</li>
+					<li>For sell-side endpoints (<code>/v1/sell/*</code>, <code>/v1/commerce/*</code>, <code>/v1/post-order/*</code>): connect your regular eBay account once at <code>/v1/connect/ebay</code>. flipagent owns the eBay developer keyset, so you do not need an eBay developer account of your own.</li>
+					<li>For the buy-flow (<code>/v1/buy/order/*</code> bridge mode): the <a href="/docs/extension/">Chrome extension</a> runs the BIN clicks inside your real Chrome session.</li>
 				</ul>
 			</article>
 		</div>

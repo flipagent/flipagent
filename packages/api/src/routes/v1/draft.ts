@@ -1,7 +1,7 @@
 /**
  * `/v1/draft` — recommend an optimal listing for an item the seller is
  * about to (re)list. Pure compute over `market` (from
- * `/v1/research/thesis`). Returns `listPriceAdvice` + a title to use.
+ * `/v1/research/summary`). Returns `listPriceRecommendation` + a title to use.
  *
  * Maps to the Operations pillar (#02) — the sell-side counterpart to
  * `/v1/evaluate` (buy-side).
@@ -11,7 +11,7 @@ import { DraftRequest, DraftResponse } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { draft } from "../../services/scoring/index.js";
+import { draft } from "../../services/draft/draft.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const draftRoute = new Hono();
@@ -22,7 +22,7 @@ draftRoute.post(
 		tags: ["Draft"],
 		summary: "Recommend optimal list price + title for a (re)listing",
 		description:
-			"Wraps `optimalListPrice` over the supplied market thesis. Returns `listPriceAdvice: null` (with a `reason` like 'no time-to-sell data') when the market has no `meanDaysToSell` — caller should fall back to listing at `market.medianCents`. Title passes through verbatim from the input item; a future title rewriter slots in here.",
+			"Wraps `optimalListPrice` over the supplied market summary. Returns `listPriceRecommendation: null` (with a `reason` like 'no time-to-sell data') when the market has no `meanDaysToSell` — caller should fall back to listing at `market.medianCents`. Title passes through verbatim from the input item; a future title rewriter slots in here.",
 		responses: {
 			200: jsonResponse("Listing draft recommendation.", DraftResponse),
 			400: errorResponse("Validation failed."),

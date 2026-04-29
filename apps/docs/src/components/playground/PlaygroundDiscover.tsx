@@ -184,7 +184,7 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 		return n;
 	}, [query.priceMin, query.priceMax, query.conditions, query.minProfit, query.sellWithin, query.shipping]);
 
-	// TODO(scrape category browse): once `/v1/listings/search` accepts
+	// TODO(scrape category browse): once `/v1/buy/browse/item_summary/search` accepts
 	// category-only queries (blocked on a parser for the new browse-layout
 	// DOM — see BrowseSearchQuery in @flipagent/types), relax this back to
 	// `q || categoryId`. Today the backend rejects category-only with a
@@ -467,7 +467,7 @@ function DealRow({
 	item: ItemSummary | undefined;
 	onEvaluate: (itemId: string) => void;
 }) {
-	const exit = deal.verdict.recommendedExit;
+	const exit = deal.evaluation.recommendedExit;
 	const buyCents = item?.price ? Math.round(Number.parseFloat(item.price.value) * 100) : undefined;
 	return (
 		<button
@@ -489,7 +489,7 @@ function DealRow({
 				<div className="text-[11.5px] text-[var(--text-3)] mt-0.5">
 					{exit ? (
 						<>
-							list ${Math.round(exit.listPriceCents / 100)} · ~{Math.round(exit.expectedDays)}d ·{" "}
+							list ${Math.round(exit.listPriceCents / 100)} · ~{Math.round(exit.expectedDaysToSell)}d ·{" "}
 							{exit.netCents >= 0 ? "+" : "−"}${Math.abs(Math.round(exit.netCents / 100))} net
 						</>
 					) : (

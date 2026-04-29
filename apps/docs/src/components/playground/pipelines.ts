@@ -2,7 +2,7 @@
  * Playground orchestration. Two pipelines:
  *
  *   runEvaluate({ itemId })
- *     detail → sold_search → match → research/thesis → evaluate
+ *     detail → sold_search → match → market/summary → evaluate
  *
  *   runDiscover({ q | category_ids, ... })
  *     listings/search → sold_search (one shared pool) → match → discover
@@ -13,8 +13,8 @@
  * time and can copy any sub-call as cURL.
  *
  * The chain is deliberately client-side: trace transparency is part of
- * the value prop ("see exactly which comps were used to reach this
- * verdict"). Wrapping it in a single server endpoint would either
+ * the value prop ("see exactly which comparables were used to reach this
+ * evaluation"). Wrapping it in a single server endpoint would either
  * collapse the trace into one opaque blob or duplicate every step's
  * response into the wrapper response — both bad.
  */
@@ -29,8 +29,8 @@ import type {
 	RankedDeal,
 	Step,
 	StepStatus,
-	ThesisResponse,
-	Verdict,
+	MarketSummary,
+	Evaluation,
 } from "./types";
 
 export type StepUpdate = (key: string, patch: Partial<Step>) => void;
@@ -119,7 +119,7 @@ export const EVALUATE_STEPS = [
 	{ key: "sold", label: "Find recent sales" },
 	{ key: "active", label: "Find active competition" },
 	{ key: "match", label: "Match same product" },
-	{ key: "thesis", label: "Calculate market price" },
+	{ key: "marketSummary", label: "Calculate market price" },
 	{ key: "evaluate", label: "Decide if it's a good deal" },
 ] as const;
 
@@ -128,8 +128,8 @@ export interface EvaluateOutcome {
 	soldPool: ItemSummary[];
 	activePool: ItemSummary[];
 	buckets: MatchResponse;
-	thesis: ThesisResponse;
-	verdict: Verdict;
+	marketSummary: MarketSummary;
+	evaluation: Evaluation;
 }
 
 export interface EvaluateInputs {
@@ -138,7 +138,7 @@ export interface EvaluateInputs {
 	lookbackDays?: number;
 	/** Cap on past-sale count. Default 50, max 200. */
 	sampleLimit?: number;
-	/** Floor for the BUY verdict — only call it BUY if net ≥ this many cents. */
+	/** Floor for the BUY evaluation — only call it BUY if net ≥ this many cents. */
 	minNetCents?: number;
 	/** Outbound shipping cost in cents. Defaults server-side to $10 when omitted. */
 	outboundShippingCents?: number;
@@ -163,7 +163,7 @@ function lookbackFilter(days: number | undefined): string | undefined {
 
 /**
  * eBay condition tiers, grouped by what the resale market treats as
- * interchangeable. Pre-filtering the comp pool by tier keeps Refurbished
+ * interchangeable. Pre-filtering the comparable pool by tier keeps Refurbished
  * / Parts-Only listings out of the LLM matcher (cheaper + no cross-tier
  * false positives).
  *
@@ -243,13 +243,13 @@ export async function runEvaluate(
 	if (!sold) return null;
 	// REST path filters at eBay; scrape path ignores filter, so backstop in JS
 	// using the localized condition string. Either way the LLM matcher only
-	// sees same-tier comps.
+	// sees same-tier comparables.
 	const soldPool: ItemSummary[] = poolFilteredByCondition(sold.itemSales ?? sold.itemSummaries ?? [], candidateFamily);
 
 	// Active listings — same query, raw count + price points for the
 	// visual. We don't gate the rest of the pipeline on this: when
 	// listings/search fails (rate-limit, scraper outage, eBay block), we
-	// mark the step "skipped" and continue. The verdict is still useful
+	// mark the step "skipped" and continue. The evaluation is still useful
 	// without the competition view.
 	const activeStep = EVALUATE_STEPS[2];
 	let activePool: ItemSummary[] = [];
@@ -280,13 +280,13 @@ export async function runEvaluate(
 				httpStatus: res.status,
 				result: res.body,
 				durationMs: res.durationMs,
-				error: "Active competition unavailable — verdict still computed.",
+				error: "Active competition unavailable — evaluation still computed.",
 			});
 		}
 	}
 
-	// Match against sold AND active in one call. Sold items feed thesis
-	// market stats (what people paid); active items feed thesis ask-side
+	// Match against sold AND active in one call. Sold items feed market summary
+	// market stats (what people paid); active items feed market summary ask-side
 	// stats (what people are listing for). Without filtering active too,
 	// the asks distribution is noisy with off-product listings. Dedupe
 	// across pools — a listing can theoretically appear in both feeds.
@@ -302,32 +302,32 @@ export async function runEvaluate(
 	if (!buckets) return null;
 
 	// Split matched items back to their originating cohort. Sold-side
-	// matches feed `comps` (margin math, market median); active-side
+	// matches feed `comparables` (margin math, market median); active-side
 	// matches feed `asks` (asking-price distribution).
 	const matchedSold = buckets.match.filter((m) => soldIds.has(m.item.itemId)).map((m) => m.item);
 	const matchedActive = buckets.match.filter((m) => !soldIds.has(m.item.itemId)).map((m) => m.item);
-	const thesis = await runStep(EVALUATE_STEPS[4], onStep, () =>
-		playgroundApi.research({ comps: matchedSold, asks: matchedActive.length > 0 ? matchedActive : undefined }),
+	const marketSummary = await runStep(EVALUATE_STEPS[4], onStep, () =>
+		playgroundApi.researchSummary({ comparables: matchedSold, asks: matchedActive.length > 0 ? matchedActive : undefined }),
 	);
-	if (!thesis) return null;
+	if (!marketSummary) return null;
 
 	const evalOpts: {
-		comps: ItemSummary[];
+		comparables: ItemSummary[];
 		asks?: ItemSummary[];
 		minNetCents?: number;
 		outboundShippingCents?: number;
 		maxDaysToSell?: number;
-	} = { comps: matchedSold };
+	} = { comparables: matchedSold };
 	if (matchedActive.length > 0) evalOpts.asks = matchedActive;
 	if (inputs.minNetCents != null && inputs.minNetCents > 0) evalOpts.minNetCents = inputs.minNetCents;
 	if (inputs.outboundShippingCents != null) evalOpts.outboundShippingCents = inputs.outboundShippingCents;
 	if (inputs.maxDaysToSell != null && inputs.maxDaysToSell > 0) evalOpts.maxDaysToSell = inputs.maxDaysToSell;
-	const verdict = await runStep(EVALUATE_STEPS[5], onStep, () =>
+	const evaluation = await runStep(EVALUATE_STEPS[5], onStep, () =>
 		playgroundApi.evaluate({ item: detail, opts: evalOpts }),
 	);
-	if (!verdict) return null;
+	if (!evaluation) return null;
 
-	return { detail, soldPool, activePool, buckets, thesis, verdict };
+	return { detail, soldPool, activePool, buckets, marketSummary, evaluation };
 }
 
 /* ------------------------- discover pipeline ------------------------- */
@@ -405,7 +405,7 @@ export async function runDiscover(inputs: DiscoverInputs, onStep: StepUpdate): P
 		return { search, soldPool: [], deals: [] };
 	}
 
-	// One shared comp pool keyed off the user's query (or, when only a
+	// One shared comparable pool keyed off the user's query (or, when only a
 	// category is supplied, the leading title of the first result — better
 	// than nothing for narrow-category sweeps).
 	const compQuery = inputs.q?.trim() || candidates[0]?.title?.split(/\s+/).slice(0, 6).join(" ") || "";
@@ -419,7 +419,7 @@ export async function runDiscover(inputs: DiscoverInputs, onStep: StepUpdate): P
 		playgroundApi.discover({
 			results: search,
 			opts: {
-				comps: soldPool,
+				comparables: soldPool,
 				minNetCents: inputs.minNetCents,
 				maxDaysToSell: inputs.maxDaysToSell,
 				outboundShippingCents: inputs.outboundShippingCents,
@@ -475,7 +475,7 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 
 export async function runDiscoverMock(inputs: DiscoverInputs, onStep: StepUpdate): Promise<DiscoverOutcome> {
 	const limit = Math.min(inputs.limit ?? 20, 50);
-	const searchPath = `/v1/listings/search${buildQuery({
+	const searchPath = `/v1/buy/browse/item_summary/search${buildQuery({
 		q: inputs.q,
 		category_ids: inputs.categoryId,
 		filter: buildSearchFilter(inputs),
@@ -493,7 +493,7 @@ export async function runDiscoverMock(inputs: DiscoverInputs, onStep: StepUpdate
 	const sold = await mockStep<BrowseSearchResponse>(
 		DISCOVER_STEPS[1],
 		onStep,
-		{ method: "GET", path: `/v1/sold/search${buildQuery({ q: compQuery, limit: 50 })}` },
+		{ method: "GET", path: `/v1/buy/marketplace_insights/item_sales/search${buildQuery({ q: compQuery, limit: 50 })}` },
 		MOCK_DISCOVER.sold,
 	);
 
@@ -517,7 +517,7 @@ export async function runEvaluateMock(inputs: EvaluateInputs, onStep: StepUpdate
 	const detail = await mockStep<ItemDetail>(
 		EVALUATE_STEPS[0],
 		onStep,
-		{ method: "GET", path: `/v1/listings/${encodeURIComponent(inputs.itemId)}` },
+		{ method: "GET", path: `/v1/buy/browse/item/${encodeURIComponent(inputs.itemId)}` },
 		fixture.detail,
 	);
 
@@ -525,7 +525,7 @@ export async function runEvaluateMock(inputs: EvaluateInputs, onStep: StepUpdate
 	const sampleLimit = Math.max(1, Math.min(200, inputs.sampleLimit ?? 50));
 	const since = new Date(Date.now() - lookbackDays * 86_400_000).toISOString();
 	const q = asTitleQuery(detail);
-	const soldPath = `/v1/sold/search${buildQuery({
+	const soldPath = `/v1/buy/marketplace_insights/item_sales/search${buildQuery({
 		q,
 		limit: sampleLimit,
 		filter: `lastSoldDate:[${since}..]`,
@@ -540,7 +540,7 @@ export async function runEvaluateMock(inputs: EvaluateInputs, onStep: StepUpdate
 	await mockStep<BrowseSearchResponse>(
 		EVALUATE_STEPS[2],
 		onStep,
-		{ method: "GET", path: `/v1/listings/search${buildQuery({ q, limit: 50 })}` },
+		{ method: "GET", path: `/v1/buy/browse/item_summary/search${buildQuery({ q, limit: 50 })}` },
 		{ itemSummaries: fixture.activePool, total: fixture.activePool.length },
 	);
 
@@ -551,18 +551,18 @@ export async function runEvaluateMock(inputs: EvaluateInputs, onStep: StepUpdate
 		fixture.buckets,
 	);
 
-	await mockStep<ThesisResponse>(
+	await mockStep<MarketSummary>(
 		EVALUATE_STEPS[4],
 		onStep,
-		{ method: "POST", path: "/v1/research/thesis" },
-		fixture.thesis,
+		{ method: "POST", path: "/v1/research/summary" },
+		fixture.marketSummary,
 	);
 
-	await mockStep<Verdict>(
+	await mockStep<Evaluation>(
 		EVALUATE_STEPS[5],
 		onStep,
 		{ method: "POST", path: "/v1/evaluate" },
-		fixture.verdict,
+		fixture.evaluation,
 	);
 
 	return {
@@ -570,7 +570,7 @@ export async function runEvaluateMock(inputs: EvaluateInputs, onStep: StepUpdate
 		soldPool: fixture.soldPool,
 		activePool: fixture.activePool,
 		buckets: fixture.buckets,
-		thesis: fixture.thesis,
-		verdict: fixture.verdict,
+		marketSummary: fixture.marketSummary,
+		evaluation: fixture.evaluation,
 	};
 }

@@ -3,7 +3,7 @@ import { useState } from "react";
 import "./PipelineCode.css";
 import "./CodeTabs.css";
 
-type StepId = "search" | "score" | "buy" | "list" | "sell" | "ship";
+type StepId = "search" | "score" | "buy" | "list" | "orders" | "ship";
 type LangId = "python" | "node" | "curl" | "cli";
 
 const STR = (s: string) => <span className="t-str">{s}</span>;
@@ -76,7 +76,7 @@ const STEPS: Step[] = [
 				<>{KEY("import")} requests</>,
 				"",
 				<>r = requests.{FN("get")}(</>,
-				<>{"  "}{STR('"https://api.flipagent.dev/v1/listings/search"')},</>,
+				<>{"  "}{STR('"https://api.flipagent.dev/v1/buy/browse/item_summary/search"')},</>,
 				<>{"  "}params={"{"}{STR('"q"')}: {STR('"canon ef 50mm 1.8"')}, {STR('"marketplace"')}: {STR('"ebay_us"')}, {STR('"limit"')}: {NUM("25")}{"}"},</>,
 				<>{"  "}headers={"{"}{STR('"X-API-Key"')}: {STR('"fa_…"')}{"}"},</>,
 				")",
@@ -90,7 +90,7 @@ const STEPS: Step[] = [
 				"});",
 			],
 			curl: [
-				<>{FN("curl")} {STR('"https://api.flipagent.dev/v1/listings/search?q=canon+ef+50mm+1.8&marketplace=ebay_us&limit=25"')} \</>,
+				<>{FN("curl")} {STR('"https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon+ef+50mm+1.8&marketplace=ebay_us&limit=25"')} \</>,
 				<>{"  "}-H {STR('"X-API-Key: fa_…"')}</>,
 			],
 			cli: [
@@ -99,9 +99,9 @@ const STEPS: Step[] = [
 		},
 		plain: {
 			python:
-				'import requests\n\nr = requests.get(\n  "https://api.flipagent.dev/v1/listings/search",\n  params={"q": "canon ef 50mm 1.8", "marketplace": "ebay_us", "limit": 25},\n  headers={"X-API-Key": "fa_…"},\n)',
+				'import requests\n\nr = requests.get(\n  "https://api.flipagent.dev/v1/buy/browse/item_summary/search",\n  params={"q": "canon ef 50mm 1.8", "marketplace": "ebay_us", "limit": 25},\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'import { createFlipagentClient } from "@flipagent/sdk";\n\nconst client = createFlipagentClient({ apiKey: "fa_…" });\nconst { listings } = await client.listings.search({\n  q: "canon ef 50mm 1.8", marketplace: "ebay_us", limit: 25,\n});',
-			curl: 'curl "https://api.flipagent.dev/v1/listings/search?q=canon+ef+50mm+1.8&marketplace=ebay_us&limit=25" \\\n  -H "X-API-Key: fa_…"',
+			curl: 'curl "https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon+ef+50mm+1.8&marketplace=ebay_us&limit=25" \\\n  -H "X-API-Key: fa_…"',
 			cli: 'flipagent_search({ q: "canon ef 50mm 1.8", marketplace: "ebay_us" })',
 		},
 		result: [
@@ -121,37 +121,37 @@ const STEPS: Step[] = [
 		id: "score",
 		num: "02",
 		label: "Score",
-		desc: "Sold-price comp + expected margin",
+		desc: "Sold-price comparable + expected margin",
 		icon: ICON.gauge,
 		code: {
 			python: [
 				<>r = requests.{FN("post")}(</>,
 				<>{"  "}{STR('"https://api.flipagent.dev/v1/evaluate"')},</>,
-				<>{"  "}json={"{"}{STR('"item"')}: listing, {STR('"opts"')}: {"{"}{STR('"comps"')}: comps{"}"}{"}"},</>,
+				<>{"  "}json={"{"}{STR('"item"')}: listing, {STR('"opts"')}: {"{"}{STR('"comparables"')}: comparables{"}"}{"}"},</>,
 				<>{"  "}headers={"{"}{STR('"X-API-Key"')}: {STR('"fa_…"')}{"}"},</>,
 				")",
 			],
 			node: [
-				<>{KEY("const")} verdict = {KEY("await")} client.evaluate.{FN("listing")}({"{"}</>,
+				<>{KEY("const")} evaluation = {KEY("await")} client.evaluate.{FN("listing")}({"{"}</>,
 				<>{"  "}item: listing,</>,
-				<>{"  "}opts: {"{"} comps, forwarder: {"{"} destState: {STR('"NY"')}, weightG: {NUM("500")} {"}"} {"}"}</>,
+				<>{"  "}opts: {"{"} comparables, forwarder: {"{"} destState: {STR('"NY"')}, weightG: {NUM("500")} {"}"} {"}"}</>,
 				"});",
 			],
 			curl: [
 				<>{FN("curl")} -X POST https://api.flipagent.dev/v1/evaluate \</>,
 				<>{"  "}-H {STR('"X-API-Key: fa_…"')} \</>,
-				<>{"  "}-d {STR(`'{"item": {...}, "opts": {"comps": [...]}}'`)}</>,
+				<>{"  "}-d {STR(`'{"item": {...}, "opts": {"comparables": [...]}}'`)}</>,
 			],
 			cli: [
-				<>{FN("evaluate_listing")}({"{"} item: listing, opts: {"{"} comps {"}"} {"}"})</>,
+				<>{FN("evaluate_listing")}({"{"} item: listing, opts: {"{"} comparables {"}"} {"}"})</>,
 			],
 		},
 		plain: {
 			python:
-				'r = requests.post(\n  "https://api.flipagent.dev/v1/evaluate",\n  json={"item": listing, "opts": {"comps": comps}},\n  headers={"X-API-Key": "fa_…"},\n)',
-			node: 'const verdict = await client.evaluate.listing({\n  item: listing,\n  opts: { comps, forwarder: { destState: "NY", weightG: 500 } },\n});',
-			curl: 'curl -X POST https://api.flipagent.dev/v1/evaluate \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"item": {...}, "opts": {"comps": [...]}}\'',
-			cli: 'evaluate_listing({ item: listing, opts: { comps } })',
+				'r = requests.post(\n  "https://api.flipagent.dev/v1/evaluate",\n  json={"item": listing, "opts": {"comparables": comparables}},\n  headers={"X-API-Key": "fa_…"},\n)',
+			node: 'const evaluation = await client.evaluate.listing({\n  item: listing,\n  opts: { comparables, forwarder: { destState: "NY", weightG: 500 } },\n});',
+			curl: 'curl -X POST https://api.flipagent.dev/v1/evaluate \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"item": {...}, "opts": {"comparables": [...]}}\'',
+			cli: 'evaluate_listing({ item: listing, opts: { comparables } })',
 		},
 		result: [
 			<>{"{"}</>,
@@ -224,7 +224,7 @@ const STEPS: Step[] = [
 		code: {
 			python: [
 				<>r = requests.{FN("post")}(</>,
-				<>{"  "}{STR('"https://api.flipagent.dev/v1/listings"')},</>,
+				<>{"  "}{STR('"https://api.flipagent.dev/v1/sell/inventory/inventory_item/{sku}"')},</>,
 				<>{"  "}json={"{"}</>,
 				<>{"    "}{STR('"sku"')}: {STR('"canon_ef_50mm_001"')}, {STR('"marketplace"')}: {STR('"ebay_us"')},</>,
 				<>{"    "}{STR('"title"')}: {STR('"Canon EF 50mm f/1.8 STM Lens"')},</>,
@@ -243,7 +243,7 @@ const STEPS: Step[] = [
 				"});",
 			],
 			curl: [
-				<>{FN("curl")} -X POST https://api.flipagent.dev/v1/listings \</>,
+				<>{FN("curl")} -X PUT https://api.flipagent.dev/v1/sell/inventory/inventory_item/{"{sku}"} \</>,
 				<>{"  "}-H {STR('"X-API-Key: fa_…"')} \</>,
 				<>{"  "}-d {STR(`'{"sku":"canon_…","marketplace":"ebay_us","priceCents":9999,…}'`)}</>,
 			],
@@ -253,9 +253,9 @@ const STEPS: Step[] = [
 		},
 		plain: {
 			python:
-				'r = requests.post(\n  "https://api.flipagent.dev/v1/listings",\n  json={\n    "sku": "canon_ef_50mm_001", "marketplace": "ebay_us",\n    "title": "Canon EF 50mm f/1.8 STM Lens",\n    "priceCents": 9999, "condition": "USED_GOOD",\n    "photos": ["https://cdn.flipagent.dev/canon.jpg"],\n  },\n  headers={"X-API-Key": "fa_…"},\n)',
+				'r = requests.post(\n  "https://api.flipagent.dev/v1/sell/inventory/inventory_item/{sku}",\n  json={\n    "sku": "canon_ef_50mm_001", "marketplace": "ebay_us",\n    "title": "Canon EF 50mm f/1.8 STM Lens",\n    "priceCents": 9999, "condition": "USED_GOOD",\n    "photos": ["https://cdn.flipagent.dev/canon.jpg"],\n  },\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const { listingId, url } = await client.listings.publish({\n  sku: "canon_ef_50mm_001", marketplace: "ebay_us",\n  title: "Canon EF 50mm f/1.8 STM Lens",\n  priceCents: 9999, condition: "USED_GOOD",\n  photos: ["https://cdn.flipagent.dev/canon.jpg"],\n});',
-			curl: 'curl -X POST https://api.flipagent.dev/v1/listings \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"sku":"canon_…","marketplace":"ebay_us","priceCents":9999,…}\'',
+			curl: 'curl -X POST https://api.flipagent.dev/v1/sell/inventory/inventory_item/{sku} \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"sku":"canon_…","marketplace":"ebay_us","priceCents":9999,…}\'',
 			cli: 'flipagent_publish_listing({ sku, marketplace: "ebay_us", priceCents })',
 		},
 		result: [
@@ -268,15 +268,15 @@ const STEPS: Step[] = [
 		],
 	},
 	{
-		id: "sell",
+		id: "orders",
 		num: "05",
-		label: "Sell",
+		label: "Orders",
 		desc: "New orders + buyer details",
 		icon: ICON.wallet,
 		code: {
 			python: [
 				<>r = requests.{FN("get")}(</>,
-				<>{"  "}{STR('"https://api.flipagent.dev/v1/orders"')},</>,
+				<>{"  "}{STR('"https://api.flipagent.dev/v1/sell/fulfillment/order"')},</>,
 				<>{"  "}params={"{"}{STR('"status"')}: {STR('"awaiting_shipment"')}, {STR('"limit"')}: {NUM("50")}{"}"},</>,
 				<>{"  "}headers={"{"}{STR('"X-API-Key"')}: {STR('"fa_…"')}{"}"},</>,
 				")",
@@ -287,7 +287,7 @@ const STEPS: Step[] = [
 				"});",
 			],
 			curl: [
-				<>{FN("curl")} {STR('"https://api.flipagent.dev/v1/orders?status=awaiting_shipment&limit=50"')} \</>,
+				<>{FN("curl")} {STR('"https://api.flipagent.dev/v1/sell/fulfillment/order?status=awaiting_shipment&limit=50"')} \</>,
 				<>{"  "}-H {STR('"X-API-Key: fa_…"')}</>,
 			],
 			cli: [
@@ -296,9 +296,9 @@ const STEPS: Step[] = [
 		},
 		plain: {
 			python:
-				'r = requests.get(\n  "https://api.flipagent.dev/v1/orders",\n  params={"status": "awaiting_shipment", "limit": 50},\n  headers={"X-API-Key": "fa_…"},\n)',
+				'r = requests.get(\n  "https://api.flipagent.dev/v1/sell/fulfillment/order",\n  params={"status": "awaiting_shipment", "limit": 50},\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const { orders } = await client.orders.list({\n  status: "awaiting_shipment", limit: 50,\n});',
-			curl: 'curl "https://api.flipagent.dev/v1/orders?status=awaiting_shipment&limit=50" \\\n  -H "X-API-Key: fa_…"',
+			curl: 'curl "https://api.flipagent.dev/v1/sell/fulfillment/order?status=awaiting_shipment&limit=50" \\\n  -H "X-API-Key: fa_…"',
 			cli: 'flipagent_list_orders({ status: "awaiting_shipment" })',
 		},
 		result: [
@@ -324,7 +324,7 @@ const STEPS: Step[] = [
 		code: {
 			python: [
 				<>r = requests.{FN("post")}(</>,
-				<>{"  "}{FN("f")}{STR('"https://api.flipagent.dev/v1/orders/{order_id}/fulfillments"')},</>,
+				<>{"  "}{FN("f")}{STR('"https://api.flipagent.dev/v1/sell/fulfillment/order/{orderId}/shipping_fulfillment"')},</>,
 				<>{"  "}json={"{"}{STR('"forwarderShipment"')}: {KEY("True")}, {STR('"service"')}: {STR('"usps_priority"')}{"}"},</>,
 				<>{"  "}headers={"{"}{STR('"X-API-Key"')}: {STR('"fa_…"')}{"}"},</>,
 				")",
@@ -336,7 +336,7 @@ const STEPS: Step[] = [
 				"});",
 			],
 			curl: [
-				<>{FN("curl")} -X POST https://api.flipagent.dev/v1/orders/ord_1f9c…/fulfillments \</>,
+				<>{FN("curl")} -X POST https://api.flipagent.dev/v1/sell/fulfillment/order/ord_1f9c…/fulfillments \</>,
 				<>{"  "}-H {STR('"X-API-Key: fa_…"')} \</>,
 				<>{"  "}-d {STR(`'{"forwarderShipment":true,"service":"usps_priority"}'`)}</>,
 			],
@@ -346,9 +346,9 @@ const STEPS: Step[] = [
 		},
 		plain: {
 			python:
-				'r = requests.post(\n  f"https://api.flipagent.dev/v1/orders/{order_id}/fulfillments",\n  json={"forwarderShipment": True, "service": "usps_priority"},\n  headers={"X-API-Key": "fa_…"},\n)',
+				'r = requests.post(\n  f"https://api.flipagent.dev/v1/sell/fulfillment/order/{orderId}/shipping_fulfillment",\n  json={"forwarderShipment": True, "service": "usps_priority"},\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const fulfillment = await client.fulfillments.create(orderId, {\n  forwarderShipment: true,\n  service: "usps_priority",\n});',
-			curl: 'curl -X POST https://api.flipagent.dev/v1/orders/ord_1f9c…/fulfillments \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"forwarderShipment":true,"service":"usps_priority"}\'',
+			curl: 'curl -X POST https://api.flipagent.dev/v1/sell/fulfillment/order/ord_1f9c…/fulfillments \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"forwarderShipment":true,"service":"usps_priority"}\'',
 			cli: 'flipagent_ship_order({ orderId, forwarderShipment: true })',
 		},
 		result: [

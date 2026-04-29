@@ -12,7 +12,7 @@ import { ForwarderInput, Listing } from "./ship.js";
 
 export const EvaluateOptions = Type.Object(
 	{
-		comps: Type.Optional(Type.Array(ItemSummary)),
+		comparables: Type.Optional(Type.Array(ItemSummary)),
 		/**
 		 * Currently-active competing listings. Feeds the `belowAsks` signal
 		 * + the position-aware competition factor + sold-mean vs active-median
@@ -23,7 +23,7 @@ export const EvaluateOptions = Type.Object(
 		 */
 		asks: Type.Optional(Type.Array(ItemSummary)),
 		forwarder: Type.Optional(ForwarderInput),
-		saleMultiplier: Type.Optional(Type.Number({ minimum: 0, maximum: 2 })),
+		expectedSaleMultiplier: Type.Optional(Type.Number({ minimum: 0, maximum: 2 })),
 		minNetCents: Type.Optional(Type.Integer({ minimum: 0 })),
 		minConfidence: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
 		/**
@@ -50,22 +50,22 @@ export const EvaluateOptions = Type.Object(
 );
 export type EvaluateOptions = Static<typeof EvaluateOptions>;
 
-/* ------------------------------- verdict ------------------------------- */
+/* ------------------------------ evaluation ------------------------------ */
 
-export const SignalHit = Type.Object(
+export const FiredSignal = Type.Object(
 	{
 		name: Type.String(),
 		weight: Type.Number(),
 		reason: Type.String(),
 	},
-	{ $id: "SignalHit" },
+	{ $id: "FiredSignal" },
 );
-export type SignalHit = Static<typeof SignalHit>;
+export type FiredSignal = Static<typeof FiredSignal>;
 
 /**
- * p10/p90 of expected net (cents) across the IQR-cleaned comp cohort.
- * Same input distribution as `netCents` (the mean) — the band is the
- * downside/upside if the comps repeat. Null when fewer than 4 comps.
+ * p10/p90 of expected net (cents) across the IQR-cleaned comparable cohort.
+ * Same input distribution as `expectedNetCents` (the mean) — the band is the
+ * downside/upside if the comparables repeat. Null when fewer than 4 comparables.
  */
 export const NetRangeCents = Type.Object(
 	{
@@ -76,19 +76,18 @@ export const NetRangeCents = Type.Object(
 );
 export type NetRangeCents = Static<typeof NetRangeCents>;
 
-export const DealVerdict = Type.Object(
+export const Evaluation = Type.Object(
 	{
-		isDeal: Type.Boolean(),
-		netCents: Type.Integer(),
+		expectedNetCents: Type.Integer(),
 		confidence: Type.Number(),
 		landedCostCents: Type.Union([Type.Integer(), Type.Null()]),
-		signals: Type.Array(SignalHit),
-		rating: Type.Union([Type.Literal("buy"), Type.Literal("watch"), Type.Literal("skip")]),
+		signals: Type.Array(FiredSignal),
+		rating: Type.Union([Type.Literal("buy"), Type.Literal("hold"), Type.Literal("skip")]),
 		reason: Type.String(),
 		/**
 		 * Max purchase price (cents) at which expected net ≥ `minNetCents`.
 		 * Inverse of the mean — "pay no more than this and the trade still
-		 * clears your margin floor." Null when comps absent (no market).
+		 * clears your margin floor." Null when comparables absent (no market).
 		 */
 		bidCeilingCents: Type.Union([Type.Integer(), Type.Null()]),
 		/**
@@ -107,32 +106,32 @@ export const DealVerdict = Type.Object(
 		]),
 		/**
 		 * P(net > 0) under the empirical sold-price distribution. 0..1.
-		 * Null when fewer than 4 comps to estimate from.
+		 * Null when fewer than 4 comparables to estimate from.
 		 */
-		probProfit: Type.Union([Type.Number({ minimum: 0, maximum: 1 }), Type.Null()]),
-		/** Risk band — null when fewer than 4 comps. */
+		winProbability: Type.Union([Type.Number({ minimum: 0, maximum: 1 }), Type.Null()]),
+		/** Risk band — null when fewer than 4 comparables. */
 		netRangeCents: Type.Union([NetRangeCents, Type.Null()]),
 		/**
 		 * One-shot exit plan for buyers: list at this price → expected to
 		 * sell in this many days → profit (after fees, shipping, AND buy
 		 * cost). The "answer" the playground surfaces. Derived from the
 		 * full hazard model + competition factor (active asks) + sold-mean
-		 * vs active-median blend. Null when comps lack duration data or no
+		 * vs active-median blend. Null when comparables lack duration data or no
 		 * profitable price clears within the search grid.
 		 */
 		recommendedExit: Type.Union([
 			Type.Object({
 				listPriceCents: Type.Integer(),
-				expectedDays: Type.Number(),
+				expectedDaysToSell: Type.Number(),
 				netCents: Type.Integer(),
 				dollarsPerDay: Type.Integer(),
 			}),
 			Type.Null(),
 		]),
 	},
-	{ $id: "DealVerdict" },
+	{ $id: "Evaluation" },
 );
-export type DealVerdict = Static<typeof DealVerdict>;
+export type Evaluation = Static<typeof Evaluation>;
 
 /* ---------------------------- POST /v1/evaluate ---------------------------- */
 
@@ -145,15 +144,15 @@ export const EvaluateRequest = Type.Object(
 );
 export type EvaluateRequest = Static<typeof EvaluateRequest>;
 
-export const EvaluateResponse = DealVerdict;
-export type EvaluateResponse = DealVerdict;
+export const EvaluateResponse = Evaluation;
+export type EvaluateResponse = Evaluation;
 
 /* ------------------------ POST /v1/evaluate/signals ------------------------ */
 
 export const EvaluateSignalsRequest = Type.Object(
 	{
 		item: ItemSummary,
-		comps: Type.Optional(Type.Array(ItemSummary)),
+		comparables: Type.Optional(Type.Array(ItemSummary)),
 	},
 	{ $id: "EvaluateSignalsRequest" },
 );
@@ -161,7 +160,7 @@ export type EvaluateSignalsRequest = Static<typeof EvaluateSignalsRequest>;
 
 export const EvaluateSignalsResponse = Type.Object(
 	{
-		signals: Type.Array(SignalHit),
+		signals: Type.Array(FiredSignal),
 	},
 	{ $id: "EvaluateSignalsResponse" },
 );

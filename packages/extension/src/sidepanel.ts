@@ -134,7 +134,7 @@ interface InFlightSnapshot {
 	startedAt: string;
 }
 
-const TERMINAL = new Set(["completed", "failed", "cancelled", "expired"]);
+const TERMINAL = new Set<string>(["PROCESSED", "FAILED", "CANCELED"]);
 let liveOrderPoll: number | null = null;
 
 async function renderInFlight(): Promise<void> {
@@ -164,15 +164,16 @@ function startLivePoll(id: string): void {
 		const cfg = await loadConfig();
 		try {
 			const o = await getOrderStatus(cfg, id);
-			$<HTMLSpanElement>("now-status").textContent = o.status;
+			$<HTMLSpanElement>("now-status").textContent = o.purchaseOrderStatus;
 			const ind = $<HTMLSpanElement>("now-ind");
-			ind.className = `ind ${o.status === "completed" ? "ok" : o.status === "failed" ? "err" : "live"}`;
+			ind.className = `ind ${o.purchaseOrderStatus === "PROCESSED" ? "ok" : o.purchaseOrderStatus === "FAILED" ? "err" : "live"}`;
 			const parts: string[] = [];
-			if (o.totalCents != null) parts.push(`$${(o.totalCents / 100).toFixed(2)}`);
+			const total = o.pricingSummary?.total?.value;
+			if (total) parts.push(`$${Number.parseFloat(total).toFixed(2)}`);
 			if (o.ebayOrderId) parts.push(o.ebayOrderId);
 			if (o.failureReason) parts.push(o.failureReason);
 			$<HTMLDivElement>("now-meta").textContent = parts.join(" · ");
-			if (TERMINAL.has(o.status)) {
+			if (TERMINAL.has(o.purchaseOrderStatus)) {
 				// Background also clears on its end; this just makes the card vanish faster.
 				await chrome.storage.local.remove("flipagent_in_flight");
 				stopLivePoll();

@@ -13,7 +13,7 @@ export const ebayListPayoutsInput = Type.Object({
 });
 
 export const ebayListPayoutsDescription =
-	"List eBay payouts for the connected seller. Calls GET /v1/finance/payout. Each payout aggregates net seller proceeds across multiple orders.";
+	"List eBay payouts for the connected seller. Calls GET /v1/sell/finances/payout. Each payout aggregates net seller proceeds across multiple orders.";
 
 export async function ebayListPayoutsExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
@@ -23,7 +23,7 @@ export async function ebayListPayoutsExecute(config: Config, args: Record<string
 		if (args.limit !== undefined) query.limit = args.limit as number;
 		return await client.finance.listPayouts(query);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/finance/payout");
+		const e = toApiCallError(err, "/v1/sell/finances/payout");
 		return { error: "list_payouts_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

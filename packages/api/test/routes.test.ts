@@ -3,7 +3,7 @@ import "./setup.js";
 
 // Stub the scrape backend BEFORE importing app/routes so the route
 // modules pick up the mock instead of hitting eBay.
-vi.mock("../src/proxy/scrape.js", () => ({
+vi.mock("../src/services/ebay/scrape/client.js", () => ({
 	scrapeSearch: async ({ q }: { q: string }) => ({
 		itemSummaries: [
 			{
@@ -55,7 +55,7 @@ describe("descriptors + health", () => {
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { name: string; paths: string[] };
 		expect(body.name).toBe("flipagent");
-		expect(body.paths).toContain("GET /v1/listings/search");
+		expect(body.paths).toContain("GET /v1/buy/browse/item_summary/search");
 	});
 
 	it("GET /healthz reports db ok", async () => {
@@ -152,10 +152,10 @@ describe("/v1/keys/permissions", () => {
 	});
 });
 
-describe("/v1/sold (scrape with source field)", () => {
+describe("/v1/buy/marketplace_insights/item_sales/search (scrape with source field)", () => {
 	it("returns source: 'scrape' in body and X-Flipagent-Source header", async () => {
 		const key = await issueFreeKey("integration+sold@example.com");
-		const res = await call("/v1/sold/search?q=widget&limit=5", {
+		const res = await call("/v1/buy/marketplace_insights/item_sales/search?q=widget&limit=5", {
 			headers: { authorization: `Bearer ${key}` },
 		});
 		expect(res.status).toBe(200);
@@ -165,15 +165,15 @@ describe("/v1/sold (scrape with source field)", () => {
 	});
 });
 
-describe("/v1/listings (mocked scrape)", () => {
+describe("/v1/buy/browse (mocked scrape)", () => {
 	it("rejects calls without an api key", async () => {
-		const res = await call("/v1/listings/search?q=test");
+		const res = await call("/v1/buy/browse/item_summary/search?q=test");
 		expect(res.status).toBe(401);
 	});
 
 	it("returns mocked search results with rate-limit headers", async () => {
 		const key = await issueFreeKey("integration+search@example.com");
-		const res = await call("/v1/listings/search?q=widget&limit=5", {
+		const res = await call("/v1/buy/browse/item_summary/search?q=widget&limit=5", {
 			headers: { authorization: `Bearer ${key}` },
 		});
 		expect(res.status).toBe(200);
@@ -186,12 +186,14 @@ describe("/v1/listings (mocked scrape)", () => {
 
 	it("returns mocked item detail", async () => {
 		const key = await issueFreeKey("integration+detail@example.com");
-		const res = await call("/v1/listings/v1%7CTEST02%7C0", {
+		// Numeric legacy id — the scrape branch validates `^\d{6,}$` before
+		// dispatching, so synthetic fixtures need to look like real eBay ids.
+		const res = await call("/v1/buy/browse/item/v1%7C987654321%7C0", {
 			headers: { authorization: `Bearer ${key}` },
 		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { itemId: string };
-		expect(body.itemId).toBe("v1|TEST02|0");
+		expect(body.itemId).toBe("987654321");
 	});
 });
 

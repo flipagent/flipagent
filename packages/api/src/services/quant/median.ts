@@ -256,7 +256,7 @@ export function summarizeAsks(active: ActiveAsk[], options: SummarizeOptions = {
 }
 
 /**
- * Convenience composer: take both sold-side comps and active-side asks
+ * Convenience composer: take both sold-side comparables and active-side asks
  * for the same SKU/marketplace and produce a single `MarketStats` with
  * `asks` populated. Equivalent to:
  *   `{ ...summarizeSold(sold, ctx, opts), asks: summarizeAsks(asks, opts) }`

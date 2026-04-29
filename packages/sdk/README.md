@@ -34,7 +34,7 @@ const quote = await client.ship.quote({ item, forwarder: { destState: "NY", weig
 | Group | Namespaces |
 |---|---|
 | Marketplace passthrough | `listings`, `sold`, `orders`, `inventory`, `fulfillment`, `finance`, `markets` |
-| flipagent intelligence | `research`, `match`, `evaluate`, `discover`, `ship`, `draft`, `reprice`, `expenses` |
+| flipagent intelligence | `market`, `match`, `evaluate`, `discover`, `ship`, `draft`, `reprice`, `expenses` |
 | Ops | `webhooks`, `capabilities` |
 | Escape hatch | `client.http.{get,post,put,delete,patch}(path, body?)` |
 

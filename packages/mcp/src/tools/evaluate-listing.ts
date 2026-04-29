@@ -5,7 +5,7 @@ import type { Config } from "../config.js";
 export { EvaluateListingInputSchema as evaluateListingInput };
 
 export const evaluateListingDescription =
-	"Score one listing as a flip opportunity. Calls POST /v1/evaluate. Pass `item` (ItemSummary or ItemDetail from /v1/listings) and `opts.comps` (sold listings from /v1/sold/search) for margin math; add `opts.forwarder` to attach a US-domestic landed cost. Returns DealVerdict with rating buy/watch/skip plus signals fired.";
+	"Score one listing as a flip opportunity. Calls POST /v1/evaluate. Pass `item` (ItemSummary or ItemDetail from /v1/buy/browse/*) and `opts.comparables` (sold listings from /v1/buy/marketplace_insights/item_sales/search) for margin math; add `opts.forwarder` to attach a US-domestic landed cost. Returns Evaluation with rating buy/hold/skip plus signals fired.";
 
 export async function evaluateListingExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const client = getClient(config);

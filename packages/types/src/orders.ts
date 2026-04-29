@@ -1,20 +1,19 @@
 /**
- * `/v1/orders/*` schemas — bridge-driven buying flow.
+ * Internal flipagent `PurchaseOrder` schema — the bridge queue's job
+ * envelope, also serialized as the payload of outbound order-event
+ * webhooks. NOT a public REST surface: the user-facing buy surface is
+ * `/v1/buy/order/*` (eBay-shape `EbayPurchaseOrder`, REST + bridge
+ * transports).
  *
- * The hosted API queues a purchase order; the flipagent Chrome extension
- * (paired with the user's API key) claims it via `/v1/bridge/poll`, drives
- * the buy flow inside the user's real eBay session, and reports the outcome
- * via `/v1/bridge/result`. The user-facing surface is fully async — callers
- * POST a checkout, get a `purchaseOrderId`, and either poll
- * `GET /v1/orders/{id}` or subscribe to a webhook.
+ * The bridge queue (`services/orders/queue.ts`) backs every
+ * bridge-driven public surface — `/v1/buy/order/*` (when REST is
+ * unapproved), `/v1/forwarder/{provider}/*`, `/v1/browser/*`. Each
+ * source enqueues a `PurchaseOrder` row; the extension claims via
+ * `/v1/bridge/poll` and reports via `/v1/bridge/result`.
  *
- * `awaiting_user_confirm` is the v1 default — the extension stops at
- * "Confirm and pay" and waits for the user to OK in-browser or via
- * `POST /v1/orders/{id}/confirm`. No auto-confirm in v1.
- *
- * The same `purchase_order_id` shape lets us swap to eBay's official Order
- * API later (when `EBAY_ORDER_API_APPROVED=1`) without changing the public
- * surface — only the executor underneath changes.
+ * `awaiting_user_confirm` is the default for buy-side jobs — the
+ * extension stops at "Confirm and pay" and waits for the user to OK
+ * in-browser. No auto-confirm in v1.
  */
 
 import { type Static, Type } from "@sinclair/typebox";
@@ -81,41 +80,3 @@ export const PurchaseOrder = Type.Object(
 	{ $id: "PurchaseOrder" },
 );
 export type PurchaseOrder = Static<typeof PurchaseOrder>;
-
-/* ------------------------ POST /v1/orders/checkout ------------------------ */
-
-export const CheckoutRequest = Type.Object(
-	{
-		source: Type.Optional(PurchaseOrderSource),
-		itemId: Type.String({ minLength: 1, description: "eBay legacy item id (12-digit) or RESTful v1|...|0 form." }),
-		quantity: Type.Optional(Type.Integer({ minimum: 1, default: 1 })),
-		/** Walk away if the bridge client sees a listing price above this cap (incl. shipping). */
-		maxPriceCents: Type.Optional(Type.Integer({ minimum: 0 })),
-		/** Caller-supplied dedup key. Same key from same api key returns the same order. */
-		idempotencyKey: Type.Optional(Type.String({ minLength: 8, maxLength: 200 })),
-		/** Free-form caller hints — passed through to the bridge client (e.g. shippingAddressId). */
-		metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-	},
-	{ $id: "CheckoutRequest" },
-);
-export type CheckoutRequest = Static<typeof CheckoutRequest>;
-
-export const CheckoutResponse = Type.Object(
-	{
-		purchaseOrderId: Type.String({ format: "uuid" }),
-		status: PurchaseOrderStatus,
-		expiresAt: Type.String({ format: "date-time" }),
-	},
-	{ $id: "CheckoutResponse" },
-);
-export type CheckoutResponse = Static<typeof CheckoutResponse>;
-
-/* ----------------------- GET /v1/orders/{id} ----------------------- */
-
-export const PurchaseOrderResponse = PurchaseOrder;
-export type PurchaseOrderResponse = PurchaseOrder;
-
-/* ------------------ POST /v1/orders/{id}/{confirm,cancel} ------------------ */
-
-export const PurchaseOrderActionResponse = PurchaseOrder;
-export type PurchaseOrderActionResponse = PurchaseOrder;

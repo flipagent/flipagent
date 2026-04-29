@@ -78,7 +78,7 @@ export const ItemSummary = Type.Object(
 		/**
 		 * ISO 8601 listing creation timestamp. Paired with `itemEndDate` or
 		 * `lastSoldDate`, this gives the list-to-sell duration that the
-		 * hazard model reads directly from summaries — no per-comp detail
+		 * hazard model reads directly from summaries — no per-comparable detail
 		 * fetch required.
 		 */
 		itemCreationDate: Type.Optional(Type.String()),
@@ -224,27 +224,28 @@ export type ItemDetail = Static<typeof ItemDetail>;
 /**
  * Query parameters for /buy/browse/v1/item_summary/search.
  *
- * eBay's Browse API itself accepts category-only browse via `category_ids`
- * (verified working on `EBAY_LISTINGS_SOURCE=rest`). We do NOT expose
- * `category_ids` here yet, and `q` stays required, because the scrape
- * path can't honor it:
- *
- * TODO(scrape category browse): eBay is migrating category SRP from the
- * `s-item__*` layout (which our parser in `@flipagent/ebay-scraper`
- * targets) to a JS-driven `brwrvr__item-card-*` browse layout served at
- * `/b/<category>/<id>/...`. Empty-keyword + `_sacat=<id>` triggers the
- * 301 to that browse page, and our parser returns 0 items. To unlock
- * category-only across all sources we need either:
- *   1) a parser for the `brwrvr__item-card-*` DOM (lazy-loaded items
- *      complicate this — initial HTML carries skeletons, items arrive
- *      via XHR after render), or
- *   2) reverse-engineer eBay's internal browse-XHR endpoint.
- * Until one of those lands, the handler enforces `q` so the three
- * sources stay behaviourally consistent.
+ * `category_ids` is exposed to honour the same shape eBay Browse REST
+ * accepts (pipe-joined Browse category id list, e.g. `15709|175672`).
+ * The REST source forwards it directly; the bridge source forwards it
+ * to the extension. The scrape source today **does not** honour it —
+ * eBay is migrating category SRP from the `s-item__*` layout (which our
+ * parser targets) to a JS-driven `brwrvr__item-card-*` browse layout
+ * served at `/b/<slug>/<id>/...`, and empty-keyword + `_sacat=<id>`
+ * triggers a 301 to that lazy-loaded layout. `q` therefore stays
+ * required so the keyword SRP path always works. `category_ids` is
+ * still recorded on the anonymized query pulse regardless of source so
+ * `/v1/trends/categories` can rank demand by category once enough data
+ * accrues.
  */
 export const BrowseSearchQuery = Type.Object(
 	{
 		q: Type.String({ description: "Search keywords. Required across all sources today." }),
+		category_ids: Type.Optional(
+			Type.String({
+				description:
+					"Pipe-joined Browse category ids, e.g. '15709|175672'. Forwarded verbatim by the REST source; ignored by the scrape source (keyword SRP only); fed into the demand-pulse archive in all cases.",
+			}),
+		),
 		filter: Type.Optional(
 			Type.String({
 				description:
@@ -267,6 +268,11 @@ export type BrowseSearchQuery = Static<typeof BrowseSearchQuery>;
 export const SoldSearchQuery = Type.Object(
 	{
 		q: Type.String({ description: "Keyword for sold listings." }),
+		category_ids: Type.Optional(
+			Type.String({
+				description: "Pipe-joined Browse category ids. Same semantics as BrowseSearchQuery.category_ids.",
+			}),
+		),
 		filter: Type.Optional(Type.String()),
 		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
 	},
@@ -288,3 +294,102 @@ export type ItemDetailParams = Static<typeof ItemDetailParams>;
 /** Backwards-compat alias kept for any external import. */
 export const SearchQuery = BrowseSearchQuery;
 export type SearchQuery = BrowseSearchQuery;
+
+/* ============================================================
+ * Buy Order API shapes — the public `/v1/buy/order/*` surface
+ *
+ * Mirrors eBay's Buy Order API (Limited Release on REST). Same
+ * surface is served two ways:
+ *
+ *   1. EBAY_ORDER_API_APPROVED=1 → REST passthrough to api.ebay.com
+ *   2. otherwise → flipagent's bridge implementation (Chrome
+ *      extension watches the BIN flow and records the resulting order
+ *      id; the user clicks BIN + Confirm-and-pay themselves — status
+ *      mapped to eBay shape)
+ *
+ * Multi-stage update endpoints (shipping_address, payment_instrument,
+ * coupon) only work in mode 1; bridge mode returns 412 because the
+ * extension uses the user's eBay account defaults.
+ * ============================================================ */
+
+export const Amount = Type.Object({ value: Type.String(), currency: Type.String() }, { $id: "Amount" });
+export type Amount = Static<typeof Amount>;
+
+export const LineItem = Type.Object(
+	{
+		itemId: Type.String({ description: "eBay legacy item id." }),
+		quantity: Type.Integer({ minimum: 1 }),
+		variationId: Type.Optional(Type.String()),
+	},
+	{ $id: "LineItem" },
+);
+export type LineItem = Static<typeof LineItem>;
+
+export const PricingSummary = Type.Partial(
+	Type.Object({
+		itemSubtotal: Amount,
+		deliveryCost: Amount,
+		tax: Amount,
+		total: Amount,
+	}),
+	{ $id: "PricingSummary" },
+);
+export type PricingSummary = Static<typeof PricingSummary>;
+
+export const InitiateCheckoutSessionRequest = Type.Object(
+	{
+		lineItems: Type.Array(LineItem, { minItems: 1, maxItems: 10 }),
+		// shippingAddresses / paymentInstruments / pricingSummary etc.
+		// are accepted but ignored in bridge mode (the extension uses
+		// the user's eBay account defaults). Pass-through to REST when
+		// `EBAY_ORDER_API_APPROVED=1`.
+		shippingAddresses: Type.Optional(Type.Array(Type.Unknown())),
+		paymentInstruments: Type.Optional(Type.Array(Type.Unknown())),
+		pricingSummary: Type.Optional(PricingSummary),
+	},
+	{ $id: "InitiateCheckoutSessionRequest" },
+);
+export type InitiateCheckoutSessionRequest = Static<typeof InitiateCheckoutSessionRequest>;
+
+export const CheckoutSession = Type.Object(
+	{
+		checkoutSessionId: Type.String(),
+		expirationDate: Type.String({ format: "date-time" }),
+		lineItems: Type.Array(LineItem),
+		pricingSummary: Type.Optional(PricingSummary),
+		shippingAddresses: Type.Optional(Type.Array(Type.Unknown())),
+		paymentInstruments: Type.Optional(Type.Array(Type.Unknown())),
+	},
+	{ $id: "CheckoutSession" },
+);
+export type CheckoutSession = Static<typeof CheckoutSession>;
+
+export const EbayPurchaseOrderStatus = Type.Union(
+	[
+		Type.Literal("QUEUED_FOR_PROCESSING"),
+		Type.Literal("PROCESSING"),
+		Type.Literal("PROCESSED"),
+		Type.Literal("FAILED"),
+		Type.Literal("CANCELED"),
+	],
+	{ $id: "EbayPurchaseOrderStatus" },
+);
+export type EbayPurchaseOrderStatus = Static<typeof EbayPurchaseOrderStatus>;
+
+export const EbayPurchaseOrder = Type.Object(
+	{
+		purchaseOrderId: Type.String(),
+		purchaseOrderStatus: EbayPurchaseOrderStatus,
+		purchaseOrderCreationDate: Type.String({ format: "date-time" }),
+		lineItems: Type.Array(LineItem),
+		pricingSummary: Type.Optional(PricingSummary),
+		// Surfaced when the bridge implementation completes — eBay's REST
+		// shape uses this for the upstream order id; in bridge mode we
+		// fill it with the order number scraped from the receipt page.
+		ebayOrderId: Type.Optional(Type.String()),
+		receiptUrl: Type.Optional(Type.String()),
+		failureReason: Type.Optional(Type.String()),
+	},
+	{ $id: "EbayPurchaseOrder" },
+);
+export type EbayPurchaseOrder = Static<typeof EbayPurchaseOrder>;

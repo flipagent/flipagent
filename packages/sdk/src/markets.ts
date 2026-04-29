@@ -31,28 +31,28 @@ export function createMarketsClient(http: FlipagentHttp): MarketsClient {
 	return {
 		taxonomy: {
 			defaultCategoryTreeId: (marketplaceId) =>
-				http.get("/v1/markets/taxonomy/get_default_category_tree_id", { marketplace_id: marketplaceId }),
+				http.get("/v1/commerce/taxonomy/get_default_category_tree_id", { marketplace_id: marketplaceId }),
 			getCategoryTree: (categoryTreeId) =>
-				http.get(`/v1/markets/taxonomy/category_tree/${encodeURIComponent(categoryTreeId)}`),
+				http.get(`/v1/commerce/taxonomy/category_tree/${encodeURIComponent(categoryTreeId)}`),
 			getCategorySuggestions: (categoryTreeId, q) =>
 				http.get(
-					`/v1/markets/taxonomy/category_tree/${encodeURIComponent(categoryTreeId)}/get_category_suggestions`,
+					`/v1/commerce/taxonomy/category_tree/${encodeURIComponent(categoryTreeId)}/get_category_suggestions`,
 					{ q },
 				),
 			getItemAspectsForCategory: (categoryTreeId, categoryId) =>
 				http.get(
-					`/v1/markets/taxonomy/category_tree/${encodeURIComponent(categoryTreeId)}/get_item_aspects_for_category`,
+					`/v1/commerce/taxonomy/category_tree/${encodeURIComponent(categoryTreeId)}/get_item_aspects_for_category`,
 					{ category_id: categoryId },
 				),
 		},
 		policies: {
-			listPaymentPolicies: (query) => http.get("/v1/markets/policies/payment_policy", query),
-			createPaymentPolicy: (body) => http.post("/v1/markets/policies/payment_policy", body),
-			listFulfillmentPolicies: (query) => http.get("/v1/markets/policies/fulfillment_policy", query),
-			createFulfillmentPolicy: (body) => http.post("/v1/markets/policies/fulfillment_policy", body),
-			listReturnPolicies: (query) => http.get("/v1/markets/policies/return_policy", query),
-			createReturnPolicy: (body) => http.post("/v1/markets/policies/return_policy", body),
-			getPrivilege: () => http.get("/v1/markets/policies/privilege"),
+			listPaymentPolicies: (query) => http.get("/v1/sell/account/payment_policy", query),
+			createPaymentPolicy: (body) => http.post("/v1/sell/account/payment_policy", body),
+			listFulfillmentPolicies: (query) => http.get("/v1/sell/account/fulfillment_policy", query),
+			createFulfillmentPolicy: (body) => http.post("/v1/sell/account/fulfillment_policy", body),
+			listReturnPolicies: (query) => http.get("/v1/sell/account/return_policy", query),
+			createReturnPolicy: (body) => http.post("/v1/sell/account/return_policy", body),
+			getPrivilege: () => http.get("/v1/sell/account/privilege"),
 		},
 	};
 }

@@ -26,42 +26,67 @@ rootRoute.get(
 			docs: "https://flipagent.dev/docs",
 			ebay_compatible: false,
 			paths: [
-				// Listings: discovery (search + detail + batch)
-				"GET /v1/listings/search",
-				"GET /v1/listings/{itemId}",
-				"GET /v1/listings/get_items",
-				"GET /v1/listings/get_items_by_item_group",
-				// Sold: comparable-sales lookup
-				"GET /v1/sold/search",
-				// Orders: member checkout (Limited Release)
-				"POST /v1/orders/checkout/checkout_session/initiate",
-				"GET /v1/orders/checkout/checkout_session/{sessionId}",
-				"POST /v1/orders/checkout/checkout_session/{sessionId}/place_order",
-				"GET /v1/orders/checkout/purchase_order/{purchaseOrderId}",
-				// Orders: guest checkout (Limited Release)
-				"POST /v1/orders/guest/guest_checkout_session/initiate",
-				"GET /v1/orders/guest/guest_checkout_session/{sessionId}",
-				"POST /v1/orders/guest/guest_checkout_session/{sessionId}/place_order",
-				"GET /v1/orders/guest/guest_purchase_order/{purchaseOrderId}",
-				// Inventory: seller-side write (user OAuth)
-				"PUT|GET|DELETE /v1/inventory/inventory_item/{sku}",
-				"POST|GET|PUT|DELETE /v1/inventory/offer/{offerId}",
-				"POST /v1/inventory/offer/{offerId}/publish",
-				"POST /v1/inventory/location/{merchantLocationKey}",
-				// Fulfillment: shipping + tracking
-				"GET /v1/fulfillment/order",
-				"POST /v1/fulfillment/order/{orderId}/shipping_fulfillment",
-				// Finance: payouts + transactions
-				"GET /v1/finance/payout",
-				"GET /v1/finance/transaction",
-				// Markets: policies + taxonomy
-				"GET|POST /v1/markets/policies/payment_policy",
-				"GET|POST /v1/markets/policies/fulfillment_policy",
-				"GET|POST /v1/markets/policies/return_policy",
-				"GET /v1/markets/policies/privilege",
-				"GET /v1/markets/taxonomy/get_default_category_tree_id",
-				"GET /v1/markets/taxonomy/category_tree/{categoryTreeId}",
-				"GET /v1/markets/taxonomy/category_tree/{categoryTreeId}/get_item_aspects_for_category",
+				// Buy — Browse (sourcing reads)
+				"GET /v1/buy/browse/item_summary/search",
+				"GET /v1/buy/browse/item/{itemId}",
+				"GET /v1/buy/browse/item/get_items",
+				"GET /v1/buy/browse/item/get_items_by_item_group",
+				// Buy — Marketplace Insights (sold-comp lookup)
+				"GET /v1/buy/marketplace_insights/item_sales/search",
+				// Buy — Order (Limited Release; bridge-implemented for now)
+				"POST /v1/buy/order/checkout_session/initiate",
+				"GET /v1/buy/order/checkout_session/{sessionId}",
+				"POST /v1/buy/order/checkout_session/{sessionId}/place_order",
+				"GET /v1/buy/order/purchase_order/{purchaseOrderId}",
+				"POST /v1/buy/order/guest_checkout_session/initiate",
+				"GET /v1/buy/order/guest_checkout_session/{sessionId}",
+				"POST /v1/buy/order/guest_checkout_session/{sessionId}/place_order",
+				"GET /v1/buy/order/guest_purchase_order/{purchaseOrderId}",
+				// Sell — Inventory (seller-side write, user OAuth)
+				"PUT|GET|DELETE /v1/sell/inventory/inventory_item/{sku}",
+				"POST|GET|PUT|DELETE /v1/sell/inventory/offer/{offerId}",
+				"POST /v1/sell/inventory/offer/{offerId}/publish",
+				"POST /v1/sell/inventory/location/{merchantLocationKey}",
+				// Sell — Fulfillment (incoming orders, ship, refund)
+				"GET /v1/sell/fulfillment/order",
+				"POST /v1/sell/fulfillment/order/{orderId}/shipping_fulfillment",
+				// Sell — Finances (payouts)
+				"GET /v1/sell/finances/payout",
+				"GET /v1/sell/finances/transaction",
+				// Sell — Account (policies)
+				"GET|POST /v1/sell/account/payment_policy",
+				"GET|POST /v1/sell/account/fulfillment_policy",
+				"GET|POST /v1/sell/account/return_policy",
+				"GET /v1/sell/account/privilege",
+				// Sell — Marketing / Negotiation / Analytics / etc. (catch-all passthroughs)
+				"ALL /v1/sell/marketing/*",
+				"ALL /v1/sell/negotiation/*",
+				"ALL /v1/sell/analytics/*",
+				"ALL /v1/sell/compliance/*",
+				"ALL /v1/sell/recommendation/*",
+				"ALL /v1/sell/logistics/*",
+				"ALL /v1/sell/stores/*",
+				"ALL /v1/sell/feed/*",
+				"ALL /v1/sell/metadata/*",
+				// Commerce — taxonomy + catalog + identity
+				"GET /v1/commerce/taxonomy/get_default_category_tree_id",
+				"GET /v1/commerce/taxonomy/category_tree/{categoryTreeId}",
+				"GET /v1/commerce/taxonomy/category_tree/{categoryTreeId}/get_item_aspects_for_category",
+				"ALL /v1/commerce/catalog/*",
+				"GET /v1/commerce/identity/*",
+				"POST /v1/commerce/translation/translate",
+				// Post-order — returns / cases / cancellations
+				"ALL /v1/post-order/*",
+				// Trading XML wrappers (eBay has no REST equivalent)
+				"GET /v1/messages",
+				"POST /v1/messages/reply",
+				"GET /v1/best-offer",
+				"POST /v1/best-offer/respond",
+				"GET /v1/feedback",
+				"POST /v1/feedback/leave",
+				// flipagent: forwarder package ops (bridge-driven, used in buy + sell)
+				"POST /v1/forwarder/{provider}/refresh",
+				"GET /v1/forwarder/{provider}/jobs/{jobId}",
 				// flipagent: evaluate (single-listing judgment — Decisions pillar)
 				"POST /v1/evaluate",
 				"POST /v1/evaluate/signals",

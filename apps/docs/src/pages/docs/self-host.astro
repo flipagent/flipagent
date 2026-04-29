@@ -23,7 +23,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>.env</span></div>
 <pre><code>{`DATABASE_URL=postgres://user:pass@host:5432/flipagent`}</code></pre>
 				</div>
-				<p>That's enough for the scrape-only path: <code>/v1/listings/search</code>, <code>/v1/sold/search</code>, <code>/v1/listings/:itemId</code>, <code>/v1/research/*</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/ship/*</code>, <code>/v1/health</code>, <code>/v1/health/features</code>. Keys are issued by a CLI script. No GitHub OAuth, no Stripe, no eBay developer account needed.</p>
+				<p>That's enough for the scrape-only path: <code>/v1/buy/browse/item_summary/search</code>, <code>/v1/buy/marketplace_insights/item_sales/search</code>, <code>/v1/buy/browse/item/:itemId</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/research</code>, <code>/v1/ship/*</code>, <code>/v1/health</code>, <code>/v1/health/features</code>. Keys are issued by a CLI script. No GitHub OAuth, no Stripe, no eBay developer account needed.</p>
 
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>shell</span></div>
@@ -66,7 +66,7 @@ npm run --workspace @flipagent/api issue-key -- you@example.com pro`}</code></pr
 						<tr>
 							<td>Marketplace Insights REST <span style="opacity:0.6">(sold history)</span></td>
 							<td><code>EBAY_INSIGHTS_APPROVED=1</code> after eBay program approval</td>
-							<td><code>/v1/sold/*</code> falls back to the scraper (still works, slower + lossier)</td>
+							<td><code>/v1/buy/marketplace_insights/item_sales/*</code> falls back to the scraper (still works, slower + lossier)</td>
 						</tr>
 						<tr>
 							<td>Sign-in dashboard</td>
@@ -89,7 +89,7 @@ npm run --workspace @flipagent/api issue-key -- you@example.com pro`}</code></pr
 							<td>Self-hosting → no metering, billing isn't relevant</td>
 						</tr>
 						<tr>
-							<td>LLM comp matcher (<code>/v1/match</code>, <code>/v1/evaluate</code> upstream)</td>
+							<td>LLM comparable matcher (<code>/v1/match</code>, <code>/v1/evaluate</code> upstream)</td>
 							<td>One of <code>ANTHROPIC_API_KEY</code> / <code>OPENAI_API_KEY</code> / <code>GOOGLE_API_KEY</code></td>
 							<td><code>503 match_unavailable</code>. Search, sold history, ship, draft still work.</td>
 						</tr>
@@ -97,7 +97,7 @@ npm run --workspace @flipagent/api issue-key -- you@example.com pro`}</code></pr
 				</table>
 
 				<h2>LLM provider (for <code>/v1/match</code>)</h2>
-				<p>The comp matcher is the only feature that calls an LLM. It's provider-agnostic — pick whichever cloud you already have a key for. <code>LLM_PROVIDER</code> picks explicitly; otherwise the first key set wins (anthropic → openai → google).</p>
+				<p>The comparable matcher is the only feature that calls an LLM. It's provider-agnostic — pick whichever cloud you already have a key for. <code>LLM_PROVIDER</code> picks explicitly; otherwise the first key set wins (anthropic → openai → google).</p>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>.env (pick one)</span></div>
 <pre><code>{`# Anthropic Claude — https://console.anthropic.com/
@@ -115,7 +115,7 @@ GOOGLE_MODEL=gemini-3.1-flash-lite-preview   # default
 # Optional: explicit pick when more than one key is set
 LLM_PROVIDER=anthropic`}</code></pre>
 				</div>
-				<p>Self-hosters who don't care about LLM matching can skip this entirely — every other route works without it. <code>/v1/evaluate</code> still computes price thesis + verdict math from whatever comp pool you hand it; it's only worse if the pool is unfiltered.</p>
+				<p>Self-hosters who don't care about LLM matching can skip this entirely — every other route works without it. <code>/v1/evaluate</code> still computes the market summary + evaluation math from whatever comparable pool you hand it; it's only worse if the pool is unfiltered.</p>
 
 				<h2>Hit <code>/v1/health/features</code> to see what's wired</h2>
 				<p>Public, unauth, no DB hit. Self-host status page in one call:</p>
@@ -158,13 +158,13 @@ LLM_PROVIDER=anthropic`}</code></pre>
 						<tr><th>Route</th><th>Token</th><th>Needs connected seller</th></tr>
 					</thead>
 					<tbody>
-						<tr><td><code>/v1/listings/*</code> (Browse)</td><td>App</td><td>—</td></tr>
-						<tr><td><code>/v1/sold/*</code> (Insights, when approved)</td><td>App</td><td>—</td></tr>
-						<tr><td><code>/v1/markets/*</code> (Taxonomy)</td><td>App</td><td>—</td></tr>
-						<tr><td><code>/v1/inventory/*</code></td><td>User</td><td>Yes</td></tr>
-						<tr><td><code>/v1/fulfillment/*</code> (orders, shipments)</td><td>User</td><td>Yes</td></tr>
-						<tr><td><code>/v1/finance/*</code> (payouts)</td><td>User</td><td>Yes</td></tr>
-						<tr><td><code>/buy/order/v1/*</code> (when approved)</td><td>User</td><td>Yes</td></tr>
+						<tr><td><code>/v1/buy/browse/item/*</code> (Browse)</td><td>App</td><td>—</td></tr>
+						<tr><td><code>/v1/buy/marketplace_insights/item_sales/*</code> (Insights, when approved)</td><td>App</td><td>—</td></tr>
+						<tr><td><code>/v1/commerce/taxonomy/*</code></td><td>App</td><td>—</td></tr>
+						<tr><td><code>/v1/sell/inventory/*</code></td><td>User</td><td>Yes</td></tr>
+						<tr><td><code>/v1/sell/fulfillment/*</code> (orders, shipments)</td><td>User</td><td>Yes</td></tr>
+						<tr><td><code>/v1/sell/finances/*</code> (payouts)</td><td>User</td><td>Yes</td></tr>
+						<tr><td><code>/v1/buy/order/*</code> (when approved)</td><td>User</td><td>Yes</td></tr>
 					</tbody>
 				</table>
 				<p><code>EBAY_SCOPES</code> is the space-separated list flipagent asks each seller to consent to. The default covers every user-token route the API exposes:</p>
@@ -177,13 +177,13 @@ https://api.ebay.com/oauth/api_scope/sell.finances
 https://api.ebay.com/oauth/api_scope/sell.account
 https://api.ebay.com/oauth/api_scope/commerce.identity.readonly`}</code></pre>
 				</div>
-				<p>The <code>sell.*</code> scopes ship standard with any production keyset; no extra opt-in in the developer portal. Trim the list to narrow what sellers grant (e.g. drop <code>sell.finances</code> if you don't surface payouts); the matching <code>/v1/finance/*</code> calls will then 401 from eBay until the seller reconnects with the wider scope.</p>
+				<p>The <code>sell.*</code> scopes ship standard with any production keyset; no extra opt-in in the developer portal. Trim the list to narrow what sellers grant (e.g. drop <code>sell.finances</code> if you don't surface payouts); the matching <code>/v1/sell/finances/*</code> calls will then 401 from eBay until the seller reconnects with the wider scope.</p>
 
 				<h2>Marketplace Insights + Order API (eBay program approval)</h2>
 				<p>Two endpoints need additional eBay-side approval beyond the standard developer keyset:</p>
 				<ul>
-					<li><strong>Marketplace Insights</strong> (sold-listing history). Apply at developer.ebay.com → Marketplace Insights. Once granted, set <code>EBAY_INSIGHTS_APPROVED=1</code>: <code>/v1/sold/*</code> then hits the REST endpoint with the app token (faster, cleaner data, <code>source: "rest"</code>). Without approval flipagent silently falls back to the scraper, and <code>/v1/me/permissions</code> reports <code>marketplaceInsights: "scrape_fallback"</code>.</li>
-					<li><strong>Order API</strong> (Limited Release). Lets your authenticated buyer place purchases via REST. Apply at developer.ebay.com → Order API. Once eBay grants tenant approval, set <code>EBAY_ORDER_API_APPROVED=1</code>; until then <code>/v1/orders/checkout/*</code> returns 501.</li>
+					<li><strong>Marketplace Insights</strong> (sold-listing history). Apply at developer.ebay.com → Marketplace Insights. Once granted, set <code>EBAY_INSIGHTS_APPROVED=1</code>: <code>/v1/buy/marketplace_insights/item_sales/*</code> then hits the REST endpoint with the app token (faster, cleaner data, <code>source: "rest"</code>). Without approval flipagent silently falls back to the scraper, and <code>/v1/me/permissions</code> reports <code>marketplaceInsights: "scrape_fallback"</code>.</li>
+					<li><strong>Order API</strong> (Limited Release). Lets your authenticated buyer place purchases via REST. Apply at developer.ebay.com → Order API. Once eBay grants tenant approval, set <code>EBAY_ORDER_API_APPROVED=1</code>; until then <code>/v1/buy/order/checkout_session/initiate/*</code> returns 501.</li>
 				</ul>
 
 				<h2>Inspect a user's eBay scope tier</h2>

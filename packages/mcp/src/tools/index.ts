@@ -68,8 +68,9 @@ import {
 	planetExpressPackagesInput,
 } from "./forwarder-planetexpress.js";
 import { matchPoolDescription, matchPoolExecute, matchPoolInput } from "./match-pool.js";
+import { matchTraceDescription, matchTraceExecute, matchTraceInput } from "./match-trace.js";
 import { repriceListingDescription, repriceListingExecute, repriceListingInput } from "./reprice-listing.js";
-import { researchThesisDescription, researchThesisExecute, researchThesisInput } from "./research-thesis.js";
+import { researchSummaryDescription, researchSummaryExecute, researchSummaryInput } from "./research-summary.js";
 import { shipProvidersDescription, shipProvidersExecute, shipProvidersInput } from "./ship-providers.js";
 import { shipQuoteDescription, shipQuoteExecute, shipQuoteInput } from "./ship-quote.js";
 
@@ -172,21 +173,31 @@ export const tools: Tool[] = [
 		execute: ebayListPayoutsExecute,
 	},
 
-	// Research — market thesis (read-side feeder for every intelligence call)
+	// Research — market summary + recovery probability (read-side feeder for every intelligence call)
 	{
-		name: "research_thesis",
-		description: researchThesisDescription,
-		inputSchema: researchThesisInput,
-		execute: researchThesisExecute,
+		name: "research_summary",
+		description: researchSummaryDescription,
+		inputSchema: researchSummaryInput,
+		execute: researchSummaryExecute,
 	},
 
-	// Match — comp curation. Run BEFORE research_thesis / evaluate_listing
-	// to drop similar-but-different SKUs (correct median).
+	// Match — comparable curation. Run BEFORE research_summary / evaluate_listing
+	// to drop similar-but-different SKUs (correct median). Two modes:
+	// hosted (server LLM, default) and delegate (host LLM, returns prompt).
 	{
 		name: "match_pool",
 		description: matchPoolDescription,
 		inputSchema: matchPoolInput,
 		execute: matchPoolExecute,
+	},
+	// Calibration trace from delegate-mode match_pool. Anonymous, opt-out
+	// via FLIPAGENT_TELEMETRY=0. Only meaningful after match_pool
+	// returned mode:"delegate" and the host's LLM produced decisions.
+	{
+		name: "flipagent_match_trace",
+		description: matchTraceDescription,
+		inputSchema: matchTraceInput,
+		execute: matchTraceExecute,
 	},
 
 	// Evaluate — single-listing judgment (Decisions pillar)

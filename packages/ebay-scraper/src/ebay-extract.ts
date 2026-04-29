@@ -738,7 +738,7 @@ export function normalizeBuyingFormat(text: string | string[] | null | undefined
  * Source: eBay Marketplace Insights `condition` enum + Browse `conditionIds`
  * filter values. The display label is what shows up in `s-card__subtitle`
  * (e.g. `"Brand New"`, `"Pre-Owned"`); the id is what callers can pass
- * back into `/v1/listings/search?filter=conditionIds:{1000}`.
+ * back into `/v1/buy/browse/item_summary/search?filter=conditionIds:{1000}`.
  *
  * Ordered most-specific first so partial matches (e.g. "New (Other)")
  * don't get swallowed by "New".

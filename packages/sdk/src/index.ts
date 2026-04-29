@@ -8,7 +8,7 @@
  *       `finance`, `markets`
  *
  *   flipagent value-add (server-side, marketplace-agnostic):
- *     - `research` — market thesis (distribution + optimal list price)
+ *     - `research` — market summary (distribution + optimal list price)
  *     - `evaluate` — single-listing judgment   (Decisions pillar)
  *     - `discover` — rank deals across a search (Overnight pillar)
  *     - `ship`     — forwarder quote + catalog  (Operations pillar)
@@ -20,19 +20,20 @@
  *     - `http`     — typed get/post/put/delete for endpoints not yet wrapped
  */
 
+import { type BuyOrderClient, createBuyOrderClient } from "./buy-order.js";
 import { type CapabilitiesClient, createCapabilitiesClient } from "./capabilities.js";
 import { createDiscoverClient, type DiscoverClient } from "./discover.js";
 import { createDraftClient, type DraftClient } from "./draft.js";
 import { createEvaluateClient, type EvaluateClient } from "./evaluate.js";
 import { createExpensesClient, type ExpensesClient } from "./expenses.js";
 import { createFinanceClient, type FinanceClient } from "./finance.js";
+import { createForwarderClient, type ForwarderClient } from "./forwarder.js";
 import { createFulfillmentClient, type FulfillmentClient } from "./fulfillment.js";
 import { createHttp, type FlipagentHttp } from "./http.js";
 import { createInventoryClient, type InventoryClient } from "./inventory.js";
 import { createListingsClient, type ListingsClient } from "./listings.js";
 import { createMarketsClient, type MarketsClient } from "./markets.js";
 import { createMatchClient, type MatchClient } from "./match.js";
-import { createOrdersClient, type OrdersClient } from "./orders.js";
 import { createRepriceClient, type RepriceClient } from "./reprice.js";
 import { createResearchClient, type ResearchClient } from "./research.js";
 import { createShipClient, type ShipClient } from "./ship.js";
@@ -53,7 +54,9 @@ export interface FlipagentClient {
 	capabilities: CapabilitiesClient;
 	listings: ListingsClient;
 	sold: SoldClient;
-	orders: OrdersClient;
+	/** eBay Buy Order API — REST when approved, bridge fallback otherwise. */
+	buy: { order: BuyOrderClient };
+	forwarder: ForwarderClient;
 	inventory: InventoryClient;
 	fulfillment: FulfillmentClient;
 	finance: FinanceClient;
@@ -83,7 +86,8 @@ export function createFlipagentClient(opts: FlipagentClientOptions): FlipagentCl
 		capabilities: createCapabilitiesClient(http),
 		listings: createListingsClient(http),
 		sold: createSoldClient(http),
-		orders: createOrdersClient(http),
+		buy: { order: createBuyOrderClient(http) },
+		forwarder: createForwarderClient(http),
 		inventory: createInventoryClient(http),
 		fulfillment: createFulfillmentClient(http),
 		finance: createFinanceClient(http),
@@ -101,20 +105,22 @@ export function createFlipagentClient(opts: FlipagentClientOptions): FlipagentCl
 	};
 }
 
+export type { BuyOrderClient, QuickCheckoutInput } from "./buy-order.js";
 export type { CapabilitiesClient } from "./capabilities.js";
 export type { DiscoverClient } from "./discover.js";
 export type { DraftClient } from "./draft.js";
 export type { EvaluateClient } from "./evaluate.js";
 export type { ExpensesClient, ExpensesSummaryParams } from "./expenses.js";
 export type { FinanceClient } from "./finance.js";
+export type { ForwarderClient } from "./forwarder.js";
 export type { FulfillmentClient } from "./fulfillment.js";
 export type { FlipagentHttp, RequestMethod } from "./http.js";
 export { FlipagentApiError } from "./http.js";
 export type { InventoryClient } from "./inventory.js";
 export type { ListingSearchParams, ListingsClient } from "./listings.js";
 export type { MarketsClient, PoliciesClient, TaxonomyClient } from "./markets.js";
-export type { MatchClient } from "./match.js";
-export type { OrdersClient, WaitOptions } from "./orders.js";
+export type { MatchClient, MatchPoolResult } from "./match.js";
+export { isDelegateResponse } from "./match.js";
 export type { RepriceClient } from "./reprice.js";
 export type { ResearchClient } from "./research.js";
 export type { ShipClient, ShipProviderSummary, ShipProvidersResponse } from "./ship.js";

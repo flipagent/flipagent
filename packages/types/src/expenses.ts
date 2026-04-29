@@ -5,7 +5,7 @@
  * (packaging, supplies, off-platform ad spend).
  *
  * Sales / refunds / eBay fees stay in eBay's ledger — read via
- * `/v1/finance/*` (eBay Finances API mirror). A future
+ * `/v1/sell/finances/*` (eBay Finances API mirror). A future
  * `/v1/portfolio/pnl` endpoint will join the two server-side; for now
  * `/v1/expenses/summary` returns only the cost side.
  *

@@ -1,4 +1,4 @@
-import type { Listing, MarketStats, Signal } from "../types.js";
+import type { MarketStats, QuantListing, Signal } from "../types.js";
 
 /**
  * Primary signal. Active price meaningfully below the rolling sold median
@@ -10,7 +10,7 @@ import type { Listing, MarketStats, Signal } from "../types.js";
  * Caller may pass a custom `discountFloor` / `discountCeil`.
  */
 export function underMedian(
-	listing: Listing,
+	listing: QuantListing,
 	market: MarketStats,
 	options: { discountFloor?: number; discountCeil?: number } = {},
 ): Signal | null {

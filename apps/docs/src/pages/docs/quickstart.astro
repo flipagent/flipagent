@@ -37,7 +37,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<h2>2b. From any HTTP client</h2>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>shell</span></div>
-<pre><code>{`curl "https://api.flipagent.dev/v1/listings/search?q=canon%2050mm&limit=10" \\
+<pre><code>{`curl "https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon%2050mm&limit=10" \\
   -H "Authorization: Bearer fa_free_xxx"`}</code></pre>
 				</div>
 
@@ -54,26 +54,26 @@ console.log(results.itemSummaries?.length, "active listings");`}</code></pre>
 				</div>
 
 				<h2>3. Score the deals</h2>
-				<p>Server-side scoring runs on the API, so the math is identical regardless of language. Pass active listings and (optionally) sold comps; get back a ranked list:</p>
+				<p>Server-side scoring runs on the API, so the math is identical regardless of language. Pass active listings and (optionally) sold comparables; get back a ranked list:</p>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>node</span></div>
-<pre><code>{`// Pull sold comps for the same keyword
+<pre><code>{`// Pull sold comparables for the same keyword
 const sold = await client.sold.search({ q: "canon 50mm", limit: 50 });
 
-// Rank deals across the active search using the sold comps
+// Rank deals across the active search using the sold comparables
 const { deals } = await client.discover.deals({
   results,
-  opts: { comps: sold.itemSummaries, minNetCents: 2000 },
+  opts: { comparables: sold.itemSummaries, minNetCents: 2000 },
 });
 
 for (const d of deals) {
-  if (d.verdict.rating === "buy") console.log(d);
+  if (d.evaluation.rating === "buy") console.log(d);
 }
 
 // Or evaluate a single listing
-const verdict = await client.evaluate.listing({
+const evaluation = await client.evaluate.listing({
   item: results.itemSummaries[0],
-  opts: { comps: sold.itemSummaries },
+  opts: { comparables: sold.itemSummaries },
 });`}</code></pre>
 				</div>
 

@@ -6,7 +6,7 @@ import { mockSearch } from "../mock.js";
 export { BrowseSearchQuery as ebaySearchInput };
 
 export const ebaySearchDescription =
-	"Search active eBay listings via the unified flipagent surface. Calls GET /v1/listings/search at api.flipagent.dev. Returns the standard SearchPagedCollection envelope (eBay-shape).";
+	"Search active eBay listings via the unified flipagent surface. Calls GET /v1/buy/browse/item_summary/search at api.flipagent.dev. Returns the standard SearchPagedCollection envelope (eBay-shape).";
 
 export async function ebaySearchExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	if (config.mock) return mockSearch();
@@ -20,7 +20,7 @@ export async function ebaySearchExecute(config: Config, args: Record<string, unk
 			offset: args.offset as number | undefined,
 		});
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/listings/search");
+		const e = toApiCallError(err, "/v1/buy/browse/item_summary/search");
 		return {
 			error: "listings_search_failed",
 			status: e.status,

@@ -1,14 +1,14 @@
 /**
  * `client.evaluate.*` — single-listing judgment. flipagent's Decisions
  * pillar over HTTP. Math runs server-side so all language SDKs return
- * identical verdicts.
+ * identical evaluations.
  */
 
-import type { DealVerdict, EvaluateRequest, EvaluateSignalsRequest, EvaluateSignalsResponse } from "@flipagent/types";
+import type { EvaluateRequest, EvaluateSignalsRequest, EvaluateSignalsResponse, Evaluation } from "@flipagent/types";
 import type { FlipagentHttp } from "./http.js";
 
 export interface EvaluateClient {
-	listing(req: EvaluateRequest): Promise<DealVerdict>;
+	listing(req: EvaluateRequest): Promise<Evaluation>;
 	signals(req: EvaluateSignalsRequest): Promise<EvaluateSignalsResponse>;
 }
 

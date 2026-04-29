@@ -13,8 +13,8 @@ import type {
 	MatchResponse,
 	RankedDeal,
 	RecoveryResponse,
-	ThesisResponse,
-	Verdict,
+	MarketSummary,
+	Evaluation,
 } from "./types";
 
 export interface ApiResponse<T> {
@@ -97,13 +97,13 @@ function plan<T>(method: "GET" | "POST", path: string, body?: unknown): ApiPlan<
 
 export const playgroundApi = {
 	listingsSearch: (params: { q?: string; filter?: string; sort?: string; limit?: number; category_ids?: string }) =>
-		plan<BrowseSearchResponse>("GET", `/v1/listings/search${buildQuery(params)}`),
+		plan<BrowseSearchResponse>("GET", `/v1/buy/browse/item_summary/search${buildQuery(params)}`),
 
 	soldSearch: (params: { q: string; filter?: string; limit?: number }) =>
-		plan<BrowseSearchResponse>("GET", `/v1/sold/search${buildQuery(params)}`),
+		plan<BrowseSearchResponse>("GET", `/v1/buy/marketplace_insights/item_sales/search${buildQuery(params)}`),
 
 	itemDetail: (itemId: string) =>
-		plan<ItemDetail>("GET", `/v1/listings/${encodeURIComponent(itemId)}`),
+		plan<ItemDetail>("GET", `/v1/buy/browse/item/${encodeURIComponent(itemId)}`),
 
 	match: (req: {
 		candidate: ItemSummary;
@@ -111,11 +111,11 @@ export const playgroundApi = {
 		options?: { useImages?: boolean };
 	}) => plan<MatchResponse>("POST", "/v1/match", req),
 
-	research: (req: { comps: ItemSummary[]; asks?: ItemSummary[] }) =>
-		plan<ThesisResponse>("POST", "/v1/research/thesis", req),
+	researchSummary: (req: { comparables: ItemSummary[]; asks?: ItemSummary[] }) =>
+		plan<MarketSummary>("POST", "/v1/research/summary", req),
 
 	recovery: (req: {
-		comps: ItemSummary[];
+		comparables: ItemSummary[];
 		costBasisCents: number;
 		withinDays: number;
 		minNetCents?: number;
@@ -124,18 +124,18 @@ export const playgroundApi = {
 	evaluate: (req: {
 		item: ItemSummary | ItemDetail;
 		opts?: {
-			comps?: ItemSummary[];
+			comparables?: ItemSummary[];
 			asks?: ItemSummary[];
 			minNetCents?: number;
 			outboundShippingCents?: number;
 			maxDaysToSell?: number;
 		};
-	}) => plan<Verdict>("POST", "/v1/evaluate", req),
+	}) => plan<Evaluation>("POST", "/v1/evaluate", req),
 
 	discover: (req: {
 		results: BrowseSearchResponse;
 		opts?: {
-			comps?: ItemSummary[];
+			comparables?: ItemSummary[];
 			minNetCents?: number;
 			maxDaysToSell?: number;
 			outboundShippingCents?: number;

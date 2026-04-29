@@ -15,7 +15,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { PROVIDERS } from "../../services/forwarder/index.js";
-import { landedCost } from "../../services/scoring/index.js";
+import { landedCost } from "../../services/ship/landed-cost.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const shipRoute = new Hono();

@@ -1,5 +1,5 @@
 /**
- * LLM provider abstraction for the comp matcher. The matcher only needs
+ * LLM provider abstraction for the comparable matcher. The matcher only needs
  * one operation: send a text + image multimodal message and get text
  * back. Each provider adapter normalises its SDK to that shape.
  *

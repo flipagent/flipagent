@@ -1,4 +1,4 @@
-import type { Listing, Signal } from "../types.js";
+import type { QuantListing, Signal } from "../types.js";
 
 /**
  * Heuristic for under-discovered listings. Titles that are all-caps,
@@ -6,7 +6,7 @@ import type { Listing, Signal } from "../types.js";
  * marketplace search — they sit at the bottom of the price distribution
  * because few buyers ever see them.
  */
-export function poorTitle(listing: Listing): Signal | null {
+export function poorTitle(listing: QuantListing): Signal | null {
 	const title = listing.title.trim();
 	const words = title.split(/\s+/).filter((w) => w.length > 0);
 	const allCaps = /^[A-Z\s\d!?.]+$/.test(title) && title.length >= 12;

@@ -4,7 +4,7 @@
 [flipagent](https://flipagent.dev) hosted API. Two subpaths:
 
 - `@flipagent/types` — schemas for flipagent's own `/v1/*` surface
-  (`evaluate`, `discover`, `ship`, `research`, `match`, `draft`, `reprice`,
+  (`evaluate`, `discover`, `ship`, `market`, `match`, `draft`, `reprice`,
   `expenses`, plus errors, tier, billing, keys, takedown, health,
   capabilities).
 - `@flipagent/types/ebay` — schemas mirroring eBay REST shapes —

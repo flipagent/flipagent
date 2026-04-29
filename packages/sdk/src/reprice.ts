@@ -1,6 +1,6 @@
 /**
  * `client.reprice.*` — decide hold/drop/delist for a sitting listing.
- * Pure compute over the supplied market thesis + the listing's current
+ * Pure compute over the supplied market summary + the listing's current
  * price + listed-at timestamp.
  */
 

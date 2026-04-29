@@ -4,12 +4,12 @@
  * and reacts based on which page we landed on. The user does every click
  * themselves — flipagent only validates, annotates, and records.
  *
- * Why no auto-click: eBay's Akamai layer flags synthetic clicks (no
- * mousemove, instant timing, no realistic event sequence) as bot traffic
- * and forces step-up auth. Real human clicks are indistinguishable from
- * any other normal use, so the buy flow stays in the user's hands. The
- * agent's value is BEFORE the click (find item, evaluate, queue) and
- * AFTER (record, reconcile, P&L) — the click itself is a 1-second human
+ * Why no auto-click: eBay's robots.txt is explicit — "Checkouts are
+ * strictly for human users… any end-to-end flow that attempts to
+ * place orders without human review is strictly prohibited." The
+ * bridge transport is built around that requirement. The agent's
+ * value is BEFORE the click (find item, evaluate, queue) and AFTER
+ * (record, reconcile, P&L); the click itself is a 1-second human
  * commit moment, not the work.
  *
  * State machine (driven by URL):

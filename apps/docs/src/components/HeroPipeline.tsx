@@ -1,12 +1,12 @@
 /**
  * Landing-hero pipeline. Five outer tabs (Discover · Evaluate · Buy ·
- * Sell · Ship) wrapped in the same `ComposeCard` shell as the
+ * List · Ship) wrapped in the same `ComposeCard` shell as the
  * `/dashboard` playground. Discover and Evaluate render the real
  * playground panels — when the visitor is signed in they hit the live
  * API; when logged out the panels run a canned mock pipeline that
  * traces and renders identically.
  *
- * Buy / Sell / Ship are landing-only scripted demos (the real
+ * Buy / List / Ship are landing-only scripted demos (the real
  * bridge/forwarder flows live in the agent / extension). They reuse
  * the same primitives — ComposeInput, ComposeFilters with FilterPills,
  * ComposeOutput, Trace, and `pg-result-*` classes — so the five tabs
@@ -32,7 +32,7 @@ import { initialSteps } from "./playground/pipelines";
 import { Trace } from "./playground/Trace";
 import type { Step } from "./playground/types";
 
-type TabId = "discover" | "evaluate" | "buy" | "sell" | "ship";
+type TabId = "discover" | "evaluate" | "buy" | "list" | "ship";
 
 const ITEM_PHOTO = "/demo/canon-50.jpg";
 const ITEM_TITLE = "Canon EF 50mm f/1.8 STM · used";
@@ -60,7 +60,7 @@ const IconBuy = (
 		<circle cx="18" cy="21" r="1.2" />
 	</svg>
 );
-const IconSell = (
+const IconList = (
 	<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 		<path d="M21 11V5a2 2 0 0 0-2-2h-6L3 13l8 8 10-10z" />
 		<circle cx="8" cy="8" r="1.4" />
@@ -126,7 +126,7 @@ const TABS: ReadonlyArray<ComposeTab<TabId>> = [
 	{ id: "discover", label: "Discover", icon: IconSearch },
 	{ id: "evaluate", label: "Evaluate", icon: IconGauge },
 	{ id: "buy", label: "Buy", icon: IconBuy },
-	{ id: "sell", label: "Sell", icon: IconSell },
+	{ id: "list", label: "List", icon: IconList },
 	{ id: "ship", label: "Ship", icon: IconShip },
 ];
 
@@ -160,7 +160,7 @@ export default function HeroPipeline() {
 		return <PlaygroundEvaluate tabsProps={tabsProps} mockMode={mockMode} seed={evaluateSeed} />;
 	}
 	if (active === "buy") return <BuyStage tabsProps={tabsProps} />;
-	if (active === "sell") return <SellStage tabsProps={tabsProps} />;
+	if (active === "list") return <ListStage tabsProps={tabsProps} />;
 	return <ShipStage tabsProps={tabsProps} />;
 }
 
@@ -429,7 +429,7 @@ function BuyStage({ tabsProps }: { tabsProps: TabsProps }) {
 			{
 				key: "detail",
 				label: "Look up the listing",
-				call: { method: "GET", path: `/v1/listings/${encodeURIComponent(ITEM_ID)}` },
+				call: { method: "GET", path: `/v1/buy/browse/item/${encodeURIComponent(ITEM_ID)}` },
 				result: {
 					itemId: ITEM_ID,
 					title: ITEM_TITLE,
@@ -451,7 +451,7 @@ function BuyStage({ tabsProps }: { tabsProps: TabsProps }) {
 			{
 				key: "offer",
 				label: "Place offer (auto-accept)",
-				call: { method: "POST", path: "/v1/orders" },
+				call: { method: "POST", path: "/v1/sell/fulfillment/order" },
 				result: {
 					orderId: "ord_buy_8x21q",
 					status: "submitted",
@@ -463,7 +463,7 @@ function BuyStage({ tabsProps }: { tabsProps: TabsProps }) {
 			{
 				key: "payment",
 				label: "Confirm payment",
-				call: { method: "POST", path: "/v1/finance/payments" },
+				call: { method: "POST", path: "/v1/sell/finances/payments" },
 				result: {
 					paymentId: "pay_ftq42",
 					chargedCents: 4000,
@@ -566,7 +566,7 @@ function BuyStage({ tabsProps }: { tabsProps: TabsProps }) {
 	);
 }
 
-/* ----------------------------- sell stage ----------------------------- */
+/* ----------------------------- list stage ----------------------------- */
 
 const MARKETPLACE_OPTIONS: ReadonlyArray<SelectOption<string>> = [
 	{ value: "ebay_us", label: "eBay US" },
@@ -588,30 +588,19 @@ const PHOTOS_OPTIONS: ReadonlyArray<SelectOption<string>> = [
 
 const LIST_AT_CENTS: Record<string, number> = { median: 8700, p25: 6900, p75: 10400 };
 
-function SellStage({ tabsProps }: { tabsProps: TabsProps }) {
+function ListStage({ tabsProps }: { tabsProps: TabsProps }) {
 	const [marketplace, setMarketplace] = useState("ebay_us");
 	const [listAt, setListAt] = useState("median");
 	const [photos, setPhotos] = useState("forwarder");
-	const [input, setInput] = useState("List the Canon at market once it lands at the forwarder.");
+	const [input, setInput] = useState("List the Canon at the market median price.");
 
 	const script = useMemo<ScriptedStep[]>(() => {
 		const priceCents = LIST_AT_CENTS[listAt] ?? 8700;
 		return [
 			{
-				key: "intake",
-				label: "Forwarder intake",
-				call: { method: "GET", path: "/v1/ship/inventory?status=received" },
-				result: {
-					inventoryId: "inv_canon_50_001",
-					receivedAt: "2026-04-30T13:11Z",
-					condition: "USED_GOOD",
-					photos: photos === "forwarder" ? 8 : photos === "self" ? 0 : 8,
-				},
-			},
-			{
 				key: "sold",
 				label: "Find recent sales",
-				call: { method: "GET", path: "/v1/sold/search?q=canon+ef+50mm+1.8&limit=200" },
+				call: { method: "GET", path: "/v1/buy/marketplace_insights/item_sales/search?q=canon+ef+50mm+1.8&limit=200" },
 				result: {
 					itemSales: [],
 					total: 247,
@@ -619,11 +608,11 @@ function SellStage({ tabsProps }: { tabsProps: TabsProps }) {
 				},
 			},
 			{
-				key: "thesis",
+				key: "marketSummary",
 				label: "Calculate market price",
-				call: { method: "POST", path: "/v1/research/thesis" },
+				call: { method: "POST", path: "/v1/research/summary" },
 				result: {
-					listPriceAdvice: {
+					listPriceRecommendation: {
 						listPriceCents: priceCents,
 						sellProb14d: listAt === "p25" ? 0.78 : listAt === "p75" ? 0.21 : 0.52,
 						expectedDaysToSell: listAt === "p25" ? 7 : listAt === "p75" ? 32 : 14,
@@ -633,7 +622,7 @@ function SellStage({ tabsProps }: { tabsProps: TabsProps }) {
 			{
 				key: "publish",
 				label: "Publish listing",
-				call: { method: "POST", path: "/v1/listings" },
+				call: { method: "POST", path: "/v1/sell/inventory/inventory_item/{sku}" },
 				result: {
 					listingId: "lst_d24fa",
 					marketplace,
@@ -646,18 +635,6 @@ function SellStage({ tabsProps }: { tabsProps: TabsProps }) {
 					priceCents,
 				},
 			},
-			{
-				key: "sold_event",
-				label: "Sale event received",
-				call: { method: "POST", path: "/v1/webhooks/marketplace" },
-				result: {
-					event: "order.paid",
-					orderId: "ord_1f9c",
-					buyerLocation: { country: "US", state: "NJ" },
-					salePriceCents: priceCents,
-					paidAt: "2026-04-26T18:14Z",
-				},
-			},
 		];
 	}, [marketplace, listAt, photos]);
 
@@ -665,22 +642,20 @@ function SellStage({ tabsProps }: { tabsProps: TabsProps }) {
 
 	const priceCents = LIST_AT_CENTS[listAt] ?? 8700;
 	const feeCents = Math.round(priceCents * 0.1325);
-	const intakeCents = 400;
 	const costCents = 4000;
-	const netCents = priceCents - feeCents - intakeCents - costCents;
-	const roiPct = Math.round((netCents / costCents) * 100);
+	const projectedNetCents = priceCents - feeCents - costCents;
+	const roiPct = Math.round((projectedNetCents / costCents) * 100);
+	const sellThroughPct = listAt === "p25" ? 78 : listAt === "p75" ? 21 : 52;
+	const expectedDays = listAt === "p25" ? 7 : listAt === "p75" ? 32 : 14;
 
 	const facts: FactRow[] = [
 		{ label: "Listed at", value: `$${(priceCents / 100).toFixed(2)}`, mono: true, aside: listAt === "median" ? "median" : listAt === "p25" ? "p25 (fast)" : "p75 (patient)" },
 		{ label: "Marketplace", value: MARKETPLACE_OPTIONS.find((o) => o.value === marketplace)?.label ?? "eBay US" },
 		{ label: "Photos", value: PHOTOS_OPTIONS.find((o) => o.value === photos)?.label ?? "Forwarder" },
-		{ label: "Engagement", value: "41 watchers · 2 questions" },
-		{ label: "Sold to", value: "Newark, NJ" },
-		{ label: "Sale price", value: `$${(priceCents / 100).toFixed(2)}`, mono: true },
-		{ label: "eBay fees", value: `−$${(feeCents / 100).toFixed(2)}`, mono: true, aside: "13.25%" },
-		{ label: "Forwarder", value: `−$${(intakeCents / 100).toFixed(2)}`, mono: true, aside: "intake/repack" },
+		{ label: "Sell-through (14d)", value: `${sellThroughPct}%`, aside: `${expectedDays}d expected` },
+		{ label: "Expected eBay fees", value: `−$${(feeCents / 100).toFixed(2)}`, mono: true, aside: "13.25%" },
 		{ label: "Cost basis", value: `−$${(costCents / 100).toFixed(2)}`, mono: true },
-		{ label: "Net", value: `+$${(netCents / 100).toFixed(2)}`, mono: true, tone: "good", aside: `${roiPct}% on cost` },
+		{ label: "Projected net", value: `+$${(projectedNetCents / 100).toFixed(2)}`, mono: true, tone: "good", aside: `${roiPct}% on cost` },
 	];
 
 	return (
@@ -731,19 +706,19 @@ function SellStage({ tabsProps }: { tabsProps: TabsProps }) {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.25 }}
 						>
-							<ItemHero sub={`listed $${(priceCents / 100).toFixed(0)} · 247 comps`} />
+							<ItemHero sub={`listed $${(priceCents / 100).toFixed(0)} · 247 comparables`} />
 							<Facts rows={facts} />
 							<Recommendation
-								prefix="Outcome"
-								rating={`NET +$${(netCents / 100).toFixed(0)}`}
+								prefix="Listed"
+								rating={`LIVE · PROJ +$${(projectedNetCents / 100).toFixed(0)}`}
 								tone="good"
 								lines={[
 									listAt === "p25"
-										? "Priced at p25 and sold within 7 days as expected."
+										? `Priced at p25 — projects ${sellThroughPct}% sell-through in ${expectedDays}d.`
 										: listAt === "p75"
-											? "Priced at p75; patient strategy paid off after 32 days."
-											: "Priced at the median and sold within 14 days.",
-									`Reconciled to ${roiPct}% return on cost basis.`,
+											? `Priced at p75 — patient strategy, ${sellThroughPct}% sell-through over ${expectedDays}d.`
+											: `Priced at the median — ${sellThroughPct}% sell-through projected in ${expectedDays}d.`,
+									`Projects ${roiPct}% return on cost basis at this price.`,
 								]}
 							/>
 							<Footer payload={stage.payload} steps={stage.steps} />

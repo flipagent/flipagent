@@ -4,7 +4,7 @@ import { belowAsks } from "../../../src/services/quant/signals/competition.js";
 import { endingSoonLowWatchers } from "../../../src/services/quant/signals/ending-soon.js";
 import { poorTitle } from "../../../src/services/quant/signals/poor-title.js";
 import { underMedian } from "../../../src/services/quant/signals/under-median.js";
-import type { Listing, MarketStats } from "../../../src/services/quant/types.js";
+import type { MarketStats, QuantListing } from "../../../src/services/quant/types.js";
 
 const market: MarketStats = {
 	keyword: "canon ef 50mm",
@@ -20,7 +20,7 @@ const market: MarketStats = {
 	asOf: "2026-04-25T00:00:00Z",
 };
 
-const baseListing: Listing = {
+const baseQuantListing: QuantListing = {
 	itemId: "1",
 	title: "Canon EF 50mm f/1.8 STM Lens — excellent condition with caps and box",
 	url: "https://www.ebay.com/itm/1",
@@ -30,13 +30,13 @@ const baseListing: Listing = {
 
 describe("underMedian", () => {
 	it("fires for listings under the median", () => {
-		const sig = underMedian(baseListing, market);
+		const sig = underMedian(baseQuantListing, market);
 		expect(sig?.kind).toBe("under_median");
 		expect(sig?.strength).toBeGreaterThan(0);
 	});
 
 	it("does not fire when above median", () => {
-		const expensive = { ...baseListing, priceCents: 12_000 };
+		const expensive = { ...baseQuantListing, priceCents: 12_000 };
 		expect(underMedian(expensive, market)).toBeNull();
 	});
 });
@@ -44,8 +44,8 @@ describe("underMedian", () => {
 describe("endingSoonLowWatchers", () => {
 	it("fires for AUCTION ending in <1h with no watchers", () => {
 		const now = new Date("2026-04-25T12:00:00Z");
-		const listing: Listing = {
-			...baseListing,
+		const listing: QuantListing = {
+			...baseQuantListing,
 			buyingFormat: "AUCTION",
 			endTime: "2026-04-25T12:30:00Z",
 			watchCount: 0,
@@ -57,8 +57,8 @@ describe("endingSoonLowWatchers", () => {
 
 	it("does not fire when bids are present", () => {
 		const now = new Date("2026-04-25T12:00:00Z");
-		const listing: Listing = {
-			...baseListing,
+		const listing: QuantListing = {
+			...baseQuantListing,
 			buyingFormat: "AUCTION",
 			endTime: "2026-04-25T12:30:00Z",
 			bidCount: 2,
@@ -82,7 +82,7 @@ describe("generateBrandTypos", () => {
 
 describe("brandTypo", () => {
 	it("matches title with misspelled brand", () => {
-		const listing = { ...baseListing, title: "Cannon 50mm 1.8 STM lens box" };
+		const listing = { ...baseQuantListing, title: "Cannon 50mm 1.8 STM lens box" };
 		const sig = brandTypo(listing, "Canon");
 		expect(sig?.kind).toBe("brand_typo");
 	});
@@ -90,7 +90,7 @@ describe("brandTypo", () => {
 
 describe("poorTitle", () => {
 	it("flags ALL CAPS short titles", () => {
-		const listing = { ...baseListing, title: "CANON LENS L@@K" };
+		const listing = { ...baseQuantListing, title: "CANON LENS L@@K" };
 		const sig = poorTitle(listing);
 		expect(sig?.kind).toBe("poor_title");
 	});
@@ -110,18 +110,18 @@ describe("belowAsks", () => {
 	};
 
 	it("fires when listing price ≤ p25 of active asks", () => {
-		const cheap: Listing = { ...baseListing, priceCents: 8_000 };
+		const cheap: QuantListing = { ...baseQuantListing, priceCents: 8_000 };
 		const sig = belowAsks(cheap, marketWithAsks);
 		expect(sig?.kind).toBe("below_asks");
 		expect(sig?.strength).toBeGreaterThan(0);
 	});
 
 	it("does not fire when above asks p25", () => {
-		const market_priced = { ...baseListing, priceCents: 10_500 };
+		const market_priced = { ...baseQuantListing, priceCents: 10_500 };
 		expect(belowAsks(market_priced, marketWithAsks)).toBeNull();
 	});
 
 	it("returns null when market has no asks", () => {
-		expect(belowAsks(baseListing, market)).toBeNull();
+		expect(belowAsks(baseQuantListing, market)).toBeNull();
 	});
 });

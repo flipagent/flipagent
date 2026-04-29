@@ -9,6 +9,7 @@ import {
 	pgTable,
 	text,
 	timestamp,
+	unique,
 	uniqueIndex,
 	uuid,
 } from "drizzle-orm/pg-core";
@@ -33,6 +34,8 @@ export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", [
 	"expired",
 ]);
 export const webhookDeliveryStatusEnum = pgEnum("webhook_delivery_status", ["pending", "delivered", "failed"]);
+export const watchlistCadenceEnum = pgEnum("watchlist_cadence", ["hourly", "every_6h", "daily"]);
+export const dealQueueStatusEnum = pgEnum("deal_queue_status", ["pending", "approved", "dismissed", "expired"]);
 
 /**
  * Better-Auth canonical tables. Names are `user`/`session`/`account`/`verification`
@@ -239,38 +242,6 @@ export const proxyResponseCache = pgTable(
 );
 
 /**
- * Per-listing time-to-sell cache. Sold-search returns itemId + soldAt
- * but not the listing's start date — that lives only on the listing
- * detail page (Browse `itemCreationDate` / our scraper's SEMANTIC_DATA
- * extraction). This table caches the duration so that subsequent
- * `summarizeMarket` calls for the same SKU can populate
- * `meanDaysToSell` without re-scraping.
- *
- * Population is best-effort + lazy: detail fetches for cache-miss
- * itemIds populate rows here as they complete. Repeat calls then see
- * filled cache.
- *
- * `fetchAttempts` lets the worker stop retrying after N failures
- * (typically 3) — some itemIds get permanently soft-blocked by eBay.
- */
-export const listingDurations = pgTable(
-	"listing_durations",
-	{
-		itemId: text("item_id").primaryKey(),
-		listedAt: timestamp("listed_at", { withTimezone: true }),
-		soldAt: timestamp("sold_at", { withTimezone: true }),
-		/** soldAt − listedAt in days. Null until both timestamps captured. */
-		durationDays: integer("duration_days_x100"),
-		fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
-		fetchAttempts: integer("fetch_attempts").notNull().default(0),
-		fetchFailed: boolean("fetch_failed").notNull().default(false),
-	},
-	(t) => ({
-		fetchedAtIdx: index("listing_durations_fetched_at_idx").on(t.fetchedAt),
-	}),
-);
-
-/**
  * Operator opt-out requests for the eBay-compat proxy. ToS hygiene.
  * Sellers (or anyone else) can ask us to stop serving cached / scraped
  * data for a specific itemId. Status starts pending; manual review
@@ -290,6 +261,242 @@ export const takedownRequests = pgTable(
 	(t) => ({
 		itemIdx: index("takedown_item_idx").on(t.itemId),
 		statusIdx: index("takedown_status_idx").on(t.status),
+	}),
+);
+
+/**
+ * Per-listing observation archive. Each row is one snapshot of an item
+ * captured during a request — title, condition, price, seller, image
+ * URL, aspects — plus the canonical `itemWebUrl` for ToS-compliant
+ * attribution. Distinct from `proxyResponseCache` (short-TTL bulk
+ * payload, dropped at TTL): observations persist long-term as time-
+ * series data for the historical comparable depth + matcher fingerprint
+ * + cross-user reputation use cases. Self-host turns this off via
+ * `OBSERVATION_ENABLED=0`; hosted runs always-on.
+ *
+ * ToS guards baked in:
+ *   - `itemWebUrl` is NOT NULL — every read joins back to the source.
+ *   - `imageUrl` stores eBay's CDN URL only (no binary mirroring).
+ *   - `takedownAt` flags rows that need to be hidden from queries when
+ *     a seller opts out via `/v1/takedown`. Rows aren't deleted
+ *     (audit trail), just filtered.
+ *
+ * Index strategy: lookups by (marketplace, legacyItemId) for per-listing
+ * history, by (categoryId, observedAt) for category-level analytics,
+ * by sellerUsername for reputation queries.
+ */
+export const listingObservations = pgTable(
+	"listing_observations",
+	{
+		id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
+		marketplace: text("marketplace").notNull().default("ebay"),
+		legacyItemId: text("legacy_item_id").notNull(),
+		itemId: text("item_id"),
+		observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+		sourceQueryHash: text("source_query_hash"),
+		// Attribution — every archive read includes this; never null.
+		itemWebUrl: text("item_web_url").notNull(),
+		// Listing snapshot fields.
+		title: text("title"),
+		condition: text("condition"),
+		conditionId: text("condition_id"),
+		priceCents: integer("price_cents"),
+		currency: text("currency").default("USD"),
+		shippingCents: integer("shipping_cents"),
+		lastSoldPriceCents: integer("last_sold_price_cents"),
+		lastSoldDate: timestamp("last_sold_date", { withTimezone: true }),
+		sellerUsername: text("seller_username"),
+		sellerFeedbackScore: integer("seller_feedback_score"),
+		sellerFeedbackPercentage: text("seller_feedback_percentage"),
+		categoryId: text("category_id"),
+		categoryPath: text("category_path"),
+		// eBay CDN URL only, no binary mirror.
+		imageUrl: text("image_url"),
+		// Structured aspects (Brand, Color, Size, Style Code, …).
+		aspects: jsonb("aspects"),
+		// Listing lifecycle dates — drives hazard model duration math.
+		itemCreationDate: timestamp("item_creation_date", { withTimezone: true }),
+		itemEndDate: timestamp("item_end_date", { withTimezone: true }),
+		// Takedown flag — non-null hides row from all archive queries.
+		takedownAt: timestamp("takedown_at", { withTimezone: true }),
+	},
+	(t) => ({
+		legacyIdx: index("listing_obs_legacy_idx").on(t.marketplace, t.legacyItemId, t.observedAt),
+		categoryIdx: index("listing_obs_category_idx").on(t.categoryId, t.observedAt),
+		sellerIdx: index("listing_obs_seller_idx").on(t.sellerUsername, t.observedAt),
+		takedownIdx: index("listing_obs_takedown_idx").on(t.takedownAt),
+		soldDateIdx: index("listing_obs_sold_date_idx").on(t.lastSoldDate),
+	}),
+);
+
+/**
+ * Per-category fitted elasticity (β). Nightly worker regresses observed
+ * duration vs price-z over `listing_observations`; result lands here.
+ * `categoryBeta()` reads from this table when present, falls back to the
+ * hardcoded map. Hosted-only: self-host has no observations to fit, stays
+ * on defaults — but the hosted version's recommendations grow more
+ * accurate with every additional row of data.
+ */
+export const categoryCalibration = pgTable("category_calibration", {
+	categoryId: text("category_id").primaryKey(),
+	betaEstimate: text("beta_estimate").notNull(), // numeric stored as text — drizzle doesn't have a numeric type that round-trips well; toFloat at read site
+	nObservations: integer("n_observations").notNull(),
+	fitQuality: text("fit_quality"),
+	lastFitAt: timestamp("last_fit_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Anonymized query frequency by hour × category × query-hash. Drives the
+ * "trending" surface (`/v1/trends/categories`) without storing user query
+ * content as text — `queryHash` is a stable hash of the keyword set, so
+ * we capture frequency / pulse without holding identifiable strings.
+ */
+export const queryPulse = pgTable(
+	"query_pulse",
+	{
+		hourBucket: timestamp("hour_bucket", { withTimezone: true }).notNull(),
+		categoryId: text("category_id").notNull().default(""),
+		queryHash: text("query_hash").notNull().default(""),
+		queryCount: integer("query_count").notNull().default(0),
+	},
+	(t) => ({
+		pk: uniqueIndex("query_pulse_pkey").on(t.hourBucket, t.categoryId, t.queryHash),
+		categoryIdx: index("query_pulse_category_idx").on(t.categoryId, t.hourBucket),
+	}),
+);
+
+/**
+ * Per-pair match decision cache. Pass-2 of the LLM matcher consults
+ * `(candidateId, itemId)` here before paying for inference — same pair
+ * = same answer most of the time. TTL 30 days because eBay listings
+ * expire and seller framing shifts; older decisions go stale and are
+ * re-evaluated when next encountered.
+ */
+export const matchDecisions = pgTable(
+	"match_decisions",
+	{
+		candidateId: text("candidate_id").notNull(),
+		itemId: text("item_id").notNull(),
+		decision: text("decision").notNull(),
+		reason: text("reason"),
+		decidedAt: timestamp("decided_at", { withTimezone: true }).notNull().defaultNow(),
+		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+	},
+	(t) => ({
+		pk: uniqueIndex("match_decisions_pkey").on(t.candidateId, t.itemId),
+		expiresIdx: index("match_decisions_expires_idx").on(t.expiresAt),
+	}),
+);
+
+/**
+ * Calibration traces from delegate-mode `/v1/match` callers. Two-row
+ * lifecycle:
+ *
+ *   - Row created at request time (`status='pending'`) with the
+ *     candidate + pool snapshot. Lets `/v1/traces/match` resolve the
+ *     trace by id without the caller re-uploading the pool.
+ *   - Row finalised at trace-post time (`status='completed'`) with
+ *     the host-LLM decisions merged into `decisions`.
+ *
+ * We do NOT store an `apiKeyId` link — only a SHA-256 of the key
+ * prefix for rate-limit accounting. Combined with opt-out via
+ * `FLIPAGENT_TELEMETRY=0`, this matches the OSS norm (Homebrew,
+ * Next.js, Astro): anonymised, opt-out, useful-but-non-identifying.
+ */
+export const matchTraces = pgTable(
+	"match_traces",
+	{
+		traceId: uuid("trace_id").primaryKey(),
+		candidateId: text("candidate_id").notNull(),
+		poolItemIds: jsonb("pool_item_ids").notNull(),
+		// Snapshot of the prompt-side context. Compact JSON with title /
+		// condition / price / image url per item — enough to re-render
+		// the prompt for offline replay, not enough to be a redistribution
+		// concern (no descriptions, no seller details).
+		candidateSnapshot: jsonb("candidate_snapshot").notNull(),
+		poolSnapshot: jsonb("pool_snapshot").notNull(),
+		useImages: boolean("use_images").notNull().default(true),
+		status: text("status").notNull().default("pending"),
+		decisions: jsonb("decisions"),
+		llmModel: text("llm_model"),
+		clientVersion: text("client_version"),
+		// SHA-256 of the API key plaintext, prefixed and truncated. Used
+		// for per-key rate-limit accounting on /v1/traces/match without
+		// linking traces to user identity.
+		apiKeyHashPrefix: text("api_key_hash_prefix"),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		completedAt: timestamp("completed_at", { withTimezone: true }),
+	},
+	(t) => ({
+		statusIdx: index("match_traces_status_idx").on(t.status),
+		createdIdx: index("match_traces_created_idx").on(t.createdAt),
+	}),
+);
+
+/**
+ * Saved sweep — `criteria` mirrors the `DiscoverInputs` shape the
+ * playground submits. The scheduler picks `enabled=true` rows whose
+ * `last_run_at` exceeds their cadence interval, runs Discover, and
+ * snapshots qualifying deals into `deal_queue`. Cadence is enum to
+ * keep the loop arithmetic simple — pgcron-style cron expressions
+ * are overkill for v1's three buckets.
+ */
+export const watchlists = pgTable(
+	"watchlists",
+	{
+		id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+		apiKeyId: uuid("api_key_id")
+			.notNull()
+			.references(() => apiKeys.id, { onDelete: "cascade" }),
+		name: text("name").notNull(),
+		criteria: jsonb("criteria").notNull(),
+		cadence: watchlistCadenceEnum("cadence").notNull().default("daily"),
+		enabled: boolean("enabled").notNull().default(true),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+		lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+		lastRunError: text("last_run_error"),
+	},
+	(t) => ({
+		ownerIdx: index("watchlists_owner_idx").on(t.apiKeyId),
+	}),
+);
+
+/**
+ * One row per scheduled deal. Snapshots both the listing data and the
+ * evaluation at scan time so a later approval keeps the original numbers
+ * (re-evaluating could surface a different recommendation by the time
+ * the user looks). Uniqueness on (watchlist, item, status) prevents
+ * duplicate pending rows but allows a re-queue after dismiss/expire.
+ */
+export const dealQueue = pgTable(
+	"deal_queue",
+	{
+		id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+		watchlistId: uuid("watchlist_id")
+			.notNull()
+			.references(() => watchlists.id, { onDelete: "cascade" }),
+		apiKeyId: uuid("api_key_id")
+			.notNull()
+			.references(() => apiKeys.id, { onDelete: "cascade" }),
+		legacyItemId: text("legacy_item_id").notNull(),
+		itemSnapshot: jsonb("item_snapshot").notNull(),
+		evaluationSnapshot: jsonb("evaluation_snapshot").notNull(),
+		status: dealQueueStatusEnum("status").notNull().default("pending"),
+		itemWebUrl: text("item_web_url").notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		decidedAt: timestamp("decided_at", { withTimezone: true }),
+		expiresAt: timestamp("expires_at", { withTimezone: true }),
+		notifiedAt: timestamp("notified_at", { withTimezone: true }),
+	},
+	(t) => ({
+		ownerStatusIdx: index("deal_queue_owner_status_idx").on(t.apiKeyId, t.status, t.createdAt),
+		// Idempotency lock: only one row per (watchlist, item) in any
+		// given status. Prevents duplicate pending entries from repeated
+		// scans; allows a re-queue after dismiss/expire moves the prior
+		// row out of `pending`. Drives the `onConflictDoNothing()` path
+		// in the scan worker.
+		watchlistItemUnique: unique("deal_queue_watchlist_item_unique").on(t.watchlistId, t.legacyItemId, t.status),
 	}),
 );
 
@@ -329,7 +536,7 @@ export const userEbayOauth = pgTable(
  * are positive magnitudes; kind disambiguates.
  *
  * Sales / refunds / eBay fees live in eBay's ledger — read via the
- * existing `/v1/finance/*` mirror. A future `/v1/portfolio/pnl`
+ * existing `/v1/sell/finances/*` mirror. A future `/v1/portfolio/pnl`
  * endpoint will join the two server-side for full P&L; for now
  * `/v1/expenses/summary` returns only the cost side.
  *
@@ -457,6 +664,54 @@ export const purchaseOrders = pgTable(
 );
 
 /**
+ * Buy Order checkout sessions — the bridge-implementation backing for
+ * `/v1/buy/order/checkout_session/*` when EBAY_ORDER_API_APPROVED=0.
+ *
+ * eBay's Buy Order REST API has a 2-step flow: `initiate` creates a
+ * session (no execution); `place_order` triggers the actual purchase.
+ * In bridge mode we model that with this table — `initiate` writes a
+ * row here, `place_order` creates a corresponding `purchase_orders`
+ * row and links it via `purchaseOrderId`. Get-session reads from here;
+ * get-purchase-order reads from `purchase_orders` and maps to eBay's
+ * shape.
+ *
+ * Sessions auto-expire after 24h. Once placed, the session row stays
+ * but `status='placed'` and the link points to the purchase order.
+ */
+export const buyCheckoutSessionStatusEnum = pgEnum("buy_checkout_session_status", ["created", "placed", "expired"]);
+
+export const buyCheckoutSessions = pgTable(
+	"buy_checkout_sessions",
+	{
+		id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+		apiKeyId: uuid("api_key_id")
+			.notNull()
+			.references(() => apiKeys.id, { onDelete: "cascade" }),
+		userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+		// eBay-shape lineItems array — kept verbatim for re-emission on get session.
+		lineItems: jsonb("line_items").notNull(),
+		// Optional shipping/payment hints; preserved in REST passthrough mode,
+		// ignored in bridge mode (extension uses the user's eBay defaults).
+		shippingAddresses: jsonb("shipping_addresses"),
+		paymentInstruments: jsonb("payment_instruments"),
+		pricingSummary: jsonb("pricing_summary"),
+		status: buyCheckoutSessionStatusEnum("status").notNull().default("created"),
+		// When `place_order` is called, links to the bridge-queue row that
+		// actually executes the buy.
+		purchaseOrderId: uuid("purchase_order_id").references(() => purchaseOrders.id, {
+			onDelete: "set null",
+		}),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+		placedAt: timestamp("placed_at", { withTimezone: true }),
+	},
+	(t) => ({
+		apiKeyIdx: index("buy_checkout_sessions_api_key_idx").on(t.apiKeyId, t.createdAt),
+		expiresIdx: index("buy_checkout_sessions_expires_idx").on(t.expiresAt),
+	}),
+);
+
+/**
  * Long-lived credentials issued to a bridge client (today: the flipagent
  * Chrome extension; tomorrow possibly eBay's official Order API or a
  * native helper). Bound to an api key — when the api key is revoked the
@@ -562,8 +817,6 @@ export type PriceObservation = typeof priceHistory.$inferSelect;
 export type NewPriceObservation = typeof priceHistory.$inferInsert;
 export type ProxyCache = typeof proxyResponseCache.$inferSelect;
 export type NewProxyCache = typeof proxyResponseCache.$inferInsert;
-export type ListingDuration = typeof listingDurations.$inferSelect;
-export type NewListingDuration = typeof listingDurations.$inferInsert;
 export type TakedownRequest = typeof takedownRequests.$inferSelect;
 export type NewTakedownRequest = typeof takedownRequests.$inferInsert;
 export type UserEbayOauth = typeof userEbayOauth.$inferSelect;
@@ -582,9 +835,25 @@ export type MarketplaceNotification = typeof marketplaceNotifications.$inferSele
 export type NewMarketplaceNotification = typeof marketplaceNotifications.$inferInsert;
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type NewPurchaseOrder = typeof purchaseOrders.$inferInsert;
+export type BuyCheckoutSession = typeof buyCheckoutSessions.$inferSelect;
+export type NewBuyCheckoutSession = typeof buyCheckoutSessions.$inferInsert;
 export type BridgeToken = typeof bridgeTokens.$inferSelect;
 export type NewBridgeToken = typeof bridgeTokens.$inferInsert;
 export type WebhookEndpoint = typeof webhookEndpoints.$inferSelect;
 export type NewWebhookEndpoint = typeof webhookEndpoints.$inferInsert;
 export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 export type NewWebhookDelivery = typeof webhookDeliveries.$inferInsert;
+export type ListingObservation = typeof listingObservations.$inferSelect;
+export type NewListingObservation = typeof listingObservations.$inferInsert;
+export type CategoryCalibration = typeof categoryCalibration.$inferSelect;
+export type NewCategoryCalibration = typeof categoryCalibration.$inferInsert;
+export type QueryPulse = typeof queryPulse.$inferSelect;
+export type NewQueryPulse = typeof queryPulse.$inferInsert;
+export type MatchDecision = typeof matchDecisions.$inferSelect;
+export type NewMatchDecision = typeof matchDecisions.$inferInsert;
+export type MatchTrace = typeof matchTraces.$inferSelect;
+export type NewMatchTrace = typeof matchTraces.$inferInsert;
+export type Watchlist = typeof watchlists.$inferSelect;
+export type NewWatchlist = typeof watchlists.$inferInsert;
+export type DealQueueRow = typeof dealQueue.$inferSelect;
+export type NewDealQueueRow = typeof dealQueue.$inferInsert;

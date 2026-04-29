@@ -24,8 +24,8 @@ official eBay Browse API. That's it.
 
 ## What this package is not
 
-- Not a proxy pool. eBay's bot wall trips on sustained traffic. Bring your
-  own residential proxies / rotation if you intend to poll heavily.
+- Not a proxy pool. Datacenter HTTP gets throttled under sustained traffic;
+  bring your own residential proxies / rotation if you intend to poll heavily.
 - Not a browser automation harness. Server-rendered pages only. If a page
   requires JS, this package won't see it.
 - Not a database. Caching, deduplication, persistence are caller concerns.
@@ -41,8 +41,8 @@ solely responsible for complying with eBay's terms.** Specifically:
 
 - Do not redistribute raw listing content (title, description, photos,
   seller details). Aggregated/derived statistics are generally safe.
-- Respect rate limits. Heavy polling will trip eBay's bot wall and may
-  result in IP bans.
+- Respect rate limits. Sustained heavy polling will result in throttled
+  responses and may trigger an IP ban.
 - For commercial use, prefer the official
   [eBay Browse API](https://developer.ebay.com/api-docs/buy/browse/overview.html)
   and [Marketplace Insights API](https://developer.ebay.com/api-docs/buy/marketplace_insights/overview.html)

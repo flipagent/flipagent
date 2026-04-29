@@ -1,9 +1,9 @@
 /**
- * Top-level entry: given a Listing + MarketStats, return a complete
+ * Top-level entry: given a QuantListing + MarketStats, return a complete
  * `Score` — the quant view of a deal (expected return + ranking
  * metrics + factor exposures + bottom-line rating).
  *
- *   E[sale]      = market.meanCents · saleMultiplier
+ *   E[sale]      = market.meanCents · expectedSaleMultiplier
  *   E[net]       = E[sale] − fees(E[sale]) − cost − shipping
  *   liquid       = market.salesPerDay ≥ minSalesPerDay
  *   confidence   = listing-level signal product (seller / photos / desc)
@@ -17,8 +17,8 @@
  *   veto         → skip
  *   illiquid     → skip
  *   E[net] < floor → skip
- *   no signal    → watch
- *   low conf     → watch
+ *   no signal    → hold
+ *   low conf     → hold
  *   else         → buy
  */
 
@@ -28,7 +28,7 @@ import { belowAsks } from "./signals/competition.js";
 import { endingSoonLowWatchers } from "./signals/ending-soon.js";
 import { poorTitle } from "./signals/poor-title.js";
 import { underMedian } from "./signals/under-median.js";
-import type { FeeModel, Listing, MarketStats, Score, Signal } from "./types.js";
+import type { FeeModel, MarketStats, QuantListing, Score, Signal } from "./types.js";
 
 export interface ScoreOptions {
 	/**
@@ -38,7 +38,7 @@ export interface ScoreOptions {
 	 * is what items actually sold for, so no implicit data adjustment
 	 * is needed.
 	 */
-	saleMultiplier?: number;
+	expectedSaleMultiplier?: number;
 	/** Inbound shipping (seller → forwarder), cents. */
 	inboundShippingCents?: number;
 	/** Outbound shipping (forwarder → buyer), cents. Often 0 since buyer pays. */
@@ -46,21 +46,21 @@ export interface ScoreOptions {
 	fees?: FeeModel;
 	/** Net-margin threshold (cents) under which a deal is "skip". Default $30. */
 	minNetCents?: number;
-	/** Confidence threshold under which a deal is "watch" not "buy". Default 0.4. */
+	/** Confidence threshold under which a deal is "hold" not "buy". Default 0.4. */
 	minConfidence?: number;
 	/** Liquidity floor: minimum salesPerDay to consider buying. Default 0.5. */
 	minSalesPerDay?: number;
 }
 
-export function score(listing: Listing, market: MarketStats, options: ScoreOptions = {}): Score {
+export function computeScore(listing: QuantListing, market: MarketStats, options: ScoreOptions = {}): Score {
 	const vetoReason = listingVeto(listing);
-	const saleMultiplier = options.saleMultiplier ?? 1;
+	const expectedSaleMultiplier = options.expectedSaleMultiplier ?? 1;
 	const buyPriceCents = listing.priceCents + (listing.shippingCents ?? 0);
-	const expectedSaleCents = Math.round(market.meanCents * saleMultiplier);
+	const estimatedSaleCents = Math.round(market.meanCents * expectedSaleMultiplier);
 
 	const margin = netMargin(
 		{
-			estimatedSaleCents: expectedSaleCents,
+			estimatedSaleCents,
 			buyPriceCents,
 			inboundShippingCents: options.inboundShippingCents,
 			outboundShippingCents: options.outboundShippingCents,
@@ -84,7 +84,7 @@ export function score(listing: Listing, market: MarketStats, options: ScoreOptio
 	if (pt) signals.push(pt);
 
 	const minConf = options.minConfidence ?? 0.4;
-	let rating: "buy" | "watch" | "skip" = "skip";
+	let rating: "buy" | "hold" | "skip" = "skip";
 	let reason: string;
 	if (vetoReason) {
 		reason = `vetoed: ${vetoReason}`;
@@ -94,10 +94,10 @@ export function score(listing: Listing, market: MarketStats, options: ScoreOptio
 		reason = `expected net ${(margin.netCents / 100).toFixed(2)} below threshold`;
 	} else if (signals.length === 0) {
 		reason = "margin clears but no positive buy signal";
-		rating = "watch";
+		rating = "hold";
 	} else if (conf < minConf) {
 		reason = `confidence ${conf.toFixed(2)} below ${minConf} — operator review`;
-		rating = "watch";
+		rating = "hold";
 	} else {
 		rating = "buy";
 		reason = signals.map((s) => s.reason).join("; ");

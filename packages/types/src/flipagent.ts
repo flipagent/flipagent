@@ -105,7 +105,7 @@ export const FeaturesResponse = Type.Object(
 		stripe: Type.Boolean({ description: "All four STRIPE_* vars — gates /v1/billing/*." }),
 		llm: Type.Boolean({
 			description:
-				"At least one of ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY set — gates the LLM comp matcher (/v1/match).",
+				"At least one of ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY set — gates the LLM comparable matcher (/v1/match).",
 		}),
 	},
 	{ $id: "FeaturesResponse" },

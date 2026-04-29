@@ -21,7 +21,7 @@ import type { ItemDetail, ItemSummary, MarketStats, Step } from "./types";
 
 const RATING_TONE: Record<string, string> = {
 	buy: "good",
-	pass: "warn",
+	hold: "warn",
 	skip: "neutral",
 };
 
@@ -95,7 +95,7 @@ export function EvaluateResult({
 
 			<Facts outcome={outcome} pending={pending} />
 
-			{(outcome.verdict || pending) && (
+			{(outcome.evaluation || pending) && (
 				<Recommendation outcome={outcome} sellWithinDays={sellWithinDays} pending={pending} />
 			)}
 
@@ -111,7 +111,7 @@ export function EvaluateResult({
 }
 
 function isComplete(o: Partial<EvaluateOutcome>): boolean {
-	return !!(o.detail && o.soldPool && o.activePool && o.buckets && o.thesis && o.verdict);
+	return !!(o.detail && o.soldPool && o.activePool && o.buckets && o.marketSummary && o.evaluation);
 }
 
 /* ----------------------------- item hero ----------------------------- */
@@ -177,13 +177,13 @@ function Facts({ outcome, pending }: { outcome: Partial<EvaluateOutcome>; pendin
 	const [activeOpen, setActiveOpen] = useState(false);
 	const [matchedOpen, setMatchedOpen] = useState(true);
 	const [rejectedOpen, setRejectedOpen] = useState(true);
-	const market = outcome.thesis?.market;
-	const verdict = outcome.verdict;
+	const market = outcome.marketSummary?.market;
+	const evaluation = outcome.evaluation;
 	const buckets = outcome.buckets;
 	const soldPool = outcome.soldPool;
 	const activePool = outcome.activePool;
 	// The pipeline feeds match() with sold + active combined (deduped to
-	// save LLM tokens). On display, route each verdict to BOTH cohorts it
+	// save LLM tokens). On display, route each evaluation to BOTH cohorts it
 	// originally appeared in — a relisted-and-recently-sold listing
 	// genuinely belongs in both Sold (price truth) and Active (live
 	// competition). The histogram's lastSoldPrice/price field separation
@@ -376,50 +376,48 @@ function Facts({ outcome, pending }: { outcome: Partial<EvaluateOutcome>; pendin
 				)}
 			</Row>
 
-			{/* Conclusion — single recommended exit row. The price is the
-			    optimal-yield list price under hazard model + competition
-			    factor + active-mean blend; the aside summarises expected
-			    days, net (after fees, ship, AND buy cost), and $/day. When
-			    net is negative, the row colours warn and the wording flips
-			    to "least-loss exit" — there's no profitable flip but the
-			    reseller still gets the actionable "if you must sell, do it
-			    here" answer. Verdict above already says SKIP. */}
-			<Row label="List at" final>
-				{verdict?.recommendedExit ? (
+			{/* Conclusion — buyer-mode resale outlook. Reads as a
+			    forecast in the buyer's own narrative order: "resells at
+			    $X, in ~Yd, nets $Z, $W/day." Label is "Resells at"
+			    (descriptive) not "List at" (which read as instruction
+			    and confused buyers — they aren't the seller). Net sign
+			    drives row colour; the Recommend row above already states
+			    buy/hold/skip. */}
+			<Row label="Resells at" final>
+				{evaluation?.recommendedExit ? (
 					<>
 						<span
 							className={`pg-result-facts-val${
-								verdict.recommendedExit.netCents < 0
+								evaluation.recommendedExit.netCents < 0
 									? " pg-result-facts-val--warn"
-									: verdict.recommendedExit.netCents > 0
+									: evaluation.recommendedExit.netCents > 0
 										? " pg-result-facts-val--good"
 										: ""
 							}`}
 						>
-							{fmtUsdRound(verdict.recommendedExit.listPriceCents)}
+							{fmtUsdRound(evaluation.recommendedExit.listPriceCents)}
 						</span>
 						<span className="pg-result-facts-aside">
-							→ ~{Math.round(verdict.recommendedExit.expectedDays)}d ·{" "}
-							{verdict.recommendedExit.netCents >= 0 ? "+" : "−"}
-							{fmtUsdRound(Math.abs(verdict.recommendedExit.netCents))} net ·{" "}
-							{fmtUsdRound(verdict.recommendedExit.dollarsPerDay)}/day
-							{verdict.recommendedExit.netCents < 0 && " · least-loss exit"}
+							in ~{Math.round(evaluation.recommendedExit.expectedDaysToSell)}d ·{" "}
+							{evaluation.recommendedExit.netCents >= 0 ? "+" : "−"}
+							{fmtUsdRound(Math.abs(evaluation.recommendedExit.netCents))} net ·{" "}
+							{fmtUsdRound(evaluation.recommendedExit.dollarsPerDay)}/day
 						</span>
 					</>
-				) : verdict ? (
+				) : evaluation ? (
 					// True null path — model couldn't run (no duration data,
 					// σ=0, etc). Surface what we have so the row isn't empty.
 					<>
 						<span
 							className={`pg-result-facts-val${
-								(verdict.netCents ?? 0) < 0
+								(evaluation.expectedNetCents ?? 0) < 0
 									? " pg-result-facts-val--warn"
-									: (verdict.netCents ?? 0) > 0
+									: (evaluation.expectedNetCents ?? 0) > 0
 										? " pg-result-facts-val--good"
 										: ""
 							}`}
 						>
-							{fmtUsdRound(verdict.netCents)}
+							{fmtUsdRound(evaluation.expectedNetCents)}
 						</span>
 						<span className="pg-result-facts-aside">
 							net at typical exit · time-to-sell unknown
@@ -586,12 +584,12 @@ function Recommendation({
 	sellWithinDays?: number;
 	pending: boolean;
 }) {
-	const verdict = outcome.verdict;
-	const tone = RATING_TONE[verdict?.rating ?? ""] ?? "neutral";
+	const evaluation = outcome.evaluation;
+	const tone = RATING_TONE[evaluation?.rating ?? ""] ?? "neutral";
 
-	const wait = outcome.thesis?.market.meanDaysToSell;
+	const wait = outcome.marketSummary?.market.meanDaysToSell;
 	const slowWarning =
-		verdict && sellWithinDays && sellWithinDays > 0 && wait != null && wait > sellWithinDays
+		evaluation && sellWithinDays && sellWithinDays > 0 && wait != null && wait > sellWithinDays
 			? `Heads up: typical wait is ~${Math.round(wait)} days — beyond your ${sellWithinDays}-day window.`
 			: null;
 
@@ -599,9 +597,9 @@ function Recommendation({
 		<section className="pg-result-rec">
 			<div className="pg-result-rec-line-prim">
 				<span className="pg-result-rec-prefix">Recommend</span>
-				{verdict ? (
+				{evaluation ? (
 					<span className={`pg-result-rec-rating pg-result-rec-rating--${tone}`}>
-						{(verdict.rating ?? "—").toUpperCase()}
+						{(evaluation.rating ?? "—").toUpperCase()}
 					</span>
 				) : pending ? (
 					<Skel w={60} h={14} />

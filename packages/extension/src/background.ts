@@ -90,9 +90,10 @@ async function onCancelAndClose(): Promise<{ ok: boolean; error?: string }> {
 	const inFlight = stored.flipagent_in_flight as { id: string; marketplace: string } | undefined;
 	if (!inFlight) return { ok: true }; // already gone
 	try {
-		// 1. cancel via API (mirrors POST /v1/orders/{id}/cancel that the
-		//    SDK exposes; reuse apiCall directly).
-		await apiCall(cfg, `/v1/orders/${encodeURIComponent(inFlight.id)}/cancel`, {
+		// 1. cancel via API. eBay's Buy Order REST has no cancel endpoint;
+		//    the route is bridge-transport only and force-bridge is fine
+		//    here because the extension is itself the bridge.
+		await apiCall(cfg, `/v1/buy/order/purchase_order/${encodeURIComponent(inFlight.id)}/cancel`, {
 			method: "POST",
 			auth: "apiKey",
 			timeoutMs: 10_000,

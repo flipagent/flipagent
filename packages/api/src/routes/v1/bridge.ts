@@ -35,6 +35,7 @@ import { db } from "../../db/client.js";
 import { bridgeTokens } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { requireBridgeToken } from "../../middleware/bridge-auth.js";
+import { bridgeTaskForSource } from "../../services/ebay/bridge/tasks.js";
 import { claimNextForApiKey, getOrderForApiKey, transition } from "../../services/orders/queue.js";
 import { dispatchOrderEvent } from "../../services/webhooks/dispatch.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
@@ -95,21 +96,10 @@ bridgeRoute.get(
 			const claimed = await claimNextForApiKey(apiKeyId, tokenId);
 			if (claimed) {
 				dispatchOrderEvent(apiKeyId, claimed).catch((err) => console.error("[bridge] dispatch claimed:", err));
-				// Map source → task. eBay buy queues `ebay_buy_item`; forwarders
-				// queue service-specific tasks (`pull_packages` for PE today);
-				// `control` queues meta tasks (`reload_extension`); `browser`
-				// is the generic primitive (`browser_op`); `ebay_data` is
-				// the bridge transport for public-data reads (`ebay_query`).
-				const task =
-					claimed.source === "planetexpress"
-						? ("pull_packages" as const)
-						: claimed.source === "control"
-							? ("reload_extension" as const)
-							: claimed.source === "browser"
-								? ("browser_op" as const)
-								: claimed.source === "ebay_data"
-									? ("ebay_query" as const)
-									: ("ebay_buy_item" as const);
+				// Map source → bridge task. Centralised in `BRIDGE_TASKS` so
+				// we have one canonical naming + the extension's recipe
+				// runtime can key off task name.
+				const task = bridgeTaskForSource(claimed.source);
 				const job = {
 					jobId: claimed.id,
 					task,

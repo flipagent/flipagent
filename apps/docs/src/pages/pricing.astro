@@ -20,7 +20,7 @@ import PricingTiers from "../components/PricingTiers.astro";
 		<div class="cmw" style="max-width:760px;">
 			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">What counts as a call</h2>
 			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
-				Any call to a marketplace or intelligence endpoint counts toward your monthly quota: <code>/v1/listings</code>, <code>/v1/sold</code>, <code>/v1/orders</code>, <code>/v1/inventory</code>, <code>/v1/fulfillment</code>, <code>/v1/finance</code>, <code>/v1/markets</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/research</code>, <code>/v1/ship</code>. Cache hits still count, because you're paying for latency, parsers, and takedown handling, not just the upstream call.
+				Any call to a marketplace or intelligence endpoint counts toward your monthly quota: <code>/v1/buy/*</code>, <code>/v1/sell/*</code>, <code>/v1/commerce/*</code>, <code>/v1/post-order/*</code>, <code>/v1/forwarder/*</code>, <code>/v1/messages</code>, <code>/v1/best-offer</code>, <code>/v1/feedback</code>, <code>/v1/match</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/research</code>, <code>/v1/draft</code>, <code>/v1/reprice</code>, <code>/v1/ship</code>. Cache hits still count, because you're paying for latency, parsers, and takedown handling, not just the upstream call.
 			</p>
 			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
 				Free routes: <code>/v1/health</code>, <code>/v1/me/keys</code>, <code>/v1/takedown</code>, and the billing routes themselves.

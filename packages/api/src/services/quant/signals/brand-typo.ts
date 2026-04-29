@@ -5,7 +5,7 @@
  * the actual signal — this module just produces the string set.
  */
 
-import type { Listing, Signal } from "../types.js";
+import type { QuantListing, Signal } from "../types.js";
 
 /**
  * Generate edit-distance-1 variants likely to be real-world typos:
@@ -70,7 +70,7 @@ export function generateBrandTypos(brand: string, max = 12): string[] {
  * Detector for the case where a fetched listing's title contains a
  * known typo of the brand. Used after iterating typo variants through search.
  */
-export function brandTypo(listing: Listing, brand: string): Signal | null {
+export function brandTypo(listing: QuantListing, brand: string): Signal | null {
 	const typos = generateBrandTypos(brand);
 	const titleLower = listing.title.toLowerCase();
 	const matched = typos.find((t) => titleLower.includes(t));

@@ -3,7 +3,7 @@
  * predicate. Used by `score()` to gate / discount the deal valuation.
  */
 
-import type { Listing } from "./types.js";
+import type { QuantListing } from "./types.js";
 
 const FEEDBACK_FLOOR = 50;
 const FEEDBACK_CEIL = 5000;
@@ -36,7 +36,7 @@ function logScale(value: number, floor: number, ceil: number): number {
  * That makes a single very-bad signal (e.g. brand-new seller) zero out the
  * confidence — which is the desired behavior.
  */
-export function confidence(listing: Listing): number {
+export function confidence(listing: QuantListing): number {
 	const feedback = logScale(listing.sellerFeedback ?? 0, FEEDBACK_FLOOR, FEEDBACK_CEIL);
 	const feedbackPct = (listing.sellerFeedbackPercent ?? 0) >= 95 ? 1 : 0;
 	const photos = logScale(listing.imageCount ?? 0, PHOTOS_FLOOR, PHOTOS_CEIL);
@@ -49,7 +49,7 @@ export function confidence(listing: Listing): number {
  * Hard veto. If any of these are true, the listing is too risky to score.
  * Returns the violated rule name, or null when safe.
  */
-export function veto(listing: Listing): string | null {
+export function veto(listing: QuantListing): string | null {
 	if ((listing.sellerFeedback ?? 0) < FEEDBACK_FLOOR) return "seller_feedback_too_low";
 	if (listing.condition && /for parts|not working/i.test(listing.condition)) return "broken_condition";
 	if (/^[A-Z\s\d!?.]{15,}$/.test(listing.title)) return "all_caps_title";

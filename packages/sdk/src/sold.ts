@@ -1,6 +1,6 @@
 /**
  * `client.sold.*` — comparable-sales lookup. Server-side caches sold
- * comps so repeated calls within the cache TTL hit the same upstream
+ * comparables so repeated calls within the cache TTL hit the same upstream
  * once.
  */
 
@@ -23,6 +23,6 @@ export interface SoldClient {
 
 export function createSoldClient(http: FlipagentHttp): SoldClient {
 	return {
-		search: (params) => http.get("/v1/sold/search", { ...params }),
+		search: (params) => http.get("/v1/buy/marketplace_insights/item_sales/search", { ...params }),
 	};
 }

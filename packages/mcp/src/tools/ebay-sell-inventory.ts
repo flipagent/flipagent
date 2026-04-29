@@ -15,14 +15,14 @@ export const ebayCreateInventoryItemInput = Type.Object({
 });
 
 export const ebayCreateInventoryItemDescription =
-	"Create or replace an inventory item by SKU. Calls PUT /v1/inventory/inventory_item/{sku}. Caller must have connected eBay via /v1/connect/ebay.";
+	"Create or replace an inventory item by SKU. Calls PUT /v1/sell/inventory/inventory_item/{sku}. Caller must have connected eBay via /v1/connect/ebay.";
 
 export async function ebayCreateInventoryItemExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.inventory.putItem(args.sku as string, args.body);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/inventory/inventory_item/{sku}");
+		const e = toApiCallError(err, "/v1/sell/inventory/inventory_item/{sku}");
 		return { error: "inventory_put_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
@@ -32,14 +32,14 @@ export const ebayCreateOfferInput = Type.Object({
 });
 
 export const ebayCreateOfferDescription =
-	"Create an unpublished offer for an existing inventory item. Calls POST /v1/inventory/offer. Returns an offerId you then publish.";
+	"Create an unpublished offer for an existing inventory item. Calls POST /v1/sell/inventory/offer. Returns an offerId you then publish.";
 
 export async function ebayCreateOfferExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.inventory.createOffer(args.body);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/inventory/offer");
+		const e = toApiCallError(err, "/v1/sell/inventory/offer");
 		return { error: "offer_create_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
@@ -49,14 +49,14 @@ export const ebayPublishOfferInput = Type.Object({
 });
 
 export const ebayPublishOfferDescription =
-	"Publish an offer (turns it into a live eBay listing). Calls POST /v1/inventory/offer/{offerId}/publish. Returns a listingId.";
+	"Publish an offer (turns it into a live eBay listing). Calls POST /v1/sell/inventory/offer/{offerId}/publish. Returns a listingId.";
 
 export async function ebayPublishOfferExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.inventory.publishOffer(args.offerId as string);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/inventory/offer/{offerId}/publish");
+		const e = toApiCallError(err, "/v1/sell/inventory/offer/{offerId}/publish");
 		return { error: "offer_publish_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

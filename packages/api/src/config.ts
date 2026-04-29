@@ -49,12 +49,14 @@ const Schema = Type.Object({
 		].join(" "),
 	}),
 	// Order API is Limited Release. Set to `1` only after eBay approves
-	// flipagent's tenant — otherwise /buy/order/v1/* returns 501.
+	// flipagent's tenant — otherwise /v1/buy/order/* uses the bridge
+	// transport (REST returns 501 without approval).
 	EBAY_ORDER_API_APPROVED: Type.Boolean({ default: false }),
 	// Marketplace Insights program approval (sold-listing history). Set to
 	// `1` only after eBay grants Insights access to the tenant. With this
-	// flag, /v1/sold/* hits api.ebay.com/buy/marketplace_insights/v1_beta/...
-	// using the app token; without it, /v1/sold/* falls back to scraping.
+	// flag, /v1/buy/marketplace_insights/item_sales/search hits
+	// api.ebay.com/buy/marketplace_insights/v1_beta/... using the app
+	// token; without it, the route falls back to scraping.
 	EBAY_INSIGHTS_APPROVED: Type.Boolean({ default: false }),
 	// Better-Auth + GitHub OAuth. All three required to enable session auth
 	// (the /api/auth/* handler + /v1/me/* routes return 503 if not set).
@@ -83,14 +85,15 @@ const Schema = Type.Object({
 	// When unset, "Forgot your password?" surfaces a not-configured message.
 	RESEND_API_KEY: Type.Optional(Type.String()),
 	EMAIL_FROM: Type.String({ default: "flipagent <noreply@flipagent.dev>" }),
-	// Managed-scraping vendor for `EBAY_*_SOURCE=scrape`. The vendor owns
-	// the anti-bot dance; we just POST a URL and get rendered HTML.
-	// flipagent does not ship its own residential-proxy + UA-rotation
-	// path on purpose — detection evasion is ToS-grey and belongs at
-	// vendors whose business is exactly that.
+	// Managed-scraping vendor for `EBAY_*_SOURCE=scrape`. We POST a URL,
+	// the vendor returns rendered HTML — whatever rendering / IP routing
+	// they perform on their side is their product, under their own
+	// upstream-marketplace ToS. flipagent's own code is just an HTTPS
+	// client; it does not implement residential-proxy rotation, UA
+	// shuffling, or any other vendor-side concern.
 	//
 	// Today only `oxylabs` is wired. Adding a vendor = drop an adapter
-	// at `proxy/scraper-api/<vendor>.ts` and a case in the dispatcher.
+	// at `services/ebay/scrape/scraper-api/<vendor>.ts` and a case in the dispatcher.
 	SCRAPER_API_VENDOR: Type.Union([Type.Literal("oxylabs")], { default: "oxylabs" }),
 	SCRAPER_API_USERNAME: Type.Optional(Type.String()),
 	SCRAPER_API_PASSWORD: Type.Optional(Type.String()),
@@ -111,6 +114,19 @@ const Schema = Type.Object({
 	OPENAI_MODEL: Type.Optional(Type.String()),
 	GOOGLE_API_KEY: Type.Optional(Type.String()),
 	GOOGLE_MODEL: Type.Optional(Type.String()),
+	// Per-listing observation archive — hosted-only feature. Each search
+	// / detail response writes one row to `listing_observations` for
+	// long-tail historical comparable depth, matcher fingerprinting, and
+	// cross-user seller reputation. Default off (self-host gets only the
+	// short-TTL proxy cache); set `OBSERVATION_ENABLED=1` on the hosted
+	// instance to start accumulating. ToS-safe: itemWebUrl + image CDN
+	// URL only (no binary mirroring), takedown channel honoured.
+	OBSERVATION_ENABLED: Type.Boolean({ default: false }),
+	// Overnight pillar — in-process scan worker that re-runs saved
+	// watchlists on cadence and snapshots qualifying deals into
+	// `deal_queue`. Default off (self-host opt-in via env). Hosted
+	// instances enable on the single replica that owns scheduling.
+	WATCHLIST_SCHEDULER_ENABLED: Type.Boolean({ default: false }),
 });
 
 const raw = {
@@ -154,6 +170,8 @@ const raw = {
 	OPENAI_MODEL: process.env.OPENAI_MODEL,
 	GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
 	GOOGLE_MODEL: process.env.GOOGLE_MODEL,
+	OBSERVATION_ENABLED: process.env.OBSERVATION_ENABLED === "1",
+	WATCHLIST_SCHEDULER_ENABLED: process.env.WATCHLIST_SCHEDULER_ENABLED === "1",
 };
 
 const decoded = Value.Default(Schema, raw);
@@ -204,11 +222,25 @@ export const config = decoded as {
 	OPENAI_MODEL?: string;
 	GOOGLE_API_KEY?: string;
 	GOOGLE_MODEL?: string;
+	OBSERVATION_ENABLED: boolean;
+	WATCHLIST_SCHEDULER_ENABLED: boolean;
 };
 
 /** True when all OAuth-required env is present. Use to gate connect routes. */
 export function isEbayOAuthConfigured(): boolean {
 	return Boolean(config.EBAY_CLIENT_ID && config.EBAY_CLIENT_SECRET && config.EBAY_RU_NAME);
+}
+
+/**
+ * True when this flipagent instance has eBay app credentials
+ * (`EBAY_CLIENT_ID` + `EBAY_CLIENT_SECRET`). RU_NAME is OAuth-callback
+ * specific so it isn't required for app-only Browse/Insights/Taxonomy
+ * REST calls. Used by `selectTransport` to gate `needsAuth: "app"`
+ * REST paths — when false, listings.* auto-picks scrape; markets.* (no
+ * scrape capability) throws TransportUnavailableError.
+ */
+export function isEbayAppConfigured(): boolean {
+	return Boolean(config.EBAY_CLIENT_ID && config.EBAY_CLIENT_SECRET);
 }
 
 /**
@@ -247,7 +279,7 @@ export function isStripeConfigured(): boolean {
 	);
 }
 
-/** True when at least one LLM provider key is set — gates the LLM comp matcher (/v1/match). */
+/** True when at least one LLM provider key is set — gates the LLM comparable matcher (/v1/match). */
 export function isLlmConfigured(): boolean {
 	return Boolean(config.ANTHROPIC_API_KEY || config.OPENAI_API_KEY || config.GOOGLE_API_KEY);
 }

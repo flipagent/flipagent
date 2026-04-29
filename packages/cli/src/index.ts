@@ -9,9 +9,9 @@
  *   flipagent whoami                     Show key prefix + tier + usage
  *
  *   flipagent search <query>             Search active listings
- *   flipagent sold <query>               Search sold-comps
+ *   flipagent sold <query>               Search sold-comparables
  *   flipagent evaluate <itemId>          Fetch + score one listing
- *   flipagent discover <query>           Search + comps + ranked deals (one shot)
+ *   flipagent discover <query>           Search + comparables + ranked deals (one shot)
  *   flipagent ship providers             List supported forwarders
  *   flipagent ship quote --item <id> --weight <g> --dest <state>
  *
@@ -357,7 +357,7 @@ async function runSearch(args: ParsedArgs): Promise<void> {
 	if (args.values.limit) params.set("limit", args.values.limit);
 	if (args.values.filter) params.set("filter", args.values.filter);
 	if (args.values.sort) params.set("sort", args.values.sort);
-	const result = await api("GET", `/v1/listings/search?${params}`, undefined, opts);
+	const result = await api("GET", `/v1/buy/browse/item_summary/search?${params}`, undefined, opts);
 	printJson(result);
 }
 
@@ -367,28 +367,28 @@ async function runSold(args: ParsedArgs): Promise<void> {
 	const opts = clientOpts(args);
 	const params = new URLSearchParams({ q });
 	if (args.values.limit) params.set("limit", args.values.limit);
-	const result = await api("GET", `/v1/sold/search?${params}`, undefined, opts);
+	const result = await api("GET", `/v1/buy/marketplace_insights/item_sales/search?${params}`, undefined, opts);
 	printJson(result);
 }
 
 async function runEvaluate(args: ParsedArgs): Promise<void> {
 	const itemId = args.positional[0];
-	if (!itemId) throw new Error("Usage: flipagent evaluate <itemId> [--comps-q <query>]");
+	if (!itemId) throw new Error("Usage: flipagent evaluate <itemId> [--comparables-q <query>]");
 	const opts = clientOpts(args);
-	const item = await api<unknown>("GET", `/v1/listings/${encodeURIComponent(itemId)}`, undefined, opts);
-	const compsQ = args.values["comps-q"] ?? args.values.compsQ;
-	let comps: unknown;
+	const item = await api<unknown>("GET", `/v1/buy/browse/item/${encodeURIComponent(itemId)}`, undefined, opts);
+	const compsQ = args.values["comparables-q"] ?? args.values.compsQ;
+	let comparables: unknown;
 	if (compsQ) {
 		const sold = await api<{ itemSummaries?: unknown[]; itemSales?: unknown[] }>(
 			"GET",
-			`/v1/sold/search?q=${encodeURIComponent(compsQ)}&limit=50`,
+			`/v1/buy/marketplace_insights/item_sales/search?q=${encodeURIComponent(compsQ)}&limit=50`,
 			undefined,
 			opts,
 		);
-		comps = sold.itemSales ?? sold.itemSummaries ?? [];
+		comparables = sold.itemSales ?? sold.itemSummaries ?? [];
 	}
-	const verdict = await api("POST", "/v1/evaluate", { item, opts: comps ? { comps } : {} }, opts);
-	printJson(verdict);
+	const evaluation = await api("POST", "/v1/evaluate", { item, opts: comparables ? { comparables } : {} }, opts);
+	printJson(evaluation);
 }
 
 async function runDiscover(args: ParsedArgs): Promise<void> {
@@ -397,16 +397,21 @@ async function runDiscover(args: ParsedArgs): Promise<void> {
 	const opts = clientOpts(args);
 	const limit = args.values.limit ?? "50";
 	const [results, sold] = await Promise.all([
-		api<unknown>("GET", `/v1/listings/search?q=${encodeURIComponent(q)}&limit=${limit}`, undefined, opts),
+		api<unknown>(
+			"GET",
+			`/v1/buy/browse/item_summary/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+			undefined,
+			opts,
+		),
 		api<{ itemSummaries?: unknown[]; itemSales?: unknown[] }>(
 			"GET",
-			`/v1/sold/search?q=${encodeURIComponent(q)}&limit=50`,
+			`/v1/buy/marketplace_insights/item_sales/search?q=${encodeURIComponent(q)}&limit=50`,
 			undefined,
 			opts,
 		),
 	]);
 	const minNet = args.values["min-net"] ?? args.values.minNet;
-	const body: Record<string, unknown> = { results, opts: { comps: sold.itemSales ?? sold.itemSummaries ?? [] } };
+	const body: Record<string, unknown> = { results, opts: { comparables: sold.itemSales ?? sold.itemSummaries ?? [] } };
 	if (minNet) (body.opts as Record<string, unknown>).minNetCents = Number.parseInt(minNet, 10);
 	const out = await api("POST", "/v1/discover", body, opts);
 	printJson(out);
@@ -427,7 +432,7 @@ async function runShip(args: ParsedArgs): Promise<void> {
 		if (!itemId || !weight || !dest) {
 			throw new Error("Usage: flipagent ship quote --item <id> --weight <g> --dest <state> [--provider <id>]");
 		}
-		const item = await api<unknown>("GET", `/v1/listings/${encodeURIComponent(itemId)}`, undefined, opts);
+		const item = await api<unknown>("GET", `/v1/buy/browse/item/${encodeURIComponent(itemId)}`, undefined, opts);
 		const forwarder: Record<string, unknown> = { destState: dest, weightG: Number.parseInt(weight, 10) };
 		if (args.values.provider) forwarder.provider = args.values.provider;
 		const out = await api("POST", "/v1/ship/quote", { item, forwarder }, opts);
@@ -579,7 +584,7 @@ Auth:
 Data (uses stored key, env, or --key):
   flipagent search <query> [--limit N] [--filter <expr>] [--sort <key>]
   flipagent sold <query> [--limit N]
-  flipagent evaluate <itemId> [--comps-q <query>]
+  flipagent evaluate <itemId> [--comparables-q <query>]
   flipagent discover <query> [--limit N] [--min-net <cents>]
   flipagent ship providers
   flipagent ship quote --item <id> --weight <g> --dest <state> [--provider <id>]
@@ -589,9 +594,10 @@ Setup:
                                       Detect Claude Desktop / Cursor and write the
                                       flipagent MCP entry.
 
-Buy-side execution (/v1/orders/*) lives in the flipagent Chrome extension —
-runs inside your real Chrome so eBay's Akamai layer treats it like a normal
-session. Install + setup: https://flipagent.dev/docs/extension/
+Buy-side execution (/v1/buy/order/*) lives in the flipagent Chrome
+extension — runs inside your existing Chrome session, with you
+clicking Buy It Now and Confirm-and-pay yourself the way eBay's
+robots.txt requires. Install + setup: https://flipagent.dev/docs/extension/
 
 Get a free key (100 calls / month, no card) at https://flipagent.dev/signup.
 Self-hosting? See https://flipagent.dev/docs/self-host/.

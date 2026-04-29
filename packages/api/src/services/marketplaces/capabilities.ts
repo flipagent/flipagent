@@ -76,7 +76,7 @@ function ebayCapabilities(input: EbayInputs): MarketplaceCapabilities {
 		isInsightsApproved() || isScraperApiConfigured() || input.extensionPaired ? "ok" : "unavailable";
 
 	// Evaluate: pure server-side scoring; works whenever the api can
-	// fetch comps. Requires the api key tier to allow it (rate-limit
+	// fetch comparables. Requires the api key tier to allow it (rate-limit
 	// is enforced upstream, not here).
 	const evaluate: CapabilityStatus = "ok";
 

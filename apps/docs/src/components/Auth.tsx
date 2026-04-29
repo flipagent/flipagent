@@ -130,7 +130,7 @@ export default function Auth() {
 			<section className="auth-section auth-section--brand">
 				<div className="auth-rail">
 					<a href="/" className="auth-brand">
-						<img src="/logo-32.png" width="80" height="24" alt="" aria-hidden="true" />
+						<img src="/logo.png" width="80" height="24" alt="" aria-hidden="true" />
 						<span>flipagent</span>
 					</a>
 				</div>

@@ -11,21 +11,21 @@ describe("toApiCallError", () => {
 		// Shape from the new @flipagent/sdk; we duck-type so the test
 		// doesn't depend on the SDK build artifact at vitest runtime.
 		const err = {
-			message: "flipagent /v1/listings/search failed with status 401",
+			message: "flipagent /v1/buy/browse/item_summary/search failed with status 401",
 			status: 401,
-			path: "/v1/listings/search",
+			path: "/v1/buy/browse/item_summary/search",
 			detail: { error: "unauthenticated" },
 		};
 		const e = toApiCallError(err);
 		expect(e.status).toBe(401);
-		expect(e.url).toBe("/v1/listings/search");
+		expect(e.url).toBe("/v1/buy/browse/item_summary/search");
 		expect(e.message).toContain("401");
 	});
 
 	it("uses fallbackPath when no url is on the error", () => {
 		const err = { message: "boom", status: 502 };
-		const e = toApiCallError(err, "/v1/listings/search");
-		expect(e.url).toBe("/v1/listings/search");
+		const e = toApiCallError(err, "/v1/buy/browse/item_summary/search");
+		expect(e.url).toBe("/v1/buy/browse/item_summary/search");
 		expect(e.status).toBe(502);
 	});
 
@@ -36,8 +36,8 @@ describe("toApiCallError", () => {
 	});
 
 	it("survives undefined error gracefully", () => {
-		const e = toApiCallError(undefined, "/v1/deals/find");
+		const e = toApiCallError(undefined, "/v1/discover");
 		expect(e.message).toBe("request failed");
-		expect(e.url).toBe("/v1/deals/find");
+		expect(e.url).toBe("/v1/discover");
 	});
 });

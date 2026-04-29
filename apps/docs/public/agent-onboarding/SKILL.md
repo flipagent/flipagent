@@ -133,7 +133,7 @@ Available namespaces (every endpoint at `api.flipagent.dev/v1/*`):
 There's no language-specific SDK yet. Use HTTP directly:
 
 ```
-curl "https://api.flipagent.dev/v1/listings/search?q=canon+50mm&limit=10" \
+curl "https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon+50mm&limit=10" \
   -H "Authorization: Bearer $FLIPAGENT_API_KEY"
 ```
 
@@ -158,7 +158,7 @@ Expect `1 result(s)`.
 
 **HTTP** (3c):
 ```
-curl -s "https://api.flipagent.dev/v1/listings/search?q=canon+50mm&limit=1" \
+curl -s "https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon+50mm&limit=1" \
   -H "Authorization: Bearer $FLIPAGENT_API_KEY" | jq .total
 ```
 Expect a non-zero number.

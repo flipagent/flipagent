@@ -11,7 +11,7 @@ export interface FinanceClient {
 
 export function createFinanceClient(http: FlipagentHttp): FinanceClient {
 	return {
-		listPayouts: (query) => http.get("/v1/finance/payout", query),
-		listTransactions: (query) => http.get("/v1/finance/transaction", query),
+		listPayouts: (query) => http.get("/v1/sell/finances/payout", query),
+		listTransactions: (query) => http.get("/v1/sell/finances/transaction", query),
 	};
 }

@@ -1,7 +1,7 @@
 /**
  * `/v1/reprice` — decide hold/drop/delist for a sitting listing. Pure
  * compute: caller passes the listing's current price + listed-at
- * timestamp + a fresh market thesis.
+ * timestamp + a fresh market summary.
  *
  * Maps to the Operations pillar (#02) — keep listed inventory honest
  * against shifting markets.
@@ -11,7 +11,7 @@ import { RepriceRequest, RepriceResponse } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { reprice } from "../../services/scoring/index.js";
+import { reprice } from "../../services/reprice/reprice.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const repriceRoute = new Hono();

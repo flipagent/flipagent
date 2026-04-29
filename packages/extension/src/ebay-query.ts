@@ -2,19 +2,18 @@
  * Bridge backbone for the `ebay_query` task. flipagent API queues a
  * purchase order with `source=ebay_data`; the extension picks it up,
  * opens the relevant eBay public page in a hidden background tab,
- * lets the renderer process load it like any normal navigation (so
- * Akamai sees `Sec-Fetch-Dest: document` and a real browser
- * fingerprint), then asks the content script — which has full DOM
- * + DOMParser — to extract the structured payload.
+ * lets the renderer process load it like any normal navigation, then
+ * asks the content script — which has full DOM + DOMParser — to
+ * extract the structured payload.
  *
  * Why a hidden tab and not a service-worker fetch:
- *   - SW fetches surface as `Sec-Fetch-Mode: cors` to eBay; Akamai
- *     serves a 503 / challenge page in response.
+ *   - SW fetches surface as `Sec-Fetch-Mode: cors` to eBay, which
+ *     returns a challenge page rather than the document HTML.
  *   - SW also lacks a reliable DOMParser across Chrome versions
  *     (only exposed since Chrome 124 in extension SW context).
- *   - The tab path uses the same code path the user's normal
- *     browsing would, so we inherit their cookies + IP + fingerprint
- *     for free.
+ *   - A real navigation in the user's own browser uses the user's
+ *     existing session — same cookies and same IP they'd have if
+ *     they typed the URL into the address bar.
  *
  * Cost: a tab spin-up adds ~3-5s vs a direct fetch. Acceptable —
  * results are cached server-side so subsequent identical queries

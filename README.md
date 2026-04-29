@@ -44,7 +44,9 @@ Or one-command setup that detects your installed clients:
 npx -y flipagent-cli init --mcp
 ```
 
-Your agent gets 18 tools: search, sold-comps, evaluate, discover, buy, list, ship.
+Your agent gets 30+ tools: search, sold-comps, match, evaluate, discover, buy, list, ship.
+
+`match_pool` ships in two modes: **hosted** (we run the LLM, default) and **delegate** (we hand back a prompt + JSON schema for *your* host LLM to run — saves the inference cost when you're already in Claude Code / Cursor and the host is strong). Same applies anywhere we'd run inference; everything else (search, scoring math, scraper fan-out, OAuth, webhooks, billing) stays hosted because there's no LLM in the loop. See [Hosted vs delegate](https://flipagent.dev/docs/mcp#hosted-vs-delegate) and [telemetry & opt-out](https://flipagent.dev/docs/mcp#telemetry).
 
 ### As a typed SDK
 
@@ -78,6 +80,7 @@ packages/
 ├── sdk/           @flipagent/sdk          — typed client for api.flipagent.dev
 ├── mcp/           flipagent-mcp           — MCP server
 ├── cli/           flipagent-cli           — one-command MCP setup
+├── extension/     @flipagent/extension    — Chrome extension (buy-flow executor for /v1/buy/order/*)
 └── api/           @flipagent/api          — Hono backend (FSL, source-available)
 apps/docs/         @flipagent/docs         — flipagent.dev marketing + dashboard
 ```
@@ -103,6 +106,22 @@ What the hosted service does for you:
 - **Response cache** — 60min active / 12h sold / 4h detail. Anti-thundering-herd, not archival.
 - **Managed scraping** — outbound traffic delegated to a managed Web Scraper API. No UA pool / fingerprint spoofing in our code.
 - **Auth, metering, billing, webhooks** — one API key gets you all of it.
+
+## Bridge (local executor)
+
+Some endpoints can't run on flipagent's servers — they need a logged-in browser session we don't have, or they hit surfaces with no public API at all. The **bridge** is the protocol we use for these. The hosted API queues a job; your extension polls it; the work runs locally in your browser; the result streams back. Same `/v1/*` request and response shape as any other call.
+
+The executor is [`@flipagent/extension`](packages/extension) — a Chrome MV3 extension. It runs entirely in *your* browser, on *your* tabs, with *your* cookies and *your* logins. flipagent never holds the third-party credentials it touches and never proxies checkouts or session traffic. There is no UA pool or fingerprint spoofing in our code path either — it's just your real Chrome.
+
+What it powers today:
+
+- **`/v1/buy/order/*` — eBay buy ordering.** Watches the BIN flow on `ebay.com/itm/...` — validates price against the agent's cap, annotates the page with a "ready to buy" banner, and captures the eBay order id after *you* confirm. The extension never auto-clicks BIN or Confirm-and-pay; every click is yours, because [eBay's robots.txt](https://www.ebay.com/robots.txt) requires checkout to be human-driven. The agent's value is BEFORE the click (find / evaluate / queue) and AFTER (record / reconcile / P&L), not the click itself. Alternative: set `EBAY_ORDER_API_APPROVED=1` to switch the same routes to direct REST passthrough if you have eBay's Buy Order API approval.
+- **`/v1/forwarder/{provider}/*` — package forwarder ops.** Pulls inbound package status from forwarder dashboards (Planet Express today) that have no public API.
+- **`/v1/browser/*` — DOM primitives.** Synchronous `querySelectorAll`-style probe over the active tab. Mainly an escape hatch for agents and selector tuning during dev.
+
+The bridge protocol itself lives at `/v1/bridge/*` in [`@flipagent/api`](packages/api) (poll, result, login-status, pair) — you don't usually call it directly; the extension does.
+
+How we provide it: the extension is MIT-licensed and shipped as source in this repo. We do not (and cannot) auto-install it — you load the unpacked build into Chrome yourself, the same way you'd load any developer tool. Whether bridge-driven automation against your own accounts is permitted in your context is your call; see the disclaimer below. Setup steps are in the [extension README](packages/extension/README.md).
 
 ## Self-host
 
@@ -133,6 +152,7 @@ The MCP server, the `/buy/browse/*` + `/buy/marketplace_insights/*` scrape paths
 | package | license |
 |---|---|
 | `types`, `ebay-scraper`, `sdk`, `mcp`, `cli` | **MIT** — published to npm |
+| `extension` | **MIT** — installed unpacked from this repo (not published) |
 | `api` | **FSL-1.1-ALv2** — source-available, converts to Apache 2.0 in 2 years |
 | `apps/docs` | **All Rights Reserved** — readable for transparency; no redistribution |
 

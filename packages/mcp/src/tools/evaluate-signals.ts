@@ -5,7 +5,7 @@ import type { Config } from "../config.js";
 export { EvaluateSignalsInputSchema as evaluateSignalsInput };
 
 export const evaluateSignalsDescription =
-	"Run signal detectors over a listing without composing a verdict. Calls POST /v1/evaluate/signals. Useful when the agent wants raw evidence (under_median, ending_soon_low_watchers, poor_title) to feed a custom scoring policy. Pass `item` (ItemSummary) and `comps` (sold listings — `under_median` only fires when comps are present).";
+	"Run signal detectors over a listing without composing an evaluation. Calls POST /v1/evaluate/signals. Useful when the agent wants raw evidence (under_median, ending_soon_low_watchers, poor_title) to feed a custom scoring policy. Pass `item` (ItemSummary) and `comparables` (sold listings — `under_median` only fires when comparables are present).";
 
 export async function evaluateSignalsExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const client = getClient(config);

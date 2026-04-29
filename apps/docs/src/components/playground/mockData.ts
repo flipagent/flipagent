@@ -16,8 +16,8 @@ import type {
 	ItemSummary,
 	MatchResponse,
 	RankedDeal,
-	ThesisResponse,
-	Verdict,
+	MarketSummary,
+	Evaluation,
 } from "./types";
 
 /* -------------------------------- discover -------------------------------- */
@@ -109,46 +109,42 @@ const DISCOVER_SOLD: ItemSummary[] = [
 const DISCOVER_DEALS: RankedDeal[] = [
 	{
 		itemId: "v1|406338886641|0",
-		verdict: {
+		evaluation: {
 			rating: "buy",
-			isDeal: true,
-			netCents: 8400,
+			expectedNetCents: 8400,
 			bidCeilingCents: 22500,
-			probProfit: 0.78,
+			winProbability: 0.78,
 			confidence: 0.86,
 			reason: "Listed $113 below median; sample n=42, dispersion low.",
 		},
 	},
 	{
 		itemId: "v1|406336551572|0",
-		verdict: {
+		evaluation: {
 			rating: "buy",
-			isDeal: true,
-			netCents: 6100,
+			expectedNetCents: 6100,
 			bidCeilingCents: 27800,
-			probProfit: 0.71,
+			winProbability: 0.71,
 			confidence: 0.81,
 		},
 	},
 	{
 		itemId: "v1|395721093041|0",
-		verdict: {
-			rating: "pass",
-			isDeal: false,
-			netCents: 1900,
+		evaluation: {
+			rating: "hold",
+			expectedNetCents: 1900,
 			bidCeilingCents: 30000,
-			probProfit: 0.54,
+			winProbability: 0.54,
 			confidence: 0.66,
 		},
 	},
 	{
 		itemId: "v1|285904712214|0",
-		verdict: {
+		evaluation: {
 			rating: "skip",
-			isDeal: false,
-			netCents: -1100,
+			expectedNetCents: -1100,
 			bidCeilingCents: 39000,
-			probProfit: 0.34,
+			winProbability: 0.34,
 			confidence: 0.72,
 		},
 	},
@@ -173,8 +169,8 @@ interface EvaluateFixture {
 	soldPool: ItemSummary[];
 	activePool: ItemSummary[];
 	buckets: MatchResponse;
-	thesis: ThesisResponse;
-	verdict: Verdict;
+	marketSummary: MarketSummary;
+	evaluation: Evaluation;
 }
 
 function buildSoldPool(seed: { titlePrefix: string; centerCents: number; spreadCents: number; n: number }): ItemSummary[] {
@@ -246,7 +242,7 @@ const GUCCI_BLACK: EvaluateFixture = (() => {
 			reject: reject.map((m) => ({ item: m, bucket: "reject" as const, reason: "Different reference" })),
 			totals: { match: matched.length, reject: reject.length },
 		},
-		thesis: {
+		marketSummary: {
 			market: {
 				keyword: "Gucci YA1264153",
 				marketplace: "ebay_us",
@@ -266,7 +262,7 @@ const GUCCI_BLACK: EvaluateFixture = (() => {
 				daysP90: 41,
 				nDurations: 42,
 			},
-			listPriceAdvice: {
+			listPriceRecommendation: {
 				listPriceCents: 30200,
 				expectedDaysToSell: 18,
 				sellProb7d: 0.31,
@@ -277,14 +273,13 @@ const GUCCI_BLACK: EvaluateFixture = (() => {
 				annualizedRoi: 0.91,
 			},
 		},
-		verdict: {
+		evaluation: {
 			rating: "buy",
-			isDeal: true,
-			netCents: 8400,
+			expectedNetCents: 8400,
 			bidCeilingCents: 22500,
-			probProfit: 0.78,
+			winProbability: 0.78,
 			confidence: 0.86,
-			reason: "Listed $113 below median with 42 dense comps and steady selling pace.",
+			reason: "Listed $113 below median with 42 dense comparables and steady selling pace.",
 			signals: [
 				{ name: "under_median", reason: "Asking is 38% below the 90-day median." },
 				{ name: "tight_spread", reason: "p25–p75 only $46 wide — confident pricing." },
@@ -326,7 +321,7 @@ const GUCCI_PVD: EvaluateFixture = (() => {
 			reject: reject.map((m) => ({ item: m, bucket: "reject" as const, reason: "Different model" })),
 			totals: { match: matched.length, reject: reject.length },
 		},
-		thesis: {
+		marketSummary: {
 			market: {
 				keyword: "Gucci YA1264155 PVD",
 				marketplace: "ebay_us",
@@ -346,7 +341,7 @@ const GUCCI_PVD: EvaluateFixture = (() => {
 				daysP90: 58,
 				nDurations: 28,
 			},
-			listPriceAdvice: {
+			listPriceRecommendation: {
 				listPriceCents: 35200,
 				expectedDaysToSell: 26,
 				sellProb7d: 0.21,
@@ -357,12 +352,11 @@ const GUCCI_PVD: EvaluateFixture = (() => {
 				annualizedRoi: 0.55,
 			},
 		},
-		verdict: {
+		evaluation: {
 			rating: "buy",
-			isDeal: true,
-			netCents: 6100,
+			expectedNetCents: 6100,
 			bidCeilingCents: 27800,
-			probProfit: 0.71,
+			winProbability: 0.71,
 			confidence: 0.81,
 			reason: "Listed $118 below median; PVD variant sells slower but still within 30-day window.",
 			signals: [
@@ -385,8 +379,8 @@ const GENERIC_FALLBACK: EvaluateFixture = (() => {
 		image: { imageUrl: "" },
 		brand: "—",
 	};
-	const sold = buildSoldPool({ titlePrefix: "Sample comp", centerCents: 16800, spreadCents: 5200, n: 24 });
-	const active = buildActivePool({ titlePrefix: "Sample comp", centerCents: 15500, spreadCents: 4800, n: 9 });
+	const sold = buildSoldPool({ titlePrefix: "Sample comparable", centerCents: 16800, spreadCents: 5200, n: 24 });
+	const active = buildActivePool({ titlePrefix: "Sample comparable", centerCents: 15500, spreadCents: 4800, n: 9 });
 	const matched = sold.slice(0, 16);
 	const reject = sold.slice(16);
 	return {
@@ -398,9 +392,9 @@ const GENERIC_FALLBACK: EvaluateFixture = (() => {
 			reject: reject.map((m) => ({ item: m, bucket: "reject" as const, reason: "Different product" })),
 			totals: { match: matched.length, reject: reject.length },
 		},
-		thesis: {
+		marketSummary: {
 			market: {
-				keyword: "Sample comp",
+				keyword: "Sample comparable",
 				marketplace: "ebay_us",
 				windowDays: 90,
 				meanCents: 16800,
@@ -418,7 +412,7 @@ const GENERIC_FALLBACK: EvaluateFixture = (() => {
 				daysP90: 50,
 				nDurations: 24,
 			},
-			listPriceAdvice: {
+			listPriceRecommendation: {
 				listPriceCents: 16800,
 				expectedDaysToSell: 22,
 				sellProb7d: 0.24,
@@ -429,12 +423,11 @@ const GENERIC_FALLBACK: EvaluateFixture = (() => {
 				annualizedRoi: 0.47,
 			},
 		},
-		verdict: {
+		evaluation: {
 			rating: "buy",
-			isDeal: true,
-			netCents: 3600,
+			expectedNetCents: 3600,
 			bidCeilingCents: 13800,
-			probProfit: 0.66,
+			winProbability: 0.66,
 			confidence: 0.74,
 			reason: "Demo result — sign in to evaluate any real eBay item.",
 			signals: [

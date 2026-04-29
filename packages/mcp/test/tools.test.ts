@@ -45,8 +45,8 @@ describe("tool execute (mock mode)", () => {
 });
 
 describe("tools registry", () => {
-	it("registers all 30 tools", () => {
-		expect(tools).toHaveLength(30);
+	it("registers all 31 tools", () => {
+		expect(tools).toHaveLength(31);
 	});
 
 	it("covers eBay read/sell + flipagent evaluate/discover/ship", () => {

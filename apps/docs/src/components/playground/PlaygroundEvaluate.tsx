@@ -186,8 +186,8 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 							if (key === "active")
 								return { ...prev, activePool: (r.itemSummaries ?? []) as EvaluateOutcome["activePool"] };
 							if (key === "match") return { ...prev, buckets: p.result as EvaluateOutcome["buckets"] };
-							if (key === "thesis") return { ...prev, thesis: p.result as EvaluateOutcome["thesis"] };
-							if (key === "evaluate") return { ...prev, verdict: p.result as EvaluateOutcome["verdict"] };
+							if (key === "marketSummary") return { ...prev, marketSummary: p.result as EvaluateOutcome["marketSummary"] };
+							if (key === "evaluate") return { ...prev, evaluation: p.result as EvaluateOutcome["evaluation"] };
 							return prev;
 						});
 					}
@@ -195,10 +195,10 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 			);
 			if (result) {
 				setOutcome(result);
-				const summary = result.verdict.rating
-					? `${result.verdict.rating.toUpperCase()}${
-							result.verdict.probProfit != null
-								? ` · ${Math.round(result.verdict.probProfit * 100)}%`
+				const summary = result.evaluation.rating
+					? `${result.evaluation.rating.toUpperCase()}${
+							result.evaluation.winProbability != null
+								? ` · ${Math.round(result.evaluation.winProbability * 100)}%`
 								: ""
 						}`
 					: undefined;

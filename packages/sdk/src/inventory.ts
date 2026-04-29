@@ -20,14 +20,14 @@ export interface InventoryClient {
 
 export function createInventoryClient(http: FlipagentHttp): InventoryClient {
 	return {
-		getItem: (sku) => http.get(`/v1/inventory/inventory_item/${encodeURIComponent(sku)}`),
-		putItem: (sku, body) => http.put(`/v1/inventory/inventory_item/${encodeURIComponent(sku)}`, body),
-		deleteItem: (sku) => http.delete(`/v1/inventory/inventory_item/${encodeURIComponent(sku)}`),
-		createOffer: (body) => http.post("/v1/inventory/offer", body),
-		getOffer: (offerId) => http.get(`/v1/inventory/offer/${encodeURIComponent(offerId)}`),
-		updateOffer: (offerId, body) => http.put(`/v1/inventory/offer/${encodeURIComponent(offerId)}`, body),
-		deleteOffer: (offerId) => http.delete(`/v1/inventory/offer/${encodeURIComponent(offerId)}`),
-		publishOffer: (offerId) => http.post(`/v1/inventory/offer/${encodeURIComponent(offerId)}/publish`),
-		createLocation: (key, body) => http.post(`/v1/inventory/location/${encodeURIComponent(key)}`, body),
+		getItem: (sku) => http.get(`/v1/sell/inventory/inventory_item/${encodeURIComponent(sku)}`),
+		putItem: (sku, body) => http.put(`/v1/sell/inventory/inventory_item/${encodeURIComponent(sku)}`, body),
+		deleteItem: (sku) => http.delete(`/v1/sell/inventory/inventory_item/${encodeURIComponent(sku)}`),
+		createOffer: (body) => http.post("/v1/sell/inventory/offer", body),
+		getOffer: (offerId) => http.get(`/v1/sell/inventory/offer/${encodeURIComponent(offerId)}`),
+		updateOffer: (offerId, body) => http.put(`/v1/sell/inventory/offer/${encodeURIComponent(offerId)}`, body),
+		deleteOffer: (offerId) => http.delete(`/v1/sell/inventory/offer/${encodeURIComponent(offerId)}`),
+		publishOffer: (offerId) => http.post(`/v1/sell/inventory/offer/${encodeURIComponent(offerId)}/publish`),
+		createLocation: (key, body) => http.post(`/v1/sell/inventory/location/${encodeURIComponent(key)}`, body),
 	};
 }

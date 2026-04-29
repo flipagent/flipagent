@@ -22,6 +22,7 @@
 
 import type { MatchedItem, MatchResponse } from "@flipagent/types";
 import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
+import { getCachedMatchDecision, setCachedMatchDecision } from "./decision-cache.js";
 import { type LlmContent, type LlmProvider, pickProvider } from "./llm/index.js";
 
 // Both prompts share one mental model: "would a buyer expecting the candidate
@@ -34,7 +35,7 @@ const SYSTEM_TRIAGE = `You filter an eBay search-result POOL against a CANDIDATE
 
 For each pool item, decide whether it could plausibly be the same product as the candidate. Be inclusive — only "drop" when title / condition / price make it obvious a buyer would not accept it as a substitute (wrong brand, wrong model number, wrong product category, very different price tier). Borderline cases pass through; the next stage has full details and decides.
 
-Return ONLY JSON: [{"i":0,"verdict":"keep"|"drop","reason":"short"},...]. Indices match input order. Keep each "reason" to ≤8 words; the verifier stage gets the long form.`;
+Return ONLY JSON: [{"i":0,"decision":"keep"|"drop","reason":"short"},...]. Indices match input order. Keep each "reason" to ≤8 words; the verifier stage gets the long form.`;
 
 const SYSTEM_VERIFY = `You verify each ITEM against a CANDIDATE on eBay. Frame: would a buyer expecting the candidate accept this item as a substitute?
 
@@ -62,13 +63,13 @@ REJECT (return "same: false") only when an objective product-defining attribute 
 - Genuinely different model line
 
 If only aspects differ but title + reference + condition all match, return "true".
-Decide each item independently; one item's verdict must not influence another.
+Decide each item independently; one item's decision must not influence another.
 
 Return ONLY a JSON array: [{"i":0,"same":true|false,"reason":"one short sentence"},...]. Indices match the [N] markers on the items.`;
 
 interface TriageItem {
 	i: number;
-	verdict: "keep" | "drop";
+	decision: "keep" | "drop";
 	reason: string;
 }
 
@@ -131,6 +132,34 @@ async function triageChunk(
 	return items;
 }
 
+/**
+ * Retry wrapper for a single triage chunk. LLM transient failures
+ * (rate limits, network blips, occasional bad-JSON responses) are the
+ * dominant cause of chunk-level errors and they almost always resolve
+ * on the next attempt. 3 total attempts with 200ms / 400ms backoff
+ * keeps tail latency bounded while catching the common case.
+ */
+async function triageChunkWithRetry(
+	provider: LlmProvider,
+	candidate: ItemSummary,
+	chunk: ReadonlyArray<{ idx: number; item: ItemSummary }>,
+	useImages: boolean,
+): Promise<TriageItem[]> {
+	const attempts = 3;
+	let lastErr: unknown;
+	for (let i = 0; i < attempts; i++) {
+		try {
+			return await triageChunk(provider, candidate, chunk, useImages);
+		} catch (e) {
+			lastErr = e;
+			if (i < attempts - 1) {
+				await new Promise((r) => setTimeout(r, 200 * 2 ** i));
+			}
+		}
+	}
+	throw lastErr;
+}
+
 async function triage(
 	provider: LlmProvider,
 	candidate: ItemSummary,
@@ -138,9 +167,12 @@ async function triage(
 	useImages: boolean,
 ): Promise<Map<number, TriageItem>> {
 	// Split pool into TRIAGE_CHUNK-sized batches, run all chunks in
-	// parallel. One bad chunk shouldn't poison the whole result —
-	// surface the union of successful chunks, throw only when *every*
-	// chunk fails.
+	// parallel with per-chunk retries. After retries are exhausted, a
+	// failed chunk's items are simply absent from the returned map —
+	// `runMatcher` treats absence as "no triage signal, send to verify"
+	// (lenient, matching the system prompt's design intent). Throw only
+	// when *every* chunk fails after retries, so the caller can surface
+	// a real error instead of returning an empty match.
 	const chunks: { idx: number; item: ItemSummary }[][] = [];
 	for (let i = 0; i < pool.length; i += TRIAGE_CHUNK) {
 		const slice: { idx: number; item: ItemSummary }[] = [];
@@ -151,7 +183,9 @@ async function triage(
 		if (slice.length > 0) chunks.push(slice);
 	}
 
-	const results = await Promise.allSettled(chunks.map((chunk) => triageChunk(provider, candidate, chunk, useImages)));
+	const results = await Promise.allSettled(
+		chunks.map((chunk) => triageChunkWithRetry(provider, candidate, chunk, useImages)),
+	);
 
 	const byIdx = new Map<number, TriageItem>();
 	let okCount = 0;
@@ -160,7 +194,7 @@ async function triage(
 			okCount++;
 			for (const it of r.value) byIdx.set(it.i, it);
 		} else {
-			console.error("[match.triage] chunk failed:", r.reason);
+			console.error("[match.triage] chunk failed after retries:", r.reason);
 		}
 	}
 	if (okCount === 0 && chunks.length > 0) {
@@ -283,11 +317,20 @@ export async function matchPoolWithLlm(
 		const item = pool[i];
 		if (!item) continue;
 		const t = triaged.get(i);
-		if (!t || t.verdict === "drop") {
+		// No triage signal (chunk error after retries, or LLM lost the
+		// index in its response) → send to verify. The system prompt
+		// declares triage lenient: "borderline cases pass through; the
+		// next stage has full details and decides." Treating system
+		// failures as silent rejects violated that intent — sold-pool
+		// chunks that hit a transient LLM blip would all surface as
+		// "Dropped during triage" with no real signal.
+		if (!t) {
+			survivors.push({ idx: i, item });
+		} else if (t.decision === "drop") {
 			rejected.push({
 				item,
 				bucket: "reject",
-				reason: t?.reason || "Dropped during triage.",
+				reason: t.reason || "Triage drop (no reason given).",
 			});
 		} else {
 			survivors.push({ idx: i, item });
@@ -306,36 +349,64 @@ export async function matchPoolWithLlm(
 		})),
 	);
 
+	// Decision-cache short-circuit: each (candidate, item) pair gets a
+	// 30-day cached decision. Hits return from DB without the LLM call;
+	// misses go to the verify chunks below. Hosted-only feature — caches
+	// only populate when OBSERVATION_ENABLED=1, otherwise the helper
+	// returns null and every pair runs verify.
+	const cachedResults: { item: ItemSummary; same: boolean; reason: string }[] = [];
+	const survivorsToVerify: typeof survivorsWithDetail = [];
+	await Promise.all(
+		survivorsWithDetail.map(async (entry) => {
+			const cached = await getCachedMatchDecision(candidate.itemId, entry.item.itemId).catch(() => null);
+			if (cached) {
+				cachedResults.push({
+					item: entry.item,
+					same: cached.decision === "match",
+					reason: cached.reason,
+				});
+			} else {
+				survivorsToVerify.push(entry);
+			}
+		}),
+	);
+
 	// Verify chunks run in parallel. Each chunk's LLM call is independent,
 	// so sequential `await` was strict latency loss — N survivors → ⌈N/10⌉
 	// calls, each ~5-15s wall time. Promise.all collapses that to one
 	// chunk's worth of latency. Chunk-level failures are isolated by the
 	// per-chunk try/catch so a network blip doesn't lose every survivor.
-	const verifyChunks: (typeof survivorsWithDetail)[] = [];
-	for (let off = 0; off < survivorsWithDetail.length; off += VERIFY_CHUNK) {
-		verifyChunks.push(survivorsWithDetail.slice(off, off + VERIFY_CHUNK));
+	const verifyChunks: (typeof survivorsToVerify)[] = [];
+	for (let off = 0; off < survivorsToVerify.length; off += VERIFY_CHUNK) {
+		verifyChunks.push(survivorsToVerify.slice(off, off + VERIFY_CHUNK));
 	}
 	const chunkResults = await Promise.all(
 		verifyChunks.map(async (chunk) => {
 			try {
-				const verdicts = await verifyBatch(
+				const decisions = await verifyBatch(
 					provider,
 					candidateDetail,
 					chunk.map((c) => c.detail),
 					useImages,
 				);
-				return chunk.map((c, i) => ({
-					item: c.item,
-					same: verdicts[i]?.same ?? false,
-					reason: verdicts[i]?.reason ?? "verifier returned no entry",
-				}));
+				return chunk.map((c, i) => {
+					const same = decisions[i]?.same ?? false;
+					const reason = decisions[i]?.reason ?? "verifier returned no entry";
+					// Persist to cache so the next caller skips the LLM. Only
+					// real decisions are cached — "verifier returned no entry"
+					// signals a malformed LLM response we shouldn't memoise.
+					if (decisions[i]) {
+						void setCachedMatchDecision(candidate.itemId, c.item.itemId, same ? "match" : "reject", reason);
+					}
+					return { item: c.item, same, reason };
+				});
 			} catch (err) {
 				const reason = `verify failed: ${(err as Error).message}`;
 				return chunk.map((c) => ({ item: c.item, same: false, reason }));
 			}
 		}),
 	);
-	const verifyResults = chunkResults.flat();
+	const verifyResults = [...cachedResults, ...chunkResults.flat()];
 
 	const match: MatchedItem[] = [];
 	for (const r of verifyResults) {

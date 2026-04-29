@@ -12,19 +12,24 @@
  *   `GET /v1/connect/ebay/status` returns binding state (no secrets).
  *
  * Dashboard (session-driven) flow lives in `me-ebay.ts` and shares the
- * state store via `auth/ebay-oauth-state.ts`.
+ * state store via `services/ebay/oauth-state.ts`.
  */
 
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
-import { exchangeCode, fetchEbayUserSummary } from "../../auth/ebay-oauth.js";
-import { buildEbayAuthorizeUrl, consumeState, rememberState, safeRedirectTarget } from "../../auth/ebay-oauth-state.js";
 import { config, isEbayOAuthConfigured } from "../../config.js";
 import { db } from "../../db/client.js";
 import { userEbayOauth } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { ebayConnectStatusForApiKey } from "../../services/bridge/connect-state.js";
+import { exchangeCode, fetchEbayUserSummary } from "../../services/ebay/oauth.js";
+import {
+	buildEbayAuthorizeUrl,
+	consumeState,
+	rememberState,
+	safeRedirectTarget,
+} from "../../services/ebay/oauth-state.js";
 import { errorResponse } from "../../utils/openapi.js";
 
 export const connectRoute = new Hono();

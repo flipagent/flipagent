@@ -1,0 +1,11 @@
+-- No-op consolidation. drizzle-kit generate produced this file because
+-- snapshots for migrations 0005, 0007–0009, 0011–0016 were never
+-- persisted (those migrations were hand-written rather than drizzle-kit
+-- generated, so the kit had no baseline to diff against). Every CREATE
+-- in the originally-generated body had already been applied by those
+-- prior migrations. The DB is already correct.
+--
+-- This file's purpose now: hold a journal slot so the matching
+-- `0017_snapshot.json` becomes the canonical baseline future
+-- `db:generate` runs diff against. Real schema changes go in 0018+.
+SELECT 1 WHERE FALSE;

@@ -20,7 +20,7 @@ export async function ebayTaxonomyDefaultIdExecute(config: Config, args: Record<
 		const client = getClient(config);
 		return await client.markets.taxonomy.defaultCategoryTreeId((args.marketplaceId as string) ?? "EBAY_US");
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/markets/taxonomy/get_default_category_tree_id");
+		const e = toApiCallError(err, "/v1/commerce/taxonomy/get_default_category_tree_id");
 		return { error: "taxonomy_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
@@ -38,7 +38,7 @@ export async function ebayTaxonomySuggestExecute(config: Config, args: Record<st
 		const client = getClient(config);
 		return await client.markets.taxonomy.getCategorySuggestions(args.categoryTreeId as string, args.q as string);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/markets/taxonomy/category_tree/{id}/get_category_suggestions");
+		const e = toApiCallError(err, "/v1/commerce/taxonomy/category_tree/{id}/get_category_suggestions");
 		return { error: "taxonomy_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
@@ -59,7 +59,7 @@ export async function ebayTaxonomyAspectsExecute(config: Config, args: Record<st
 			args.categoryId as string,
 		);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/markets/taxonomy/category_tree/{id}/get_item_aspects_for_category");
+		const e = toApiCallError(err, "/v1/commerce/taxonomy/category_tree/{id}/get_item_aspects_for_category");
 		return { error: "taxonomy_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

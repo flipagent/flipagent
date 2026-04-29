@@ -526,7 +526,7 @@ function Sidebar({
 	return (
 		<aside className="dash-sidebar">
 			<a href="/" className="dash-brand">
-				<img src="/logo-32.png" width="60" height="18" alt="" aria-hidden="true" />
+				<img src="/logo.png" width="60" height="18" alt="" aria-hidden="true" />
 				{!collapsed && <span>flipagent</span>}
 			</a>
 
@@ -1038,7 +1038,7 @@ function Overview({
 				<EndpointCard
 					title="Evaluate listing"
 					tag="API"
-					body="Drop in any eBay item. Full pipeline: detail → curated comps → market thesis → buy/pass verdict."
+					body="Drop in any eBay item. Full pipeline: detail → curated comparables → market summary → buy/pass call."
 					onClick={() => onGoto("playground/evaluate")}
 				/>
 			</div>
@@ -1075,7 +1075,7 @@ function Overview({
 						type="button"
 						className="dash-btn dash-btn--sm"
 						onClick={() => {
-							const cmd = `curl "${apiBase}/v1/listings/search?q=canon%2050mm&limit=5" -H "X-API-Key: ${
+							const cmd = `curl "${apiBase}/v1/buy/browse/item_summary/search?q=canon%2050mm&limit=5" -H "X-API-Key: ${
 								primaryKey ? primaryKey.prefix + "…" : "<YOUR_KEY>"
 							}"`;
 							navigator.clipboard.writeText(cmd).catch(() => undefined);
@@ -1085,7 +1085,7 @@ function Overview({
 					</button>
 				</div>
 				<pre className="dash-snippet">
-					<code>{`curl "${apiBase}/v1/listings/search?q=canon%2050mm&limit=5" \\
+					<code>{`curl "${apiBase}/v1/buy/browse/item_summary/search?q=canon%2050mm&limit=5" \\
   -H "X-API-Key: ${primaryKey ? primaryKey.prefix + "…" : "<YOUR_KEY>"}"`}</code>
 				</pre>
 				<p className="dash-muted" style={{ marginTop: 10 }}>
@@ -1803,7 +1803,7 @@ function ActivityPanel() {
 							{events.map((e) => {
 								const isExpanded = expanded.has(e.id);
 								const replayState = replays[e.id];
-								const replayable = e.endpoint.startsWith("/v1/listings") || e.endpoint.startsWith("/v1/sold") || e.endpoint.startsWith("/v1/markets/taxonomy");
+								const replayable = e.endpoint.startsWith("/v1/buy/browse") || e.endpoint.startsWith("/v1/buy/marketplace_insights") || e.endpoint.startsWith("/v1/commerce/taxonomy");
 								return (
 									<Fragment key={e.id}>
 										<tr>

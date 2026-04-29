@@ -2,7 +2,7 @@
  * `/v1/reprice` schema — decide hold/drop/delist for a sitting
  * listing based on time elapsed vs the market's expected
  * time-to-sell. Pure compute: caller passes the listing's current
- * price + listed-at timestamp + a fresh market thesis.
+ * price + listed-at timestamp + a fresh market summary.
  */
 
 import { type Static, Type } from "@sinclair/typebox";

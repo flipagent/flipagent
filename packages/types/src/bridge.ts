@@ -144,7 +144,7 @@ export type BridgeResultResponse = Static<typeof BridgeResultResponse>;
  * Snapshot the bridge client POSTs after probing eBay cookies (the Chrome
  * extension does this via `chrome.cookies` on a periodic tick). Surfaced
  * back via `GET /v1/connect/ebay/status` so callers can tell whether the
- * buy-side `/v1/orders/*` flow is actually executable.
+ * buy-side `/v1/buy/order/*` flow is actually executable.
  */
 export const BridgeLoginStatusRequest = Type.Object(
 	{
@@ -162,8 +162,8 @@ export type BridgeLoginStatusResponse = Static<typeof BridgeLoginStatusResponse>
 
 /**
  * Server-side eBay OAuth: the seller token flipagent stores to call
- * api.ebay.com on behalf of the user (drives `/v1/inventory`,
- * `/v1/fulfillment`, `/v1/finance`). Surfaced as the `oauth` field on
+ * api.ebay.com on behalf of the user (drives `/v1/sell/*`,
+ * `/v1/commerce/*`, `/v1/post-order/*`). Surfaced as the `oauth` field on
  * `/v1/connect/ebay/status` and `/v1/me/ebay/status`.
  */
 export const EbayConnectOAuth = Type.Object(

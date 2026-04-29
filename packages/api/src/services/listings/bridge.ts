@@ -8,7 +8,9 @@
  *
  * Why bridge as a 1st-class primitive (not a fallback):
  *   - free (no Oxylabs $/req)
- *   - Akamai-safe (the user's residential IP + cookies)
+ *   - reads happen inside the user's existing browser session (their IP,
+ *     their cookies) — same primitive that powers the human-in-the-loop
+ *     buy flow, applied to read paths
  *   - up-to-date (no proxy edge cache)
  *   - some fields only render with a logged-in session
  *

@@ -11,8 +11,8 @@ export interface FulfillmentClient {
 
 export function createFulfillmentClient(http: FlipagentHttp): FulfillmentClient {
 	return {
-		listOrders: (query) => http.get("/v1/fulfillment/order", query),
+		listOrders: (query) => http.get("/v1/sell/fulfillment/order", query),
 		ship: (orderId, body) =>
-			http.post(`/v1/fulfillment/order/${encodeURIComponent(orderId)}/shipping_fulfillment`, body),
+			http.post(`/v1/sell/fulfillment/order/${encodeURIComponent(orderId)}/shipping_fulfillment`, body),
 	};
 }

@@ -98,7 +98,7 @@ export interface MarketStats {
 	nDurations?: number;
 }
 
-export interface ListPriceAdvice {
+export interface ListPriceRecommendation {
 	listPriceCents: number;
 	expectedDaysToSell: number;
 	sellProb7d: number;
@@ -109,9 +109,9 @@ export interface ListPriceAdvice {
 	annualizedRoi: number;
 }
 
-export interface ThesisResponse {
+export interface MarketSummary {
 	market: MarketStats;
-	listPriceAdvice: ListPriceAdvice | null;
+	listPriceRecommendation: ListPriceRecommendation | null;
 }
 
 export interface RecoveryResponse {
@@ -123,10 +123,9 @@ export interface RecoveryResponse {
 	reason: string;
 }
 
-export interface Verdict {
+export interface Evaluation {
 	rating?: string;
-	isDeal?: boolean;
-	netCents?: number;
+	expectedNetCents?: number;
 	bidCeilingCents?: number;
 	/** Cost components behind bidCeilingCents — surfaced under Safe bid. */
 	safeBidBreakdown?: {
@@ -135,7 +134,7 @@ export interface Verdict {
 		shippingCents: number;
 		targetNetCents: number;
 	} | null;
-	probProfit?: number;
+	winProbability?: number;
 	confidence?: number;
 	reason?: string;
 	signals?: Array<{ name: string; reason: string }>;
@@ -146,7 +145,7 @@ export interface Verdict {
 	 */
 	recommendedExit?: {
 		listPriceCents: number;
-		expectedDays: number;
+		expectedDaysToSell: number;
 		netCents: number;
 		dollarsPerDay: number;
 	} | null;
@@ -154,7 +153,7 @@ export interface Verdict {
 
 export interface RankedDeal {
 	itemId: string;
-	verdict: Verdict;
+	evaluation: Evaluation;
 }
 
 export interface BrowseSearchResponse {

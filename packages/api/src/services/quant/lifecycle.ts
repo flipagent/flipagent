@@ -15,7 +15,13 @@
  */
 
 import { feeBreakdown } from "./fees.js";
-import { DEFAULT_FEES, type FeeModel, type ListPriceAdvice, type MarketStats, type RepriceAdvice } from "./types.js";
+import {
+	DEFAULT_FEES,
+	type FeeModel,
+	type ListPriceRecommendation,
+	type MarketStats,
+	type RepriceRecommendation,
+} from "./types.js";
 
 /**
  * Default elasticity of sale rate w.r.t. log-price z-score:
@@ -130,7 +136,10 @@ const COMPETITION_FLOOR = 0.15;
  * implementation uses a discrete grid; closed-form would buy little for
  * the typical 31-point search.
  */
-export function optimalListPrice(market: MarketStats, options: OptimalListPriceOptions = {}): ListPriceAdvice | null {
+export function optimalListPrice(
+	market: MarketStats,
+	options: OptimalListPriceOptions = {},
+): ListPriceRecommendation | null {
 	if (!market.meanDaysToSell || market.meanDaysToSell <= 0) return null;
 	if (market.stdDevCents <= 0 || market.meanCents <= 0) return null;
 	const meanDays = market.meanDaysToSell;
@@ -164,7 +173,7 @@ export function optimalListPrice(market: MarketStats, options: OptimalListPriceO
 	// Pre-sort active ask prices for the position-aware competition factor.
 	const askPrices = [...asks].sort((a, b) => a - b);
 
-	let best: ListPriceAdvice | null = null;
+	let best: ListPriceRecommendation | null = null;
 	let bestYield = -Infinity;
 
 	for (let i = 0; i < steps; i++) {
@@ -274,7 +283,7 @@ export interface RepriceState {
  * When `meanDaysToSell` is missing, returns `hold` regardless — no
  * model, don't bluff. The caller can substitute a manual rule.
  */
-export function repriceAdvice(market: MarketStats, state: RepriceState): RepriceAdvice {
+export function repriceAdvice(market: MarketStats, state: RepriceState): RepriceRecommendation {
 	const now = state.now ?? new Date();
 	const listed = state.listedAt instanceof Date ? state.listedAt : new Date(state.listedAt);
 	const daysListed = Math.max(0, (now.getTime() - listed.getTime()) / 86_400_000);

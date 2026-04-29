@@ -1,4 +1,4 @@
-import type { Listing, Signal } from "../types.js";
+import type { QuantListing, Signal } from "../types.js";
 
 /**
  * Auction ending within the window with low watchers + zero bids. These
@@ -6,7 +6,7 @@ import type { Listing, Signal } from "../types.js";
  * them. Risk: seller may have reserve or end early.
  */
 export function endingSoonLowWatchers(
-	listing: Listing,
+	listing: QuantListing,
 	now: Date = new Date(),
 	options: { windowMs?: number; maxWatchers?: number } = {},
 ): Signal | null {

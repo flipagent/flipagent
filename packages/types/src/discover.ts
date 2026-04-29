@@ -1,17 +1,17 @@
 /**
  * `/v1/discover` schema — batch deal ranking. Overnight pillar.
  * Inputs accept a Browse search response shape so callers can pipe
- * `/v1/listings/search` results straight in.
+ * `/v1/buy/browse/item_summary/search` results straight in.
  */
 
 import { type Static, Type } from "@sinclair/typebox";
 import { BrowseSearchResponse } from "./ebay/buy.js";
-import { DealVerdict, EvaluateOptions } from "./evaluate.js";
+import { EvaluateOptions, Evaluation } from "./evaluate.js";
 
 export const RankedDeal = Type.Object(
 	{
 		itemId: Type.String(),
-		verdict: DealVerdict,
+		evaluation: Evaluation,
 	},
 	{ $id: "RankedDeal" },
 );

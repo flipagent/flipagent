@@ -5,7 +5,6 @@ import { logger } from "hono/logger";
 import { getAuth } from "./auth/better-auth.js";
 import { config } from "./config.js";
 import { registerOpenApi } from "./openapi.js";
-import { ebayRoutes } from "./routes/ebay/index.js";
 import { healthRoute } from "./routes/health.js";
 import { rootRoute } from "./routes/root.js";
 import { v1Routes } from "./routes/v1/index.js";
@@ -39,6 +38,7 @@ app.use(
 			"X-RateLimit-Remaining",
 			"X-RateLimit-Reset",
 			"X-Flipagent-Source",
+			"X-Flipagent-From-Cache",
 			"X-Flipagent-Cached-At",
 		],
 	}),
@@ -58,7 +58,6 @@ app.all("/api/auth/*", async (c) => {
 app.route("/", rootRoute);
 app.route("/healthz", healthRoute);
 app.route("/v1", v1Routes);
-app.route("/", ebayRoutes);
 
 registerOpenApi(app);
 

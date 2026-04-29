@@ -11,7 +11,7 @@
  *   *      ─► cancelled (only from non-terminal)
  */
 
-import { and, asc, eq, gt, lt, or } from "drizzle-orm";
+import { and, asc, eq, gt, lt, notInArray, or } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
 	type PurchaseOrder as DbPurchaseOrder,
@@ -22,7 +22,12 @@ import {
 
 const DEFAULT_TTL_MS = 30 * 60_000; // 30 min — generous for first-time login + 2FA
 
-export const PURCHASE_ORDER_TERMINAL = new Set(["completed", "failed", "cancelled", "expired"]);
+export const PURCHASE_ORDER_TERMINAL = new Set<DbPurchaseOrder["status"]>([
+	"completed",
+	"failed",
+	"cancelled",
+	"expired",
+]);
 
 export interface CreateOrderInput {
 	apiKeyId: string;
@@ -124,9 +129,17 @@ export interface TransitionInput {
 }
 
 /**
- * Move a purchase order to a new status. Idempotent at the terminal layer
- * (calling `transition(..., to: "completed")` twice is fine; the second
- * call is a no-op). Transitions out of terminal states are rejected.
+ * Move a purchase order to a new status. Idempotent at the terminal
+ * layer: once a row is in `completed` / `failed` / `cancelled` /
+ * `expired`, subsequent transitions are silent no-ops — the existing
+ * row is returned unchanged. We enforce that with a `status NOT IN
+ * terminal` filter on the UPDATE so a flaky retry of `result` from
+ * the bridge can't overwrite a real outcome (e.g. completed → failed
+ * because a 30s-late retry collided with the real success).
+ *
+ * Returns `null` only when the row doesn't exist (or doesn't belong
+ * to this api key) — that maps to 409 in the route. Existing-terminal
+ * returns the current row so the bridge sees 200 ok.
  */
 export async function transition(input: TransitionInput): Promise<DbPurchaseOrder | null> {
 	const now = new Date();
@@ -144,9 +157,26 @@ export async function transition(input: TransitionInput): Promise<DbPurchaseOrde
 	const [row] = await db
 		.update(purchaseOrders)
 		.set(set)
-		.where(and(eq(purchaseOrders.id, input.id), eq(purchaseOrders.apiKeyId, input.apiKeyId)))
+		.where(
+			and(
+				eq(purchaseOrders.id, input.id),
+				eq(purchaseOrders.apiKeyId, input.apiKeyId),
+				notInArray(purchaseOrders.status, [...PURCHASE_ORDER_TERMINAL] as DbPurchaseOrder["status"][]),
+			),
+		)
 		.returning();
-	if (!row) return null;
+	if (!row) {
+		// UPDATE matched zero rows — either the order doesn't exist or
+		// it was already terminal. Fetch and return the current row so
+		// terminal-after-terminal is a 200 no-op (matches the bridge
+		// docstring); a truly missing id stays null and surfaces as 409.
+		const [existing] = await db
+			.select()
+			.from(purchaseOrders)
+			.where(and(eq(purchaseOrders.id, input.id), eq(purchaseOrders.apiKeyId, input.apiKeyId)))
+			.limit(1);
+		return existing ?? null;
+	}
 
 	// Closing the loop: a successful buy auto-records the cost in the
 	// expense ledger so portfolio P&L tracks reseller spend without

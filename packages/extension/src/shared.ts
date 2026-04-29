@@ -9,8 +9,8 @@ import type {
 	BridgeLoginStatusRequest,
 	BridgeResultRequest,
 	IssueBridgeTokenResponse,
-	PurchaseOrder,
 } from "@flipagent/types";
+import type { EbayPurchaseOrder } from "@flipagent/types/ebay/buy";
 
 export const DEFAULT_BASE_URL = "https://api.flipagent.dev";
 
@@ -143,45 +143,17 @@ export async function reportLoginStatus(cfg: ExtensionConfig, body: BridgeLoginS
 	});
 }
 
-export async function fetchOrder(cfg: ExtensionConfig, id: string): Promise<PurchaseOrder> {
-	const r = await apiCall<PurchaseOrder>(cfg, `/v1/orders/${encodeURIComponent(id)}`, {
-		auth: "apiKey",
-		timeoutMs: 10_000,
-	});
-	if (!r.body) throw new ApiError(500, "/v1/orders/{id}", "empty body");
+export async function getOrderStatus(cfg: ExtensionConfig, purchaseOrderId: string): Promise<EbayPurchaseOrder> {
+	const path = `/v1/buy/order/purchase_order/${encodeURIComponent(purchaseOrderId)}`;
+	const r = await apiCall<EbayPurchaseOrder>(cfg, path, { auth: "apiKey", timeoutMs: 10_000 });
+	if (!r.body) throw new ApiError(500, path, "empty body");
 	return r.body;
 }
 
-export async function checkoutOrder(
-	cfg: ExtensionConfig,
-	body: { itemId: string; maxPriceCents?: number },
-): Promise<{ purchaseOrderId: string; status: string; expiresAt: string }> {
-	const r = await apiCall<{ purchaseOrderId: string; status: string; expiresAt: string }>(cfg, "/v1/orders/checkout", {
-		method: "POST",
-		auth: "apiKey",
-		body,
-		timeoutMs: 10_000,
-	});
-	if (!r.body) throw new ApiError(500, "/v1/orders/checkout", "empty body");
-	return r.body;
-}
-
-export async function getOrderStatus(cfg: ExtensionConfig, id: string): Promise<PurchaseOrder> {
-	const r = await apiCall<PurchaseOrder>(cfg, `/v1/orders/${encodeURIComponent(id)}`, {
-		auth: "apiKey",
-		timeoutMs: 10_000,
-	});
-	if (!r.body) throw new ApiError(500, "/v1/orders/{id}", "empty body");
-	return r.body;
-}
-
-export async function cancelOrder(cfg: ExtensionConfig, id: string): Promise<PurchaseOrder> {
-	const r = await apiCall<PurchaseOrder>(cfg, `/v1/orders/${encodeURIComponent(id)}/cancel`, {
-		method: "POST",
-		auth: "apiKey",
-		timeoutMs: 10_000,
-	});
-	if (!r.body) throw new ApiError(500, "/v1/orders/{id}/cancel", "empty body");
+export async function cancelOrder(cfg: ExtensionConfig, purchaseOrderId: string): Promise<EbayPurchaseOrder> {
+	const path = `/v1/buy/order/purchase_order/${encodeURIComponent(purchaseOrderId)}/cancel`;
+	const r = await apiCall<EbayPurchaseOrder>(cfg, path, { method: "POST", auth: "apiKey", timeoutMs: 10_000 });
+	if (!r.body) throw new ApiError(500, path, "empty body");
 	return r.body;
 }
 

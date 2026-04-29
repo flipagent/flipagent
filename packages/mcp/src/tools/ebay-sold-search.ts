@@ -6,7 +6,7 @@ import { mockSoldSearch } from "../mock.js";
 export { SoldSearchQuery as ebaySoldSearchInput };
 
 export const ebaySoldSearchDescription =
-	"Search recently-sold eBay listings (Marketplace Insights data). Calls GET /v1/sold/search at api.flipagent.dev. Required for accurate price-history estimates.";
+	"Search recently-sold eBay listings (Marketplace Insights data). Calls GET /v1/buy/marketplace_insights/item_sales/search at api.flipagent.dev. Required for accurate price-history estimates.";
 
 export async function ebaySoldSearchExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	if (config.mock) return mockSoldSearch();
@@ -18,7 +18,7 @@ export async function ebaySoldSearchExecute(config: Config, args: Record<string,
 			limit: args.limit as number | undefined,
 		});
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/sold/search");
+		const e = toApiCallError(err, "/v1/buy/marketplace_insights/item_sales/search");
 		return { error: "sold_search_failed", status: e.status, message: e.message, url: e.url };
 	}
 }

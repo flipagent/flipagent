@@ -54,6 +54,7 @@ export interface EbayItemSummary {
 	condition?: string;
 	conditionId?: string;
 	price?: { value: string; currency: string };
+	currentBidPrice?: { value: string; currency: string };
 	lastSoldPrice?: { value: string; currency: string };
 	shippingOptions?: { shippingCost?: { value: string; currency: string } }[];
 	buyingOptions?: ("AUCTION" | "FIXED_PRICE")[];
@@ -173,6 +174,20 @@ export function parseEbaySearchHtml(
 		// expose it. The structured equivalent lives on the detail-side
 		// `localizedAspects`.
 
+		if (shipping != null)
+			item.shippingOptions = [{ shippingCost: { value: centsToValue(shipping)!, currency: price.currency } }];
+		const bid = parseBidCount(r.bidCountText);
+		if (bid != null) item.bidCount = bid;
+		// eBay SRP cards don't always carry an "auction" / "buy it now"
+		// attribute row — `auctionOnly` searches in particular drop the
+		// label since the buying-format is implied. The presence of a
+		// bidCount line is the load-bearing signal: only auction listings
+		// surface bid counts on the SRP. Fall back to the explicit
+		// `buyingFormat` when no bid count was parsed (zero-bid auctions
+		// just out of the gate, fixed-price-with-best-offer rows, etc.).
+		const inferredBuying: "AUCTION" | "FIXED_PRICE" | undefined = bid != null ? "AUCTION" : (buying ?? undefined);
+		if (inferredBuying) item.buyingOptions = [inferredBuying];
+
 		if (price.cents != null) {
 			const money = { value: centsToValue(price.cents)!, currency: price.currency };
 			item.price = money;
@@ -180,12 +195,12 @@ export function parseEbaySearchHtml(
 			// `lastSoldPrice`. For sold rows we mirror the value so callers
 			// can read either field.
 			if (params.soldOnly) item.lastSoldPrice = money;
+			// Browse REST mirrors the auction current high bid into both
+			// `price` and `currentBidPrice` (same value). Replicate eBay's
+			// wire shape so auction-aware callers don't have to special-
+			// case scrape vs REST.
+			if (inferredBuying === "AUCTION") item.currentBidPrice = money;
 		}
-		if (shipping != null)
-			item.shippingOptions = [{ shippingCost: { value: centsToValue(shipping)!, currency: price.currency } }];
-		if (buying) item.buyingOptions = [buying];
-		const bid = parseBidCount(r.bidCountText);
-		if (bid != null) item.bidCount = bid;
 		const watch = parseWatchCount(r.watchCountText);
 		if (watch != null) item.watchCount = watch;
 		const sellerInfo = parseSellerInfo(r.sellerFeedbackText);

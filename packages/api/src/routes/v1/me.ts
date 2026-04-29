@@ -30,7 +30,7 @@ import { db } from "../../db/client.js";
 import { apiKeys, usageEvents } from "../../db/schema.js";
 import { requireSession } from "../../middleware/session.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
-import { meEbayRoute } from "./me-ebay.js";
+import { meEbayRoute } from "./me/ebay.js";
 
 export const meRoute = new Hono();
 

@@ -1,5 +1,5 @@
 /**
- * Public types shared across all quant modules. The `Listing` shape
+ * Public types shared across all quant modules. The `QuantListing` shape
  * matches the field set common to modern resale-marketplace listing
  * APIs — eBay's Browse `ItemSummary`, Mercari's listing JSON, Etsy's
  * Listing v3, etc. — so an adapter for any of these fits in a few
@@ -7,7 +7,7 @@
  * optional and ignored on fixed-price marketplaces.
  */
 
-export interface Listing {
+export interface QuantListing {
 	/** Stable per-marketplace identifier. */
 	itemId: string;
 	title: string;
@@ -16,7 +16,7 @@ export interface Listing {
 	/**
 	 * Informational pass-through (e.g. "USD"). Quant does not consume
 	 * this — all internal math is single-currency at the cents level.
-	 * Callers may use it to render or to refuse cross-currency comps.
+	 * Callers may use it to render or to refuse cross-currency comparables.
 	 */
 	currency: string;
 	shippingCents?: number;
@@ -50,7 +50,7 @@ export interface PriceObservation {
 	durationDays?: number;
 	/**
 	 * Free-form condition tag (e.g. "used", "new", "for parts"). Carried
-	 * through so callers can pre-filter comps by condition before
+	 * through so callers can pre-filter comparables by condition before
 	 * summarizing. Quant itself does not stratify — pass already-filtered
 	 * cohorts in for cleaner stats.
 	 */
@@ -85,7 +85,7 @@ export interface AskStats {
  *
  * `asks?` is populated when caller supplied active-listing data via
  * `summarizeMarket` / `summarizeAsks`. `meanDaysToSell?` and friends
- * are populated when at least one comp carried `durationDays`.
+ * are populated when at least one comparable carried `durationDays`.
  */
 export interface MarketStats {
 	keyword: string;
@@ -112,7 +112,7 @@ export interface MarketStats {
 	salesPerDay: number;
 	/**
 	 * Time-to-sell statistics — populated when at least one PriceObservation
-	 * carried `durationDays`. Undefined when no comp had duration data.
+	 * carried `durationDays`. Undefined when no comparable had duration data.
 	 */
 	meanDaysToSell?: number;
 	daysStdDev?: number;
@@ -120,7 +120,7 @@ export interface MarketStats {
 	daysP50?: number;
 	daysP70?: number;
 	daysP90?: number;
-	/** How many comps contributed to meanDaysToSell (≤ nObservations). */
+	/** How many comparables contributed to meanDaysToSell (≤ nObservations). */
 	nDurations?: number;
 	/** Active-side stats (current asks). Populated when caller passed asks. */
 	asks?: AskStats;
@@ -135,12 +135,12 @@ export interface Signal {
 }
 
 /**
- * Output of `score(listing, market)`. The full quant view of a deal:
+ * Output of `computeScore(listing, market)`. The full quant view of a deal:
  * expected return, risk-adjusted ranking metrics, factor exposures
  * (signals), listing-quality confidence, and the bottom-line rating.
  */
 export interface Score {
-	listing: Listing;
+	listing: QuantListing;
 	market: MarketStats;
 	/**
 	 * Expected net in cents — the single answer to "what'll I make on
@@ -170,7 +170,7 @@ export interface Score {
 	/** 0..1 multiplier from listing-level signals (seller feedback, photos, description). */
 	confidence: number;
 	signals: Signal[];
-	rating: "buy" | "watch" | "skip";
+	rating: "buy" | "hold" | "skip";
 	reason: string;
 }
 
@@ -222,7 +222,7 @@ export interface MarginInputs {
  * expected outcomes at that price. Returns null from the function when
  * the market lacks `meanDaysToSell` (no time-to-sell data).
  */
-export interface ListPriceAdvice {
+export interface ListPriceRecommendation {
 	listPriceCents: number;
 	/** Days expected to wait for sale at `listPriceCents`. */
 	expectedDaysToSell: number;
@@ -241,7 +241,7 @@ export interface ListPriceAdvice {
 }
 
 /** Output of `repriceAdvice` — what to do with a sitting listing. */
-export interface RepriceAdvice {
+export interface RepriceRecommendation {
 	action: "hold" | "drop" | "delist";
 	/** When `action === "drop"`: suggested new list price in cents. */
 	suggestedPriceCents?: number;

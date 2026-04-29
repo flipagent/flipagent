@@ -8,11 +8,11 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>Chrome extension</h1>
-				<p class="lead">The flipagent extension drives <code>/v1/orders/*</code> inside your real Chrome session: your TLS fingerprint, your cookies, your eBay account. Akamai sees a normal session.</p>
+				<p class="lead">The flipagent extension powers the <code>/v1/buy/order/*</code> bridge transport from inside your existing Chrome — your browser, your eBay session, your account. The extension auto-navigates to the listing and validates the cart against your cap. <strong>You click Buy It Now and Confirm-and-pay yourself</strong>; the extension never auto-clicks.</p>
 
 				<h2>Why this exists</h2>
-				<p>eBay's buy-flow uses Akamai bot detection. A headless or scripted browser gets challenged or shadow-banned within minutes. Running the buy clicks inside your existing Chrome (pinned to the eBay tab you actually log into) reuses the trust profile your account already has. The hosted API queues a <code>purchase_order_id</code>; the extension polls for it via <code>/v1/bridge/poll</code>, navigates the listing, places the order, and posts the result back via <code>/v1/bridge/result</code>.</p>
-				<p>Future iteration will swap to eBay's official Order API once tenant approval lands. The SDK and MCP surface stay the same: <code>client.orders.*</code> won't change.</p>
+				<p>eBay's checkout is human-only by policy. <a href="https://www.ebay.com/robots.txt" target="_blank" rel="noopener noreferrer">eBay's robots.txt</a> states: "Checkouts are strictly for human users… any end-to-end flow that attempts to place orders without human review is strictly prohibited." The bridge transport is built around that requirement — the extension keeps every click in human hands and only handles what isn't a click: opening the listing tab, reading the price, validating the cart against your cap, and capturing the order id once eBay confirms. The hosted API queues a <code>purchase_order_id</code>; the extension polls for it via <code>/v1/bridge/poll</code>, opens or focuses the <code>ebay.com/itm/&#123;id&#125;</code> tab, banners the page for you to click Buy It Now, validates the total on the review screen, captures the eBay order id after you click Confirm-and-pay, and posts the result back via <code>/v1/bridge/result</code>.</p>
+				<p>If your tenant has eBay's Buy Order API approval, set <code>EBAY_ORDER_API_APPROVED=1</code> on the API and the same <code>/v1/buy/order/*</code> surface switches to direct REST passthrough — bridge becomes optional. The SDK and MCP shape stay the same: <code>client.buy.order.*</code> works either way.</p>
 
 				<h2>Install (developer / unpacked)</h2>
 				<p>The extension isn't on the Chrome Web Store yet. To install from source:</p>
@@ -33,54 +33,62 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<p>Once paired, the popup shows a green dot when the service worker is polling. The dashboard's eBay panel reflects the same state.</p>
 
 				<h2>Sign into eBay (one-time)</h2>
-				<p>The extension drives buy-flow inside whatever eBay session your Chrome already has. If you're not signed in, click <strong>Sign in to eBay</strong> in the popup. The extension opens <code>ebay.com/signin</code> in a new tab, you sign in normally, and from then on the cookies stay with your profile. The extension reports session state via <code>POST /v1/bridge/login-status</code> so the api knows whether it's worth dispatching jobs.</p>
+				<p>The extension operates inside whatever eBay session your Chrome already has. If you're not signed in, click <strong>Sign in to eBay</strong> in the popup. The extension opens <code>ebay.com/signin</code> in a new tab, you sign in normally, and from then on the cookies stay with your profile. The extension reports session state via <code>POST /v1/bridge/login-status</code> so the api knows whether it's worth dispatching jobs.</p>
 
 				<h2>Place an order from your agent</h2>
-				<p>Once paired + signed in, anything that hits the bridge surface works:</p>
+				<p>Once paired + signed in, anything that hits the bridge surface works. The example below uses <code>quickCheckout</code> — initiate session + place_order in one shot — but the multi-stage <code>checkoutSession.initiate</code> → <code>checkoutSession.placeOrder</code> form is also available.</p>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>node</span></div>
 <pre><code>{`import { createFlipagentClient } from "@flipagent/sdk";
 
 const client = createFlipagentClient({ apiKey: "fa_…" });
 
-const { purchaseOrderId } = await client.orders.checkout({
-  itemId: "v1|123456789|0",
-  maxPriceCents: 12_000,
-});
+// Bridge mode: extension auto-opens ebay.com/itm/&#123;id&#125; in your Chrome.
+// You click Buy It Now + Confirm-and-pay; extension validates and records.
+const order = await client.buy.order.quickCheckout({ itemId: "v1|123456789|0" });
 
-// Poll until terminal — extension drives the buy flow in the meantime.
-const order = await client.orders.wait(purchaseOrderId);
-console.log(order.status); // "completed" | "failed" | "cancelled" | "expired"`}</code></pre>
+// Poll until terminal. Statuses follow eBay's Buy Order API shape:
+//   QUEUED_FOR_PROCESSING → PROCESSING → PROCESSED | FAILED | CANCELED
+async function pollUntilTerminal(id) {
+  for (;;) {
+    const o = await client.buy.order.purchaseOrder.get(id);
+    if (o.purchaseOrderStatus !== "QUEUED_FOR_PROCESSING" && o.purchaseOrderStatus !== "PROCESSING") return o;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+const final = await pollUntilTerminal(order.purchaseOrderId);
+console.log(final.purchaseOrderStatus, final.orderId);`}</code></pre>
 				</div>
 				<p>From Claude Desktop / Cursor via MCP, the same flow runs through the <code>ebay_buy_item</code> + <code>ebay_order_status</code> tools.</p>
 
 				<h2>Status states</h2>
+				<p>Internal extension states (visible in the popup + bridge logs). The public API exposes the eBay-shape <code>purchaseOrderStatus</code> mapping shown in the right column.</p>
 				<table class="api">
 					<thead>
-						<tr><th>Status</th><th>Meaning</th></tr>
+						<tr><th>Internal</th><th>eBay shape</th><th>Meaning</th></tr>
 					</thead>
 					<tbody>
-						<tr><td><code>queued</code></td><td>API accepted, waiting for the extension to claim it.</td></tr>
-						<tr><td><code>claimed</code></td><td>Extension picked it up via <code>/v1/bridge/poll</code> and is loading the listing.</td></tr>
-						<tr><td><code>awaiting_user_confirm</code></td><td>Listing loaded, BIN clicked, waiting for the user to OK the in-browser confirmation prompt.</td></tr>
-						<tr><td><code>placing</code></td><td>User confirmed; the extension is clicking <em>Confirm and pay</em>.</td></tr>
-						<tr><td><code>completed</code></td><td>eBay order id captured. The hosted API posts a <code>order.completed</code> webhook.</td></tr>
-						<tr><td><code>failed</code></td><td>Selector miss, listing ended, price changed past <code>maxPriceCents</code>, or eBay error. Reason in <code>failureReason</code>.</td></tr>
-						<tr><td><code>cancelled</code></td><td>Cancelled via <code>POST /v1/orders/:id/cancel</code> while non-terminal.</td></tr>
-						<tr><td><code>expired</code></td><td>No extension claimed the job within <code>expires_at</code>. Usually means the extension isn't running or isn't paired.</td></tr>
+						<tr><td><code>queued</code></td><td><code>QUEUED_FOR_PROCESSING</code></td><td>API accepted, waiting for the extension to claim it.</td></tr>
+						<tr><td><code>claimed</code></td><td><code>QUEUED_FOR_PROCESSING</code></td><td>Extension picked it up via <code>/v1/bridge/poll</code> and is opening the listing tab.</td></tr>
+						<tr><td><code>awaiting_user_confirm</code></td><td><code>PROCESSING</code></td><td>Listing tab is open with the flipagent banner; waiting for you to click <em>Buy It Now</em>.</td></tr>
+						<tr><td><code>placing</code></td><td><code>PROCESSING</code></td><td>You're on the eBay review screen; cap re-validated against the total. Waiting for your <em>Confirm and pay</em> click.</td></tr>
+						<tr><td><code>completed</code></td><td><code>PROCESSED</code></td><td>eBay order id captured from the post-purchase page. The hosted API posts an <code>order.completed</code> webhook.</td></tr>
+						<tr><td><code>failed</code></td><td><code>FAILED</code></td><td>Listing ended, price exceeded <code>maxPriceCents</code>, total exceeded the cap on the review screen, or the price selector returned <code>null</code>. Reason in <code>failureReason</code>.</td></tr>
+						<tr><td><code>cancelled</code></td><td><code>CANCELED</code></td><td>Cancelled via <code>POST /v1/buy/order/purchase_order/&#123;id&#125;/cancel</code> while non-terminal.</td></tr>
+						<tr><td><code>expired</code></td><td><code>FAILED</code></td><td>No extension claimed the job within <code>expires_at</code>. Usually means the extension isn't running or isn't paired.</td></tr>
 					</tbody>
 				</table>
 
 				<h2>Troubleshooting</h2>
 				<ul>
 					<li><strong>Orders sit at <code>queued</code> forever.</strong> The extension isn't running. Open <code>chrome://extensions</code>, click <strong>service worker</strong> under the flipagent row to inspect logs, and confirm the alarms tick fires every ~30s. MV3 service workers sleep aggressively; a click on the extension popup wakes it instantly.</li>
-					<li><strong><code>buy_it_now_not_found</code> / <code>confirm_and_pay_not_found</code> failures.</strong> eBay rotated the DOM. Patch the selector candidates in <code>packages/extension/src/content.ts</code> and rebuild. Future plan: server-side recipes so hotfixes don't need a Web Store re-review.</li>
+					<li><strong>Banner doesn't render or price reads as <code>null</code>.</strong> eBay rotated the DOM. Patch the price + total selector candidates in <code>packages/extension/src/content.ts</code> and rebuild. Future plan: server-side recipes so hotfixes don't need a Web Store re-review.</li>
 					<li><strong>Pair fails with 401.</strong> Your API key is wrong or revoked. Re-issue from the dashboard, or run <code>flipagent doctor</code> to confirm scope.</li>
 					<li><strong>Self-host: extension can't reach localhost.</strong> The manifest already host-permits <code>http://localhost:4000</code> and <code>http://localhost:4001</code>. Use one of those; for other ports rebuild after editing <code>manifest.json</code>.</li>
 				</ul>
 
 				<h2>What the extension can read + send</h2>
-				<p>Permissions in the manifest: <code>storage</code> (your bridge token and settings), <code>alarms</code> (30-second poll), <code>tabs</code> (open the listing tab), <code>scripting</code> (inject the buy-flow script), <code>cookies</code> (probe whether you're signed into eBay). Host permissions are scoped to <code>ebay.com</code> and the flipagent api. Nothing else.</p>
+				<p>Permissions in the manifest: <code>storage</code> (your bridge token and settings), <code>alarms</code> (30-second poll), <code>tabs</code> (open or focus the listing tab — never closes other tabs), <code>scripting</code> (inject the observer content script), <code>cookies</code> (probe whether you're signed into eBay). Host permissions are scoped to <code>ebay.com</code> and the flipagent api. Nothing else. The extension does not synthesize click events on the buy flow — every BIN and Confirm-and-pay press is yours.</p>
 				<p>The extension never reads other browser tabs, never persists cookies anywhere, and never sees plaintext your API key after the first pair-and-store cycle (only the <code>fbt_…</code> bridge token).</p>
 			</article>
 		</div>
