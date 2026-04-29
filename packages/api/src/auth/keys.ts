@@ -1,7 +1,9 @@
 /**
  * API key generation, hashing, lookup, revocation. Plaintext is shown to
  * the user exactly once at creation; the database stores only the sha256
- * digest. `keyPrefix` is the first 12 plaintext characters for display.
+ * digest. `keyPrefix` is the first 12 plaintext characters and `keySuffix`
+ * is the last 4 — together they let dashboards render `prefix···suffix`
+ * for at-a-glance recognition without exposing the secret middle.
  *
  * Format: `fa_<tier>_<24-byte-base64url>` (~38 chars).
  */
@@ -10,6 +12,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { type ApiKey, apiKeys } from "../db/schema.js";
+import { encryptKeyPlaintext, isKeyRevealConfigured } from "./key-cipher.js";
 
 export type Tier = "free" | "hobby" | "pro" | "business";
 
@@ -17,6 +20,7 @@ export interface GeneratedKey {
 	plaintext: string;
 	hash: string;
 	prefix: string;
+	suffix: string;
 }
 
 export function hashKey(plain: string): string {
@@ -30,6 +34,7 @@ export function generateKey(tier: Tier): GeneratedKey {
 		plaintext,
 		hash: hashKey(plaintext),
 		prefix: plaintext.slice(0, 12),
+		suffix: plaintext.slice(-4),
 	};
 }
 
@@ -44,16 +49,20 @@ export interface IssuedKey {
 	id: string;
 	plaintext: string;
 	prefix: string;
+	suffix: string;
 	tier: Tier;
 }
 
 export async function issueKey(input: IssueKeyInput): Promise<IssuedKey> {
 	const gen = generateKey(input.tier);
+	const ciphertext = isKeyRevealConfigured() ? encryptKeyPlaintext(gen.plaintext) : null;
 	const [row] = await db
 		.insert(apiKeys)
 		.values({
 			keyHash: gen.hash,
 			keyPrefix: gen.prefix,
+			keySuffix: gen.suffix,
+			keyCiphertext: ciphertext,
 			tier: input.tier,
 			name: input.name,
 			ownerEmail: input.ownerEmail,
@@ -61,7 +70,7 @@ export async function issueKey(input: IssueKeyInput): Promise<IssuedKey> {
 		})
 		.returning();
 	if (!row) throw new Error("apiKeys insert returned no row");
-	return { id: row.id, plaintext: gen.plaintext, prefix: gen.prefix, tier: row.tier };
+	return { id: row.id, plaintext: gen.plaintext, prefix: gen.prefix, suffix: gen.suffix, tier: row.tier };
 }
 
 /**

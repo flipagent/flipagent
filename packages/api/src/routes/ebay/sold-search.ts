@@ -18,6 +18,7 @@ import { config, isInsightsApproved } from "../../config.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { getCached, hashQuery, setCached } from "../../proxy/cache.js";
 import { scrapeSearch } from "../../proxy/scrape.js";
+import { fetchRetry } from "../../utils/fetch-retry.js";
 import { BridgeError, bridgeSoldSearch } from "../../services/listings/bridge.js";
 import { errorResponse, jsonResponse, paramsFor, tbCoerce } from "../../utils/openapi.js";
 
@@ -25,12 +26,26 @@ export const ebaySoldSearchRoute = new Hono();
 
 const SOLD_TTL_SEC = 60 * 60 * 12; // 12h — sold prices don't change
 
+/**
+ * Pull the conditionIds list out of a Browse-style filter expression
+ * (`...,conditionIds:{1000|3000},...`) so the scrape path can translate
+ * it into eBay's web `LH_ItemCondition=1000|3000` parameter. Returns
+ * undefined if the filter doesn't carry conditionIds.
+ */
+function parseConditionIdsFilter(filter: string | undefined): string[] | undefined {
+	if (!filter) return undefined;
+	const m = filter.match(/conditionIds:\{([^}]+)\}/);
+	if (!m) return undefined;
+	const ids = m[1]!.split("|").map((s) => s.trim()).filter(Boolean);
+	return ids.length > 0 ? ids : undefined;
+}
+
 async function fetchInsightsRest(args: { q: string; filter?: string; limit: number }): Promise<BrowseSearchResponse> {
 	const token = await getAppAccessToken();
 	const params = new URLSearchParams({ q: args.q, limit: String(args.limit) });
 	if (args.filter) params.set("filter", args.filter);
 	const url = `${config.EBAY_BASE_URL}/buy/marketplace_insights/v1_beta/item_sales/search?${params}`;
-	const res = await fetch(url, {
+	const res = await fetchRetry(url, {
 		headers: {
 			Authorization: `Bearer ${token}`,
 			"X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
@@ -113,7 +128,12 @@ ebaySoldSearchRoute.get(
 		if (source === "scrape") {
 			let body: BrowseSearchResponse;
 			try {
-				body = await scrapeSearch({ q, soldOnly: true, limit });
+				body = await scrapeSearch({
+					q,
+					soldOnly: true,
+					limit,
+					conditionIds: parseConditionIdsFilter(filter),
+				});
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				return c.json({ error: "upstream_failed" as const, message }, 502);

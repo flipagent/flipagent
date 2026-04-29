@@ -26,14 +26,14 @@ const updated = "2026-04-26";
 				<li>Generate volume that exceeds your tier's monthly allowance (we throttle).</li>
 				<li>Redistribute raw eBay listing content (titles, descriptions, photos, seller details) divorced from the original <code>ebay.com/itm/...</code> URL.</li>
 				<li>Build derivative datasets for resale outside the eBay context.</li>
-				<li>Circumvent eBay's seller opt-out — if a seller submits a takedown via <a href="/legal/takedown/">/legal/takedown</a>, that itemId is blocklisted.</li>
+				<li>Circumvent eBay's seller opt-out. If a seller submits a takedown via <a href="/legal/takedown/">/legal/takedown</a>, that itemId is blocklisted.</li>
 				<li>Place a load on eBay that violates eBay's own developer terms; we proxy through residential IPs in part to avoid concentrating load on a single source.</li>
 				<li>Resell raw access to <code>api.flipagent.dev</code> as your own service.</li>
 			</ul>
 
 			<h2>Tier limits + billing</h2>
 			<ul>
-				<li>Tier allowances reset monthly (UTC calendar month) and are counted by metered API call against the marketplace and value-add endpoints under <code>/v1/*</code> (listings, sold, orders, inventory, fulfillment, finance, markets, evaluate, discover, ship). Management routes (<code>/v1/me/*</code>, <code>/v1/connect/*</code>, <code>/v1/keys/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/healthz</code>) are free.</li>
+				<li>Tier allowances reset monthly (UTC calendar month) and are counted by metered API call against the marketplace and intelligence endpoints under <code>/v1/*</code> (listings, sold, orders, inventory, fulfillment, finance, markets, evaluate, discover, research, ship). Management routes (<code>/v1/me/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/health</code>) are free.</li>
 				<li>Stripe handles payment. Subscription changes take effect immediately for upgrades and at the end of the billing period for downgrades.</li>
 				<li>Refunds: pro-rated on cancellation only when the cause is a service-side outage or material breach of these terms. Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>.</li>
 			</ul>

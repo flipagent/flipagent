@@ -26,17 +26,30 @@ export function FilterPill<V extends string>({
 	options,
 	onChange,
 	icon,
-	defaultLabel,
+	label,
+	defaultValue,
 }: {
 	value: V;
 	options: ReadonlyArray<SelectOption<V>>;
 	onChange: (v: V) => void;
 	icon: ReactNode;
-	/** Shown when value is empty (default state). */
-	defaultLabel: string;
+	/**
+	 * Filter name — always rendered on the trigger so users immediately
+	 * read "this pill controls X". When the user picks a non-default
+	 * value, "label · value" shows. Pattern: `Min profit` (default) →
+	 * `Min profit: $25+` (set).
+	 */
+	label: string;
+	/**
+	 * The "untouched" value. When `value === defaultValue` the pill stays
+	 * neutral and shows just `label`; otherwise it lights up brand and
+	 * appends the selected option's label.
+	 */
+	defaultValue?: V;
 }) {
 	const selected = options.find((o) => o.value === value);
-	const isDefault = !selected || value === ("" as V);
+	const def = defaultValue ?? ("" as V);
+	const isDefault = !selected || value === def;
 	return (
 		<RxSelect.Root value={toRadix(value)} onValueChange={(v) => onChange(fromRadix(v) as V)}>
 			<RxSelect.Trigger
@@ -49,7 +62,15 @@ export function FilterPill<V extends string>({
 				<span className="flex items-center" aria-hidden="true">
 					{icon}
 				</span>
-				<RxSelect.Value>{isDefault ? defaultLabel : selected?.label}</RxSelect.Value>
+				<RxSelect.Value>
+					<span>{label}</span>
+					{!isDefault && selected && (
+						<>
+							<span className="opacity-60 mx-1">·</span>
+							<span>{selected.label}</span>
+						</>
+					)}
+				</RxSelect.Value>
 				<RxSelect.Icon aria-hidden="true">
 					<svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
 						<path d="m3 4 2 2 2-2" />

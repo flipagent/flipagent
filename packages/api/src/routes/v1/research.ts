@@ -9,10 +9,12 @@
  * intelligence call.
  */
 
-import { ResearchThesisRequest, ResearchThesisResponse } from "@flipagent/types";
+import { RecoveryRequest, RecoveryResponse, ResearchThesisRequest, ResearchThesisResponse } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
+import { recoveryProbability } from "../../services/quant/index.js";
+import { marketFromComps } from "../../services/scoring/adapter.js";
 import { thesis } from "../../services/scoring/index.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
@@ -37,6 +39,36 @@ researchRoute.post(
 	async (c) => {
 		const { comps, asks, context } = c.req.valid("json");
 		const result = thesis(comps, asks, context);
+		return c.json(result);
+	},
+);
+
+researchRoute.post(
+	"/recovery_probability",
+	describeRoute({
+		tags: ["Research"],
+		summary: "Probability of recovering cost basis + min net within a time window",
+		description:
+			"Composes the same hazard model as `optimalListPrice` with a fee schedule to answer: 'If I buy at `costBasisCents`, what's the probability of selling at the price needed to clear cost + `minNetCents` within `withinDays`?' Confidence reflects the duration sample size (n ≥ 10 high, n ≥ 5 medium, otherwise low or none).",
+		responses: {
+			200: jsonResponse("Recovery probability.", RecoveryResponse),
+			400: errorResponse("Validation failed."),
+			401: errorResponse("Missing or invalid API key."),
+			429: errorResponse("Rate limit exceeded."),
+		},
+	}),
+	requireApiKey,
+	tbBody(RecoveryRequest),
+	async (c) => {
+		const { comps, costBasisCents, withinDays, minNetCents, outboundShippingCents, context } = c.req.valid("json");
+		const market = marketFromComps(comps, context ?? {}, undefined, undefined);
+		const result = recoveryProbability({
+			market,
+			costBasisCents,
+			withinDays,
+			minNetCents,
+			outboundShippingCents,
+		});
 		return c.json(result);
 	},
 );

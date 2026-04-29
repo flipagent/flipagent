@@ -63,6 +63,14 @@ const Schema = Type.Object({
 	//   BETTER_AUTH_URL  this api's own external URL — what GitHub redirects
 	//                    to after auth ({BETTER_AUTH_URL}/api/auth/callback/github)
 	BETTER_AUTH_SECRET: Type.Optional(Type.String()),
+	// 32-byte symmetric key (base64) used to encrypt issued API key plaintext
+	// at rest. With this set, the dashboard's "reveal" button decrypts and
+	// shows the full key on demand. Without it, the column stays null on
+	// new keys and reveal returns 503 — sha256 hash auth still works fine.
+	// Generate: `openssl rand -base64 32`. NODE_ENV=production → required;
+	// dev/test → falls back to a key derived from BETTER_AUTH_SECRET so
+	// local setups don't trip on startup.
+	KEYS_ENCRYPTION_KEY: Type.Optional(Type.String()),
 	APP_URL: Type.String({ default: "http://localhost:4321" }),
 	BETTER_AUTH_URL: Type.String({ default: "http://localhost:4000" }),
 	GITHUB_CLIENT_ID: Type.Optional(Type.String()),
@@ -92,6 +100,19 @@ const Schema = Type.Object({
 	STRIPE_WEBHOOK_SECRET: Type.Optional(Type.String()),
 	STRIPE_PRICE_HOBBY: Type.Optional(Type.String()),
 	STRIPE_PRICE_PRO: Type.Optional(Type.String()),
+	// LLM provider for /v1/match. Pick exactly one — `LLM_PROVIDER`
+	// explicitly selects, otherwise the first key set wins (anthropic →
+	// openai → google). Without any key, /v1/match returns 503; every
+	// other route works fine.
+	LLM_PROVIDER: Type.Optional(
+		Type.Union([Type.Literal("anthropic"), Type.Literal("openai"), Type.Literal("google")]),
+	),
+	ANTHROPIC_API_KEY: Type.Optional(Type.String()),
+	ANTHROPIC_MODEL: Type.Optional(Type.String()),
+	OPENAI_API_KEY: Type.Optional(Type.String()),
+	OPENAI_MODEL: Type.Optional(Type.String()),
+	GOOGLE_API_KEY: Type.Optional(Type.String()),
+	GOOGLE_MODEL: Type.Optional(Type.String()),
 });
 
 const raw = {
@@ -112,6 +133,7 @@ const raw = {
 	EBAY_ORDER_API_APPROVED: process.env.EBAY_ORDER_API_APPROVED === "1",
 	EBAY_INSIGHTS_APPROVED: process.env.EBAY_INSIGHTS_APPROVED === "1",
 	BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
+	KEYS_ENCRYPTION_KEY: process.env.KEYS_ENCRYPTION_KEY,
 	APP_URL: process.env.APP_URL ?? "http://localhost:4321",
 	BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? `http://localhost:${process.env.PORT ?? 4000}`,
 	GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
@@ -127,6 +149,13 @@ const raw = {
 	STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
 	STRIPE_PRICE_HOBBY: process.env.STRIPE_PRICE_HOBBY,
 	STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO,
+	LLM_PROVIDER: process.env.LLM_PROVIDER,
+	ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+	ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
+	OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+	OPENAI_MODEL: process.env.OPENAI_MODEL,
+	GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+	GOOGLE_MODEL: process.env.GOOGLE_MODEL,
 };
 
 const decoded = Value.Default(Schema, raw);
@@ -154,6 +183,7 @@ export const config = decoded as {
 	EBAY_ORDER_API_APPROVED: boolean;
 	EBAY_INSIGHTS_APPROVED: boolean;
 	BETTER_AUTH_SECRET?: string;
+	KEYS_ENCRYPTION_KEY?: string;
 	APP_URL: string;
 	BETTER_AUTH_URL: string;
 	GITHUB_CLIENT_ID?: string;
@@ -169,6 +199,13 @@ export const config = decoded as {
 	STRIPE_WEBHOOK_SECRET?: string;
 	STRIPE_PRICE_HOBBY?: string;
 	STRIPE_PRICE_PRO?: string;
+	LLM_PROVIDER?: "anthropic" | "openai" | "google";
+	ANTHROPIC_API_KEY?: string;
+	ANTHROPIC_MODEL?: string;
+	OPENAI_API_KEY?: string;
+	OPENAI_MODEL?: string;
+	GOOGLE_API_KEY?: string;
+	GOOGLE_MODEL?: string;
 };
 
 /** True when all OAuth-required env is present. Use to gate connect routes. */
@@ -210,4 +247,9 @@ export function isStripeConfigured(): boolean {
 	return Boolean(
 		config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET && config.STRIPE_PRICE_HOBBY && config.STRIPE_PRICE_PRO,
 	);
+}
+
+/** True when at least one LLM provider key is set — gates the LLM comp matcher (/v1/match). */
+export function isLlmConfigured(): boolean {
+	return Boolean(config.ANTHROPIC_API_KEY || config.OPENAI_API_KEY || config.GOOGLE_API_KEY);
 }

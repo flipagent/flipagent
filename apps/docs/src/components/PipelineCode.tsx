@@ -3,7 +3,7 @@ import { useState } from "react";
 import "./PipelineCode.css";
 import "./CodeTabs.css";
 
-type StepId = "search" | "score" | "quote" | "list" | "ship" | "payout";
+type StepId = "search" | "score" | "buy" | "list" | "sell" | "ship";
 type LangId = "python" | "node" | "curl" | "cli";
 
 const STR = (s: string) => <span className="t-str">{s}</span>;

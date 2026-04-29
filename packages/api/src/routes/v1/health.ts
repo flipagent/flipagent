@@ -23,6 +23,7 @@ import {
 	isEbayOAuthConfigured,
 	isEmailConfigured,
 	isInsightsApproved,
+	isLlmConfigured,
 	isScraperApiConfigured,
 	isStripeConfigured,
 } from "../../config.js";
@@ -52,6 +53,7 @@ v1HealthRoute.get(
 			googleOAuth: Boolean(config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET),
 			email: isEmailConfigured(),
 			stripe: isStripeConfigured(),
+			llm: isLlmConfigured(),
 		});
 	},
 );

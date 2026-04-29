@@ -12,18 +12,18 @@ const updated = "2026-04-26";
 
 			<h2>What we collect</h2>
 			<ul>
-				<li><strong>Account</strong> — email, name, and avatar URL from your GitHub or Google sign-in. If you sign up with email + password we store the email and a bcrypt-hashed password.</li>
-				<li><strong>API keys</strong> — for each key we store an sha-256 hash, the first 12 plaintext characters (for display), the tier, and a name you give it. The plaintext is shown to you exactly once at creation.</li>
-				<li><strong>Usage events</strong> — for each metered API call we record the endpoint, status code, and response latency. Used for tier-limit accounting and debugging. We do not store request bodies.</li>
-				<li><strong>eBay tokens</strong> — when you connect an eBay account at <code>/v1/connect/ebay</code>, we store the refresh + access tokens needed to proxy your sell-side calls. They live only in our database and are never shared with third parties.</li>
-				<li><strong>Cached eBay responses</strong> — public listing data we pull on your behalf. Cache TTL is short (60 min on active, 12h on sold, 4h on detail). We never redistribute raw listing content divorced from the original <code>ebay.com/itm/...</code> URL.</li>
-				<li><strong>Cookies</strong> — one Better-Auth session cookie scoped to <code>flipagent.dev</code>. No analytics cookies, no advertising cookies.</li>
+				<li><strong>Account.</strong> Email, name, and avatar URL from your GitHub or Google sign-in. If you sign up with email and password we store the email and a bcrypt-hashed password.</li>
+				<li><strong>API keys.</strong> For each key we store an sha-256 hash, the first 12 plaintext characters (for display), the tier, and a name you give it. The plaintext is shown to you exactly once at creation.</li>
+				<li><strong>Usage events.</strong> For each metered API call we record the endpoint, status code, and response latency. Used for tier-limit accounting and debugging. We do not store request bodies.</li>
+				<li><strong>eBay tokens.</strong> When you connect an eBay account at <code>/v1/connect/ebay</code>, we store the refresh and access tokens needed to proxy your sell-side calls. They live only in our database and are never shared with third parties.</li>
+				<li><strong>Cached eBay responses.</strong> Public listing data we pull on your behalf. Cache TTL is short (60 min on active, 12h on sold, 4h on detail). We never redistribute raw listing content divorced from the original <code>ebay.com/itm/...</code> URL.</li>
+				<li><strong>Cookies.</strong> One Better-Auth session cookie scoped to <code>flipagent.dev</code>. No analytics cookies, no advertising cookies.</li>
 			</ul>
 
 			<h2>What we don't collect</h2>
 			<ul>
 				<li>Your browsing history outside flipagent's API surface.</li>
-				<li>Payment card numbers — Stripe handles those, we only see customer IDs and subscription status.</li>
+				<li>Payment card numbers. Stripe handles those, we only see customer IDs and subscription status.</li>
 				<li>Anything from your eBay buyer history beyond what you explicitly ask the API to fetch.</li>
 			</ul>
 
@@ -32,41 +32,41 @@ const updated = "2026-04-26";
 
 			<h2>Third parties</h2>
 			<ul>
-				<li><a href="https://stripe.com/privacy">Stripe</a> — billing.</li>
-				<li><a href="https://resend.com/legal/privacy-policy">Resend</a> — outbound email (verification, password reset).</li>
-				<li><a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a> / <a href="https://policies.google.com/privacy">Google</a> — OAuth sign-in (we receive your public profile and email).</li>
-				<li><a href="https://www.ebay.com/help/policies/member-behaviour-policies/user-privacy-notice?id=4260">eBay</a> — when you connect an eBay account, we hold the OAuth tokens and proxy your calls to <code>api.ebay.com</code>.</li>
-				<li>Residential proxy provider (configurable; e.g. Oxylabs, Bright Data) — used for outbound eBay scraping.</li>
+				<li><a href="https://stripe.com/privacy">Stripe</a> for billing.</li>
+				<li><a href="https://resend.com/legal/privacy-policy">Resend</a> for outbound email (verification, password reset).</li>
+				<li><a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a> and <a href="https://policies.google.com/privacy">Google</a> for OAuth sign-in (we receive your public profile and email).</li>
+				<li><a href="https://www.ebay.com/help/policies/member-behaviour-policies/user-privacy-notice?id=4260">eBay</a>: when you connect an eBay account, we hold the OAuth tokens and proxy your calls to <code>api.ebay.com</code>.</li>
+				<li><a href="https://oxylabs.io/legal/privacy-policy">Oxylabs</a> Web Scraper API for outbound eBay requests. Configurable via the <code>SCRAPER_API_VENDOR</code> env; only Oxylabs is wired today.</li>
 			</ul>
 
 			<h2>Your rights</h2>
 			<ul>
-				<li><strong>Export</strong> — every row keyed to your account is reachable via <code>/v1/me/*</code>. Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a> for a full data export.</li>
-				<li><strong>Revoke API keys</strong> — from the dashboard or <code>DELETE /v1/me/keys/:id</code>.</li>
-				<li><strong>Disconnect eBay</strong> — from the dashboard or <code>DELETE /v1/me/ebay/connect</code>. Tokens are removed from our database immediately. To revoke at eBay's end, use eBay's "Account → Permissions" page.</li>
-				<li><strong>Delete account</strong> — email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>. We remove your user, sessions, accounts, api keys, eBay tokens, and usage events. Stripe customer is closed via API.</li>
+				<li><strong>Export.</strong> Every row keyed to your account is reachable via <code>/v1/me/*</code>. Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a> for a full data export.</li>
+				<li><strong>Revoke API keys.</strong> From the dashboard or <code>DELETE /v1/me/keys/:id</code>.</li>
+				<li><strong>Disconnect eBay.</strong> From the dashboard or <code>DELETE /v1/me/ebay/connect</code>. Tokens are removed from our database immediately. To revoke at eBay's end, use eBay's "Account → Permissions" page.</li>
+				<li><strong>Delete account.</strong> Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>. We remove your user, sessions, accounts, api keys, eBay tokens, and usage events. Stripe customer is closed via API.</li>
 			</ul>
 
 			<h2>If you're an eBay seller (indirect collection notice)</h2>
-			<p>This section covers data we hold about you that you didn't give us directly — i.e., information that appears in your public eBay listings and gets cached when one of our customers queries the eBay-compat API for your item. This is our GDPR Art. 14 / CCPA notice for indirect collection.</p>
+			<p>This section covers data we hold about you that you didn't give us directly: information that appears in your public eBay listings and gets cached when one of our customers queries flipagent for your item. This is our GDPR Art. 14 and CCPA notice for indirect collection.</p>
 			<ul>
-				<li><strong>What we hold</strong> — itemId, title, price, condition, end time, your eBay <em>username</em> (the public seller handle, not your real name), seller feedback score, listing location (city / region / country), shipping policy, and category. We store image <em>URLs</em> back to <code>i.ebayimg.com</code>, not image binaries. We do not store seller feedback comments.</li>
-				<li><strong>Source</strong> — your public eBay listing pages at <code>www.ebay.com/itm/&#123;itemId&#125;</code>, fetched on demand when one of our API customers queries your item.</li>
-				<li><strong>Purpose</strong> — to operate an eBay-compatible read API for AI assistants and reseller tools. We do not profile sellers, do not enrich with third-party data, do not sell seller-level data sets.</li>
-				<li><strong>Legal basis</strong> — GDPR Art. 6(1)(f) legitimate interests. Specifically: providing developers with low-latency access to publicly published commerce data, balanced against your reasonable expectation that data you've published as a public listing is consultable. We do not believe this processing meaningfully impacts your fundamental rights, but you can object at any time (see below).</li>
-				<li><strong>Retention</strong> — short. Active-listing cache is 60 minutes; sold-comp cache is 12 hours; item-detail cache is 4 hours. After TTL the row is overwritten or evicted. We do not maintain an archival copy.</li>
-				<li><strong>Recipients</strong> — flipagent's API customers with a valid key, only when they query your specific itemId. Sub-processors are listed under "Third parties" above.</li>
-				<li><strong>International transfers</strong> — flipagent's database is hosted in the US (Azure US region). If you're in the EU/UK, transfer is justified under Art. 6(1)(f) legitimate interests for the limited public-data fields above; for higher-sensitivity scenarios our standard remedy is deletion via takedown rather than transfer safeguards.</li>
+				<li><strong>What we hold.</strong> itemId, title, price, condition, end time, your eBay <em>username</em> (the public seller handle, not your real name), seller feedback score, listing location (city, region, country), shipping policy, and category. We store image <em>URLs</em> back to <code>i.ebayimg.com</code>, not image binaries. We do not store seller feedback comments.</li>
+				<li><strong>Source.</strong> Your public eBay listing pages at <code>www.ebay.com/itm/&#123;itemId&#125;</code>, fetched on demand when one of our API customers queries your item.</li>
+				<li><strong>Purpose.</strong> To operate an eBay reseller API for AI assistants and reseller tools. We do not profile sellers, do not enrich with third-party data, and do not sell seller-level data sets.</li>
+				<li><strong>Legal basis.</strong> GDPR Art. 6(1)(f) legitimate interests. Specifically: providing developers with low-latency access to publicly published commerce data, balanced against your reasonable expectation that data you've published as a public listing is consultable. We do not believe this processing meaningfully impacts your fundamental rights, but you can object at any time (see below).</li>
+				<li><strong>Retention.</strong> Short. Active-listing cache is 60 minutes; sold-comp cache is 12 hours; item-detail cache is 4 hours. After TTL the row is overwritten or evicted. We do not maintain an archival copy.</li>
+				<li><strong>Recipients.</strong> flipagent's API customers with a valid key, only when they query your specific itemId. Sub-processors are listed under "Third parties" above.</li>
+				<li><strong>International transfers.</strong> flipagent's database is hosted in the US (Azure US region). If you're in the EU or UK, transfer is justified under Art. 6(1)(f) legitimate interests for the limited public-data fields above. For higher-sensitivity scenarios our standard remedy is deletion via takedown rather than transfer safeguards.</li>
 				<li>
-					<strong>Your rights</strong> — you may:
+					<strong>Your rights.</strong> You may:
 					<ul>
-						<li><strong>Access</strong> what we hold about a specific itemId — email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a> with the itemId. (GDPR Art. 15.)</li>
-						<li><strong>Erase / object</strong> — submit the itemId at <a href="/legal/takedown/">/legal/takedown</a>. Approved takedowns flush our cache for that item immediately and add it to a blocklist that prevents future re-fetches. (GDPR Art. 17 / Art. 21; CCPA right to delete.)</li>
+						<li><strong>Access</strong> what we hold about a specific itemId. Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a> with the itemId. (GDPR Art. 15.)</li>
+						<li><strong>Erase or object.</strong> Submit the itemId at <a href="/legal/takedown/">/legal/takedown</a>. Approved takedowns flush our cache for that item immediately and add it to a blocklist that prevents future re-fetches. (GDPR Art. 17 and Art. 21; CCPA right to delete.)</li>
 						<li><strong>Lodge a complaint</strong> with your local data protection authority. EU residents: the supervisory authority of your country of residence. UK residents: the ICO.</li>
 					</ul>
 				</li>
-				<li><strong>Automated decision-making</strong> — none. We do not run automated profiling or scoring on individual sellers.</li>
-				<li><strong>Provision of the data</strong> — not a statutory or contractual requirement. You publish your listing on eBay; we cache pieces of it as described above.</li>
+				<li><strong>Automated decision-making.</strong> None. We do not run automated profiling or scoring on individual sellers.</li>
+				<li><strong>Provision of the data.</strong> Not a statutory or contractual requirement. You publish your listing on eBay; we cache pieces of it as described above.</li>
 			</ul>
 
 			<h2>Changes</h2>

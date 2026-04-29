@@ -75,6 +75,13 @@ export const ItemSummary = Type.Object(
 		currentBidPrice: Type.Optional(Money),
 		watchCount: Type.Optional(Type.Integer()),
 		itemEndDate: Type.Optional(Type.String()),
+		/**
+		 * ISO 8601 listing creation timestamp. Paired with `itemEndDate` or
+		 * `lastSoldDate`, this gives the list-to-sell duration that the
+		 * hazard model reads directly from summaries — no per-comp detail
+		 * fetch required.
+		 */
+		itemCreationDate: Type.Optional(Type.String()),
 		lastSoldDate: Type.Optional(Type.String()),
 		totalSoldQuantity: Type.Optional(Type.Integer()),
 		seller: Type.Optional(Seller),
@@ -214,10 +221,30 @@ export type ItemDetail = Static<typeof ItemDetail>;
 
 /* -------------------------- request param schemas -------------------------- */
 
-/** Query parameters for /buy/browse/v1/item_summary/search. */
+/**
+ * Query parameters for /buy/browse/v1/item_summary/search.
+ *
+ * eBay's Browse API itself accepts category-only browse via `category_ids`
+ * (verified working on `EBAY_LISTINGS_SOURCE=rest`). We do NOT expose
+ * `category_ids` here yet, and `q` stays required, because the scrape
+ * path can't honor it:
+ *
+ * TODO(scrape category browse): eBay is migrating category SRP from the
+ * `s-item__*` layout (which our parser in `@flipagent/ebay-scraper`
+ * targets) to a JS-driven `brwrvr__item-card-*` browse layout served at
+ * `/b/<category>/<id>/...`. Empty-keyword + `_sacat=<id>` triggers the
+ * 301 to that browse page, and our parser returns 0 items. To unlock
+ * category-only across all sources we need either:
+ *   1) a parser for the `brwrvr__item-card-*` DOM (lazy-loaded items
+ *      complicate this — initial HTML carries skeletons, items arrive
+ *      via XHR after render), or
+ *   2) reverse-engineer eBay's internal browse-XHR endpoint.
+ * Until one of those lands, the handler enforces `q` so the three
+ * sources stay behaviourally consistent.
+ */
 export const BrowseSearchQuery = Type.Object(
 	{
-		q: Type.String({ description: "Search keywords." }),
+		q: Type.String({ description: "Search keywords. Required across all sources today." }),
 		filter: Type.Optional(
 			Type.String({
 				description:

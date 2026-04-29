@@ -26,6 +26,13 @@ export interface EbaySearchParams {
 	binOnly?: boolean;
 	/** Sort key: endingSoonest, newlyListed, pricePlusShippingLowest, pricePlusShippingHighest. */
 	sort?: "endingSoonest" | "newlyListed" | "pricePlusShippingLowest" | "pricePlusShippingHighest";
+	/**
+	 * eBay condition codes (`1000` New, `2000` MFG Refurb, `3000` Used,
+	 * `7000` Parts, etc). Pipe-joined into `LH_ItemCondition=a|b|...` —
+	 * eBay's web search uses the same numeric enum as the Browse API
+	 * `conditionIds:{...}` filter, so callers can pass either through.
+	 */
+	conditionIds?: string[];
 	pages?: number;
 }
 
@@ -89,6 +96,9 @@ export function buildEbayUrl(params: EbaySearchParams, page: number): string {
 	}
 	if (params.auctionOnly) u.searchParams.set("LH_Auction", "1");
 	if (params.binOnly) u.searchParams.set("LH_BIN", "1");
+	if (params.conditionIds && params.conditionIds.length > 0) {
+		u.searchParams.set("LH_ItemCondition", params.conditionIds.join("|"));
+	}
 	if (params.sort) u.searchParams.set("_sop", SORT_MAP[params.sort]);
 	return u.toString();
 }

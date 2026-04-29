@@ -12,7 +12,9 @@
  *   billing   → upgrade buttons + Stripe portal
  */
 
+import * as RxPopover from "@radix-ui/react-popover";
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { Toaster, toast } from "sonner";
 import { CHANGELOG, type ChangelogEntry, type ChangelogTag } from "../data/changelog";
 import { apiBase, apiFetch, authClient, signOut } from "../lib/authClient";
 import type { ComposeTab } from "./compose/ComposeCard";
@@ -29,11 +31,9 @@ type View =
 	| "playground/discover"
 	| "playground/evaluate"
 	| "keys"
+	| "settings"
 	| "usage"
 	| "activity"
-	| "ebay"
-	| "billing"
-	| "integrations"
 	| "whatsnew";
 
 type Profile = {
@@ -49,23 +49,33 @@ type KeyRow = {
 	id: string;
 	name: string | null;
 	prefix: string;
+	suffix: string | null;
 	tier: Tier;
 	createdAt: string;
 	lastUsedAt: string | null;
 };
-type IssuedKey = { id: string; tier: Tier; prefix: string; plaintext: string; notice: string };
-type EbayStatus =
-	| { connected: false }
-	| {
-			connected: true;
-			ebayUserId: string | null;
-			ebayUserName: string | null;
-			scopes: string[];
-			accessTokenExpiresAt: string;
-			connectedAt: string;
-	  };
-type Toast = { kind: "success" | "error"; message: string };
-
+type IssuedKey = { id: string; tier: Tier; prefix: string; suffix: string; plaintext: string; notice: string };
+/** Mechanism-based connect-status shape: server-side OAuth and the
+ *  browser-side bridge are two distinct access paths to (usually) the same
+ *  eBay account. */
+type EbayStatus = {
+	oauth: {
+		connected: boolean;
+		ebayUserId: string | null;
+		ebayUserName: string | null;
+		scopes: string[];
+		accessTokenExpiresAt: string | null;
+		connectedAt: string | null;
+	};
+	bridge: {
+		paired: boolean;
+		deviceName: string | null;
+		lastSeenAt: string | null;
+		ebayLoggedIn: boolean;
+		ebayUserName: string | null;
+		verifiedAt: string | null;
+	};
+};
 /**
  * Capability snapshot from `/v1/health/features`. Drives panel visibility so
  * a self-hosted instance with Stripe / GitHub OAuth / eBay env unset doesn't
@@ -120,7 +130,6 @@ export default function Dashboard() {
 	const [evaluateSeed, setEvaluateSeed] = useState<string | null>(null);
 	const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
 	const [issued, setIssued] = useState<IssuedKey | null>(null);
-	const [toast, setToast] = useState<Toast | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [collapsed, setCollapsed] = useState(false);
 
@@ -133,7 +142,24 @@ export default function Dashboard() {
 			const status = await apiFetch<EbayStatus>("/v1/me/ebay/status");
 			setEbay(status);
 		} catch {
-			setEbay({ connected: false });
+			setEbay({
+				oauth: {
+					connected: false,
+					ebayUserId: null,
+					ebayUserName: null,
+					scopes: [],
+					accessTokenExpiresAt: null,
+					connectedAt: null,
+				},
+				bridge: {
+					paired: false,
+					deviceName: null,
+					lastSeenAt: null,
+					ebayLoggedIn: false,
+					ebayUserName: null,
+					verifiedAt: null,
+				},
+			});
 		}
 	}
 	async function refreshPermissions() {
@@ -189,13 +215,13 @@ export default function Dashboard() {
 		const verified = p.get("verified");
 		if (ebayParam === "connected") {
 			const u = p.get("user");
-			setToast({ kind: "success", message: u ? `Connected as @${u}.` : "eBay account connected." });
+			toast.success(u ? `Connected as @${u}.` : "eBay account connected.");
 			window.history.replaceState({}, "", window.location.pathname);
 		} else if (ebayParam === "error") {
-			setToast({ kind: "error", message: p.get("message") ?? "eBay connection failed." });
+			toast.error(p.get("message") ?? "eBay connection failed.");
 			window.history.replaceState({}, "", window.location.pathname);
 		} else if (verified === "1" || verified === "true") {
-			setToast({ kind: "success", message: "Email verified." });
+			toast.success("Email verified.");
 			window.history.replaceState({}, "", window.location.pathname);
 		}
 	}, []);
@@ -217,14 +243,24 @@ export default function Dashboard() {
 				onToggle={() => setCollapsed((v) => !v)}
 			/>
 			{!profile.emailVerified && (
-				<EmailVerifyBanner email={profile.email} onToast={setToast} />
+				<EmailVerifyBanner email={profile.email} />
 			)}
 			<main className="dash-main">
 				<TopBar
 					tier={profile.tier}
 					ebay={ebay}
-					onUpgrade={() => setView("billing")}
-					onEbay={() => setView("ebay")}
+					onUpgrade={() => {
+						setView("settings");
+						requestAnimationFrame(() => {
+							document.getElementById("settings-billing")?.scrollIntoView({ behavior: "smooth", block: "center" });
+						});
+					}}
+					onEbay={() => {
+						setView("settings");
+						requestAnimationFrame(() => {
+							document.getElementById("settings-ebay")?.scrollIntoView({ behavior: "smooth", block: "center" });
+						});
+					}}
 				/>
 				<div className="dash-content">
 					{view === "overview" && (
@@ -256,32 +292,26 @@ export default function Dashboard() {
 							onError={setError}
 						/>
 					)}
-					{view === "usage" && <UsagePanel profile={profile} />}
-					{view === "activity" && <ActivityPanel />}
-					{view === "ebay" && (
-						<EbayPanel
+					{view === "settings" && (
+						<SettingsPanel
+							profile={profile}
 							ebay={ebay}
 							keys={keys}
 							features={features}
 							permissions={permissions}
-							refresh={async () => {
+							onError={setError}
+							refreshEbay={async () => {
 								await Promise.all([refreshEbay(), refreshPermissions()]);
 							}}
-							onToast={setToast}
 						/>
 					)}
-					{view === "billing" && <BillingPanel tier={profile.tier} features={features} onError={setError} />}
-					{view === "integrations" && <IntegrationsPanel keys={keys} features={features} />}
+					{view === "usage" && <UsagePanel profile={profile} />}
+					{view === "activity" && <ActivityPanel />}
 					{view === "whatsnew" && <WhatsNewPanel />}
 				</div>
 			</main>
 
-			{toast && (
-				<div className={`dash-toast dash-toast--${toast.kind}`}>
-					<span>{toast.message}</span>
-					<button type="button" aria-label="Dismiss" onClick={() => setToast(null)}>×</button>
-				</div>
-			)}
+			<Toaster position="top-right" richColors closeButton />
 		</div>
 	);
 }
@@ -388,9 +418,35 @@ function formatDate(iso: string): string {
 
 /* ─────────── Email verify banner ─────────── */
 
-function EmailVerifyBanner({ email, onToast }: { email: string; onToast: (t: Toast) => void }) {
+const VERIFY_DISMISS_KEY = "flipagent.verifyBannerDismissedAt";
+const VERIFY_REMIND_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+
+function EmailVerifyBanner({ email }: { email: string }) {
 	const [pending, setPending] = useState(false);
-	const [hidden, setHidden] = useState(false);
+	const [hidden, setHidden] = useState<boolean | null>(null);
+
+	useEffect(() => {
+		// Snooze for 7 days when dismissed. After that the banner re-surfaces
+		// — verifying email matters for password reset + abuse pathways and
+		// shouldn't be silently dismissable forever.
+		try {
+			const raw = localStorage.getItem(VERIFY_DISMISS_KEY);
+			const at = raw ? Number.parseInt(raw, 10) : 0;
+			const stillSnoozed = at > 0 && Date.now() - at < VERIFY_REMIND_AFTER_MS;
+			setHidden(stillSnoozed);
+		} catch {
+			setHidden(false);
+		}
+	}, []);
+
+	function dismiss() {
+		try {
+			localStorage.setItem(VERIFY_DISMISS_KEY, String(Date.now()));
+		} catch {
+			/* no-op */
+		}
+		setHidden(true);
+	}
 
 	async function resend() {
 		setPending(true);
@@ -399,15 +455,15 @@ function EmailVerifyBanner({ email, onToast }: { email: string; onToast: (t: Toa
 				email,
 				callbackURL: `${window.location.origin}/dashboard/?verified=1`,
 			});
-			onToast({ kind: "success", message: `Verification link re-sent to ${email}.` });
+			toast.success(`Verification link re-sent to ${email}.`);
 		} catch (err) {
-			onToast({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+			toast.error(err instanceof Error ? err.message : String(err));
 		} finally {
 			setPending(false);
 		}
 	}
 
-	if (hidden) return null;
+	if (hidden !== false) return null;
 
 	return (
 		<div className="dash-verify-banner">
@@ -418,7 +474,7 @@ function EmailVerifyBanner({ email, onToast }: { email: string; onToast: (t: Toa
 				<button type="button" className="dash-btn dash-btn--sm" onClick={resend} disabled={pending}>
 					{pending ? "Sending…" : "Resend"}
 				</button>
-				<button type="button" className="dash-btn dash-btn--sm" onClick={() => setHidden(true)} aria-label="Dismiss">×</button>
+				<button type="button" className="dash-btn dash-btn--sm" onClick={dismiss} aria-label="Dismiss for 7 days">×</button>
 			</div>
 		</div>
 	);
@@ -446,20 +502,26 @@ function Sidebar({
 	const overviewMatch = matches("Overview");
 	const pgItems: { v: View; icon: keyof typeof ICONS; label: string; pill?: string }[] = [
 		{ v: "playground/discover", icon: "gauge", label: "Discover deals" },
-		{ v: "playground/evaluate", icon: "chart", label: "Evaluate one" },
+		{ v: "playground/evaluate", icon: "chart", label: "Evaluate listing" },
 	];
-	const acctItems: { v: View; icon: keyof typeof ICONS; label: string }[] = [
-		{ v: "keys", icon: "key", label: "API keys" },
-		{ v: "integrations", icon: "doc", label: "Integrations" },
-		{ v: "activity", icon: "list", label: "Activity" },
-		{ v: "usage", icon: "bar", label: "Usage" },
-		{ v: "ebay", icon: "link", label: "eBay account" },
-		{ v: "billing", icon: "wallet", label: "Billing" },
+	type SidebarGroup = { label: string; items: { v: View; icon: keyof typeof ICONS; label: string }[] };
+	const groups: SidebarGroup[] = [
+		{
+			label: "Account",
+			items: [
+				{ v: "keys", icon: "key", label: "API keys" },
+				{ v: "activity", icon: "list", label: "Activity" },
+				{ v: "usage", icon: "bar", label: "Usage" },
+				{ v: "settings", icon: "cog", label: "Settings" },
+			],
+		},
 	];
 	const unread = useUnreadChangelogCount();
 	const pgVisible = pgItems.filter((i) => matches(i.label));
-	const acctVisible = acctItems.filter((i) => matches(i.label));
-	const anyMatch = overviewMatch || pgVisible.length > 0 || acctVisible.length > 0;
+	const groupsVisible = groups
+		.map((g) => ({ ...g, items: g.items.filter((i) => matches(i.label)) }))
+		.filter((g) => g.items.length > 0);
+	const anyMatch = overviewMatch || pgVisible.length > 0 || groupsVisible.length > 0;
 
 	return (
 		<aside className="dash-sidebar">
@@ -497,14 +559,14 @@ function Sidebar({
 					</>
 				)}
 
-				{acctVisible.length > 0 && (
-					<>
-						<NavGroup label="Account" collapsed={collapsed} />
-						{acctVisible.map((i) => (
+				{groupsVisible.map((g) => (
+					<Fragment key={g.label}>
+						<NavGroup label={g.label} collapsed={collapsed} />
+						{g.items.map((i) => (
 							<NavItem key={i.v} icon={i.icon} label={i.label} active={view === i.v} onClick={() => setView(i.v)} collapsed={collapsed} />
 						))}
-					</>
-				)}
+					</Fragment>
+				))}
 
 				{!anyMatch && !collapsed && (
 					<p className="dash-nav-empty">No matches for "{query}".</p>
@@ -532,21 +594,7 @@ function Sidebar({
 						</>
 					)}
 				</button>
-				<div className="dash-user">
-					{profile.image ? (
-						<img src={profile.image} alt="" />
-					) : (
-						<span className="dash-user-avatar">{profile.email[0]?.toUpperCase()}</span>
-					)}
-					{!collapsed && (
-						<div className="dash-user-info">
-							<div className="dash-user-name">{profile.name || profile.email}</div>
-							<button type="button" className="dash-user-signout" onClick={() => signOut().finally(() => (window.location.href = "/"))}>
-								Sign out
-							</button>
-						</div>
-					)}
-				</div>
+				<UserMenu profile={profile} collapsed={collapsed} setView={setView} />
 				<button type="button" className="dash-collapse" onClick={onToggle}>
 					<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
 						{collapsed ? <path d="M6 4l4 4-4 4" /> : <path d="M10 4l-4 4 4 4" />}
@@ -555,6 +603,132 @@ function Sidebar({
 				</button>
 			</div>
 		</aside>
+	);
+}
+
+function UserMenu({
+	profile,
+	collapsed,
+	setView,
+}: {
+	profile: Profile;
+	collapsed: boolean;
+	setView: (v: View) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const initial = profile.email[0]?.toUpperCase() ?? "?";
+	const display = profile.name || profile.email;
+
+	const go = (v: View) => {
+		setView(v);
+		setOpen(false);
+	};
+
+	return (
+		<RxPopover.Root open={open} onOpenChange={setOpen}>
+			<RxPopover.Trigger asChild>
+				<button
+					type="button"
+					className={`dash-user-trigger${open ? " open" : ""}`}
+					title={collapsed ? display : undefined}
+					aria-label="Account menu"
+				>
+					{profile.image ? (
+						<img src={profile.image} alt="" />
+					) : (
+						<span className="dash-user-avatar">{initial}</span>
+					)}
+					{!collapsed && <span className="dash-user-trigger-label">{display}</span>}
+				</button>
+			</RxPopover.Trigger>
+			<RxPopover.Portal>
+				<RxPopover.Content
+					className="dash-user-menu"
+					side="top"
+					align="start"
+					sideOffset={8}
+					collisionPadding={12}
+				>
+					<div className="dash-user-menu-head">
+						<span>Account</span>
+						<RxPopover.Close className="dash-user-menu-close" aria-label="Close">
+							<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+								<path d="M4 4l8 8M12 4l-8 8" />
+							</svg>
+						</RxPopover.Close>
+					</div>
+
+					<div className="dash-user-menu-section">
+						<a
+							className="dash-user-menu-item"
+							href="/docs/"
+							target="_blank"
+							rel="noreferrer"
+							onClick={() => setOpen(false)}
+						>
+							<span className="dash-user-menu-icon" aria-hidden="true">
+								<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+									<path d="M9 2.5H4v11h8V5.5L9 2.5z" />
+									<path d="M9 2.5v3h3" />
+								</svg>
+							</span>
+							<span className="dash-user-menu-label">Documentation</span>
+							<span className="dash-user-menu-ext" aria-hidden="true">
+								<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+									<path d="M6 3h7v7M13 3 6 10M3 6v7h7" />
+								</svg>
+							</span>
+						</a>
+						<a
+							className="dash-user-menu-item"
+							href="https://github.com/flipagent/flipagent"
+							target="_blank"
+							rel="noreferrer"
+							onClick={() => setOpen(false)}
+						>
+							<span className="dash-user-menu-icon" aria-hidden="true">
+								<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+									<path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+								</svg>
+							</span>
+							<span className="dash-user-menu-label">GitHub</span>
+							<span className="dash-user-menu-ext" aria-hidden="true">
+								<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+									<path d="M6 3h7v7M13 3 6 10M3 6v7h7" />
+								</svg>
+							</span>
+						</a>
+					</div>
+
+					<div className="dash-user-menu-section">
+						<button type="button" className="dash-user-menu-item" onClick={() => go("settings")}>
+							<span className="dash-user-menu-icon" aria-hidden="true">
+								<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+									<circle cx="8" cy="6" r="2.5" />
+									<path d="M3 14c0-2.5 2.2-4 5-4s5 1.5 5 4" />
+								</svg>
+							</span>
+							<span className="dash-user-menu-label">Account settings</span>
+						</button>
+					</div>
+
+					<div className="dash-user-menu-section">
+						<button
+							type="button"
+							className="dash-user-menu-item"
+							onClick={() => signOut().finally(() => (window.location.href = "/"))}
+						>
+							<span className="dash-user-menu-icon" aria-hidden="true">
+								<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+									<path d="M9.5 3H3v10h6.5M7 8h7M11 5l3 3-3 3" />
+								</svg>
+							</span>
+							<span className="dash-user-menu-label">Sign out</span>
+						</button>
+					</div>
+				</RxPopover.Content>
+			</RxPopover.Portal>
+		</RxPopover.Root>
 	);
 }
 
@@ -603,6 +777,7 @@ const ICONS = {
 	list: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 4h8M5 8h8M5 12h8" /><circle cx="2.5" cy="4" r="0.5" fill="currentColor" /><circle cx="2.5" cy="8" r="0.5" fill="currentColor" /><circle cx="2.5" cy="12" r="0.5" fill="currentColor" /></svg>,
 	link: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 9.5a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5L7.5 5" /><path d="M9.5 6.5a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5L8.5 11" /></svg>,
 	wallet: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 4H4a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 13h9z" /><path d="M2.5 5.5h11M10 9h1.5" /></svg>,
+	cog: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="2.5" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>,
 };
 
 /* ─────────── Top bar ─────────── */
@@ -625,14 +800,14 @@ function TopBar({
 				{ebay && (
 					<button
 						type="button"
-						className={`dash-ebay-pill ${ebay.connected ? "is-connected" : "is-disconnected"}`}
+						className={`dash-ebay-pill ${ebay.oauth.connected ? "is-connected" : "is-disconnected"}`}
 						onClick={onEbay}
-						title={ebay.connected ? "Manage eBay connection" : "Connect eBay account"}
+						title={ebay.oauth.connected ? "Manage eBay connection" : "Connect eBay account"}
 					>
 						<span className="dash-ebay-dot" aria-hidden="true" />
 						<span>
-							{ebay.connected
-								? `eBay${ebay.ebayUserName ? ` · @${ebay.ebayUserName}` : " · connected"}`
+							{ebay.oauth.connected
+								? `eBay${ebay.oauth.ebayUserName ? ` · @${ebay.oauth.ebayUserName}` : " · connected"}`
 								: "eBay · not connected"}
 						</span>
 					</button>
@@ -652,18 +827,15 @@ function TopBar({
 /* ─────────── Onboarding checklist ─────────── */
 
 const ONBOARDING_DISMISSED_KEY = "flipagent.onboardingDismissed";
-const INTEGRATIONS_DONE_KEY = "flipagent.integrationsWired";
 
 function useShowChecklist({
 	hasKey,
 	hasCall,
 	hasEbay,
-	hasIntegrations,
 }: {
 	hasKey: boolean;
 	hasCall: boolean;
 	hasEbay: boolean;
-	hasIntegrations: boolean;
 }): boolean {
 	const [dismissed, setDismissed] = useState(false);
 	useEffect(() => {
@@ -679,39 +851,18 @@ function useShowChecklist({
 		return () => window.removeEventListener("storage", read);
 	}, []);
 	if (dismissed) return false;
-	return !(hasKey && hasCall && hasEbay && hasIntegrations);
-}
-
-/** Reads the user's local "I've wired up an agent" flag. Set when they
- * click through to /integrations and dismiss it (or visit the page once). */
-function useIntegrationsDone(): boolean {
-	const [done, setDone] = useState(false);
-	useEffect(() => {
-		const read = () => {
-			try {
-				setDone(localStorage.getItem(INTEGRATIONS_DONE_KEY) === "1");
-			} catch {
-				/* no-op */
-			}
-		};
-		read();
-		window.addEventListener("storage", read);
-		return () => window.removeEventListener("storage", read);
-	}, []);
-	return done;
+	return !(hasKey && hasCall && hasEbay);
 }
 
 function OnboardingChecklist({
 	hasKey,
 	hasCall,
 	hasEbay,
-	hasIntegrations,
 	onGoto,
 }: {
 	hasKey: boolean;
 	hasCall: boolean;
 	hasEbay: boolean;
-	hasIntegrations: boolean;
 	onGoto: (v: View) => void;
 }) {
 	const requiredDone = hasKey && hasCall;
@@ -732,6 +883,7 @@ function OnboardingChecklist({
 		text: string;
 		cta: string;
 		view: View;
+		anchor?: string;
 		optional?: boolean;
 		locked?: boolean;
 		lockedReason?: string;
@@ -748,31 +900,20 @@ function OnboardingChecklist({
 		{
 			done: hasCall,
 			title: "Make your first API call",
-			text: "Run the Discover playground end-to-end, or use the cURL below.",
-			cta: "Open Discover",
-			view: "playground/discover",
+			text: "Copy the cURL below, paste in your terminal — or click through Discover to see a full trace.",
+			cta: "Show cURL",
+			view: "overview",
+			anchor: "quickstart-curl",
 			locked: !hasKey,
 			lockedReason: "Create a key first.",
 		},
 		{
 			done: hasEbay,
 			title: "Connect your eBay account",
-			text: "Unlocks /v1/inventory/*, /v1/fulfillment/*, /v1/finance/*, /v1/orders/*.",
+			text: "One-click OAuth so flipagent can call sell-side APIs (inventory, fulfillment, finance) on your behalf.",
 			cta: "Connect",
-			view: "ebay",
-			optional: true,
-			locked: !hasKey,
-			lockedReason: "Create a key first.",
-		},
-		{
-			// Always actionable; "done" is set by the user via dismiss when they
-			// wire up their agent client. No reliable server-side signal that
-			// Claude Desktop / Cursor / SDK is hooked up.
-			done: hasIntegrations,
-			title: "Wire up your agent",
-			text: "One command sets up Claude Desktop, Cursor, and the SDK with your key.",
-			cta: "Show me how",
-			view: "integrations",
+			view: "settings",
+			anchor: "settings-ebay",
 			optional: true,
 			locked: !hasKey,
 			lockedReason: "Create a key first.",
@@ -816,7 +957,15 @@ function OnboardingChecklist({
 							<button
 								type="button"
 								className={`dash-btn ${i === firstIncomplete ? "dash-btn--brand" : ""}`}
-								onClick={() => onGoto(s.view)}
+								onClick={() => {
+									onGoto(s.view);
+									if (s.anchor) {
+										const id = s.anchor;
+										requestAnimationFrame(() => {
+											document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+										});
+									}
+								}}
 								disabled={s.locked}
 								title={s.locked ? s.lockedReason : undefined}
 							>
@@ -855,11 +1004,13 @@ function Overview({
 
 	const hasKey = keys.length > 0;
 	const hasCall = profile.usage.used > 0;
-	const hasEbay = ebay?.connected ?? false;
-	const hasIntegrations = useIntegrationsDone();
-	const showChecklist = useShowChecklist({ hasKey, hasCall, hasEbay, hasIntegrations });
+	const hasEbay = ebay?.oauth.connected ?? false;
+	const showChecklist = useShowChecklist({ hasKey, hasCall, hasEbay });
+	// During onboarding the checklist already nudges "Create your first key",
+	// so we hide the redundant API key card. eBay is the opposite: brand-new
+	// users are exactly the ones who need the connect button most prominent,
+	// so we keep that card visible whether they've connected yet or not.
 	const showKeyCard = !showChecklist || hasKey;
-	const showEbayCard = !showChecklist || hasEbay;
 
 	return (
 		<>
@@ -873,7 +1024,6 @@ function Overview({
 					hasKey={hasKey}
 					hasCall={hasCall}
 					hasEbay={hasEbay}
-					hasIntegrations={hasIntegrations}
 					onGoto={onGoto}
 				/>
 			)}
@@ -886,83 +1036,65 @@ function Overview({
 					onClick={() => onGoto("playground/discover")}
 				/>
 				<EndpointCard
-					title="Evaluate one"
+					title="Evaluate listing"
 					tag="API"
 					body="Drop in any eBay item. Full pipeline: detail → curated comps → market thesis → buy/pass verdict."
 					onClick={() => onGoto("playground/evaluate")}
 				/>
 			</div>
 
-			{(showKeyCard || showEbayCard) && (
-				<div className="dash-grid-2">
-					{showKeyCard && (
-						<div className="dash-card">
-							<div className="dash-card-eyebrow">API key</div>
-							<div className="dash-card-h2">{primaryKey ? `${primaryKey.prefix}…` : "No key yet"}</div>
-							{primaryKey ? (
-								<>
-									<p className="dash-muted">First created key — use this in the cURL below or your SDK.</p>
-									<div className="dash-actions" style={{ marginTop: 12 }}>
-										<button type="button" className="dash-btn" onClick={() => onGoto("keys")}>Manage keys</button>
-									</div>
-								</>
-							) : (
-								<>
-									<p className="dash-muted">Issue one to start hitting the API.</p>
-									<div className="dash-actions" style={{ marginTop: 12 }}>
-										<button type="button" className="dash-btn dash-btn--brand" onClick={() => onGoto("keys")}>Create a key</button>
-									</div>
-								</>
-							)}
-						</div>
-					)}
-
-					{showEbayCard && (
-						<div className="dash-card">
-							<div className="dash-card-eyebrow">eBay account</div>
-							<div className="dash-card-h2">
-								{ebay?.connected ? `Connected${ebay.ebayUserName ? ` as @${ebay.ebayUserName}` : ""}` : "Not connected"}
-							</div>
-							{ebay?.connected ? (
-								<p className="dash-muted">Sell-side endpoints + Order API (when approved) work through this binding.</p>
-							) : (
-								<p className="dash-muted">Connect once to unlock <code>/v1/inventory/*</code>, <code>/v1/fulfillment/*</code>, <code>/v1/finance/*</code>, and (when approved) <code>/v1/orders/*</code>.</p>
-							)}
+			{showKeyCard && (
+				<div className="dash-card">
+					<div className="dash-card-eyebrow">API key</div>
+					<div className="dash-card-h2">{primaryKey ? `${primaryKey.prefix}…` : "No key yet"}</div>
+					{primaryKey ? (
+						<>
+							<p className="dash-muted">First created key — use this in the cURL below or your SDK.</p>
 							<div className="dash-actions" style={{ marginTop: 12 }}>
-								<button type="button" className="dash-btn" onClick={() => onGoto("ebay")}>
-									{ebay?.connected ? "Manage" : "Connect eBay"}
-								</button>
+								<button type="button" className="dash-btn" onClick={() => onGoto("keys")}>Manage keys</button>
 							</div>
-						</div>
+						</>
+					) : (
+						<>
+							<p className="dash-muted">Issue one to start hitting the API.</p>
+							<div className="dash-actions" style={{ marginTop: 12 }}>
+								<button type="button" className="dash-btn dash-btn--brand" onClick={() => onGoto("keys")}>Create a key</button>
+							</div>
+						</>
 					)}
 				</div>
 			)}
 
-			<div className="dash-card">
-				<div className="dash-card-eyebrow">Quick start</div>
-				<div className="dash-card-h2">cURL — search canon 50mm</div>
+			<div className="dash-card" id="quickstart-curl">
+				<div className="dash-card-head">
+					<div>
+						<div className="dash-card-eyebrow">Quick start</div>
+						<div className="dash-card-h2">cURL — search canon 50mm</div>
+					</div>
+					<button
+						type="button"
+						className="dash-btn dash-btn--sm"
+						onClick={() => {
+							const cmd = `curl "${apiBase}/v1/listings/search?q=canon%2050mm&limit=5" -H "X-API-Key: ${
+								primaryKey ? primaryKey.prefix + "…" : "<YOUR_KEY>"
+							}"`;
+							navigator.clipboard.writeText(cmd).catch(() => undefined);
+						}}
+					>
+						Copy
+					</button>
+				</div>
 				<pre className="dash-snippet">
 					<code>{`curl "${apiBase}/v1/listings/search?q=canon%2050mm&limit=5" \\
   -H "X-API-Key: ${primaryKey ? primaryKey.prefix + "…" : "<YOUR_KEY>"}"`}</code>
 				</pre>
-			</div>
-
-			<div className="dash-card">
-				<div className="dash-card-eyebrow">Agent integrations</div>
-				<div className="dash-card-h2">Drop into Claude / Cursor / Cline / Zed</div>
-				<pre className="dash-snippet">
-					<code>{`{
-  "mcpServers": {
-    "flipagent": {
-      "command": "npx",
-      "args": ["-y", "flipagent-mcp"],
-      "env": {
-        "FLIPAGENT_API_KEY": "${primaryKey ? primaryKey.prefix + "…" : "<YOUR_KEY>"}"
-      }
-    }
-  }
-}`}</code>
-				</pre>
+				<p className="dash-muted" style={{ marginTop: 10 }}>
+					Or run it from the {" "}
+					<button type="button" className="dash-link" onClick={() => onGoto("playground/discover")}>
+						Discover playground
+					</button>{" "}
+					with a click-through trace of every sub-call.
+				</p>
 			</div>
 
 			<div className="dash-card dash-card--inline-stat">
@@ -1117,10 +1249,218 @@ function KeysPanel({ keys, issued, setIssued, refresh, onError }: {
 	refresh: () => Promise<void>;
 	onError: (s: string | null) => void;
 }) {
+	const [modalOpen, setModalOpen] = useState(false);
+	// Cache: id → decrypted plaintext. Survives reveal toggle so copy doesn't
+	// re-hit the server, and reveal flips back on without a round-trip.
+	const [plaintexts, setPlaintexts] = useState<Map<string, string>>(new Map());
+	// Which rows are currently displaying their plaintext. Distinct from the
+	// cache — copying shouldn't make the row reveal itself.
+	const [visible, setVisible] = useState<Set<string>>(new Set());
+
+	async function revoke(id: string) {
+		if (!confirm("Revoke this key? Any agents using it will start failing immediately.")) return;
+		try {
+			await apiFetch(`/v1/me/keys/${id}`, { method: "DELETE" });
+			setPlaintexts((prev) => {
+				const next = new Map(prev);
+				next.delete(id);
+				return next;
+			});
+			setVisible((prev) => {
+				const next = new Set(prev);
+				next.delete(id);
+				return next;
+			});
+			await refresh();
+		} catch (err) {
+			onError(err instanceof Error ? err.message : String(err));
+		}
+	}
+	async function fetchPlaintext(id: string): Promise<string | null> {
+		const cached = plaintexts.get(id);
+		if (cached) return cached;
+		try {
+			const res = await apiFetch<{ id: string; plaintext: string }>(`/v1/me/keys/${id}/reveal`, { method: "POST" });
+			setPlaintexts((prev) => new Map(prev).set(id, res.plaintext));
+			return res.plaintext;
+		} catch (err) {
+			const status = (err as { status?: number } | null)?.status;
+			if (status === 410) {
+				toast.error("This key was created before reveal was wired — recreate to view.");
+			} else if (status === 503) {
+				toast.error("Reveal isn't configured on this host.");
+			} else {
+				toast.error(err instanceof Error ? err.message : String(err));
+			}
+			return null;
+		}
+	}
+	async function toggleReveal(id: string) {
+		if (visible.has(id)) {
+			setVisible((prev) => {
+				const next = new Set(prev);
+				next.delete(id);
+				return next;
+			});
+			return;
+		}
+		const plaintext = await fetchPlaintext(id);
+		if (plaintext) {
+			setVisible((prev) => new Set(prev).add(id));
+		}
+	}
+	async function copyKey(id: string, prefix: string) {
+		const plaintext = await fetchPlaintext(id);
+		const value = plaintext ?? prefix;
+		try {
+			await navigator.clipboard.writeText(value);
+			toast.success(plaintext ? "Key copied to clipboard." : "Key prefix copied (full key unavailable).");
+		} catch {
+			toast.error("Could not copy to clipboard.");
+		}
+	}
+
+	return (
+		<>
+			<section className="dash-page-head">
+				<h1>API keys</h1>
+				<p>Bearer tokens scoped to your account. Click the eye to reveal the full key.</p>
+			</section>
+			<div className="dash-card">
+				<header className="dash-keys-head">
+					<h2>Your API keys</h2>
+					<button type="button" className="dash-btn" onClick={() => setModalOpen(true)}>
+						<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+							<path d="M8 3v10M3 8h10" />
+						</svg>
+						<span>Create</span>
+					</button>
+				</header>
+				<ul className="dash-keys">
+					{keys.length === 0 && (
+						<li className="dash-keys-empty">No keys yet. Click <strong>+ Create</strong> to make one.</li>
+					)}
+					{keys.map((k) => {
+						const isRevealed = visible.has(k.id);
+						const plaintext = isRevealed ? plaintexts.get(k.id) : undefined;
+						const masked = k.suffix
+							? `${"·".repeat(28)}${k.suffix}`
+							: "·".repeat(28);
+						return (
+							<li key={k.id} className="dash-key">
+								<div className="dash-key-name">{k.name ?? "(unnamed)"}</div>
+								<div className="dash-key-display">
+									<code className="dash-key-mask">
+										{plaintext ?? masked}
+									</code>
+									<button
+										type="button"
+										className="dash-icon-btn"
+										onClick={() => toggleReveal(k.id)}
+										aria-label={isRevealed ? "Hide key" : "Reveal key"}
+										title={isRevealed ? "Hide key" : "Reveal key"}
+									>
+										{isRevealed ? <EyeOffIcon /> : <EyeIcon />}
+									</button>
+									<button
+										type="button"
+										className="dash-icon-btn"
+										onClick={() => copyKey(k.id, k.prefix)}
+										aria-label="Copy key"
+										title="Copy key"
+									>
+										<CopyIcon />
+									</button>
+								</div>
+								<div className="dash-key-meta">
+									<span>Created {new Date(k.createdAt).toLocaleDateString()}</span>
+									<span aria-hidden="true">·</span>
+									<span>Last used {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : "never"}</span>
+									<button type="button" className="dash-key-revoke" onClick={() => revoke(k.id)}>
+										Revoke
+									</button>
+								</div>
+							</li>
+						);
+					})}
+				</ul>
+			</div>
+			{modalOpen && (
+				<CreateKeyModal
+					issued={issued}
+					onClose={() => {
+						setModalOpen(false);
+						setIssued(null);
+					}}
+					onCreated={async (k) => {
+						setIssued(k);
+						await refresh();
+					}}
+					onError={onError}
+				/>
+			)}
+		</>
+	);
+}
+
+/**
+ * Generic modal shell — header + body, ESC/backdrop close, scroll-lock.
+ * Style is shadcn-flavored: centered card, subtle shadow, click-outside +
+ * Escape both dismiss. Use for any in-dashboard dialog (create-key,
+ * change-password, future destructive-action confirms).
+ */
+function Modal({
+	title,
+	onClose,
+	children,
+}: {
+	title: string;
+	onClose: () => void;
+	children: React.ReactNode;
+}) {
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") onClose();
+		};
+		window.addEventListener("keydown", onKey);
+		const prevOverflow = document.body.style.overflow;
+		document.body.style.overflow = "hidden";
+		return () => {
+			window.removeEventListener("keydown", onKey);
+			document.body.style.overflow = prevOverflow;
+		};
+	}, [onClose]);
+
+	return (
+		<div
+			className="dash-modal-backdrop"
+			onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+		>
+			<div className="dash-modal" role="dialog" aria-modal="true" aria-labelledby="dash-modal-title">
+				<header className="dash-modal-head">
+					<h2 id="dash-modal-title">{title}</h2>
+					<button type="button" className="dash-icon-btn" onClick={onClose} aria-label="Close">
+						<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+							<path d="M3 3l10 10M13 3L3 13" />
+						</svg>
+					</button>
+				</header>
+				{children}
+			</div>
+		</div>
+	);
+}
+
+function CreateKeyModal({ issued, onClose, onCreated, onError }: {
+	issued: IssuedKey | null;
+	onClose: () => void;
+	onCreated: (k: IssuedKey) => Promise<void>;
+	onError: (s: string | null) => void;
+}) {
 	const [name, setName] = useState("");
 	const [pending, setPending] = useState(false);
 
-	async function create(e: React.FormEvent) {
+	async function submit(e: React.FormEvent) {
 		e.preventDefault();
 		setPending(true);
 		onError(null);
@@ -1129,64 +1469,159 @@ function KeysPanel({ keys, issued, setIssued, refresh, onError }: {
 				method: "POST",
 				body: JSON.stringify({ name: name.trim() || undefined }),
 			});
-			setIssued(res);
+			await onCreated(res);
 			setName("");
-			await refresh();
 		} catch (err) {
 			onError(err instanceof Error ? err.message : String(err));
 		} finally {
 			setPending(false);
 		}
 	}
-	async function revoke(id: string) {
-		if (!confirm("Revoke this key? Any agents using it will start failing immediately.")) return;
+
+	async function copyPlaintext() {
+		if (!issued) return;
 		try {
-			await apiFetch(`/v1/me/keys/${id}`, { method: "DELETE" });
-			await refresh();
-		} catch (err) {
-			onError(err instanceof Error ? err.message : String(err));
+			await navigator.clipboard.writeText(issued.plaintext);
+			toast.success("Key copied to clipboard.");
+		} catch {
+			toast.error("Could not copy to clipboard.");
 		}
 	}
 
 	return (
-		<>
-			<section className="dash-page-head">
-				<h1>API keys</h1>
-				<p>Bearer tokens scoped to your account. Plaintext is shown once at creation.</p>
-			</section>
-			<div className="dash-card">
-				<form className="dash-form-row" onSubmit={create}>
-					<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (e.g. prod, ci, dev)" maxLength={80} />
-					<button type="submit" className="dash-btn dash-btn--brand" disabled={pending}>{pending ? "Creating…" : "New key"}</button>
-				</form>
-				{issued && (
-					<div className="dash-issued">
-						<div className="dash-issued-head">
-							<span>Save this now — it won't be shown again.</span>
-							<button type="button" className="dash-btn dash-btn--sm" onClick={() => navigator.clipboard.writeText(issued.plaintext)}>Copy</button>
-						</div>
-						<code className="dash-issued-key">{issued.plaintext}</code>
-						<button type="button" className="dash-issued-dismiss" onClick={() => setIssued(null)}>Dismiss</button>
+		<Modal title={issued ? "Key created" : "Create API key"} onClose={onClose}>
+			{issued ? (
+				<div className="dash-modal-body">
+					<p className="dash-modal-note">Save this now — it won't be shown again.</p>
+					<code className="dash-issued-key">{issued.plaintext}</code>
+					<div className="dash-modal-actions">
+						<button type="button" className="dash-btn" onClick={copyPlaintext}>Copy</button>
+						<button type="button" className="dash-btn dash-btn--brand" onClick={onClose}>Done</button>
 					</div>
-				)}
-				<ul className="dash-keys">
-					{keys.length === 0 && <li className="dash-keys-empty">No keys yet. Create one above.</li>}
-					{keys.map((k) => (
-						<li key={k.id} className="dash-key">
-							<div>
-								<div className="dash-key-name">{k.name ?? "(unnamed)"}</div>
-								<div className="dash-key-meta">
-									<code>{k.prefix}…</code>
-									<span>· created {new Date(k.createdAt).toLocaleDateString()}</span>
-									<span>· last used {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : "never"}</span>
-								</div>
-							</div>
-							<button type="button" className="dash-btn dash-btn--sm" onClick={() => revoke(k.id)}>Revoke</button>
-						</li>
-					))}
-				</ul>
-			</div>
-		</>
+				</div>
+			) : (
+				<form className="dash-modal-body" onSubmit={submit}>
+					<label className="dash-field">
+						<span>Key name</span>
+						<input
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							placeholder="e.g. production, ci, dev"
+							maxLength={80}
+							autoFocus
+						/>
+					</label>
+					<p className="dash-modal-hint">Give your key a descriptive name to help you identify it later.</p>
+					<div className="dash-modal-actions">
+						<button type="submit" className="dash-btn dash-btn--brand" disabled={pending}>
+							{pending ? "Creating…" : "Create key"}
+						</button>
+					</div>
+				</form>
+			)}
+		</Modal>
+	);
+}
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+	const [currentPassword, setCurrentPassword] = useState("");
+	const [newPassword, setNewPassword] = useState("");
+	const [confirm, setConfirm] = useState("");
+	const [pending, setPending] = useState(false);
+
+	async function submit(e: React.FormEvent) {
+		e.preventDefault();
+		if (newPassword.length < 8) {
+			toast.error("New password must be at least 8 characters.");
+			return;
+		}
+		if (newPassword !== confirm) {
+			toast.error("Passwords don't match.");
+			return;
+		}
+		setPending(true);
+		try {
+			await authClient.changePassword({ currentPassword, newPassword });
+			toast.success("Password updated.");
+			onClose();
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : String(err));
+			setPending(false);
+		}
+	}
+
+	return (
+		<Modal title="Change password" onClose={onClose}>
+			<form className="dash-modal-body" onSubmit={submit}>
+				<label className="dash-field">
+					<span>Current password</span>
+					<input
+						type="password"
+						autoComplete="current-password"
+						value={currentPassword}
+						onChange={(e) => setCurrentPassword(e.target.value)}
+						required
+						autoFocus
+					/>
+				</label>
+				<label className="dash-field">
+					<span>New password</span>
+					<input
+						type="password"
+						autoComplete="new-password"
+						value={newPassword}
+						onChange={(e) => setNewPassword(e.target.value)}
+						required
+						minLength={8}
+					/>
+				</label>
+				<label className="dash-field">
+					<span>Confirm new password</span>
+					<input
+						type="password"
+						autoComplete="new-password"
+						value={confirm}
+						onChange={(e) => setConfirm(e.target.value)}
+						required
+						minLength={8}
+					/>
+				</label>
+				<p className="dash-modal-hint">At least 8 characters.</p>
+				<div className="dash-modal-actions">
+					<button type="button" className="dash-btn" onClick={onClose}>Cancel</button>
+					<button type="submit" className="dash-btn dash-btn--brand" disabled={pending}>
+						{pending ? "Updating…" : "Update password"}
+					</button>
+				</div>
+			</form>
+		</Modal>
+	);
+}
+
+function EyeIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+			<path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" />
+			<circle cx="8" cy="8" r="2" />
+		</svg>
+	);
+}
+function EyeOffIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+			<path d="M2 2l12 12" />
+			<path d="M3.2 5.5C2 6.8 1.5 8 1.5 8s2.5 4.5 6.5 4.5c1.2 0 2.3-.4 3.2-.9" />
+			<path d="M6.4 4c.5-.2 1-.3 1.6-.3 4 0 6.5 4.3 6.5 4.3s-.5.9-1.5 1.9" />
+			<path d="M9.5 9.5a2 2 0 0 1-3-3" />
+		</svg>
+	);
+}
+function CopyIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+			<rect x="5" y="5" width="9" height="9" rx="1.5" />
+			<path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+		</svg>
 	);
 }
 
@@ -1427,362 +1862,389 @@ function StatusPill({ status }: { status: number }) {
 	return <span className={`dash-status dash-status--${kind}`}>{status}</span>;
 }
 
-/* ─────────── eBay ─────────── */
+/* ─────────── Settings ─────────── */
 
-function EbayPanel({ ebay, keys, features, permissions, refresh, onToast }: {
+function SettingsPanel({
+	profile,
+	ebay,
+	keys,
+	features,
+	permissions,
+	onError,
+	refreshEbay,
+}: {
+	profile: Profile;
 	ebay: EbayStatus | null;
 	keys: KeyRow[];
 	features: Features;
 	permissions: Permissions | null;
-	refresh: () => Promise<void>;
-	onToast: (t: Toast) => void;
+	onError: (s: string | null) => void;
+	refreshEbay: () => Promise<void>;
 }) {
-	const [busy, setBusy] = useState(false);
+	const [pwModalOpen, setPwModalOpen] = useState(false);
+	const [pendingResend, setPendingResend] = useState(false);
+	const [ebayBusy, setEbayBusy] = useState(false);
+	const [billingBusy, setBillingBusy] = useState<string | null>(null);
 
-	function connect() {
-		window.location.href = `${apiBase}/v1/me/ebay/connect?redirect=${encodeURIComponent(window.location.origin + "/dashboard/")}`;
-	}
-	async function disconnect() {
-		if (!confirm("Disconnect eBay? Tokens removed locally; eBay-side authorization stays (revoke at eBay if needed).")) return;
-		setBusy(true);
+	async function resendVerify() {
+		setPendingResend(true);
 		try {
-			await apiFetch("/v1/me/ebay/connect", { method: "DELETE" });
-			await refresh();
-			onToast({ kind: "success", message: "Disconnected." });
+			await authClient.sendVerificationEmail({
+				email: profile.email,
+				callbackURL: `${window.location.origin}/dashboard/?verified=1`,
+			});
+			toast.success(`Verification link sent to ${profile.email}.`);
 		} catch (err) {
-			onToast({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+			toast.error(err instanceof Error ? err.message : String(err));
 		} finally {
-			setBusy(false);
+			setPendingResend(false);
 		}
 	}
 
-	// Self-host case: this api instance has no eBay developer keyset wired,
-	// so the connect button would 503. Show a configuration hint instead.
-	if (!features.ebayOAuth) {
-		return (
-			<>
-				<section className="dash-page-head">
-					<h1>eBay account</h1>
-					<p>OAuth passthrough — your sell-side calls go to api.ebay.com under your token.</p>
-				</section>
-				<div className="dash-card">
-					<div className="dash-card-eyebrow">Not configured on this host</div>
-					<div className="dash-card-h2">eBay OAuth env unset</div>
-					<p className="dash-muted">
-						This instance is running without <code>EBAY_CLIENT_ID</code>, <code>EBAY_CLIENT_SECRET</code>, or <code>EBAY_RU_NAME</code>. <code>/v1/listings/*</code> and <code>/v1/sold/*</code> still work via the scraper. Sell-side endpoints (<code>/v1/inventory</code>, <code>/v1/fulfillment</code>, <code>/v1/finance</code>) return <code>503 ebay_not_configured</code>.
-					</p>
-					<p className="dash-muted">See <a href="/docs/self-host/">self-host docs</a> for the eBay developer flow.</p>
-				</div>
-			</>
-		);
+	function ebayConnect() {
+		window.location.href = `${apiBase}/v1/me/ebay/connect?redirect=${encodeURIComponent(window.location.origin + "/dashboard/")}`;
+	}
+	async function ebayDisconnect() {
+		if (!confirm("Disconnect eBay? Tokens removed locally; eBay-side authorization stays (revoke at eBay if needed).")) return;
+		setEbayBusy(true);
+		try {
+			await apiFetch("/v1/me/ebay/connect", { method: "DELETE" });
+			await refreshEbay();
+			toast.success("Disconnected.");
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : String(err));
+		} finally {
+			setEbayBusy(false);
+		}
 	}
 
-	return (
-		<>
-			<section className="dash-page-head">
-				<h1>eBay account</h1>
-				<p>OAuth passthrough — your sell-side calls go to api.ebay.com under your token.</p>
-			</section>
-			<div className="dash-card">
-				<div className="dash-card-eyebrow">Status</div>
-				<div className="dash-card-h2">
-					{ebay?.connected ? `Connected${ebay.ebayUserName ? ` as @${ebay.ebayUserName}` : ""}` : "Not connected"}
-				</div>
-				{ebay?.connected ? (
-					<>
-						<div className="dash-meta">
-							<div><span>Connected since</span><span>{new Date(ebay.connectedAt).toLocaleDateString()}</span></div>
-							<div><span>Token expires</span><span>{new Date(ebay.accessTokenExpiresAt).toLocaleString()}</span></div>
-							<div><span>Scopes</span><span className="dash-mono">{ebay.scopes.map((s) => s.split("/").pop()).join(", ")}</span></div>
-						</div>
-						<div className="dash-actions" style={{ marginTop: 16 }}>
-							<button type="button" className="dash-btn" onClick={disconnect} disabled={busy}>{busy ? "Disconnecting…" : "Disconnect"}</button>
-						</div>
-					</>
-				) : (
-					<>
-						<p className="dash-muted">Connect once to unlock <code>/v1/inventory/*</code>, <code>/v1/fulfillment/*</code>, <code>/v1/finance/*</code>, and (when approved) <code>/v1/orders/*</code>.</p>
-						<div className="dash-actions" style={{ marginTop: 16 }}>
-							<button
-								type="button"
-								className="dash-btn dash-btn--brand"
-								onClick={connect}
-								disabled={keys.length === 0}
-								title={keys.length === 0 ? "Create an API key first" : undefined}
-							>
-								Connect eBay account
-							</button>
-						</div>
-					</>
-				)}
-			</div>
-
-			{permissions && <PermissionsCard permissions={permissions} />}
-		</>
-	);
-}
-
-const SCOPE_LABEL: Record<keyof Permissions["scopes"], { title: string; path: string }> = {
-	browse: { title: "Browse listings", path: "/v1/listings/*" },
-	marketplaceInsights: { title: "Sold history (Marketplace Insights)", path: "/v1/sold/*" },
-	inventory: { title: "Inventory", path: "/v1/inventory/*" },
-	fulfillment: { title: "Fulfillment", path: "/v1/fulfillment/*" },
-	finance: { title: "Finance", path: "/v1/finance/*" },
-	orderApi: { title: "Order API (Limited Release)", path: "/v1/orders/*" },
-};
-
-const STATUS_COPY: Record<ScopeStatus, { label: string; tone: "ok" | "warn" | "info" | "off"; help: string }> = {
-	ok: { label: "Active", tone: "ok", help: "Calls succeed against this user's token." },
-	scrape_fallback: {
-		label: "Scrape fallback",
-		tone: "info",
-		help: "REST not approved/wired; flipagent serves this from the scraper instead.",
-	},
-	needs_oauth: {
-		label: "Needs eBay connect",
-		tone: "warn",
-		help: "Click 'Connect eBay account' above to grant the required scope.",
-	},
-	approval_pending: {
-		label: "eBay approval pending",
-		tone: "warn",
-		help: "Apply at developer.ebay.com → Order API. Set EBAY_ORDER_API_APPROVED=1 once granted.",
-	},
-	unavailable: { label: "Not configured", tone: "off", help: "This api instance has no eBay env wired." },
-};
-
-function PermissionsCard({ permissions }: { permissions: Permissions }) {
-	const order: (keyof Permissions["scopes"])[] = [
-		"browse",
-		"marketplaceInsights",
-		"inventory",
-		"fulfillment",
-		"finance",
-		"orderApi",
-	];
-	return (
-		<div className="dash-card" style={{ marginTop: 16 }}>
-			<div className="dash-card-eyebrow">Per-endpoint access</div>
-			<div className="dash-card-h2">What you can call right now</div>
-			<table className="dash-table" style={{ marginTop: 12 }}>
-				<thead>
-					<tr>
-						<th>Endpoint</th>
-						<th>Path</th>
-						<th>Status</th>
-					</tr>
-				</thead>
-				<tbody>
-					{order.map((k) => {
-						const status = permissions.scopes[k];
-						const copy = STATUS_COPY[status];
-						return (
-							<tr key={k}>
-								<td>{SCOPE_LABEL[k].title}</td>
-								<td className="dash-mono">{SCOPE_LABEL[k].path}</td>
-								<td title={copy.help}>
-									<span className={`dash-status dash-status--${copy.tone}`}>{copy.label}</span>
-								</td>
-							</tr>
-						);
-					})}
-				</tbody>
-			</table>
-		</div>
-	);
-}
-
-/* ─────────── Billing ─────────── */
-
-function BillingPanel({ tier, features, onError }: {
-	tier: Tier;
-	features: Features;
-	onError: (s: string | null) => void;
-}) {
-	const [busy, setBusy] = useState<string | null>(null);
 	async function upgrade(plan: "hobby" | "pro") {
-		setBusy(plan);
+		setBillingBusy(plan);
 		onError(null);
 		try {
-			const res = await apiFetch<{ url: string }>("/v1/billing/checkout", { method: "POST", body: JSON.stringify({ tier: plan }) });
+			const res = await apiFetch<{ url: string }>("/v1/billing/checkout", {
+				method: "POST",
+				body: JSON.stringify({ tier: plan }),
+			});
 			window.location.href = res.url;
 		} catch (err) {
 			onError(err instanceof Error ? err.message : String(err));
-			setBusy(null);
+			setBillingBusy(null);
 		}
 	}
-	async function portal() {
-		setBusy("portal");
+	async function billingPortal() {
+		setBillingBusy("portal");
 		try {
 			const res = await apiFetch<{ url: string }>("/v1/billing/portal", { method: "POST" });
 			window.location.href = res.url;
 		} catch (err) {
 			onError(err instanceof Error ? err.message : String(err));
-			setBusy(null);
+			setBillingBusy(null);
 		}
-	}
-
-	if (!features.stripe) {
-		return (
-			<>
-				<section className="dash-page-head">
-					<h1>Billing</h1>
-					<p>Tier limits reset monthly (UTC). Stripe handles payment; we only see customer + subscription IDs.</p>
-				</section>
-				<div className="dash-card">
-					<div className="dash-card-eyebrow">Not configured on this host</div>
-					<div className="dash-card-h2">Self-host mode — no metering</div>
-					<p className="dash-muted">
-						Stripe env vars (<code>STRIPE_SECRET_KEY</code>, <code>STRIPE_WEBHOOK_SECRET</code>, <code>STRIPE_PRICE_HOBBY</code>, <code>STRIPE_PRICE_PRO</code>) are unset. <code>/v1/billing/*</code> returns <code>503 billing_not_configured</code>. Tier limits aren't enforced — your eBay quota is the real ceiling.
-					</p>
-				</div>
-			</>
-		);
 	}
 
 	return (
 		<>
 			<section className="dash-page-head">
-				<h1>Billing</h1>
-				<p>Tier limits reset monthly (UTC). Stripe handles payment; we only see customer + subscription IDs.</p>
+				<h1>Settings</h1>
 			</section>
-			<div className="dash-card">
-				<div className="dash-card-eyebrow">Current plan</div>
-				<div className="dash-card-h2">{tier.toUpperCase()}</div>
-				<div className="dash-actions" style={{ marginTop: 16 }}>
-					{tier === "free" && (
+
+			{/* Account: identity + plan/billing + password — one card */}
+			<div className="dash-card" id="settings-account">
+				<div className="dash-card-eyebrow">Account</div>
+				<div className="dash-card-h2">{profile.name || profile.email}</div>
+
+				<dl className="dash-meta" style={{ marginTop: 14 }}>
+					<div><span>Email</span><span>{profile.email}</span></div>
+					<div>
+						<span>Verified</span>
+						<span className="dash-verified">
+							{profile.emailVerified ? (
+								<svg
+									className="dash-verified-ok"
+									width="13"
+									height="13"
+									viewBox="0 0 16 16"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.5"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									aria-label="Verified"
+								>
+									<path d="M3 8.5 6.5 12 13 5" />
+								</svg>
+							) : (
+								<>
+									<svg
+										className="dash-verified-no"
+										width="13"
+										height="13"
+										viewBox="0 0 16 16"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="1.5"
+										strokeLinecap="round"
+										aria-label="Not verified"
+									>
+										<path d="M4 4l8 8M12 4 4 12" />
+									</svg>
+									<button
+										type="button"
+										className="dash-link"
+										onClick={resendVerify}
+										disabled={pendingResend}
+									>
+										{pendingResend ? "Sending…" : "Resend link"}
+									</button>
+								</>
+							)}
+						</span>
+					</div>
+					<div><span>Plan</span><span><span className="dash-tier-pill" data-tier={profile.tier}>{profile.tier.toUpperCase()}</span></span></div>
+				</dl>
+
+				<div className="dash-card-divider" />
+				<div className="dash-actions">
+					{features.stripe && profile.tier === "free" && (
 						<>
-							<button type="button" className="dash-btn" onClick={() => upgrade("hobby")} disabled={busy !== null}>
-								{busy === "hobby" ? "Opening…" : "Upgrade to Hobby"}
+							<button type="button" className="dash-btn" onClick={() => upgrade("hobby")} disabled={billingBusy !== null}>
+								{billingBusy === "hobby" ? "Opening…" : "Upgrade to Hobby"}
 							</button>
-							<button type="button" className="dash-btn dash-btn--brand" onClick={() => upgrade("pro")} disabled={busy !== null}>
-								{busy === "pro" ? "Opening…" : "Upgrade to Pro"}
+							<button type="button" className="dash-btn dash-btn--brand" onClick={() => upgrade("pro")} disabled={billingBusy !== null}>
+								{billingBusy === "pro" ? "Opening…" : "Upgrade to Pro"}
 							</button>
 						</>
 					)}
-					{(tier === "hobby" || tier === "pro") && (
-						<button type="button" className="dash-btn" onClick={portal} disabled={busy !== null}>
-							{busy === "portal" ? "Opening…" : "Manage billing"}
+					{features.stripe && (profile.tier === "hobby" || profile.tier === "pro") && (
+						<button type="button" className="dash-btn" onClick={billingPortal} disabled={billingBusy !== null}>
+							{billingBusy === "portal" ? "Opening…" : "Manage billing"}
 						</button>
 					)}
+					{features.betterAuth && (
+						<button type="button" className="dash-btn" onClick={() => setPwModalOpen(true)}>
+							Change password
+						</button>
+					)}
+					<button
+						type="button"
+						className="dash-btn"
+						onClick={() => signOut().finally(() => (window.location.href = "/"))}
+					>
+						Sign out
+					</button>
 				</div>
+			</div>
+
+			{pwModalOpen && (
+				<ChangePasswordModal onClose={() => setPwModalOpen(false)} />
+			)}
+
+			{/* eBay — scope table is always visible. The disconnected state
+				doesn't mean "nothing works": browse + sold are scrape-backed and
+				active out of the box. The table communicates that directly so
+				users see the actual ground truth instead of a vague CTA. */}
+			<div className="dash-card" style={{ marginTop: 16 }} id="settings-ebay">
+				<div className="dash-card-eyebrow">eBay account</div>
+				<div className="dash-card-h2">
+					{!features.ebayOAuth
+						? "Not configured on this host"
+						: ebay?.oauth.connected
+							? `Connected${ebay.oauth.ebayUserName ? ` as @${ebay.oauth.ebayUserName}` : ""}`
+							: "Not connected"}
+				</div>
+
+				{!features.ebayOAuth ? (
+					<p className="dash-muted">
+						<code>EBAY_CLIENT_ID</code> / <code>EBAY_CLIENT_SECRET</code> / <code>EBAY_RU_NAME</code> unset. Sell-side endpoints return <code>503</code>. See <a href="/docs/self-host/">self-host docs</a>.
+					</p>
+				) : (
+					<>
+						{permissions && ebay ? (
+							<CategoryList
+								permissions={permissions}
+								ebay={ebay}
+								onConnect={ebayConnect}
+								canConnect={keys.length > 0}
+							/>
+						) : (
+							!ebay?.oauth.connected && (
+								<div className="dash-actions" style={{ marginTop: 16 }}>
+									<button
+										type="button"
+										className="dash-btn dash-btn--brand"
+										onClick={ebayConnect}
+										disabled={keys.length === 0}
+										title={keys.length === 0 ? "Create an API key first" : undefined}
+									>
+										Connect eBay account
+									</button>
+								</div>
+							)
+						)}
+
+						{ebay?.oauth.connected && ebay.oauth.accessTokenExpiresAt && (
+							<dl className="dash-meta" style={{ marginTop: 14 }}>
+								<div>
+									<span>Token refreshes</span>
+									<span>
+										{new Date(ebay.oauth.accessTokenExpiresAt).toLocaleString()} ·{" "}
+										<button type="button" className="dash-link" onClick={ebayDisconnect} disabled={ebayBusy}>
+											{ebayBusy ? "Disconnecting…" : "Disconnect"}
+										</button>
+									</span>
+								</div>
+							</dl>
+						)}
+					</>
+				)}
 			</div>
 		</>
 	);
 }
 
-/* ─────────── Integrations ─────────── */
+const STATUS_COPY: Record<ScopeStatus, { label: string; tone: "ok" | "warn" | "info" | "off"; help: string }> = {
+	ok: { label: "Active", tone: "ok", help: "Calls succeed against this user's token." },
+	scrape_fallback: {
+		label: "Active",
+		tone: "info",
+		help: "Works without connecting — flipagent serves this via the scraper.",
+	},
+	needs_oauth: {
+		label: "Connect required",
+		tone: "warn",
+		help: "Click 'Connect eBay account' to grant this scope.",
+	},
+	approval_pending: {
+		label: "Awaiting eBay approval",
+		tone: "warn",
+		help: "Order API is in Limited Release. Apply at developer.ebay.com — flipagent flips this on once eBay grants tenant approval.",
+	},
+	unavailable: { label: "Unavailable", tone: "off", help: "This api instance has no eBay env wired." },
+};
+
+/** 5 backend states → 3 visual tones for the status pill. */
+function statusTone(s: ScopeStatus): "good" | "warn" | "off" {
+	if (s === "ok" || s === "scrape_fallback") return "good";
+	if (s === "approval_pending" || s === "needs_oauth") return "warn";
+	return "off";
+}
+
+/** Worst-blocker rollup. When several scopes share a category (e.g. Sell uses
+ *  inventory+fulfillment+finance), category status reflects whichever scope is
+ *  most-blocking. In practice all 3 sell scopes flip together via one OAuth, so
+ *  partial-grant cases are rare — but we still pick the worst to be safe. */
+function rollupStatus(statuses: ScopeStatus[]): ScopeStatus {
+	const order: ScopeStatus[] = ["unavailable", "needs_oauth", "approval_pending", "scrape_fallback", "ok"];
+	return statuses.reduce<ScopeStatus>(
+		(worst, cur) => (order.indexOf(cur) < order.indexOf(worst) ? cur : worst),
+		"ok",
+	);
+}
 
 /**
- * Helper text for the agent-install panel. The user's actual key is never
- * surfaced here (we don't store plaintext server-side). The placeholder
- * `fa_xxx` becomes a real key only on `flipagent-cli init --mcp`, which
- * reads it from the user's local config.json.
+ * Connection-focused access view — only surfaces what the user can actually
+ * connect or act on. Two rows:
+ *
+ *   - Sell-side API access: one eBay OAuth grants Inventory + Fulfillment +
+ *     Finance simultaneously.
+ *   - Browser extension (optional): paired Chrome extension + browser eBay
+ *     login, drives buy-side flows. Surface both sub-states (not installed /
+ *     installed but signed out / active) since they have different actions.
+ *
+ * Search / Sold / Taxonomy are always-on (managed scraper or REST passthrough)
+ * — they don't represent a connection the user can make, so we mention them
+ * once in a footer line rather than as a row.
  */
-function IntegrationsPanel({ keys, features: _features }: { keys: KeyRow[]; features: Features }) {
-	const [copied, setCopied] = useState<string | null>(null);
-	const keyHint = keys[0] ? `${keys[0].prefix}…` : "fa_free_xxx";
+function CategoryList({
+	permissions,
+	ebay,
+	onConnect,
+	canConnect,
+}: {
+	permissions: Permissions;
+	ebay: EbayStatus;
+	onConnect: () => void;
+	canConnect: boolean;
+}) {
+	const sellStatus = rollupStatus([
+		permissions.scopes.inventory,
+		permissions.scopes.fulfillment,
+		permissions.scopes.finance,
+	]);
+	const sellTone = statusTone(sellStatus);
+	const sellLabel = sellTone === "good" ? "Active" : "Connect required";
 
-	useEffect(() => {
-		// Mark this onboarding step done as soon as the user opens the page —
-		// we have no other way to detect "they've installed Claude Desktop +
-		// pasted the key". Localstorage flag drives the checklist hook.
-		try {
-			localStorage.setItem(INTEGRATIONS_DONE_KEY, "1");
-			window.dispatchEvent(new Event("storage"));
-		} catch {
-			/* no-op */
-		}
-	}, []);
-
-	async function copy(label: string, text: string) {
-		try {
-			await navigator.clipboard.writeText(text);
-			setCopied(label);
-			setTimeout(() => setCopied(null), 1400);
-		} catch {
-			/* no-op */
-		}
-	}
-
-	const cliCommand = "npx -y flipagent-cli init --mcp";
-	const claudeJson = `{
-  "mcpServers": {
-    "flipagent": {
-      "command": "npx",
-      "args": ["-y", "flipagent-mcp"],
-      "env": { "FLIPAGENT_API_KEY": "${keyHint}" }
-    }
-  }
-}`;
-	const sdkSnippet = `import { createFlipagentClient } from "@flipagent/sdk";
-
-const client = createFlipagentClient({ apiKey: "${keyHint}" });
-const r = await client.listings.search({ q: "canon 50mm", limit: 10 });`;
+	// Bridge state determines the buy-side row. We don't show the Order API
+	// REST path as a status here — it's a host-level approval that 99% of
+	// users never get, and surfacing it as "awaiting approval" misleads
+	// people into thinking they need to wait for something.
+	const bridgeState: "active" | "needs_signin" | "not_installed" = !ebay.bridge.paired
+		? "not_installed"
+		: ebay.bridge.ebayLoggedIn
+			? "active"
+			: "needs_signin";
+	// Both "not installed" and "needs sign-in" are actionable — surface them
+	// at the same warn weight as "Connect required" on the seller row, not as
+	// a muted "off" state. The user has a clear next step in both cases.
+	const buyTone: "good" | "warn" =
+		bridgeState === "active" ? "good" : "warn";
+	const buyLabel =
+		bridgeState === "active"
+			? `Active${ebay.bridge.ebayUserName ? ` · @${ebay.bridge.ebayUserName}` : ""}${ebay.bridge.deviceName ? ` on ${ebay.bridge.deviceName}` : ""}`
+			: bridgeState === "needs_signin"
+				? `Sign in to eBay${ebay.bridge.deviceName ? ` on ${ebay.bridge.deviceName}` : ""}`
+				: "Not installed";
 
 	return (
-		<>
-			<section className="dash-page-head">
-				<h1>Wire up your agent</h1>
-				<p>One command for Claude Desktop / Cursor, or paste the JSON. SDK snippet below for direct API use.</p>
-			</section>
-
-			<div className="dash-card">
-				<div className="dash-card-eyebrow">Recommended</div>
-				<div className="dash-card-h2">Auto-detect every supported client</div>
-				<p className="dash-muted">
-					Reads your stored key from <code>~/.flipagent/config.json</code> and writes the right MCP entry into Claude Desktop, Cursor, Cline, Continue, Zed, and Windsurf — whatever you have installed.
-				</p>
-				<div className="dash-code" style={{ marginTop: 14 }}>
-					<div className="dash-code-head">
-						<span>shell</span>
-						<button type="button" className="dash-btn dash-btn--sm" onClick={() => copy("cli", cliCommand)}>
-							{copied === "cli" ? "Copied" : "Copy"}
-						</button>
+		<ul className="dash-categories">
+				{/* Sell-side API */}
+				<li className="dash-cat-row" data-state={sellTone}>
+					<div className="dash-cat-body">
+						<div className="dash-cat-head">
+							<span className="dash-cat-name">Sell-side API</span>
+						</div>
+						<div className="dash-cat-endpoints">Inventory · Fulfillment · Finance</div>
 					</div>
-					<pre><code>{cliCommand}</code></pre>
-				</div>
-				<p className="dash-muted" style={{ marginTop: 10 }}>
-					First time? Run <code>flipagent login</code> with your key, then <code>flipagent init --mcp</code>. Restart your client to pick up the new server.
-				</p>
-			</div>
-
-			<div className="dash-card" style={{ marginTop: 16 }}>
-				<div className="dash-card-eyebrow">Manual MCP</div>
-				<div className="dash-card-h2">Drop into <code>claude_desktop_config.json</code></div>
-				<p className="dash-muted">
-					macOS path: <code>~/Library/Application Support/Claude/claude_desktop_config.json</code>. Cursor uses <code>.cursor/mcp.json</code>.
-				</p>
-				<div className="dash-code" style={{ marginTop: 14 }}>
-					<div className="dash-code-head">
-						<span>json</span>
-						<button type="button" className="dash-btn dash-btn--sm" onClick={() => copy("json", claudeJson)}>
-							{copied === "json" ? "Copied" : "Copy"}
-						</button>
+					<div className="dash-cat-tail">
+						<span className={`dash-status dash-status--${sellTone}`}>{sellLabel}</span>
+						{sellTone !== "good" && (
+							<button
+								type="button"
+								className="dash-btn dash-btn--sm"
+								onClick={onConnect}
+								disabled={!canConnect}
+								title={!canConnect ? "Create an API key first" : undefined}
+							>
+								Connect eBay account
+							</button>
+						)}
 					</div>
-					<pre><code>{claudeJson}</code></pre>
-				</div>
-			</div>
+				</li>
 
-			<div className="dash-card" style={{ marginTop: 16 }}>
-				<div className="dash-card-eyebrow">Node / TypeScript</div>
-				<div className="dash-card-h2">Use the typed SDK directly</div>
-				<p className="dash-muted">
-					Same surface as MCP, callable from your code. <code>client.listings</code>, <code>client.sold</code>, <code>client.evaluate</code>, <code>client.discover</code>, <code>client.ship</code>.
-				</p>
-				<div className="dash-code" style={{ marginTop: 14 }}>
-					<div className="dash-code-head">
-						<span>node</span>
-						<button type="button" className="dash-btn dash-btn--sm" onClick={() => copy("sdk", sdkSnippet)}>
-							{copied === "sdk" ? "Copied" : "Copy"}
-						</button>
+				{/* Browser extension */}
+				<li className="dash-cat-row" data-state={buyTone}>
+					<div className="dash-cat-body">
+						<div className="dash-cat-head">
+							<span className="dash-cat-name">Browser extension</span>
+						</div>
+						<div className="dash-cat-endpoints">Buy items · private data fetch via your browser</div>
 					</div>
-					<pre><code>{sdkSnippet}</code></pre>
-				</div>
-				<p className="dash-muted" style={{ marginTop: 10 }}>
-					Install: <code>npm i @flipagent/sdk</code>.
-				</p>
-			</div>
-		</>
+					<div className="dash-cat-tail">
+						<span className={`dash-status dash-status--${buyTone}`}>{buyLabel}</span>
+						{bridgeState === "not_installed" && (
+							<a href="/docs/extension/" className="dash-btn dash-btn--sm">
+								Install extension
+							</a>
+						)}
+						{bridgeState === "needs_signin" && (
+							<a href="https://www.ebay.com/signin" target="_blank" rel="noopener noreferrer" className="dash-btn dash-btn--sm">
+								Open eBay
+							</a>
+						)}
+					</div>
+				</li>
+		</ul>
 	);
 }
+

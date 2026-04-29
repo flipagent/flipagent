@@ -6,7 +6,7 @@ import PricingTiers from "../components/PricingTiers.astro";
 	<section class="hero" style="padding:64px 0 32px;">
 		<div class="cmw cmw-bordered">
 			<h1>Start free. Pay when you scale.</h1>
-			<p class="lead">Per-call against the eBay-compat endpoints. Management routes are free.</p>
+			<p class="lead">Per-call against the unified <code>/v1/*</code> surface. Account and billing routes are free.</p>
 		</div>
 	</section>
 
@@ -20,10 +20,10 @@ import PricingTiers from "../components/PricingTiers.astro";
 		<div class="cmw" style="max-width:760px;">
 			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">What counts as a call</h2>
 			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
-				Each <code>GET /buy/*</code> request — fresh or cached — increments your monthly counter. Cache hits still count: the value is latency, not free calls. The infra cost is the same either way.
+				Any call to a marketplace or intelligence endpoint counts toward your monthly quota: <code>/v1/listings</code>, <code>/v1/sold</code>, <code>/v1/orders</code>, <code>/v1/inventory</code>, <code>/v1/fulfillment</code>, <code>/v1/finance</code>, <code>/v1/markets</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/research</code>, <code>/v1/ship</code>. Cache hits still count, because you're paying for latency, parsers, and takedown handling, not just the upstream call.
 			</p>
 			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
-				Free: <code>/healthz</code>, <code>/v1/keys</code>, <code>/v1/keys/me</code>, <code>/v1/takedown</code>, billing.
+				Free routes: <code>/v1/health</code>, <code>/v1/me/keys</code>, <code>/v1/takedown</code>, and the billing routes themselves.
 			</p>
 		</div>
 	</section>

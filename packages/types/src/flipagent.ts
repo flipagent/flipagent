@@ -103,6 +103,10 @@ export const FeaturesResponse = Type.Object(
 		googleOAuth: Type.Boolean({ description: "GOOGLE_CLIENT_ID/SECRET — `Continue with Google` lights up." }),
 		email: Type.Boolean({ description: "RESEND_API_KEY — password reset + email verification." }),
 		stripe: Type.Boolean({ description: "All four STRIPE_* vars — gates /v1/billing/*." }),
+		llm: Type.Boolean({
+			description:
+				"At least one of ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY set — gates the LLM comp matcher (/v1/match).",
+		}),
 	},
 	{ $id: "FeaturesResponse" },
 );
@@ -180,6 +184,7 @@ export const KeyCreateResponse = Type.Object(
 		id: Type.String(),
 		tier: Tier,
 		prefix: Type.String(),
+		suffix: Type.String(),
 		plaintext: Type.String(),
 		notice: Type.String(),
 	},
@@ -192,6 +197,7 @@ export const KeyInfo = Type.Object(
 		id: Type.String(),
 		tier: Tier,
 		prefix: Type.String(),
+		suffix: Type.Union([Type.String(), Type.Null()]),
 		name: Type.Union([Type.String(), Type.Null()]),
 		ownerEmail: Type.Union([Type.String({ format: "email" }), Type.Null()]),
 		createdAt: Type.String({ format: "date-time" }),
@@ -255,6 +261,7 @@ export const MeKey = Type.Object(
 		id: Type.String(),
 		name: Type.Union([Type.String(), Type.Null()]),
 		prefix: Type.String(),
+		suffix: Type.Union([Type.String(), Type.Null()]),
 		tier: Tier,
 		createdAt: Type.String({ format: "date-time" }),
 		lastUsedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
@@ -265,6 +272,15 @@ export type MeKey = Static<typeof MeKey>;
 
 export const MeKeyList = Type.Object({ keys: Type.Array(MeKey) }, { $id: "MeKeyList" });
 export type MeKeyList = Static<typeof MeKeyList>;
+
+export const MeKeyRevealResponse = Type.Object(
+	{
+		id: Type.String(),
+		plaintext: Type.String(),
+	},
+	{ $id: "MeKeyRevealResponse" },
+);
+export type MeKeyRevealResponse = Static<typeof MeKeyRevealResponse>;
 
 /* -------------------------------- /v1/billing ------------------------------ */
 

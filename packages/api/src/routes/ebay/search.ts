@@ -65,6 +65,14 @@ ebaySearchRoute.get(
 
 		const query = c.req.valid("query");
 		const { q, filter, sort, limit = 25 } = query;
+		// TODO(scrape category browse): eBay's Browse REST accepts category-
+		// only via `category_ids` (verified working). The schema enforces a
+		// keyword across all sources for now because the scrape parser only
+		// handles eBay's `s-item__*` keyword-SRP layout — empty-q + category
+		// triggers a 301 to the new `brwrvr__item-card-*` browse layout
+		// which lazy-loads via XHR. Once we ship a parser for that layout
+		// (or accept REST-only category browse), open `q` in the schema and
+		// gate the scrape source here.
 		const path = "/buy/browse/v1/item_summary/search";
 		const queryHash = hashQuery({ q, filter, sort, limit, soldOnly: false });
 

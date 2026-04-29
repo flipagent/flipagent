@@ -1,11 +1,12 @@
 /**
  * Dashboard surface — session-cookie auth (Better-Auth via /api/auth).
  *
- *   GET    /v1/me                 current user + tier + monthly usage
- *   GET    /v1/me/keys            list keys owned by the user
- *   POST   /v1/me/keys            issue a new named key (plaintext shown once)
- *   DELETE /v1/me/keys/:id        revoke a key (must belong to the user)
- *   GET    /v1/me/usage           same usage snapshot as /v1/me, on its own
+ *   GET    /v1/me                     current user + tier + monthly usage
+ *   GET    /v1/me/keys                list keys owned by the user
+ *   POST   /v1/me/keys                issue a new named key (plaintext shown once)
+ *   POST   /v1/me/keys/:id/reveal     decrypt + return plaintext for one key
+ *   DELETE /v1/me/keys/:id            revoke a key (must belong to the user)
+ *   GET    /v1/me/usage               same usage snapshot as /v1/me, on its own
  */
 
 import {
@@ -13,6 +14,7 @@ import {
 	KeyRevokeResponse,
 	MeKeyCreateRequest,
 	MeKeyList,
+	MeKeyRevealResponse,
 	MeProfile,
 	MeUsageResponse,
 	PermissionsResponse,
@@ -20,6 +22,7 @@ import {
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
+import { decryptKeyPlaintext, isKeyRevealConfigured } from "../../auth/key-cipher.js";
 import { issueKey, revokeKey, type Tier } from "../../auth/keys.js";
 import { snapshotUsage } from "../../auth/limits.js";
 import { computePermissionsForUser } from "../../auth/permissions.js";
@@ -197,6 +200,7 @@ meRoute.get(
 				id: apiKeys.id,
 				name: apiKeys.name,
 				prefix: apiKeys.keyPrefix,
+				suffix: apiKeys.keySuffix,
 				tier: apiKeys.tier,
 				createdAt: apiKeys.createdAt,
 				lastUsedAt: apiKeys.lastUsedAt,
@@ -209,6 +213,7 @@ meRoute.get(
 				id: r.id,
 				name: r.name,
 				prefix: r.prefix,
+				suffix: r.suffix,
 				tier: r.tier,
 				createdAt: r.createdAt.toISOString(),
 				lastUsedAt: r.lastUsedAt ? r.lastUsedAt.toISOString() : null,
@@ -244,11 +249,46 @@ meRoute.post(
 				id: issued.id,
 				tier: issued.tier,
 				prefix: issued.prefix,
+				suffix: issued.suffix,
 				plaintext: issued.plaintext,
 				notice: "Save plaintext now — it will never be shown again.",
 			},
 			201,
 		);
+	},
+);
+
+meRoute.post(
+	"/keys/:id/reveal",
+	describeRoute({
+		tags: ["Keys"],
+		summary: "Decrypt + return plaintext for one of the caller's keys",
+		description:
+			"Plaintext is decrypted from the at-rest ciphertext stored at issue time. Keys created before plaintext storage was wired return 410 (recreate to make revealable). Returns 503 when KEYS_ENCRYPTION_KEY is unset in production.",
+		responses: {
+			200: jsonResponse("Plaintext.", MeKeyRevealResponse),
+			401: errorResponse("Not signed in."),
+			404: errorResponse("Key not found or not owned by caller."),
+			410: errorResponse("Legacy key without stored plaintext — recreate to reveal."),
+			503: errorResponse("Plaintext storage not configured on this host."),
+		},
+	}),
+	async (c) => {
+		const user = c.var.user;
+		const id = c.req.param("id");
+		if (!isKeyRevealConfigured()) {
+			return c.json({ error: "not_configured" as const }, 503);
+		}
+		const [row] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
+		if (!row || row.userId !== user.id || row.revokedAt) {
+			return c.json({ error: "not_found" as const }, 404);
+		}
+		if (!row.keyCiphertext) {
+			return c.json({ error: "legacy_key" as const }, 410);
+		}
+		const plaintext = decryptKeyPlaintext(row.keyCiphertext);
+		c.header("Cache-Control", "no-store");
+		return c.json({ id: row.id, plaintext });
 	},
 );
 

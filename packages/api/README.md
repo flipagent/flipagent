@@ -85,6 +85,35 @@ npm run dev             # tsx watch
 
 `curl localhost:4000/healthz` returns `{"status":"ok",...}`.
 
+### Public tunnel (eBay OAuth, eBay notifications, Stripe webhooks)
+
+Some flows need an HTTPS-reachable hostname pointing at your local API:
+
+- **eBay OAuth callback** — eBay redirects to the RuName's configured URL
+  (`https://dev.flipagent.dev/v1/connect/ebay/callback`).
+- **eBay Trading API notifications** — pushed to `EBAY_NOTIFY_URL` from
+  eBay's servers, must be HTTPS.
+- **Stripe webhooks** — likewise pushed to `STRIPE_WEBHOOK_URL`.
+
+Two opt-in commands map `dev.flipagent.dev` → `localhost:$PORT`:
+
+```bash
+# Tunnel only — useful when api is already running in another shell
+npm run tunnel
+
+# Tunnel + tsx watch in one process (concurrently)
+npm run dev:tunnel
+```
+
+Plain `npm run dev` stays tunnel-free for everyday work; reach for the
+tunnel scripts only when you're testing OAuth / webhooks.
+
+The script (`scripts/dev-tunnel.sh`) is idempotent — first run prompts a
+browser login to Cloudflare and creates the tunnel + DNS CNAME; subsequent
+runs just start the tunnel. Requires `cloudflared` (`brew install cloudflared`).
+
+Override defaults via env: `PORT=4001 TUNNEL_HOSTNAME=other.example.dev npm run tunnel`.
+
 ## Endpoint groups
 
 | Group | Path | Auth | Notes |

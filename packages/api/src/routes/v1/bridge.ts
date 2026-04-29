@@ -181,9 +181,9 @@ bridgeRoute.post(
 	"/login-status",
 	describeRoute({
 		tags: ["Bridge"],
-		summary: "Bridge client reports buyer browser-session state",
+		summary: "Bridge client reports browser eBay-login state",
 		description:
-			"Auth: bridge token. Sent by the flipagent Chrome extension after probing eBay cookies (via `chrome.cookies`) to verify the user is signed in. The state surfaces back via `GET /v1/connect/ebay/status` and `GET /v1/me/ebay/status` under `buyerSession`. This is distinct from the seller OAuth (`user_ebay_oauth`) — different credential, different surface.",
+			"Auth: bridge token. Sent by the flipagent Chrome extension after probing eBay cookies (via `chrome.cookies`) to verify the user is signed into ebay.com. Surfaced back via `GET /v1/connect/ebay/status` and `GET /v1/me/ebay/status` under `bridge.ebayLoggedIn`. Distinct from the server-side seller OAuth (`oauth.*`) — different access mechanism: browser automation vs API token.",
 		responses: {
 			200: jsonResponse("Acknowledged.", BridgeLoginStatusResponse),
 			401: errorResponse("Missing or invalid bridge token."),
@@ -196,9 +196,9 @@ bridgeRoute.post(
 		await db
 			.update(bridgeTokens)
 			.set({
-				buyerLoggedIn: body.loggedIn,
-				buyerEbayUserName: body.ebayUserName ?? null,
-				buyerVerifiedAt: new Date(),
+				ebayLoggedIn: body.loggedIn,
+				ebayUserName: body.ebayUserName ?? null,
+				verifiedAt: new Date(),
 			})
 			.where(eq(bridgeTokens.id, c.var.bridgeToken.id));
 		return c.json({ ok: true as const });

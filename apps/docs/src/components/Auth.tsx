@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Toaster, toast } from "sonner";
 import { authClient } from "../lib/authClient";
 
 type Tab = "login" | "signup";
@@ -23,8 +24,6 @@ export default function Auth() {
 	const [password, setPassword] = useState("");
 	const [name, setName] = useState("");
 	const [pending, setPending] = useState<Provider | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	const [info, setInfo] = useState<string | null>(null);
 	const [lastUsed, setLastUsed] = useState<Provider | null>(null);
 
 	useEffect(() => {
@@ -33,6 +32,20 @@ export default function Auth() {
 			setLastUsed(saved);
 		} catch {
 			/* no-op */
+		}
+
+		// Post-reset / post-verify landing params. ResetPassword.tsx redirects
+		// here with ?reset=ok after a successful password change; the verify
+		// flow can also drop the user on /signup/ if their session has expired.
+		const params = new URLSearchParams(window.location.search);
+		if (params.get("reset") === "ok") {
+			setTab("login");
+			toast.success("Password updated. Sign in with your new password.");
+			window.history.replaceState({}, "", window.location.pathname);
+		} else if (params.get("verified") === "1" || params.get("verified") === "true") {
+			setTab("login");
+			toast.success("Email verified. Sign in to continue.");
+			window.history.replaceState({}, "", window.location.pathname);
 		}
 	}, []);
 
@@ -47,8 +60,6 @@ export default function Auth() {
 	async function handleEmail(e: React.FormEvent) {
 		e.preventDefault();
 		setPending("email");
-		setError(null);
-		setInfo(null);
 		try {
 			const callbackURL = `${window.location.origin}/dashboard/`;
 			if (tab === "login") {
@@ -65,7 +76,7 @@ export default function Auth() {
 			rememberLastUsed("email");
 			window.location.href = "/dashboard/";
 		} catch (err) {
-			setError(extractMessage(err));
+			toast.error(extractMessage(err));
 			setPending(null);
 		}
 	}
@@ -77,15 +88,13 @@ export default function Auth() {
 		// it as "last used" — acceptable for a hint badge.)
 		rememberLastUsed(provider);
 		setPending(provider);
-		setError(null);
-		setInfo(null);
 		try {
 			await authClient.signIn.social({
 				provider,
 				callbackURL: `${window.location.origin}/dashboard/`,
 			});
 		} catch (err) {
-			setError(extractMessage(err));
+			toast.error(extractMessage(err));
 			setPending(null);
 		}
 	}
@@ -95,22 +104,20 @@ export default function Auth() {
 	}
 
 	async function handleForgot() {
-		setError(null);
-		setInfo(null);
 		const target = email.trim();
 		if (!target) {
-			setInfo("Type your email above first, then click again.");
+			toast.info("Type your email above first, then click again.");
 			return;
 		}
 		setPending("forgot");
 		try {
-			await authClient.forgetPassword({
+			await authClient.requestPasswordReset({
 				email: target,
 				redirectTo: `${window.location.origin}/reset-password/`,
 			});
-			setInfo(`If ${target} has an account, a reset link is on its way (valid 60 min).`);
+			toast.success(`If ${target} has an account, a reset link is on its way (valid 60 min).`);
 		} catch (err) {
-			setError(extractMessage(err));
+			toast.error(extractMessage(err));
 		} finally {
 			setPending(null);
 		}
@@ -278,21 +285,7 @@ export default function Auth() {
 				</div>
 			</section>
 
-			{(error || info) && (
-				<div className={`auth-toast ${error ? "auth-toast--error" : "auth-toast--info"}`}>
-					<span>{error ?? info}</span>
-					<button
-						type="button"
-						aria-label="Dismiss"
-						onClick={() => {
-							setError(null);
-							setInfo(null);
-						}}
-					>
-						×
-					</button>
-				</div>
-			)}
+			<Toaster position="top-right" richColors closeButton />
 		</>
 	);
 }

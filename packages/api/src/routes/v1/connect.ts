@@ -24,7 +24,7 @@ import { config, isEbayOAuthConfigured } from "../../config.js";
 import { db } from "../../db/client.js";
 import { userEbayOauth } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
-import { bridgeStateForApiKey } from "../../services/bridge/connect-state.js";
+import { ebayConnectStatusForApiKey } from "../../services/bridge/connect-state.js";
 import { errorResponse } from "../../utils/openapi.js";
 
 export const connectRoute = new Hono();
@@ -148,31 +148,8 @@ connectRoute.get(
 	requireApiKey,
 	async (c) => {
 		const apiKey = c.get("apiKey");
-		const [rows, bridgeState] = await Promise.all([
-			db
-				.select({
-					ebayUserId: userEbayOauth.ebayUserId,
-					ebayUserName: userEbayOauth.ebayUserName,
-					scopes: userEbayOauth.scopes,
-					accessTokenExpiresAt: userEbayOauth.accessTokenExpiresAt,
-					connectedAt: userEbayOauth.createdAt,
-				})
-				.from(userEbayOauth)
-				.where(eq(userEbayOauth.apiKeyId, apiKey.id))
-				.limit(1),
-			bridgeStateForApiKey(apiKey.id),
-		]);
-		const row = rows[0];
-		if (!row) return c.json({ connected: false as const, ...bridgeState });
-		return c.json({
-			connected: true as const,
-			ebayUserId: row.ebayUserId,
-			ebayUserName: row.ebayUserName,
-			scopes: row.scopes.split(" "),
-			accessTokenExpiresAt: row.accessTokenExpiresAt.toISOString(),
-			connectedAt: row.connectedAt.toISOString(),
-			...bridgeState,
-		});
+		const status = await ebayConnectStatusForApiKey(apiKey.id);
+		return c.json(status);
 	},
 );
 

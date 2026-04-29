@@ -1,9 +1,9 @@
 /**
  * Shared "compose card" primitive — the rounded card that frames a
- * tabbed chat-style demo. Same shell on landing (ChatDemo) and inside
- * the playground (Discover / Evaluate). Composition over a monolithic
- * component: caller assembles `Tabs → Input → Filters? → Output` as
- * siblings inside `ComposeCard`.
+ * tabbed chat-style demo. Same shell on landing (HeroPipeline) and
+ * inside the playground (Discover / Evaluate). Composition over a
+ * monolithic component: caller assembles `Tabs → Input → Filters? →
+ * Output` as siblings inside `ComposeCard`.
  *
  * All Tailwind / CSS-var classes match the existing landing demo so the
  * two surfaces feel like the same product. Tweak in one place, both

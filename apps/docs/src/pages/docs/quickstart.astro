@@ -12,7 +12,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 
 				<h2>1. Get an API key</h2>
 				<p>
-					<a href="/signup/">Sign up</a> — free tier is 100 calls a month, no card. Your dashboard issues a key in one click; copy it from the modal (it's only shown once).
+					<a href="/signup/">Sign up</a>. The free tier is 100 calls a month, no card required. Your dashboard issues a key in one click; copy it from the modal (it's only shown once).
 				</p>
 				<p>
 					Self-hosting? Run the API in your own infrastructure and your dashboard will be at <code>your-host/dashboard/</code> instead. See <a href="/docs/self-host/">self-host</a>.
@@ -54,7 +54,7 @@ console.log(results.itemSummaries?.length, "active listings");`}</code></pre>
 				</div>
 
 				<h2>3. Score the deals</h2>
-				<p>Server-side scoring runs on the API — same math regardless of language. Pass active listings + (optionally) sold comps and get back a ranked list:</p>
+				<p>Server-side scoring runs on the API, so the math is identical regardless of language. Pass active listings and (optionally) sold comps; get back a ranked list:</p>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>node</span></div>
 <pre><code>{`// Pull sold comps for the same keyword
@@ -79,9 +79,9 @@ const verdict = await client.evaluate.listing({
 
 				<h2>Next</h2>
 				<ul>
-					<li><a href="/docs/api/">Full API reference</a> — every endpoint, every field</li>
-					<li><a href="/docs/mcp/">MCP server</a> — agent tools for Claude / Cursor / Cline</li>
-					<li><a href="/pricing/">Pricing</a> — when free runs out</li>
+					<li><a href="/docs/api/">Full API reference</a>: every endpoint, every field.</li>
+					<li><a href="/docs/mcp/">MCP server</a>: agent tools for Claude, Cursor, Cline.</li>
+					<li><a href="/pricing/">Pricing</a>: when free runs out.</li>
 				</ul>
 			</article>
 		</div>

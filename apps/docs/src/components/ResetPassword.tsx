@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Toaster, toast } from "sonner";
 import { authClient } from "../lib/authClient";
 
 type Phase = "missing" | "form" | "expired" | "done";
@@ -19,7 +20,6 @@ export default function ResetPassword() {
 	const [password, setPassword] = useState("");
 	const [confirm, setConfirm] = useState("");
 	const [pending, setPending] = useState(false);
-	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -33,14 +33,13 @@ export default function ResetPassword() {
 
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault();
-		setError(null);
 		if (!token) return;
 		if (password.length < 8) {
-			setError("Password must be at least 8 characters.");
+			toast.error("Password must be at least 8 characters.");
 			return;
 		}
 		if (password !== confirm) {
-			setError("Passwords don't match.");
+			toast.error("Passwords don't match.");
 			return;
 		}
 		setPending(true);
@@ -55,7 +54,7 @@ export default function ResetPassword() {
 			if (looksLikeExpiredToken(msg, err)) {
 				setPhase("expired");
 			} else {
-				setError(msg);
+				toast.error(msg);
 			}
 			setPending(false);
 		}
@@ -145,14 +144,7 @@ export default function ResetPassword() {
 				</div>
 			</section>
 
-			{error && (
-				<div className="auth-toast auth-toast--error">
-					<span>{error}</span>
-					<button type="button" aria-label="Dismiss" onClick={() => setError(null)}>
-						×
-					</button>
-				</div>
-			)}
+			<Toaster position="top-right" richColors closeButton />
 		</>
 	);
 }

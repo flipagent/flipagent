@@ -97,7 +97,11 @@ export const verification = pgTable("verification", {
 /**
  * Issued API keys. The plaintext key is shown to the user exactly once at
  * creation; we store only the sha256 hash. `keyPrefix` is the first 12
- * characters of the plaintext (e.g. "fa_free_a3b1") for display.
+ * characters of plaintext (e.g. "fa_free_a3b1"); `keySuffix` is the last 4
+ * characters. Together they let dashboards render `prefix······suffix` so
+ * users can recognize a key at a glance without exposing the secret middle.
+ * Nullable for keys issued before the column was added — display falls back
+ * to prefix-only.
  */
 export const apiKeys = pgTable(
 	"api_keys",
@@ -105,6 +109,13 @@ export const apiKeys = pgTable(
 		id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
 		keyHash: text("key_hash").notNull(),
 		keyPrefix: text("key_prefix").notNull(),
+		keySuffix: text("key_suffix"),
+		// AES-256-GCM ciphertext of the plaintext, encrypted with
+		// KEYS_ENCRYPTION_KEY. Format: `<b64 iv>:<b64 ct+tag>`. Lets the
+		// dashboard reveal the full key on demand without us storing
+		// recoverable plaintext. Null for legacy keys + when the env key
+		// is absent (production: required; dev: derived fallback).
+		keyCiphertext: text("key_ciphertext"),
 		tier: tierEnum("tier").notNull().default("free"),
 		name: text("name"),
 		ownerEmail: text("owner_email"),
@@ -464,16 +475,18 @@ export const bridgeTokens = pgTable(
 		tokenPrefix: text("token_prefix").notNull(),
 		deviceName: text("device_name"),
 		/**
-		 * Buyer browser-session state. Reported by the bridge client (the
-		 * Chrome extension probes `chrome.cookies` to detect whether the
-		 * user is signed into eBay). Distinct from `user_ebay_oauth`
-		 * (which holds the *seller* OAuth tokens used for sell-side REST
-		 * passthrough) — same eBay account possible, different credential,
-		 * different surface (clicks vs API calls).
+		 * Browser eBay-login state, reported by the bridge extension via
+		 * `chrome.cookies`. Distinct from `user_ebay_oauth` (server-side
+		 * seller OAuth tokens). The same eBay account is usually behind
+		 * both — but they're different access mechanisms (browser
+		 * automation vs API call), so we track them separately.
+		 *
+		 * Column names kept for backwards compat with existing rows;
+		 * JS properties renamed to drop the misleading "buyer" framing.
 		 */
-		buyerLoggedIn: boolean("buyer_logged_in").notNull().default(false),
-		buyerEbayUserName: text("buyer_ebay_user_name"),
-		buyerVerifiedAt: timestamp("buyer_verified_at", { withTimezone: true }),
+		ebayLoggedIn: boolean("buyer_logged_in").notNull().default(false),
+		ebayUserName: text("buyer_ebay_user_name"),
+		verifiedAt: timestamp("buyer_verified_at", { withTimezone: true }),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 		lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
 		revokedAt: timestamp("revoked_at", { withTimezone: true }),

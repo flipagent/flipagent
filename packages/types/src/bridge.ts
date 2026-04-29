@@ -138,7 +138,7 @@ export type BridgeResultRequest = Static<typeof BridgeResultRequest>;
 export const BridgeResultResponse = Type.Object({ ok: Type.Literal(true) }, { $id: "BridgeResultResponse" });
 export type BridgeResultResponse = Static<typeof BridgeResultResponse>;
 
-/* --------------------------- buyer login state --------------------------- */
+/* --------------------------- bridge login state --------------------------- */
 
 /**
  * Snapshot the bridge client POSTs after probing eBay cookies (the Chrome
@@ -158,31 +158,58 @@ export type BridgeLoginStatusRequest = Static<typeof BridgeLoginStatusRequest>;
 export const BridgeLoginStatusResponse = Type.Object({ ok: Type.Literal(true) }, { $id: "BridgeLoginStatusResponse" });
 export type BridgeLoginStatusResponse = Static<typeof BridgeLoginStatusResponse>;
 
-/* --------- bridge-client + buyer-session sections of connect status -------- */
+/* ------------------- connect-status sections (mechanism-based) ------------------- */
 
 /**
- * State of the user's bridge client (today: the flipagent Chrome extension).
- * Surfaced as the `bridgeClient` field on the `/v1/connect/ebay/status` and
- * `/v1/me/ebay/status` responses. Earlier prereleases called this `daemon`
- * (Playwright-driven CLI helper); renamed at the wire level since there are
- * no external consumers yet — only this monorepo's extension + dashboard.
+ * Server-side eBay OAuth: the seller token flipagent stores to call
+ * api.ebay.com on behalf of the user (drives `/v1/inventory`,
+ * `/v1/fulfillment`, `/v1/finance`). Surfaced as the `oauth` field on
+ * `/v1/connect/ebay/status` and `/v1/me/ebay/status`.
  */
-export const ConnectBridgeClientState = Type.Object(
+export const EbayConnectOAuth = Type.Object(
+	{
+		connected: Type.Boolean(),
+		ebayUserId: Type.Union([Type.String(), Type.Null()]),
+		ebayUserName: Type.Union([Type.String(), Type.Null()]),
+		scopes: Type.Array(Type.String()),
+		accessTokenExpiresAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+		connectedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+	},
+	{ $id: "EbayConnectOAuth" },
+);
+export type EbayConnectOAuth = Static<typeof EbayConnectOAuth>;
+
+/**
+ * Browser-side eBay access via the bridge extension. Includes pairing
+ * state (`paired` + device metadata) and the eBay-login state of the
+ * paired browser (`ebayLoggedIn` + the buyer's eBay handle, reported by
+ * the extension's `chrome.cookies` probe). Same eBay account often as
+ * `oauth.ebayUserName` — but it's a different access path (browser
+ * automation vs API token), so we surface it separately.
+ *
+ * Earlier shape used two siblings (`bridgeClient` + `buyerSession`);
+ * collapsed because the buyer-login signal can't exist without a paired
+ * bridge anyway, and the "buyer/seller" framing falsely implied two
+ * different identities.
+ */
+export const EbayConnectBridge = Type.Object(
 	{
 		paired: Type.Boolean(),
 		deviceName: Type.Union([Type.String(), Type.Null()]),
 		lastSeenAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
-	},
-	{ $id: "ConnectBridgeClientState" },
-);
-export type ConnectBridgeClientState = Static<typeof ConnectBridgeClientState>;
-
-export const ConnectBuyerSessionState = Type.Object(
-	{
-		loggedIn: Type.Boolean(),
+		ebayLoggedIn: Type.Boolean(),
 		ebayUserName: Type.Union([Type.String(), Type.Null()]),
 		verifiedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
 	},
-	{ $id: "ConnectBuyerSessionState" },
+	{ $id: "EbayConnectBridge" },
 );
-export type ConnectBuyerSessionState = Static<typeof ConnectBuyerSessionState>;
+export type EbayConnectBridge = Static<typeof EbayConnectBridge>;
+
+export const EbayConnectStatus = Type.Object(
+	{
+		oauth: EbayConnectOAuth,
+		bridge: EbayConnectBridge,
+	},
+	{ $id: "EbayConnectStatus" },
+);
+export type EbayConnectStatus = Static<typeof EbayConnectStatus>;

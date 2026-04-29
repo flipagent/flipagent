@@ -1,12 +1,15 @@
-# Local dev infra for flipagent.
+# Self-host flipagent in one command:
 #
-# `docker compose up -d postgres`           — just the database
-# `docker compose up -d`                    — postgres + api (built from source)
-# `docker compose run --rm api-migrate`     — apply pending drizzle migrations
+#   docker compose up
 #
-# The api container runs production-mode against the same postgres. For
-# tsx-watch hot reload, keep postgres in compose and run the api locally:
-#   cd packages/api && npm run dev
+# That gets you postgres + the api on http://localhost:4000. Migrations
+# run on boot. To add scraper / Stripe / OAuth credentials, drop them in
+# `packages/api/.env` (copy from `.env.example`) — the file is optional;
+# compose works without it.
+#
+# To issue a bootstrap API key once everything's running:
+#
+#   docker compose exec api node packages/api/dist/scripts/issue-key.js you@example.com
 
 services:
   postgres:
@@ -39,21 +42,13 @@ services:
       DATABASE_URL: postgres://flipagent:flipagent@postgres:5432/flipagent
       PORT: "4000"
       NODE_ENV: production
+      MIGRATE_ON_BOOT: "1"
+    env_file:
+      - path: packages/api/.env
+        required: false
     ports:
       - "4000:4000"
     restart: unless-stopped
-
-  api-migrate:
-    build:
-      context: .
-      dockerfile: packages/api/Dockerfile
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://flipagent:flipagent@postgres:5432/flipagent
-    command: ["node", "packages/api/dist/db/migrate.js"]
-    profiles: ["migrate"]
 
 volumes:
   flipagent-pgdata:

@@ -36,6 +36,8 @@ export interface ScrapeSearchInput {
 	auctionOnly?: boolean;
 	binOnly?: boolean;
 	sort?: EbaySearchParams["sort"];
+	/** Pipe-joined into eBay's `LH_ItemCondition`. Same numeric enum as Browse `conditionIds`. */
+	conditionIds?: string[];
 	limit?: number;
 }
 
@@ -46,6 +48,7 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 		auctionOnly: input.auctionOnly,
 		binOnly: input.binOnly,
 		sort: input.sort,
+		conditionIds: input.conditionIds,
 		pages: 1,
 	};
 	const url = buildEbayUrl(params, 1);

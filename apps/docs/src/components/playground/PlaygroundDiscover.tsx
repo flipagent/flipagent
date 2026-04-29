@@ -26,6 +26,7 @@ import {
 	DISCOVER_STEPS,
 	initialSteps,
 	runDiscover,
+	runDiscoverMock,
 	type DiscoverInputs,
 	type DiscoverOutcome,
 } from "./pipelines";
@@ -138,16 +139,19 @@ function describe(q: DiscoverQuery): string {
 
 /* ----------------------------- component ----------------------------- */
 
-export function PlaygroundDiscover({
+export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate">({
 	tabsProps,
 	onEvaluate,
+	mockMode = false,
 }: {
 	tabsProps: {
-		tabs: ReadonlyArray<ComposeTab<"discover" | "evaluate">>;
-		active: "discover" | "evaluate";
-		onChange: (next: "discover" | "evaluate") => void;
+		tabs: ReadonlyArray<ComposeTab<TabId>>;
+		active: TabId;
+		onChange: (next: TabId) => void;
 	};
 	onEvaluate: (itemId: string) => void;
+	/** When true, run a canned pipeline against in-memory fixtures (logged-out hero). */
+	mockMode?: boolean;
 }) {
 	const [query, setQuery] = useState<DiscoverQuery>(EMPTY_QUERY);
 	const [moreOpen, setMoreOpen] = useState(false);
@@ -155,6 +159,7 @@ export function PlaygroundDiscover({
 	const [pending, setPending] = useState(false);
 	const [outcome, setOutcome] = useState<DiscoverOutcome | null>(null);
 	const [hasRun, setHasRun] = useState(false);
+	const [err, setErr] = useState<string | null>(null);
 	const recent = useRecentRuns<DiscoverQuery>("discover");
 
 	const moreActive = useMemo(() => {
@@ -164,7 +169,12 @@ export function PlaygroundDiscover({
 		return n;
 	}, [query.priceMin, query.priceMax, query.conditions]);
 
-	const canRun = (query.q.trim().length > 0 || query.categoryId.length > 0) && !pending;
+	// TODO(scrape category browse): once `/v1/listings/search` accepts
+	// category-only queries (blocked on a parser for the new browse-layout
+	// DOM — see BrowseSearchQuery in @flipagent/types), relax this back to
+	// `q || categoryId`. Today the backend rejects category-only with a
+	// 400 for q, so we keep the Run button disabled until the user types.
+	const canRun = query.q.trim().length > 0 && !pending;
 
 	function patch<K extends keyof DiscoverQuery>(k: K, v: DiscoverQuery[K]) {
 		setQuery((prev) => ({ ...prev, [k]: v }));
@@ -177,6 +187,7 @@ export function PlaygroundDiscover({
 	async function execute(target: DiscoverQuery = query) {
 		setHasRun(true);
 		setOutcome(null);
+		setErr(null);
 		setSteps(initialSteps(DISCOVER_STEPS));
 		setPending(true);
 		try {
@@ -193,7 +204,8 @@ export function PlaygroundDiscover({
 				sort: target.sort || undefined,
 				limit: target.limit,
 			};
-			const result = await runDiscover(inputs, (key, p) =>
+			const runner = mockMode ? runDiscoverMock : runDiscover;
+			const result = await runner(inputs, (key, p) =>
 				setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, ...p } : s))),
 			);
 			if (result) {
@@ -207,6 +219,12 @@ export function PlaygroundDiscover({
 					summary: `${result.deals.length} deals`,
 				});
 			}
+		} catch (caught) {
+			const message = caught instanceof Error ? caught.message : String(caught);
+			setErr(`Something went wrong: ${message}`);
+			setSteps((prev) =>
+				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: message } : s)),
+			);
 		} finally {
 			setPending(false);
 		}
@@ -217,11 +235,13 @@ export function PlaygroundDiscover({
 		void execute(run.query);
 	}
 
+	// Each preset MUST set `q` — backend rejects category-only queries
+	// today (see BrowseSearchQuery TODO). A category alone would fill the
+	// form but leave Run disabled, which reads as the demo being broken.
 	const QUICKSTARTS: ReadonlyArray<QuickStart> = [
-		{ label: "Watches under $300", apply: () => applyPreset({ categoryId: "31387", priceMax: "300" }) },
-		{ label: "Sneaker drops", apply: () => applyPreset({ categoryId: "15709", sort: "newlyListed" }) },
-		{ label: "Pokémon Charizard", apply: () => applyPreset({ categoryId: "183454", q: "charizard 1st edition" }) },
-		{ label: "Tools ending soon", apply: () => applyPreset({ categoryId: "11700", sort: "endingSoonest" }) },
+		{ label: "Watches under $300", apply: () => applyPreset({ q: "watch", categoryId: "31387", priceMax: "300" }) },
+		{ label: "Jordan over $200", apply: () => applyPreset({ q: "air jordan", categoryId: "15709", priceMin: "200" }) },
+		{ label: "Pokémon Charizard", apply: () => applyPreset({ q: "charizard 1st edition", categoryId: "183454" }) },
 	];
 
 	return (
@@ -243,21 +263,21 @@ export function PlaygroundDiscover({
 					options={CATEGORY_OPTIONS}
 					onChange={(v) => patch("categoryId", v)}
 					icon={IconBox}
-					defaultLabel="Category"
+					label="Category"
 				/>
 				<FilterPill
 					value={query.shipsFrom}
 					options={SHIPS_FROM_OPTIONS}
 					onChange={(v) => patch("shipsFrom", v)}
 					icon={IconPin}
-					defaultLabel="Ships from"
+					label="Ships from"
 				/>
 				<FilterPill
 					value={query.sort}
 					options={SORT_OPTIONS}
 					onChange={(v) => patch("sort", v)}
 					icon={IconSort}
-					defaultLabel="Sort"
+					label="Sort"
 				/>
 				<button
 					type="button"
@@ -335,13 +355,22 @@ export function PlaygroundDiscover({
 				</div>
 			)}
 
-			{(outcome || hasRun) && (
+			{(outcome || hasRun || err) && (
 				<ComposeOutput>
+					{err && <p className="text-[13px] text-[#c0392b] mb-3">{err}</p>}
+					{pending && !outcome && (
+						<div className="flex items-center gap-2.5 mb-4 text-[12.5px] text-[var(--text-3)]">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin" aria-hidden="true">
+								<path d="M21 12a9 9 0 1 1-6.2-8.55" />
+							</svg>
+							<span>Running…</span>
+						</div>
+					)}
 					{outcome ? (
 						<DealsTable deals={outcome.deals} onEvaluate={onEvaluate} />
-					) : (
+					) : hasRun ? (
 						<Trace steps={steps} />
-					)}
+					) : null}
 					{outcome && (
 						<>
 							<h2 className="text-[12px] uppercase tracking-[0.06em] text-[var(--text-3)] mt-7 mb-2 font-mono">
@@ -387,7 +416,7 @@ function DealsTable({
 						d.verdict.rating === "buy"
 							? "border-[var(--brand)] text-[var(--brand)]"
 							: d.verdict.rating === "pass"
-								? "border-[#d8a85a] text-[#b87a06]"
+								? "border-[var(--brand)] text-[var(--brand)]"
 								: "border-[var(--border)] text-[var(--text-3)]";
 					const profit = d.verdict.netCents != null && d.verdict.netCents > 0
 						? `Profit ~$${Math.round(d.verdict.netCents / 100)}`

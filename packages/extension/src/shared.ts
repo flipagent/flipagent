@@ -185,18 +185,27 @@ export async function cancelOrder(cfg: ExtensionConfig, id: string): Promise<Pur
 	return r.body;
 }
 
-export async function fetchConnectStatus(cfg: ExtensionConfig): Promise<{
-	connected: boolean;
-	ebayUserName?: string | null;
-	bridgeClient: { paired: boolean; deviceName: string | null; lastSeenAt: string | null };
-	buyerSession: { loggedIn: boolean; ebayUserName: string | null; verifiedAt: string | null };
-}> {
-	const r = await apiCall<{
+type EbayConnectStatus = {
+	oauth: {
 		connected: boolean;
-		ebayUserName?: string | null;
-		bridgeClient: { paired: boolean; deviceName: string | null; lastSeenAt: string | null };
-		buyerSession: { loggedIn: boolean; ebayUserName: string | null; verifiedAt: string | null };
-	}>(cfg, "/v1/connect/ebay/status", { auth: "apiKey", timeoutMs: 10_000 });
+		ebayUserId: string | null;
+		ebayUserName: string | null;
+		scopes: string[];
+		accessTokenExpiresAt: string | null;
+		connectedAt: string | null;
+	};
+	bridge: {
+		paired: boolean;
+		deviceName: string | null;
+		lastSeenAt: string | null;
+		ebayLoggedIn: boolean;
+		ebayUserName: string | null;
+		verifiedAt: string | null;
+	};
+};
+
+export async function fetchConnectStatus(cfg: ExtensionConfig): Promise<EbayConnectStatus> {
+	const r = await apiCall<EbayConnectStatus>(cfg, "/v1/connect/ebay/status", { auth: "apiKey", timeoutMs: 10_000 });
 	if (!r.body) throw new ApiError(500, "/v1/connect/ebay/status", "empty body");
 	return r.body;
 }

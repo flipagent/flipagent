@@ -117,8 +117,12 @@ export function marketFromComps(
  * Returns undefined when either timestamp is missing or unparseable.
  */
 function computeDurationDays(comp: ItemSummary, detail: ItemDetail | undefined): number | undefined {
-	const startIso = detail?.itemCreationDate;
-	const endIso = detail?.itemEndDate ?? comp.lastSoldDate;
+	// itemCreationDate / itemEndDate are on the summary too (sold_search +
+	// listings/search both populate them). Detail wins when present, but
+	// the summary fallback unlocks duration math for the common case where
+	// the caller hasn't fetched per-comp details.
+	const startIso = detail?.itemCreationDate ?? comp.itemCreationDate;
+	const endIso = detail?.itemEndDate ?? comp.itemEndDate ?? comp.lastSoldDate;
 	if (!startIso || !endIso) return undefined;
 	const start = Date.parse(startIso);
 	const end = Date.parse(endIso);

@@ -21,7 +21,7 @@ import { buildEbayAuthorizeUrl, rememberState, safeRedirectTarget } from "../../
 import { isEbayOAuthConfigured } from "../../config.js";
 import { db } from "../../db/client.js";
 import { apiKeys, userEbayOauth } from "../../db/schema.js";
-import { bridgeStateForApiKey } from "../../services/bridge/connect-state.js";
+import { ebayConnectStatusForUser } from "../../services/bridge/connect-state.js";
 import { errorResponse } from "../../utils/openapi.js";
 
 export const meEbayRoute = new Hono();
@@ -88,38 +88,8 @@ meEbayRoute.get(
 	async (c) => {
 		const user = c.var.user;
 		const apiKeyId = await pickPrimaryKey(user.email);
-		const [rows, bridgeState] = await Promise.all([
-			db
-				.select({
-					ebayUserId: userEbayOauth.ebayUserId,
-					ebayUserName: userEbayOauth.ebayUserName,
-					scopes: userEbayOauth.scopes,
-					accessTokenExpiresAt: userEbayOauth.accessTokenExpiresAt,
-					connectedAt: userEbayOauth.createdAt,
-				})
-				.from(userEbayOauth)
-				.innerJoin(apiKeys, eq(apiKeys.id, userEbayOauth.apiKeyId))
-				.where(and(eq(apiKeys.ownerEmail, user.email), isNull(apiKeys.revokedAt)))
-				.orderBy(desc(userEbayOauth.updatedAt))
-				.limit(1),
-			apiKeyId
-				? bridgeStateForApiKey(apiKeyId)
-				: Promise.resolve({
-						bridgeClient: { paired: false, deviceName: null, lastSeenAt: null },
-						buyerSession: { loggedIn: false, ebayUserName: null, verifiedAt: null },
-					}),
-		]);
-		const row = rows[0];
-		if (!row) return c.json({ connected: false as const, ...bridgeState });
-		return c.json({
-			connected: true as const,
-			ebayUserId: row.ebayUserId,
-			ebayUserName: row.ebayUserName,
-			scopes: row.scopes.split(" "),
-			accessTokenExpiresAt: row.accessTokenExpiresAt.toISOString(),
-			connectedAt: row.connectedAt.toISOString(),
-			...bridgeState,
-		});
+		const status = await ebayConnectStatusForUser(user.email, apiKeyId);
+		return c.json(status);
 	},
 );
 

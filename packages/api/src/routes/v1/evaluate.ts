@@ -12,13 +12,66 @@
  */
 
 import { EvaluateRequest, EvaluateResponse, EvaluateSignalsRequest, EvaluateSignalsResponse } from "@flipagent/types";
+import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
+import { getCached, hashQuery, setCached } from "../../proxy/cache.js";
+import { scrapeItemDetail } from "../../proxy/scrape.js";
 import { evaluate, signalsFor } from "../../services/scoring/index.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const evaluateRoute = new Hono();
+
+const ITEM_DETAIL_TTL_SEC = 60 * 60 * 4;
+
+/**
+ * Fetch `itemCreationDate` + `itemEndDate` for every comp/ask that's
+ * missing them and merge into the summary. eBay's sold-search HTML and
+ * Browse `item_summary/search` don't carry start dates — durations live
+ * only on the per-item detail. We try the shared cache first (the
+ * matcher's pass-2 already fetched detail for every survivor), then fall
+ * back to a fresh scrape so per-listing duration is always available
+ * even when comps come from a non-playground caller. Without this, the
+ * hazard model can't compute and the recommendation goes dark.
+ */
+async function enrichWithDuration<T extends ItemSummary>(items: ReadonlyArray<T>): Promise<T[]> {
+	const path = "/buy/browse/v1/item";
+	return Promise.all(
+		items.map(async (item) => {
+			if (item.itemCreationDate && item.itemEndDate) return item;
+			const legacyId = item.legacyItemId ?? item.itemId.replace(/^v1\|/, "").replace(/\|0$/, "");
+			if (!/^\d{6,}$/.test(legacyId)) return item;
+			const queryHash = hashQuery({ itemId: legacyId });
+
+			let detail: ItemDetail | null = null;
+			const cached = await getCached<ItemDetail>(path, queryHash).catch(() => null);
+			if (cached) {
+				detail = cached.body;
+			} else {
+				try {
+					detail = await scrapeItemDetail(legacyId);
+					if (detail) {
+						await setCached(path, queryHash, detail, "scrape", ITEM_DETAIL_TTL_SEC).catch((err) =>
+							console.error("[evaluate] cache set failed:", err),
+						);
+					}
+				} catch {
+					detail = null;
+				}
+			}
+			if (!detail) return item;
+			const merged = { ...item } as T;
+			if (!merged.itemCreationDate && detail.itemCreationDate) {
+				merged.itemCreationDate = detail.itemCreationDate;
+			}
+			if (!merged.itemEndDate && detail.itemEndDate) {
+				merged.itemEndDate = detail.itemEndDate;
+			}
+			return merged;
+		}),
+	);
+}
 
 evaluateRoute.post(
 	"/",
@@ -38,7 +91,13 @@ evaluateRoute.post(
 	tbBody(EvaluateRequest),
 	async (c) => {
 		const { item, opts } = c.req.valid("json");
-		const verdict = evaluate(item, opts);
+		const enrichedComps = opts?.comps ? await enrichWithDuration(opts.comps) : undefined;
+		const enrichedAsks = opts?.asks ? await enrichWithDuration(opts.asks) : undefined;
+		const verdict = evaluate(item, {
+			...opts,
+			comps: enrichedComps,
+			asks: enrichedAsks,
+		});
 		return c.json(verdict);
 	},
 );

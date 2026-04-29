@@ -1,90 +1,47 @@
 /**
- * Three-bucket classifier over a pool of `ItemSummary`. Returns each
- * comp annotated with a 0–1 score and a `match` / `borderline` /
- * `reject` bucket so the caller (or its host LLM) can:
+ * Two-bucket classifier (`match` / `reject`) over a pool of `ItemSummary`.
+ * Decision is delegated to an LLM that reads titles, structured aspects,
+ * conditions, and (optionally) listing images. The deterministic
+ * IDF-weighted token overlap of earlier versions has been retired —
+ * it produced false negatives on listings whose sellers omitted the
+ * reference number from the title.
  *
- *   - feed `match` directly into `/v1/research/thesis` + `/v1/evaluate`,
- *   - inspect each `borderline` (fetch detail, compare aspects + image)
- *     and decide whether to keep it,
- *   - drop `reject` entirely.
+ * The matcher is intentionally strict. Any meaningful difference
+ * (model number, finish, colour, condition, missing accessories) sends
+ * the comp to `reject`. Borderline / score-tuning is gone — the
+ * verdict is binary because the LLM has enough context to commit.
  *
- * Today's signal is title token overlap (IDF-weighted) plus condition
- * equality. Aspect / image comparison is intentionally not run server-
- * side — that's the host LLM's vision call when it inspects borderlines.
- * Adding more deterministic signals is fine; running an LLM here is
- * not.
+ * Provider is one of Anthropic / OpenAI / Google — picked from env
+ * (`LLM_PROVIDER` overrides; otherwise the first key set wins). The
+ * matcher itself is provider-agnostic.
  */
 
-import type { MatchBucket, MatchedItem, MatchOptions, MatchResponse } from "@flipagent/types";
-import type { ItemSummary } from "@flipagent/types/ebay";
-import { buildIdf, idfWeightedOverlap, tokenize } from "./score.js";
+import type { MatchOptions, MatchResponse } from "@flipagent/types";
+import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
+import { isAnyLlmConfigured } from "./llm/index.js";
+import { type LlmMatchDeps, matchPoolWithLlm } from "./matcher.js";
 
-const DEFAULTS = {
-	matchThreshold: 0.7,
-	borderlineThreshold: 0.4,
-	conditionPenalty: 0.5,
-};
+export interface MatchPoolDeps extends LlmMatchDeps {}
 
-export function matchPool(
+export class MatchUnavailableError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "MatchUnavailableError";
+	}
+}
+
+export async function matchPool(
 	candidate: ItemSummary,
 	pool: ReadonlyArray<ItemSummary>,
-	options: MatchOptions = {},
-): MatchResponse {
-	const matchThreshold = options.matchThreshold ?? DEFAULTS.matchThreshold;
-	const borderlineThreshold = options.borderlineThreshold ?? DEFAULTS.borderlineThreshold;
-	const conditionPenalty = options.conditionPenalty ?? DEFAULTS.conditionPenalty;
-
-	const titles = [candidate.title, ...pool.map((p) => p.title)];
-	const idf = buildIdf(titles);
-	const candidateTokens = new Set(tokenize(candidate.title));
-
-	const match: MatchedItem[] = [];
-	const borderline: MatchedItem[] = [];
-	const reject: MatchedItem[] = [];
-
-	for (const comp of pool) {
-		const compTokens = new Set(tokenize(comp.title));
-		const titleOverlap = idfWeightedOverlap(candidateTokens, compTokens, idf);
-		const reasons: string[] = [`title overlap ${(titleOverlap * 100).toFixed(0)}%`];
-
-		let score = titleOverlap;
-		// Condition equality: only meaningful when both sides know their
-		// condition. If either is missing, skip the multiplier (we don't
-		// want to punish unknown).
-		if (candidate.conditionId && comp.conditionId) {
-			if (candidate.conditionId === comp.conditionId) {
-				reasons.push("condition match");
-			} else {
-				score *= conditionPenalty;
-				reasons.push(
-					`condition mismatch (${candidate.condition ?? candidate.conditionId} vs ${comp.condition ?? comp.conditionId})`,
-				);
-			}
-		}
-
-		const bucket: MatchBucket =
-			score >= matchThreshold ? "match" : score >= borderlineThreshold ? "borderline" : "reject";
-
-		const labeled: MatchedItem = {
-			item: comp,
-			score: Number(score.toFixed(4)),
-			bucket,
-			reason: reasons.join("; "),
-		};
-		if (bucket === "match") match.push(labeled);
-		else if (bucket === "borderline") borderline.push(labeled);
-		else reject.push(labeled);
+	options: MatchOptions,
+	deps: MatchPoolDeps,
+): Promise<MatchResponse> {
+	if (!isAnyLlmConfigured()) {
+		throw new MatchUnavailableError(
+			"No LLM provider configured — /v1/match needs ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY.",
+		);
 	}
-
-	const sortByScore = (a: MatchedItem, b: MatchedItem) => b.score - a.score;
-	match.sort(sortByScore);
-	borderline.sort(sortByScore);
-	reject.sort(sortByScore);
-
-	return {
-		match,
-		borderline,
-		reject,
-		totals: { match: match.length, borderline: borderline.length, reject: reject.length },
-	};
+	return matchPoolWithLlm(candidate, pool, options, deps);
 }
+
+export type { ItemDetail };

@@ -34,9 +34,9 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td>404</td><td><code>not_found</code></td><td>Item or path doesn't exist.</td></tr>
 						<tr><td>429</td><td><code>rate_limited</code></td><td>Tier monthly limit hit. See <a href="/docs/rate-limits/">rate limits</a>.</td></tr>
 						<tr><td>500</td><td><code>internal_error</code></td><td>Unhandled exception. We get notified; retry with exponential backoff.</td></tr>
-						<tr><td>500</td><td><code>handler_failed</code></td><td>Stripe webhook handler threw — Stripe will retry per its dunning schedule.</td></tr>
+						<tr><td>500</td><td><code>handler_failed</code></td><td>Stripe webhook handler threw. Stripe will retry per its dunning schedule.</td></tr>
 						<tr><td>500</td><td><code>checkout_failed</code></td><td>Stripe Checkout / Customer Portal session creation failed upstream.</td></tr>
-						<tr><td>502</td><td><code>upstream_failed</code></td><td>eBay returned an error or scraping was blocked. Usually transient — retry once.</td></tr>
+						<tr><td>502</td><td><code>upstream_failed</code></td><td>eBay returned an error or scraping was blocked. Usually transient; retry once.</td></tr>
 						<tr><td>503</td><td><code>billing_not_configured</code></td><td>Stripe isn't enabled on the server. Hosted users won't see this.</td></tr>
 						<tr><td>503</td><td><code>auth_not_configured</code></td><td>Better-Auth env (<code>BETTER_AUTH_SECRET</code>, GitHub/Google OAuth) not set. <code>/v1/me/*</code> + <code>/api/auth/*</code> return this.</td></tr>
 						<tr><td>503</td><td><code>ebay_not_configured</code></td><td>eBay OAuth env (<code>EBAY_CLIENT_ID</code>, etc.) not set. <code>/v1/connect/ebay</code>, <code>/v1/inventory/*</code>, <code>/v1/fulfillment/*</code>, <code>/v1/finance/*</code>, <code>/v1/markets/*</code>, and <code>/v1/orders/*</code> return this.</td></tr>
@@ -44,7 +44,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				</table>
 
 				<h2>Idempotency</h2>
-				<p>All <code>GET</code> endpoints are idempotent. <code>POST /v1/me/keys</code> creates a fresh key on every call — store the <code>plaintext</code> exactly once and don't retry blindly. <code>POST /v1/keys/revoke</code> is idempotent. <code>POST /v1/takedown</code> deduplicates by <code>(itemId, contactEmail)</code> server-side.</p>
+				<p>All <code>GET</code> endpoints are idempotent. <code>POST /v1/me/keys</code> creates a fresh key on every call, so store the <code>plaintext</code> exactly once and don't retry blindly. <code>POST /v1/me/keys/revoke</code> is idempotent. <code>POST /v1/takedown</code> deduplicates by <code>(itemId, contactEmail)</code> server-side.</p>
 			</article>
 		</div>
 	</div>

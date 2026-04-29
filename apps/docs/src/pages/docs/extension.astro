@@ -8,11 +8,11 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>Chrome extension</h1>
-				<p class="lead">The flipagent extension drives <code>/v1/orders/*</code> inside your real Chrome — your TLS fingerprint, your cookies, your eBay account. Akamai sees a normal session.</p>
+				<p class="lead">The flipagent extension drives <code>/v1/orders/*</code> inside your real Chrome session: your TLS fingerprint, your cookies, your eBay account. Akamai sees a normal session.</p>
 
 				<h2>Why this exists</h2>
-				<p>eBay's buy-flow uses Akamai bot detection. A headless or scripted browser gets challenged or shadow-banned within minutes. Running the buy clicks inside your existing Chrome — pinned to the eBay tab you actually log into — reuses the trust profile your account already has. The hosted API queues a <code>purchase_order_id</code>; the extension polls for it via <code>/v1/bridge/poll</code>, navigates the listing, places the order, and posts the result back via <code>/v1/bridge/result</code>.</p>
-				<p>Future iteration will swap to eBay's official Order API once tenant approval lands. Same SDK + MCP surface — <code>client.orders.*</code> won't change.</p>
+				<p>eBay's buy-flow uses Akamai bot detection. A headless or scripted browser gets challenged or shadow-banned within minutes. Running the buy clicks inside your existing Chrome (pinned to the eBay tab you actually log into) reuses the trust profile your account already has. The hosted API queues a <code>purchase_order_id</code>; the extension polls for it via <code>/v1/bridge/poll</code>, navigates the listing, places the order, and posts the result back via <code>/v1/bridge/result</code>.</p>
+				<p>Future iteration will swap to eBay's official Order API once tenant approval lands. The SDK and MCP surface stay the same: <code>client.orders.*</code> won't change.</p>
 
 				<h2>Install (developer / unpacked)</h2>
 				<p>The extension isn't on the Chrome Web Store yet. To install from source:</p>
@@ -33,7 +33,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<p>Once paired, the popup shows a green dot when the service worker is polling. The dashboard's eBay panel reflects the same state.</p>
 
 				<h2>Sign into eBay (one-time)</h2>
-				<p>The extension drives buy-flow inside whatever eBay session your Chrome already has. If you're not signed in, click <strong>Sign in to eBay</strong> in the popup — the extension opens <code>ebay.com/signin</code> in a new tab, you sign in normally, and from then on the cookies stay with your profile. The extension reports session state via <code>POST /v1/bridge/login-status</code> so the api knows whether it's worth dispatching jobs.</p>
+				<p>The extension drives buy-flow inside whatever eBay session your Chrome already has. If you're not signed in, click <strong>Sign in to eBay</strong> in the popup. The extension opens <code>ebay.com/signin</code> in a new tab, you sign in normally, and from then on the cookies stay with your profile. The extension reports session state via <code>POST /v1/bridge/login-status</code> so the api knows whether it's worth dispatching jobs.</p>
 
 				<h2>Place an order from your agent</h2>
 				<p>Once paired + signed in, anything that hits the bridge surface works:</p>
@@ -80,7 +80,7 @@ console.log(order.status); // "completed" | "failed" | "cancelled" | "expired"`}
 				</ul>
 
 				<h2>What the extension can read + send</h2>
-				<p>Permissions in the manifest: <code>storage</code> (your bridge token + settings), <code>alarms</code> (30-second poll), <code>tabs</code> (open the listing tab), <code>scripting</code> (inject the buy-flow script), <code>cookies</code> (probe whether you're signed into eBay). Host permissions are scoped to <code>ebay.com</code> and the flipagent api — nothing else.</p>
+				<p>Permissions in the manifest: <code>storage</code> (your bridge token and settings), <code>alarms</code> (30-second poll), <code>tabs</code> (open the listing tab), <code>scripting</code> (inject the buy-flow script), <code>cookies</code> (probe whether you're signed into eBay). Host permissions are scoped to <code>ebay.com</code> and the flipagent api. Nothing else.</p>
 				<p>The extension never reads other browser tabs, never persists cookies anywhere, and never sees plaintext your API key after the first pair-and-store cycle (only the <code>fbt_…</code> bridge token).</p>
 			</article>
 		</div>

@@ -23,6 +23,7 @@ import { eq } from "drizzle-orm";
 import { config, isEbayOAuthConfigured } from "../config.js";
 import { db } from "../db/client.js";
 import { type UserEbayOauth, userEbayOauth } from "../db/schema.js";
+import { fetchRetry } from "../utils/fetch-retry.js";
 
 interface CachedAppToken {
 	token: string;
@@ -61,7 +62,7 @@ export async function exchangeCode(code: string): Promise<CodeExchangeResponse> 
 		code,
 		redirect_uri: config.EBAY_RU_NAME!,
 	}).toString();
-	const res = await fetch(`${config.EBAY_BASE_URL}/identity/v1/oauth2/token`, {
+	const res = await fetchRetry(`${config.EBAY_BASE_URL}/identity/v1/oauth2/token`, {
 		method: "POST",
 		headers: {
 			Authorization: `Basic ${auth}`,
@@ -90,7 +91,7 @@ async function refreshUserAccess(refreshToken: string): Promise<RefreshResponse>
 		refresh_token: refreshToken,
 		scope: config.EBAY_SCOPES,
 	}).toString();
-	const res = await fetch(`${config.EBAY_BASE_URL}/identity/v1/oauth2/token`, {
+	const res = await fetchRetry(`${config.EBAY_BASE_URL}/identity/v1/oauth2/token`, {
 		method: "POST",
 		headers: {
 			Authorization: `Basic ${auth}`,
@@ -153,7 +154,7 @@ export async function getAppAccessToken(): Promise<string> {
 		grant_type: "client_credentials",
 		scope: "https://api.ebay.com/oauth/api_scope",
 	}).toString();
-	const res = await fetch(`${config.EBAY_BASE_URL}/identity/v1/oauth2/token`, {
+	const res = await fetchRetry(`${config.EBAY_BASE_URL}/identity/v1/oauth2/token`, {
 		method: "POST",
 		headers: {
 			Authorization: `Basic ${auth}`,
@@ -179,7 +180,7 @@ export async function fetchEbayUserSummary(accessToken: string): Promise<{ userI
 	// the path requires a trailing slash, and X-EBAY-C-MARKETPLACE-ID is
 	// mandatory. Any one of those missing → 404 with empty body.
 	const identityBase = config.EBAY_BASE_URL.replace(/^https?:\/\/api\./, "https://apiz.");
-	const res = await fetch(`${identityBase}/commerce/identity/v1/user/`, {
+	const res = await fetchRetry(`${identityBase}/commerce/identity/v1/user/`, {
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
 			"X-EBAY-C-MARKETPLACE-ID": "EBAY_US",

@@ -22,8 +22,8 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				</table>
 
 				<h2>What counts</h2>
-				<p>Every request to a marketplace or value-add endpoint — <code>/v1/listings/*</code>, <code>/v1/sold/*</code>, <code>/v1/orders/*</code>, <code>/v1/inventory/*</code>, <code>/v1/fulfillment/*</code>, <code>/v1/finance/*</code>, <code>/v1/markets/*</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/ship/*</code> — fresh or cache-served — increments your monthly counter by one. The cache reduces latency, not your bill, because the hosted infrastructure cost is the same regardless.</p>
-				<p>Free entries (uncounted): <code>/healthz</code>, <code>/v1/health/*</code>, <code>/v1/keys/me</code>, <code>/v1/keys/revoke</code>, <code>/v1/takedown</code>, <code>/v1/billing/*</code>, <code>/v1/connect/*</code>, <code>/v1/me/*</code>.</p>
+				<p>Every request to a marketplace or intelligence endpoint counts toward your monthly quota: <code>/v1/listings/*</code>, <code>/v1/sold/*</code>, <code>/v1/orders/*</code>, <code>/v1/inventory/*</code>, <code>/v1/fulfillment/*</code>, <code>/v1/finance/*</code>, <code>/v1/markets/*</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/research/*</code>, <code>/v1/ship/*</code>. Cache hits still count: the cache reduces latency, not your bill, because the infrastructure cost is the same regardless.</p>
+				<p>Free routes (uncounted): <code>/v1/health/*</code>, <code>/v1/me/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>.</p>
 
 				<h2>Headers on every authed response</h2>
 				<div class="code"><pre><code>{`X-RateLimit-Limit:     100

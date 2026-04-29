@@ -71,6 +71,20 @@
       "when": 1777848163891,
       "tag": "0009_marketplace_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777934563891,
+      "tag": "0010_key_suffix",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1777934563892,
+      "tag": "0011_key_ciphertext",
+      "breakpoints": true
     }
   ]
 }

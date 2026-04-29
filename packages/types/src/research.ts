@@ -40,12 +40,19 @@ export const MarketStats = Type.Object(
 		meanCents: Type.Integer(),
 		stdDevCents: Type.Integer(),
 		medianCents: Type.Integer(),
+		/** Bootstrap 90% CI on the median. Populated when `nObservations` ≥ 5. */
+		medianCiLowCents: Type.Optional(Type.Integer()),
+		medianCiHighCents: Type.Optional(Type.Integer()),
 		p25Cents: Type.Integer(),
 		p75Cents: Type.Integer(),
 		nObservations: Type.Integer(),
 		salesPerDay: Type.Number(),
 		meanDaysToSell: Type.Optional(Type.Number()),
 		daysStdDev: Type.Optional(Type.Number()),
+		/** 50/70/90 percentiles of the duration distribution. Populated with `nDurations` ≥ 5. */
+		daysP50: Type.Optional(Type.Number()),
+		daysP70: Type.Optional(Type.Number()),
+		daysP90: Type.Optional(Type.Number()),
 		nDurations: Type.Optional(Type.Integer()),
 		asks: Type.Optional(AskStats),
 		asOf: Type.String(),
@@ -66,6 +73,7 @@ export const ListPriceAdvice = Type.Object(
 		expectedDaysToSell: Type.Number(),
 		sellProb7d: Type.Number({ minimum: 0, maximum: 1 }),
 		sellProb14d: Type.Number({ minimum: 0, maximum: 1 }),
+		sellProb30d: Type.Number({ minimum: 0, maximum: 1 }),
 		netCents: Type.Integer(),
 		dollarsPerDay: Type.Integer(),
 		annualizedRoi: Type.Number(),
@@ -111,3 +119,59 @@ export const ResearchThesisResponse = Type.Object(
 	{ $id: "ResearchThesisResponse" },
 );
 export type ResearchThesisResponse = Static<typeof ResearchThesisResponse>;
+
+/* ----------------- POST /v1/research/recovery_probability ----------------- */
+
+/**
+ * "If I buy at $X, what's the probability of recovering my money plus
+ * `minNetCents` of profit within `withinDays`?"
+ *
+ * Internally: derive the minimum sell price needed to clear cost basis +
+ * minimum net + fees + outbound shipping, then evaluate the hazard
+ * model's `P(sold within d)` at that price. Confidence reflects the
+ * number of duration observations the model is fit on.
+ */
+export const RecoveryRequest = Type.Object(
+	{
+		comps: Type.Array(ItemSummary, {
+			description: "Sold listings for the same SKU. Same shape as /v1/research/thesis.",
+		}),
+		costBasisCents: Type.Integer({ description: "What the user paid (cents)." }),
+		withinDays: Type.Integer({ minimum: 1, maximum: 365 }),
+		minNetCents: Type.Optional(
+			Type.Integer({ minimum: 0, description: "Minimum acceptable net profit. Default 0 (break even)." }),
+		),
+		outboundShippingCents: Type.Optional(Type.Integer({ minimum: 0 })),
+		context: Type.Optional(
+			Type.Object({
+				keyword: Type.Optional(Type.String()),
+				marketplace: Type.Optional(Type.String()),
+				windowDays: Type.Optional(Type.Integer({ minimum: 1, maximum: 365 })),
+			}),
+		),
+	},
+	{ $id: "RecoveryRequest" },
+);
+export type RecoveryRequest = Static<typeof RecoveryRequest>;
+
+export const RecoveryResponse = Type.Object(
+	{
+		/** P(sale at ≥ minSellPrice within `withinDays`). 0 when impossible to clear cost basis. */
+		probability: Type.Number({ minimum: 0, maximum: 1 }),
+		/** The list price the user would need to charge to clear cost basis + minNet + fees. */
+		minSellPriceCents: Type.Integer(),
+		/** Expected days to sell at that price. */
+		expectedDaysToSell: Type.Optional(Type.Number()),
+		/** Fit-data sample size (durations). Drives confidence. */
+		nDurations: Type.Integer(),
+		/**
+		 * "high" when n ≥ 10, "medium" when n ≥ 5, "low" when n ≥ 1, "none"
+		 * when no duration data at all (probability is null in that case).
+		 */
+		confidence: Type.Union([Type.Literal("high"), Type.Literal("medium"), Type.Literal("low"), Type.Literal("none")]),
+		/** Plain-English summary, e.g. "65% chance of selling within 14 days at $355+." */
+		reason: Type.String(),
+	},
+	{ $id: "RecoveryResponse" },
+);
+export type RecoveryResponse = Static<typeof RecoveryResponse>;

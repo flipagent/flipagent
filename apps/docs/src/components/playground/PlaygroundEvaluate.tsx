@@ -1,52 +1,168 @@
 /**
- * Evaluate one — Decisions pillar.
+ * Evaluate listing — Decisions pillar.
  *
- * Renders inside a `ComposeCard`: input (itemId / URL) + output (verdict
- * card + match summary + trace). No filters — the SKU is the query.
+ * Renders inside a `ComposeCard`: input (item id / URL) + filter row
+ * (look-back window, sample size cap) + output (recommendation + trace).
  * Recent runs and Quick starts live below the card.
  */
 
 import { useEffect, useState } from "react";
 import {
 	ComposeCard,
+	ComposeFilters,
 	ComposeInput,
 	ComposeOutput,
 	ComposeTabs,
 	type ComposeTab,
 } from "../compose/ComposeCard";
+import { FilterPill, type SelectOption } from "../compose/FilterPill";
+import { FormSelect } from "../compose/FormSelect";
+import { Field } from "../ui/Field";
 import { EvaluateResult } from "./EvaluateResult";
-import { initialSteps, parseItemId, runEvaluate, EVALUATE_STEPS } from "./pipelines";
+import {
+	EVALUATE_STEPS,
+	initialSteps,
+	parseItemId,
+	runEvaluate,
+	runEvaluateMock,
+	type EvaluateOutcome,
+} from "./pipelines";
 import { QuickStarts, type QuickStart } from "./QuickStarts";
 import { useRecentRuns, type RecentRun } from "./recent";
 import { RecentRuns } from "./RecentRuns";
-import { Trace } from "./Trace";
-import type { EvaluateOutcome } from "./pipelines";
 import type { Step } from "./types";
 
 interface EvaluateQuery {
 	input: string;
+	lookbackDays: number;
+	sampleLimit: number;
+	minProfit: number;
+	recoveryDays: number;
 }
 
 const QUICKSTART_EXAMPLES: ReadonlyArray<{ label: string; itemId: string }> = [
 	{ label: "Gucci YA1264153 watch", itemId: "406338886641" },
-	{ label: "Gucci YA1264155 (PVD)", itemId: "406336551572" },
+	{ label: "Travis Scott AJ1 Mocha (sz 11)", itemId: "358471670268" },
 ];
 
-export function PlaygroundEvaluate({
+// eBay's Marketplace Insights / sold-listings page caps at ~90 days.
+// Going further returns stale or empty data, so we don't expose it.
+const LOOKBACK_OPTIONS: ReadonlyArray<SelectOption<string>> = [
+	{ value: "30", label: "30 days" },
+	{ value: "60", label: "60 days" },
+	{ value: "90", label: "90 days" },
+];
+
+const SAMPLE_OPTIONS: ReadonlyArray<SelectOption<string>> = [
+	{ value: "25", label: "25 sales" },
+	{ value: "50", label: "50 sales" },
+	{ value: "100", label: "100 sales" },
+	{ value: "200", label: "200 sales" },
+];
+
+// Profit floor for the BUY verdict. Default is $10 — anything below
+// fees + shipping noise isn't a flip worth doing. Range covers thin
+// margin ($5) to selective ($100) without an `any` escape hatch; the
+// algorithm always needs SOME floor to separate "deal" from "noise".
+const MIN_PROFIT_OPTIONS: ReadonlyArray<SelectOption<string>> = [
+	{ value: "5", label: "$5" },
+	{ value: "10", label: "$10" },
+	{ value: "25", label: "$25" },
+	{ value: "50", label: "$50" },
+	{ value: "100", label: "$100" },
+];
+
+// Holding-window presets. Default is 6 months — the longest a typical
+// reseller would sit on a flip. Without a cap the recommended-exit
+// search can pick multi-year listings at the high-β tail (mathematically
+// optimal "least-loss" but useless as a recommendation), so an explicit
+// horizon is always present rather than `any`. Range covers fast flips
+// (a week) up to the 6-month outer bound.
+const SELL_WITHIN_OPTIONS: ReadonlyArray<SelectOption<string>> = [
+	{ value: "1", label: "1 day" },
+	{ value: "3", label: "3 days" },
+	{ value: "7", label: "7 days" },
+	{ value: "14", label: "14 days" },
+	{ value: "30", label: "1 month" },
+	{ value: "90", label: "3 months" },
+	{ value: "180", label: "6 months" },
+];
+
+// Shipping presets cover the realistic US-domestic spectrum: padded
+// envelope, typical 1-2lb box (default), Priority Mail mid, heavy box,
+// oversized. Power users with weird shipping costs can still go to the
+// /v1/evaluate API and pass their exact value.
+const SHIPPING_OPTIONS: ReadonlyArray<SelectOption<string>> = [
+	{ value: "5", label: "$5" },
+	{ value: "10", label: "$10" },
+	{ value: "15", label: "$15" },
+	{ value: "25", label: "$25" },
+	{ value: "50", label: "$50" },
+];
+
+const IconClock = (
+	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+		<circle cx="8" cy="8" r="6" />
+		<path d="M8 5v3.5l2 1.5" />
+	</svg>
+);
+const IconStack = (
+	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M3 5l5-2 5 2-5 2-5-2z" />
+		<path d="M3 8l5 2 5-2M3 11l5 2 5-2" />
+	</svg>
+);
+const IconDollar = (
+	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M11 5.5C11 4 9.5 3 8 3S5 4 5 5.5 6.5 7 8 7s3 1 3 2.5S9.5 12 8 12s-3-1-3-2.5" />
+		<path d="M8 2v12" />
+	</svg>
+);
+const IconHourglass = (
+	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M5 2h6M5 14h6" />
+		<path d="M5 2c0 4 6 4 6 8s-6 4-6 8" />
+		<path d="M11 2c0 4-6 4-6 8s6 4 6 8" />
+	</svg>
+);
+const IconShip = (
+	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M2 6h12l-2 5H4L2 6z" />
+		<path d="M5 6V3h6v3" />
+	</svg>
+);
+
+export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate">({
 	tabsProps,
 	seed,
+	mockMode = false,
 }: {
 	tabsProps: {
-		tabs: ReadonlyArray<ComposeTab<"discover" | "evaluate">>;
-		active: "discover" | "evaluate";
-		onChange: (next: "discover" | "evaluate") => void;
+		tabs: ReadonlyArray<ComposeTab<TabId>>;
+		active: TabId;
+		onChange: (next: TabId) => void;
 	};
 	seed?: string | null;
+	/** When true, run a canned pipeline against in-memory fixtures (logged-out hero). */
+	mockMode?: boolean;
 }) {
 	const [input, setInput] = useState("");
+	const [lookbackDays, setLookbackDays] = useState("90");
+	const [sampleLimit, setSampleLimit] = useState("50");
+	const [minProfit, setMinProfit] = useState("10");
+	const [recoveryDays, setRecoveryDays] = useState("180");
+	// More panel — detail-level cost assumptions. "" means "use server
+	// default" (currently $10 shipping, $0 floor); typing a number
+	// overrides per-call. The pill row keeps coarse presets; this panel
+	// is for users who want to dial in a real cost model.
+	const [moreOpen, setMoreOpen] = useState(false);
+	const [shippingDollars, setShippingDollars] = useState("10");
 	const [steps, setSteps] = useState<Step[]>(initialSteps(EVALUATE_STEPS));
 	const [pending, setPending] = useState(false);
 	const [outcome, setOutcome] = useState<EvaluateOutcome | null>(null);
+	// Intermediate state — fills in as each step completes so the UI can
+	// render whatever's available with skeletons for the rest.
+	const [partial, setPartial] = useState<Partial<EvaluateOutcome>>({});
 	const [err, setErr] = useState<string | null>(null);
 	const [hasRun, setHasRun] = useState(false);
 	const recent = useRecentRuns<EvaluateQuery>("evaluate");
@@ -59,37 +175,93 @@ export function PlaygroundEvaluate({
 		// biome-ignore lint/correctness/useExhaustiveDependencies: re-fire only on seed change
 	}, [seed]);
 
-	async function run(rawInput: string) {
+	async function run(
+		rawInput: string,
+		override?: { lookbackDays?: number; sampleLimit?: number; minProfit?: number; recoveryDays?: number },
+	) {
 		const itemId = parseItemId(rawInput);
 		if (!itemId) {
-			setErr("Couldn't parse an itemId — paste an item id, a v1|…|0 string, or any /itm/ URL.");
+			setErr(
+				"That doesn't look like a valid eBay listing. Paste an item id (e.g. 406338886641) or any eBay listing URL.",
+			);
 			return;
 		}
 		setErr(null);
 		setOutcome(null);
+		setPartial({});
 		setSteps(initialSteps(EVALUATE_STEPS));
 		setHasRun(true);
 		setPending(true);
+		const lb = override?.lookbackDays ?? Number.parseInt(lookbackDays, 10);
+		const sl = override?.sampleLimit ?? Number.parseInt(sampleLimit, 10);
+		const mp = override?.minProfit ?? Number.parseInt(minProfit, 10);
+		const rd = override?.recoveryDays ?? Number.parseInt(recoveryDays, 10);
+		const shipDollars = Number.parseFloat(shippingDollars);
+		const shipCents = Number.isFinite(shipDollars) && shipDollars >= 0 ? Math.round(shipDollars * 100) : undefined;
 		try {
-			const result = await runEvaluate(itemId, (key, p) =>
-				setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, ...p } : s))),
+			const runner = mockMode ? runEvaluateMock : runEvaluate;
+			const result = await runner(
+				{
+					itemId,
+					lookbackDays: lb,
+					sampleLimit: sl,
+					minNetCents: mp > 0 ? mp * 100 : undefined, // 0 from legacy "any" preset → server default
+					outboundShippingCents: shipCents,
+					maxDaysToSell: rd > 0 ? rd : undefined,
+				},
+				(key, p) => {
+					setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, ...p } : s)));
+					if (p.status === "ok" && p.result !== undefined) {
+						const r = p.result as Record<string, unknown>;
+						setPartial((prev) => {
+							if (key === "detail") return { ...prev, detail: p.result as EvaluateOutcome["detail"] };
+							if (key === "sold")
+								return {
+									...prev,
+									soldPool: (r.itemSales ?? r.itemSummaries ?? []) as EvaluateOutcome["soldPool"],
+								};
+							if (key === "active")
+								return { ...prev, activePool: (r.itemSummaries ?? []) as EvaluateOutcome["activePool"] };
+							if (key === "match") return { ...prev, buckets: p.result as EvaluateOutcome["buckets"] };
+							if (key === "thesis") return { ...prev, thesis: p.result as EvaluateOutcome["thesis"] };
+							if (key === "evaluate") return { ...prev, verdict: p.result as EvaluateOutcome["verdict"] };
+							return prev;
+						});
+					}
+				},
 			);
 			if (result) {
 				setOutcome(result);
 				const summary = result.verdict.rating
 					? `${result.verdict.rating.toUpperCase()}${
-							result.verdict.probProfit != null ? ` · ${Math.round(result.verdict.probProfit * 100)}%` : ""
+							result.verdict.probProfit != null
+								? ` · ${Math.round(result.verdict.probProfit * 100)}%`
+								: ""
 						}`
 					: undefined;
 				recent.add({
-					id: itemId,
+					id: `${itemId}|${lb}|${sl}|${mp}|${rd}`,
 					mode: "evaluate",
 					label: result.detail.title || itemId,
-					query: { input: rawInput.trim() },
+					query: {
+						input: rawInput.trim(),
+						lookbackDays: lb,
+						sampleLimit: sl,
+						minProfit: mp,
+						recoveryDays: rd,
+					},
 					timestamp: Date.now(),
 					summary,
 				});
 			}
+		} catch (err) {
+			// Anything an inner step couldn't handle (or a bug). Surface to the
+			// user instead of leaving the panel pinned on "Running".
+			const message = err instanceof Error ? err.message : String(err);
+			setErr(`Something went wrong: ${message}`);
+			setSteps((prev) =>
+				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: message } : s)),
+			);
 		} finally {
 			setPending(false);
 		}
@@ -97,15 +269,25 @@ export function PlaygroundEvaluate({
 
 	function rerunRecent(rec: RecentRun<EvaluateQuery>) {
 		setInput(rec.query.input);
-		void run(rec.query.input);
+		setLookbackDays(String(rec.query.lookbackDays));
+		setSampleLimit(String(rec.query.sampleLimit));
+		setMinProfit(String(rec.query.minProfit ?? 0));
+		setRecoveryDays(String(rec.query.recoveryDays ?? 0));
+		void run(rec.query.input, {
+			lookbackDays: rec.query.lookbackDays,
+			sampleLimit: rec.query.sampleLimit,
+			minProfit: rec.query.minProfit ?? 0,
+			recoveryDays: rec.query.recoveryDays ?? 0,
+		});
 	}
 
 	const QUICKSTARTS: ReadonlyArray<QuickStart> = QUICKSTART_EXAMPLES.map((ex) => ({
 		label: ex.label,
-		apply: () => {
-			setInput(ex.itemId);
-			void run(ex.itemId);
-		},
+		// Mirror Discover's behaviour: clicking a preset fills the input but
+		// does not auto-run. The user reviews filters / More panel and hits
+		// Run themselves. Auto-running surprised users who clicked to *see*
+		// the example, not to spend a credit on it.
+		apply: () => setInput(ex.itemId),
 	}));
 
 	return (
@@ -121,13 +303,108 @@ export function PlaygroundEvaluate({
 					placeholder="Paste any /itm/ URL — or an item id like 406338886641"
 				/>
 
+				{(() => {
+					// Lights the More button brand-orange + shows a count when
+					// any of the panel-resident knobs are non-default. Keeps the
+					// pill row honest about whether hidden settings are active.
+					const moreActive =
+						(minProfit !== "10" ? 1 : 0) +
+						(recoveryDays !== "180" ? 1 : 0) +
+						(shippingDollars !== "10" ? 1 : 0);
+					return (
+						<>
+							<ComposeFilters>
+								<FilterPill
+									value={lookbackDays}
+									defaultValue="90"
+									options={LOOKBACK_OPTIONS}
+									onChange={setLookbackDays}
+									icon={IconClock}
+									label="Look back"
+								/>
+								<FilterPill
+									value={sampleLimit}
+									defaultValue="50"
+									options={SAMPLE_OPTIONS}
+									onChange={setSampleLimit}
+									icon={IconStack}
+									label="Sample size"
+								/>
+								<button
+									type="button"
+									onClick={() => setMoreOpen((o) => !o)}
+									aria-expanded={moreOpen}
+									className={`flex items-center gap-1.5 h-7 px-2.5 rounded-[6px] text-[12px] border transition-colors duration-100 cursor-pointer ${
+										moreActive > 0
+											? "border-[var(--brand)] text-[var(--brand)] bg-[var(--brand-soft)]"
+											: "border-[var(--border-faint)] text-[var(--text-3)] hover:text-[var(--text)] hover:border-[var(--border)]"
+									}`}
+								>
+									<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+										<circle cx="4" cy="4" r="1.4" />
+										<path d="M7 4h6" />
+										<circle cx="11" cy="8" r="1.4" />
+										<path d="M3 8h5M13 8h0" />
+										<circle cx="6" cy="12" r="1.4" />
+										<path d="M3 12h1M9 12h4" />
+									</svg>
+									More {moreActive > 0 ? `· ${moreActive}` : ""}
+								</button>
+							</ComposeFilters>
+
+							{moreOpen && (
+								<div className="px-5 py-4 border-b border-[var(--border-faint)] bg-[color:var(--bg-soft)]/40 max-sm:px-4">
+									<div className="flex flex-col gap-3">
+										{/* FormSelect — bordered-box trigger that aligns with
+										    other form inputs (Discover's More uses raw <input>s
+										    too). Same widths so the chevrons stack tidily. */}
+										<Field label="Min profit">
+											{(labelId) => (
+												<FormSelect
+													value={minProfit}
+													options={MIN_PROFIT_OPTIONS}
+													onChange={setMinProfit}
+													aria-labelledby={labelId}
+												/>
+											)}
+										</Field>
+										<Field label="Sell within">
+											{(labelId) => (
+												<FormSelect
+													value={recoveryDays}
+													options={SELL_WITHIN_OPTIONS}
+													onChange={setRecoveryDays}
+													aria-labelledby={labelId}
+												/>
+											)}
+										</Field>
+										<Field label="Shipping">
+											{(labelId) => (
+												<FormSelect
+													value={shippingDollars}
+													options={SHIPPING_OPTIONS}
+													onChange={setShippingDollars}
+													aria-labelledby={labelId}
+												/>
+											)}
+										</Field>
+									</div>
+								</div>
+							)}
+						</>
+					);
+				})()}
+
 				{(outcome || hasRun || err) && (
 					<ComposeOutput>
 						{err && <p className="text-[13px] text-[#c0392b] mb-3">{err}</p>}
-						{outcome ? (
-							<EvaluateResult outcome={outcome} steps={steps} />
-						) : (
-							<Trace steps={steps} />
+						{hasRun && !err && (
+							<EvaluateResult
+								outcome={outcome ?? partial}
+								steps={steps}
+								sellWithinDays={Number.parseInt(recoveryDays, 10) || undefined}
+								pending={pending}
+							/>
 						)}
 					</ComposeOutput>
 				)}

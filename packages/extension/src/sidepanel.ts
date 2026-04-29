@@ -101,21 +101,21 @@ async function refreshStatus(): Promise<void> {
 	try {
 		const cs = await fetchConnectStatus(cfg);
 		setRow("row-paired", {
-			dot: cs.bridgeClient.paired ? "ok" : "err",
-			label: cs.bridgeClient.paired
-				? `Paired as ${cs.bridgeClient.deviceName ?? "?"}${cs.bridgeClient.lastSeenAt ? ` · last seen ${formatTime(cs.bridgeClient.lastSeenAt)}` : ""}`
+			dot: cs.bridge.paired ? "ok" : "err",
+			label: cs.bridge.paired
+				? `Paired as ${cs.bridge.deviceName ?? "?"}${cs.bridge.lastSeenAt ? ` · last seen ${formatTime(cs.bridge.lastSeenAt)}` : ""}`
 				: "Not paired",
 		});
 		setRow("row-buyer", {
-			dot: cs.buyerSession.loggedIn ? "ok" : "warn",
-			label: cs.buyerSession.loggedIn
-				? `Buyer signed in${cs.buyerSession.ebayUserName ? ` as ${cs.buyerSession.ebayUserName}` : ""}`
-				: "Buyer not signed in — open ebay.com and sign in",
+			dot: cs.bridge.ebayLoggedIn ? "ok" : "warn",
+			label: cs.bridge.ebayLoggedIn
+				? `Signed into eBay${cs.bridge.ebayUserName ? ` as ${cs.bridge.ebayUserName}` : ""}`
+				: "Not signed into eBay — open ebay.com and sign in",
 		});
 		setRow("row-seller", {
-			dot: cs.connected ? "ok" : "warn",
-			label: cs.connected
-				? `Seller OAuth connected${cs.ebayUserName ? ` (${cs.ebayUserName})` : ""}`
+			dot: cs.oauth.connected ? "ok" : "warn",
+			label: cs.oauth.connected
+				? `Seller OAuth connected${cs.oauth.ebayUserName ? ` (${cs.oauth.ebayUserName})` : ""}`
 				: "Seller OAuth not connected (optional)",
 		});
 	} catch (err) {

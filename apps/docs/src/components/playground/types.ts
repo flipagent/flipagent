@@ -15,7 +15,11 @@ export interface Step {
 	status: StepStatus;
 	/** HTTP method + path the step calls. Surfaced in the trace so users see exactly what cURL would. */
 	call?: { method: "GET" | "POST"; path: string };
-	/** Parsed response body. Rendered as JSON in the trace. */
+	/** Request body for POST calls. JSON-rendered in the Request section of the trace. */
+	requestBody?: unknown;
+	/** HTTP response status code. Shown next to the call line. */
+	httpStatus?: number;
+	/** Parsed response body. Rendered in the Response section of the trace. */
 	result?: unknown;
 	/** Error summary when status === "error". */
 	error?: string;
@@ -36,6 +40,11 @@ export interface ItemSummary {
 	conditionId?: string;
 	price?: Money;
 	lastSoldPrice?: Money;
+	/** AUCTION / FIXED_PRICE / BEST_OFFER. Drives the "Active bids" stat. */
+	buyingOptions?: ReadonlyArray<"AUCTION" | "FIXED_PRICE" | "BEST_OFFER">;
+	/** Current bid for live AUCTION listings — surfaced in Active bids row. */
+	currentBidPrice?: Money;
+	bidCount?: number;
 	image?: { imageUrl: string };
 }
 
@@ -58,16 +67,14 @@ export interface ItemDetail extends ItemSummary {
 
 export interface MatchedItem {
 	item: ItemSummary;
-	score: number;
-	bucket: "match" | "borderline" | "reject";
+	bucket: "match" | "reject";
 	reason: string;
 }
 
 export interface MatchResponse {
 	match: MatchedItem[];
-	borderline: MatchedItem[];
 	reject: MatchedItem[];
-	totals: { match: number; borderline: number; reject: number };
+	totals: { match: number; reject: number };
 }
 
 export interface MarketStats {
@@ -77,12 +84,18 @@ export interface MarketStats {
 	meanCents: number;
 	stdDevCents: number;
 	medianCents: number;
+	medianCiLowCents?: number;
+	medianCiHighCents?: number;
 	p25Cents: number;
 	p75Cents: number;
 	nObservations: number;
 	salesPerDay: number;
 	meanDaysToSell?: number;
 	daysStdDev?: number;
+	daysP50?: number;
+	daysP70?: number;
+	daysP90?: number;
+	nDurations?: number;
 }
 
 export interface ListPriceAdvice {
@@ -90,6 +103,7 @@ export interface ListPriceAdvice {
 	expectedDaysToSell: number;
 	sellProb7d: number;
 	sellProb14d: number;
+	sellProb30d: number;
 	netCents: number;
 	dollarsPerDay: number;
 	annualizedRoi: number;
@@ -100,15 +114,42 @@ export interface ThesisResponse {
 	listPriceAdvice: ListPriceAdvice | null;
 }
 
+export interface RecoveryResponse {
+	probability: number;
+	minSellPriceCents: number;
+	expectedDaysToSell?: number;
+	nDurations: number;
+	confidence: "high" | "medium" | "low" | "none";
+	reason: string;
+}
+
 export interface Verdict {
 	rating?: string;
 	isDeal?: boolean;
 	netCents?: number;
 	bidCeilingCents?: number;
+	/** Cost components behind bidCeilingCents — surfaced under Safe bid. */
+	safeBidBreakdown?: {
+		estimatedSaleCents: number;
+		feesCents: number;
+		shippingCents: number;
+		targetNetCents: number;
+	} | null;
 	probProfit?: number;
 	confidence?: number;
 	reason?: string;
 	signals?: Array<{ name: string; reason: string }>;
+	/**
+	 * Single recommended exit plan: list at this price, expected to sell
+	 * in this many days, with this much in your pocket after fees + ship +
+	 * buy. Driven by hazard model + competition factor + active-mean blend.
+	 */
+	recommendedExit?: {
+		listPriceCents: number;
+		expectedDays: number;
+		netCents: number;
+		dollarsPerDay: number;
+	} | null;
 }
 
 export interface RankedDeal {

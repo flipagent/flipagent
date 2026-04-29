@@ -66,6 +66,14 @@
 	box-sizing: border-box;
 }
 
+/* Browsers default <button> cursor to `auto` (or arrow on some). Reset
+   so every interactive button signals click — disabled buttons opt out
+   and any per-component override (e.g. drag handles) stays free to set
+   its own cursor. */
+button:not(:disabled) {
+	cursor: pointer;
+}
+
 html,
 body {
 	margin: 0;

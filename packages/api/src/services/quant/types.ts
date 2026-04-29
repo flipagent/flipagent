@@ -102,6 +102,9 @@ export interface MarketStats {
 	stdDevCents: number;
 	/** Robust quantiles (kept for display + signals like under_median). */
 	medianCents: number;
+	/** Bootstrap 90% CI on the median (n ≥ 5). Undefined for tiny samples. */
+	medianCiLowCents?: number;
+	medianCiHighCents?: number;
 	p25Cents: number;
 	p75Cents: number;
 	nObservations: number;
@@ -113,6 +116,10 @@ export interface MarketStats {
 	 */
 	meanDaysToSell?: number;
 	daysStdDev?: number;
+	/** Time-to-sell percentiles (n ≥ 5). Together with mean/std they describe spread. */
+	daysP50?: number;
+	daysP70?: number;
+	daysP90?: number;
 	/** How many comps contributed to meanDaysToSell (≤ nObservations). */
 	nDurations?: number;
 	/** Active-side stats (current asks). Populated when caller passed asks. */
@@ -223,6 +230,8 @@ export interface ListPriceAdvice {
 	sellProb7d: number;
 	/** P(sell ≤ 14 days). */
 	sellProb14d: number;
+	/** P(sell ≤ 30 days). */
+	sellProb30d: number;
 	/** Net cents at this list price (sale − fees − shipping). */
 	netCents: number;
 	/** Capital efficiency in cents/day = netCents / expectedDaysToSell. */

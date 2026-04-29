@@ -25,7 +25,7 @@ export async function computeCapabilities(apiKeyId: string): Promise<Capabilitie
 			.select({
 				deviceName: bridgeTokens.deviceName,
 				lastSeenAt: bridgeTokens.lastSeenAt,
-				buyerLoggedIn: bridgeTokens.buyerLoggedIn,
+				ebayLoggedIn: bridgeTokens.ebayLoggedIn,
 			})
 			.from(bridgeTokens)
 			.where(and(eq(bridgeTokens.apiKeyId, apiKeyId), isNull(bridgeTokens.revokedAt)))
@@ -39,7 +39,7 @@ export async function computeCapabilities(apiKeyId: string): Promise<Capabilitie
 
 	const ebay = ebayCapabilities({
 		extensionPaired: !!bridge,
-		buyerLoggedIn: !!bridge?.buyerLoggedIn,
+		ebayLoggedIn: !!bridge?.ebayLoggedIn,
 		sellerConnected,
 	});
 	const planetexpress = planetExpressCapabilities({ extensionPaired: !!bridge });
@@ -58,7 +58,7 @@ export async function computeCapabilities(apiKeyId: string): Promise<Capabilitie
 
 interface EbayInputs {
 	extensionPaired: boolean;
-	buyerLoggedIn: boolean;
+	ebayLoggedIn: boolean;
 	sellerConnected: boolean;
 }
 
@@ -87,7 +87,7 @@ function ebayCapabilities(input: EbayInputs): MarketplaceCapabilities {
 		? "ok"
 		: !input.extensionPaired
 			? "unavailable"
-			: input.buyerLoggedIn
+			: input.ebayLoggedIn
 				? "ok"
 				: "needs_signin";
 

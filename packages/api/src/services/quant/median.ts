@@ -167,6 +167,17 @@ export function summarizeSold(
 	const daysStdDev = durations.length > 0 ? (stdDev(durations) ?? undefined) : undefined;
 	const nDurations = durations.length > 0 ? durations.length : undefined;
 
+	// Days percentiles only when we have enough observations to be honest.
+	const enoughDurations = durations.length >= 5;
+	const daysP50 = enoughDurations ? (percentile(durations, 0.5) ?? undefined) : undefined;
+	const daysP70 = enoughDurations ? (percentile(durations, 0.7) ?? undefined) : undefined;
+	const daysP90 = enoughDurations ? (percentile(durations, 0.9) ?? undefined) : undefined;
+
+	// Bootstrap 90% CI on the median price, when n≥5. With smaller samples
+	// the bootstrap interval collapses to noise so we omit it.
+	const enoughPrices = cleanedPrices.length >= 5;
+	const ci = enoughPrices ? bootstrapMedianCi(cleanedPrices) : null;
+
 	return {
 		keyword: context.keyword,
 		marketplace: context.marketplace,
@@ -174,14 +185,54 @@ export function summarizeSold(
 		meanCents: mean(cleanedPrices) ?? 0,
 		stdDevCents: stdDev(cleanedPrices) ?? 0,
 		medianCents: median(cleanedPrices) ?? 0,
+		medianCiLowCents: ci?.lo,
+		medianCiHighCents: ci?.hi,
 		p25Cents: percentile(cleanedPrices, 0.25) ?? 0,
 		p75Cents: percentile(cleanedPrices, 0.75) ?? 0,
 		nObservations: n,
 		salesPerDay,
 		meanDaysToSell,
 		daysStdDev,
+		daysP50,
+		daysP70,
+		daysP90,
 		nDurations,
 		asOf: new Date().toISOString(),
+	};
+}
+
+/**
+ * Bootstrap 5%/95% confidence interval on the median. 200 resamples is
+ * a fine balance between noise reduction and CPU; with n=5 the interval
+ * is wide regardless. Deterministic seed via mulberry32 keeps output
+ * stable across runs (no flicker on retries).
+ */
+function bootstrapMedianCi(values: number[]): { lo: number; hi: number } | null {
+	if (values.length < 5) return null;
+	const reps = 200;
+	const medians: number[] = [];
+	const rand = mulberry32(0xc0ffee ^ values.length);
+	for (let r = 0; r < reps; r++) {
+		const sample: number[] = [];
+		for (let i = 0; i < values.length; i++) {
+			sample.push(values[Math.floor(rand() * values.length)] ?? 0);
+		}
+		const m = median(sample);
+		if (m != null) medians.push(m);
+	}
+	const lo = percentile(medians, 0.05);
+	const hi = percentile(medians, 0.95);
+	if (lo == null || hi == null) return null;
+	return { lo, hi };
+}
+
+function mulberry32(seed: number): () => number {
+	let t = seed >>> 0;
+	return () => {
+		t = (t + 0x6d2b79f5) >>> 0;
+		let r = Math.imul(t ^ (t >>> 15), 1 | t);
+		r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+		return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
 	};
 }
 

@@ -198,6 +198,309 @@
 
 .pg-result-hero-link { color: var(--text-3); flex-shrink: 0; }
 
+/* ---------- price histogram (Recharts) ---------- */
+
+.pg-result-chart {
+	margin: 14px 0 6px;
+}
+
+.pg-result-chart-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	margin-bottom: 6px;
+}
+
+.pg-result-chart-title {
+	font-size: 11px;
+	font-family: var(--mono);
+	letter-spacing: 0.06em;
+	color: var(--text-3);
+	text-transform: uppercase;
+}
+
+.pg-result-chart-meta {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	color: var(--text-3);
+}
+
+.pg-result-chart-key {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	margin-left: 8px;
+	margin-right: 2px;
+}
+
+.pg-result-chart-key--active { background: var(--brand); }
+.pg-result-chart-key--sold { background: var(--text-4); }
+
+/* Recharts wraps everything in .recharts-wrapper — strip the focus
+   outline its default tooltip behaviour adds. */
+.pg-result-chart .recharts-wrapper:focus,
+.pg-result-chart .recharts-surface:focus {
+	outline: none;
+}
+
+/* ---------- facts (key-value rows) ---------- */
+
+.pg-result-facts {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	margin: 10px 0 0;
+	padding: 12px 0;
+	border-top: 1px solid var(--border-faint);
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.pg-result-facts > div {
+	display: grid;
+	grid-template-columns: 160px 1fr;
+	align-items: baseline;
+	gap: 16px;
+	padding: 5px 0;
+}
+
+/* Conclusion row — single horizontal rule + breathing room separates the
+   answer ("Net at exit") from the market context above it. No section
+   header, no card chrome — just one quiet divider so the eye lands on
+   the verdict last. */
+.pg-result-facts > .pg-result-facts-final {
+	margin-top: 10px;
+	padding-top: 12px;
+	border-top: 1px solid var(--border-faint);
+}
+
+.pg-result-facts dt {
+	font-size: 12px;
+	color: var(--text-3);
+}
+
+.pg-result-facts dd {
+	margin: 0;
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.pg-result-facts-val {
+	font-family: var(--mono);
+	font-size: 13.5px;
+	color: var(--text);
+}
+
+.pg-result-facts-val--good { color: var(--brand); }
+.pg-result-facts-val--warn { color: var(--brand); }
+
+.pg-result-facts-aside {
+	font-size: 11.5px;
+	color: var(--text-3);
+}
+
+.pg-result-facts-aside--good { color: var(--brand); }
+.pg-result-facts-aside--warn { color: var(--brand); }
+
+.pg-result-facts-warn {
+	font-size: 11.5px;
+	color: var(--brand);
+	font-style: italic;
+}
+
+.pg-result-facts-toggle {
+	margin-left: auto;
+	font: inherit;
+	font-size: 11px;
+	background: none;
+	border: 0;
+	color: var(--text-3);
+	cursor: pointer;
+	padding: 0;
+}
+
+.pg-result-facts-toggle:hover { color: var(--text); }
+
+/* ---------- skeleton placeholders ---------- */
+
+.pg-result-skel {
+	display: inline-block;
+	border-radius: 3px;
+	vertical-align: middle;
+	/* Visibly grey on white. Shimmer highlights pass through a slightly
+	   lighter mid-tone so motion reads but the bar is still legible at rest. */
+	background: linear-gradient(
+		90deg,
+		var(--border) 0%,
+		var(--surface-3) 50%,
+		var(--border) 100%
+	);
+	background-size: 200% 100%;
+	animation: pg-skel-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes pg-skel-shimmer {
+	0% { background-position: 200% 0; }
+	100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pg-result-skel {
+		animation: none;
+		background: var(--border);
+	}
+}
+
+/* Run halted with sections still missing. Freeze the shimmer + tint the
+   bar a faint red so it reads as "couldn't load" rather than "loading". */
+.pg-result[data-stalled="true"] .pg-result-skel {
+	animation: none;
+	background: #fbe9e9;
+}
+
+.pg-result-hero--skel { pointer-events: none; }
+
+.pg-result-hero--skel .pg-result-hero-thumb {
+	border: 1px solid var(--border-faint);
+}
+
+.pg-result-hero--skel .pg-result-hero-body {
+	gap: 8px;
+}
+
+.pg-result-chart-skel {
+	height: 210px;
+	margin: 14px 0 6px;
+	border-radius: 4px;
+}
+
+/* ---------- match list reveal ---------- */
+
+/* Scoped under .pg-result-facts to beat the `.pg-result-facts > div`
+   grid rule that turns every direct child into a 160px / 1fr split.
+   Without this, the matches list ends up spread across both columns. */
+.pg-result-facts .pg-result-matches {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	padding: 4px 0 8px;
+	grid-column: 1 / -1;
+}
+
+.pg-result-matches-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	font: inherit;
+	font-size: 11px;
+	font-family: var(--mono);
+	letter-spacing: 0.06em;
+	color: var(--text-3);
+	text-transform: uppercase;
+	padding: 8px 8px 4px;
+	background: transparent;
+	border: 0;
+	border-radius: 4px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.pg-result-matches-head:hover { color: var(--text); }
+
+.pg-result-matches-caret {
+	transition: transform 0.12s ease;
+	color: var(--text-4);
+	flex-shrink: 0;
+}
+.pg-result-matches-caret[data-open="true"] { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) {
+	.pg-result-matches-caret { transition: none; }
+}
+
+.pg-result-matches-head--reject {
+	margin-top: 6px;
+	border-top: 1px solid var(--border-faint);
+}
+
+.pg-result-matches-row--reject .pg-result-matches-thumb img {
+	opacity: 0.55;
+	filter: grayscale(0.4);
+}
+
+.pg-result-matches-row--reject .pg-result-matches-title {
+	color: var(--text-3);
+}
+
+.pg-result-matches-reason {
+	font-size: 11px;
+	color: var(--text-3);
+	font-style: italic;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pg-result-matches-row {
+	display: grid;
+	grid-template-columns: 36px 1fr;
+	gap: 10px;
+	align-items: center;
+	padding: 6px 8px;
+	border-radius: 4px;
+	color: var(--text);
+	text-decoration: none;
+}
+
+.pg-result-matches-row:hover {
+	background: var(--surface-2);
+}
+
+.pg-result-matches-thumb {
+	width: 36px;
+	height: 36px;
+	border: 1px solid var(--border-faint);
+	border-radius: 4px;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-4);
+	background: var(--surface);
+}
+
+.pg-result-matches-thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.pg-result-matches-body {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.pg-result-matches-title {
+	font-size: 12px;
+	color: var(--text);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pg-result-matches-meta {
+	display: flex;
+	gap: 8px;
+	font-size: 11px;
+	color: var(--text-3);
+}
+
 /* ---------- comparison (usually vs this listing) ---------- */
 
 .pg-result-compare {
@@ -240,34 +543,104 @@
 	color: var(--text-3);
 }
 
-.pg-result-delta--warn { color: #b87a06; }
+.pg-result-delta--warn { color: var(--brand); }
 .pg-result-delta--good { color: var(--brand); }
 
-/* ---------- recommendation (rating word + 1-2 plain sentences) ---------- */
+/* ---------- recovery probability row ---------- */
+
+.pg-result-recovery {
+	margin: 0;
+	padding: 14px 0;
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.pg-result-recovery > div {
+	display: grid;
+	grid-template-columns: 160px 1fr;
+	align-items: baseline;
+	gap: 16px;
+	padding: 0 0 6px;
+}
+
+.pg-result-recovery dt {
+	font-size: 13px;
+	color: var(--text-3);
+}
+
+.pg-result-recovery dd {
+	margin: 0;
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.pg-result-recovery-pct {
+	font-family: var(--mono);
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.pg-result-recovery--good .pg-result-recovery-pct { color: var(--brand); }
+.pg-result-recovery--warn .pg-result-recovery-pct { color: var(--brand); }
+.pg-result-recovery--muted .pg-result-recovery-pct { color: var(--text-3); }
+
+.pg-result-recovery-conf {
+	font-size: 11px;
+	color: var(--text-3);
+}
+
+.pg-result-recovery-reason {
+	margin: 0;
+	font-size: 12.5px;
+	line-height: 1.55;
+	color: var(--text-3);
+	font-style: italic;
+}
+
+/* ---------- recommendation (one-line action + plain sentences) ---------- */
 
 .pg-result-rec {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
-	padding: 18px 0 0;
+	gap: 4px;
+	padding: 16px 0 0;
+}
+
+.pg-result-rec-line-prim {
+	display: grid;
+	grid-template-columns: 160px 1fr;
+	align-items: baseline;
+	gap: 16px;
+}
+
+.pg-result-rec-prefix {
+	font-size: 12px;
+	color: var(--text-3);
 }
 
 .pg-result-rec-rating {
-	font-size: 22px;
+	font-family: var(--mono);
+	font-size: 13.5px;
 	font-weight: 600;
-	letter-spacing: 0.02em;
+	letter-spacing: 0.04em;
 	color: var(--text);
 	line-height: 1.2;
 }
 
 .pg-result-rec-rating--good { color: var(--brand); }
-.pg-result-rec-rating--warn { color: #b87a06; }
+.pg-result-rec-rating--warn { color: var(--brand); }
 
 .pg-result-rec-line {
 	margin: 0;
-	font-size: 13.5px;
+	font-size: 13px;
 	line-height: 1.55;
 	color: var(--text-2);
+}
+
+.pg-result-rec-warn {
+	color: var(--brand);
 }
 
 /* ---------- footer (copy + trace expander) ---------- */
@@ -277,6 +650,11 @@
 	padding-top: 12px;
 	border-top: 1px solid var(--border-faint);
 }
+
+/* While the chain is still streaming, the trace is shown inline (not
+   tucked behind the "Show trace" toggle) so the user can watch each
+   step tick over. Same wrapper, no toggle row. */
+.pg-result-foot--running { padding-top: 14px; }
 
 .pg-result-foot-row {
 	display: flex;
@@ -341,32 +719,15 @@
 
 .pg-step + .pg-step { border-top: 1px solid var(--border-faint); }
 
-/* Soft tint on the row that's currently running — fades in/out as the
-   status transitions. Subtle: just a background change you barely
-   notice unless you're watching the chain unfold. */
-.pg-step {
-	transition: background-color 220ms ease;
-}
-
-.pg-step--running { background: var(--brand-soft); }
-
-/* The running pill breathes so the user feels something is alive,
-   without being noisy. Slow + shallow opacity range — calm, not strobing. */
-.pg-step-pill--running { animation: pg-pulse 1.8s ease-in-out infinite; }
-
-@keyframes pg-pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.7; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.pg-step { transition: none; }
-	.pg-step-pill--running { animation: none; }
-}
-
 .pg-step-head {
 	display: grid;
-	grid-template-columns: 28px 1fr auto auto auto;
+	/* Label sits on `max-content` so it always renders one line; URL takes
+	   the flexible 1fr column with min-width:0 so it ellipsizes when space
+	   is tight (live duration counter or "Running" pill on the right side
+	   used to squeeze the label to wrap during loading). Status / duration
+	   stay on auto. Six columns even though most rows only fill 4-5;
+	   trailing autos stay empty when their content is absent. */
+	grid-template-columns: 28px max-content minmax(0, 1fr) auto auto auto;
 	align-items: center;
 	gap: 12px;
 	width: 100%;
@@ -379,6 +740,8 @@
 	font-size: 13px;
 }
 
+.pg-step-label { white-space: nowrap; }
+
 .pg-step-head:disabled { cursor: default; opacity: 0.7; }
 .pg-step-head:hover:not(:disabled) { background: var(--surface-2); }
 
@@ -387,7 +750,7 @@
 .pg-step-call {
 	font-size: 11px;
 	color: var(--text-3);
-	max-width: 360px;
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -395,7 +758,21 @@
 
 .pg-step-duration { font-size: 11px; color: var(--text-3); }
 
+.pg-step-http {
+	font-size: 11px;
+	padding: 1px 6px;
+	border-radius: 3px;
+	border: 1px solid var(--border-faint);
+	color: var(--text-3);
+}
+.pg-step-http[data-tone="ok"] { color: #2f8f3a; border-color: #6ab474; }
+.pg-step-http[data-tone="warn"] { color: var(--brand); border-color: var(--brand); }
+.pg-step-http[data-tone="err"] { color: #c0392b; border-color: #d68b80; }
+
 .pg-step-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
 	font-size: 10px;
 	font-family: var(--mono);
 	letter-spacing: 0.04em;
@@ -404,7 +781,6 @@
 	border: 1px solid var(--border);
 	color: var(--text-3);
 	text-transform: uppercase;
-	transition: color 220ms ease, border-color 220ms ease;
 }
 
 .pg-step-pill--running { color: var(--brand); border-color: var(--brand); }
@@ -419,6 +795,48 @@
 }
 
 .pg-step-error { margin: 12px 0 4px; font-size: 12px; color: #c0392b; }
+
+.pg-step-section + .pg-step-section { margin-top: 12px; }
+.pg-step-section-h {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-3);
+	padding-top: 12px;
+}
+
+.pg-step-copy {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font: inherit;
+	font-size: 10px;
+	letter-spacing: 0.04em;
+	padding: 2px 8px;
+	background: transparent;
+	border: 1px solid var(--border-faint);
+	border-radius: 3px;
+	color: var(--text-3);
+	cursor: pointer;
+	transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.pg-step-copy:hover {
+	color: var(--text);
+	border-color: var(--border);
+	background: var(--surface-2);
+}
+
+.pg-json--compact {
+	max-height: none;
+	padding: 8px 12px;
+	font-size: 11.5px;
+}
 
 .pg-json {
 	margin: 12px 0 0;

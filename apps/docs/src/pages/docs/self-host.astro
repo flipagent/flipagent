@@ -8,11 +8,11 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>Self-host</h1>
-				<p class="lead">Run <code>@flipagent/api</code> on your own infrastructure. The whole API server is OSS — only the proxy URL and your eBay developer keyset are env-shaped secrets.</p>
+				<p class="lead">Run <code>@flipagent/api</code> on your own infrastructure. The whole API server is OSS. Only the proxy URL and your eBay developer keyset are env-shaped secrets.</p>
 
 				<h2>Why self-host</h2>
 				<ul>
-					<li><strong>Your eBay app, your tokens.</strong> The hosted service uses <em>flipagent's</em> eBay app. Self-hosting means your users grant OAuth to <em>your</em> app — useful for white-labeling or for keeping eBay API quota under your own developer account.</li>
+					<li><strong>Your eBay app, your tokens.</strong> The hosted service uses <em>flipagent's</em> eBay app. Self-hosting means your users grant OAuth to <em>your</em> app, which is useful for white-labeling or for keeping eBay API quota under your own developer account.</li>
 					<li><strong>Compliance / data residency.</strong> Cache rows + usage logs stay in your Postgres.</li>
 					<li><strong>No metering.</strong> The hosted tier counter is enforced per API key; self-hosting drops the limit (your eBay quota becomes the real ceiling).</li>
 				</ul>
@@ -23,7 +23,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>.env</span></div>
 <pre><code>{`DATABASE_URL=postgres://user:pass@host:5432/flipagent`}</code></pre>
 				</div>
-				<p>That's enough for the scrape-only path: <code>/v1/listings/search</code>, <code>/v1/sold/search</code>, <code>/v1/listings/:itemId</code>, <code>/v1/research/*</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/ship/*</code>, <code>/healthz</code>, <code>/v1/health/features</code>. Keys are issued by a CLI script — no GitHub OAuth, no Stripe, no eBay developer account needed.</p>
+				<p>That's enough for the scrape-only path: <code>/v1/listings/search</code>, <code>/v1/sold/search</code>, <code>/v1/listings/:itemId</code>, <code>/v1/research/*</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/ship/*</code>, <code>/v1/health</code>, <code>/v1/health/features</code>. Keys are issued by a CLI script. No GitHub OAuth, no Stripe, no eBay developer account needed.</p>
 
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>shell</span></div>
@@ -32,7 +32,7 @@ cp packages/api/.env.example packages/api/.env  # set DATABASE_URL
 npm install
 npm run --workspace @flipagent/api db:migrate
 npm run --workspace @flipagent/api dev
-# in another terminal — issue your first key
+# in another terminal: issue your first key
 npm run --workspace @flipagent/api issue-key -- you@example.com pro`}</code></pre>
 				</div>
 				<p>Without <code>SCRAPE_PROXY_URL</code> the api scrapes from your server's IP, which eBay will rate-limit fast. For anything real you want a residential rotating proxy.</p>
@@ -51,7 +51,7 @@ npm run --workspace @flipagent/api issue-key -- you@example.com pro`}</code></pr
 						<tr>
 							<td>Residential proxy</td>
 							<td><code>SCRAPE_PROXY_URL</code></td>
-							<td>Direct from your server IP — eBay blocks fast</td>
+							<td>Direct from your server IP. eBay blocks fast.</td>
 						</tr>
 						<tr>
 							<td>eBay REST passthrough (Browse, Inventory, Fulfillment, Finance)</td>
@@ -88,8 +88,34 @@ npm run --workspace @flipagent/api issue-key -- you@example.com pro`}</code></pr
 							<td><code>STRIPE_SECRET_KEY</code>, <code>STRIPE_WEBHOOK_SECRET</code>, <code>STRIPE_PRICE_HOBBY</code>, <code>STRIPE_PRICE_PRO</code></td>
 							<td>Self-hosting → no metering, billing isn't relevant</td>
 						</tr>
+						<tr>
+							<td>LLM comp matcher (<code>/v1/match</code>, <code>/v1/evaluate</code> upstream)</td>
+							<td>One of <code>ANTHROPIC_API_KEY</code> / <code>OPENAI_API_KEY</code> / <code>GOOGLE_API_KEY</code></td>
+							<td><code>503 match_unavailable</code>. Search, sold history, ship, draft still work.</td>
+						</tr>
 					</tbody>
 				</table>
+
+				<h2>LLM provider (for <code>/v1/match</code>)</h2>
+				<p>The comp matcher is the only feature that calls an LLM. It's provider-agnostic — pick whichever cloud you already have a key for. <code>LLM_PROVIDER</code> picks explicitly; otherwise the first key set wins (anthropic → openai → google).</p>
+				<div class="code">
+					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>.env (pick one)</span></div>
+<pre><code>{`# Anthropic Claude — https://console.anthropic.com/
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-haiku-4-5         # default
+
+# OpenAI — https://platform.openai.com/api-keys
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5.4-mini                # default
+
+# Google Gemini — https://aistudio.google.com/apikey
+GOOGLE_API_KEY=...
+GOOGLE_MODEL=gemini-3.1-flash-lite-preview   # default
+
+# Optional: explicit pick when more than one key is set
+LLM_PROVIDER=anthropic`}</code></pre>
+				</div>
+				<p>Self-hosters who don't care about LLM matching can skip this entirely — every other route works without it. <code>/v1/evaluate</code> still computes price thesis + verdict math from whatever comp pool you hand it; it's only worse if the pool is unfiltered.</p>
 
 				<h2>Hit <code>/v1/health/features</code> to see what's wired</h2>
 				<p>Public, unauth, no DB hit. Self-host status page in one call:</p>
@@ -103,11 +129,12 @@ npm run --workspace @flipagent/api issue-key -- you@example.com pro`}</code></pr
   "ebayOAuth":   false,
   "orderApi":    false,
   "insightsApi": false,
-  "scrapeProxy": true,
+  "scraperApi":  true,
   "betterAuth":  false,
   "googleOAuth": false,
   "email":       false,
-  "stripe":      false
+  "stripe":      false,
+  "llm":         false
 }`}</code></pre>
 				</div>
 
@@ -123,8 +150,8 @@ npm run --workspace @flipagent/api issue-key -- you@example.com pro`}</code></pr
 				<h2>App token vs user token</h2>
 				<p>eBay issues two kinds of access token, and flipagent picks the right one per route. The split decides whether a call needs an OAuth-connected seller or just your keyset.</p>
 				<ul>
-					<li><strong>App token</strong> (<code>client_credentials</code>) — minted from <code>EBAY_CLIENT_ID</code> + <code>EBAY_CLIENT_SECRET</code>. Cached ~110 min, shared across every caller. For catalog reads that don't act on a specific account.</li>
-					<li><strong>User token</strong> (<code>authorization_code</code> → <code>refresh_token</code>) — minted only after a seller clicks Allow on <code>/v1/connect/ebay</code>. Stored per API key in <code>user_ebay_oauth</code>. Required for any route that reads or writes that seller's account. One keyset can hold tokens for unlimited sellers — sellers don't need their own developer account, just a regular eBay account.</li>
+					<li><strong>App token</strong> (<code>client_credentials</code>): minted from <code>EBAY_CLIENT_ID</code> and <code>EBAY_CLIENT_SECRET</code>. Cached ~110 min, shared across every caller. For catalog reads that don't act on a specific account.</li>
+					<li><strong>User token</strong> (<code>authorization_code</code> → <code>refresh_token</code>): minted only after a seller clicks Allow on <code>/v1/connect/ebay</code>. Stored per API key in <code>user_ebay_oauth</code>. Required for any route that reads or writes that seller's account. One keyset can hold tokens for unlimited sellers; sellers don't need their own developer account, just a regular eBay account.</li>
 				</ul>
 				<table class="api">
 					<thead>
@@ -150,17 +177,17 @@ https://api.ebay.com/oauth/api_scope/sell.finances
 https://api.ebay.com/oauth/api_scope/sell.account
 https://api.ebay.com/oauth/api_scope/commerce.identity.readonly`}</code></pre>
 				</div>
-				<p>The <code>sell.*</code> scopes ship standard with any production keyset — no extra opt-in in the developer portal. Trim the list to narrow what sellers grant (e.g. drop <code>sell.finances</code> if you don't surface payouts); the matching <code>/v1/finance/*</code> calls will then 401 from eBay until the seller reconnects with the wider scope.</p>
+				<p>The <code>sell.*</code> scopes ship standard with any production keyset; no extra opt-in in the developer portal. Trim the list to narrow what sellers grant (e.g. drop <code>sell.finances</code> if you don't surface payouts); the matching <code>/v1/finance/*</code> calls will then 401 from eBay until the seller reconnects with the wider scope.</p>
 
 				<h2>Marketplace Insights + Order API (eBay program approval)</h2>
 				<p>Two endpoints need additional eBay-side approval beyond the standard developer keyset:</p>
 				<ul>
-					<li><strong>Marketplace Insights</strong> (sold-listing history). Apply at developer.ebay.com → Marketplace Insights. Once granted, set <code>EBAY_INSIGHTS_APPROVED=1</code> — <code>/v1/sold/*</code> hits the REST endpoint with the app token (faster, cleaner data, <code>source: "rest"</code>). Without approval flipagent silently falls back to the scraper, and <code>/v1/me/permissions</code> reports <code>marketplaceInsights: "scrape_fallback"</code>.</li>
+					<li><strong>Marketplace Insights</strong> (sold-listing history). Apply at developer.ebay.com → Marketplace Insights. Once granted, set <code>EBAY_INSIGHTS_APPROVED=1</code>: <code>/v1/sold/*</code> then hits the REST endpoint with the app token (faster, cleaner data, <code>source: "rest"</code>). Without approval flipagent silently falls back to the scraper, and <code>/v1/me/permissions</code> reports <code>marketplaceInsights: "scrape_fallback"</code>.</li>
 					<li><strong>Order API</strong> (Limited Release). Lets your authenticated buyer place purchases via REST. Apply at developer.ebay.com → Order API. Once eBay grants tenant approval, set <code>EBAY_ORDER_API_APPROVED=1</code>; until then <code>/v1/orders/checkout/*</code> returns 501.</li>
 				</ul>
 
 				<h2>Inspect a user's eBay scope tier</h2>
-				<p>Once you've got a key + an eBay-connected user, hit <code>/v1/me/permissions</code> to see the per-scope status — useful for surfacing "your eBay account doesn't have <em>sell.fulfillment</em>, reconnect to enable shipment tracking" in your own UI:</p>
+				<p>Once you've got a key plus an eBay-connected user, hit <code>/v1/me/permissions</code> to see the per-scope status. Useful for surfacing "your eBay account doesn't have <em>sell.fulfillment</em>, reconnect to enable shipment tracking" in your own UI:</p>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>response</span></div>
 <pre><code>{`{
@@ -184,12 +211,12 @@ https://api.ebay.com/oauth/api_scope/commerce.identity.readonly`}</code></pre>
 <pre><code>{`PUBLIC_API_BASE_URL=http://localhost:4000 \\
   npm run --workspace @flipagent/docs dev`}</code></pre>
 				</div>
-				<p>Astro starts on <code>localhost:4321</code>. The dashboard at <code>/dashboard/</code> needs a session, which means Better-Auth env (<code>BETTER_AUTH_SECRET</code>, <code>GITHUB_CLIENT_ID/SECRET</code>) must be set on the api side. Skipping that? Just hit the api directly with the key from <code>issue-key</code> — the dashboard is optional for self-host.</p>
+				<p>Astro starts on <code>localhost:4321</code>. The dashboard at <code>/dashboard/</code> needs a session, which means Better-Auth env (<code>BETTER_AUTH_SECRET</code>, <code>GITHUB_CLIENT_ID/SECRET</code>) must be set on the api side. Skipping that? Just hit the api directly with the key from <code>issue-key</code>. The dashboard is optional for self-host.</p>
 
 				<p>For production deploy of the dashboard, build with the same env: <code>PUBLIC_API_BASE_URL=https://api.your-host npm run --workspace @flipagent/docs build</code> and serve <code>apps/docs/dist/</code> behind any static host (Cloudflare Pages, Netlify, S3+CloudFront, …). The api also needs <code>APP_URL=https://your-dashboard-host</code> so eBay OAuth callbacks + Stripe success URLs land in the right place.</p>
 
 				<h2>Deploy</h2>
-				<p>The repo ships a Terraform module for Azure Container Apps + Postgres Flexible Server (<code>infra/azure/</code>). Anything that runs Postgres + a Node 20 container works — Fly, Render, Railway, Cloud Run, ECS. Set <code>MIGRATE_ON_BOOT=1</code> so drizzle migrations run before the api starts (idempotent; revisit if <code>min_replicas</code> exceeds 1).</p>
+				<p>The repo ships a Terraform module for Azure Container Apps + Postgres Flexible Server (<code>infra/azure/</code>). Anything that runs Postgres plus a Node 20 container works: Fly, Render, Railway, Cloud Run, ECS. Set <code>MIGRATE_ON_BOOT=1</code> so drizzle migrations run before the api starts (idempotent; revisit if <code>min_replicas</code> exceeds 1).</p>
 
 				<h2>License</h2>
 				<p><code>@flipagent/api</code> is FSL-1.1-ALv2: source visible, free for any non-competing use, converts to Apache 2.0 two years after each release. The OSS scraper, types, MCP server, and SDK packages are MIT.</p>

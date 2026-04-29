@@ -19,6 +19,7 @@ import type { Context } from "hono";
 import { getAppAccessToken, getUserAccessToken } from "../auth/ebay-oauth.js";
 import { config, isEbayOAuthConfigured } from "../config.js";
 import { ebayErrorJson, FLIPAGENT_ERRORS } from "../utils/ebay-error.js";
+import { fetchRetry } from "../utils/fetch-retry.js";
 
 const HOP_BY_HOP = new Set([
 	"connection",
@@ -78,7 +79,7 @@ async function forward(c: Context, accessToken: string): Promise<Response> {
 		init.body = await c.req.arrayBuffer();
 	}
 
-	const upstream = await fetch(upstreamUrl, init);
+	const upstream = await fetchRetry(upstreamUrl, init);
 	const responseHeaders = new Headers();
 	upstream.headers.forEach((v, k) => {
 		if (!HOP_BY_HOP.has(k.toLowerCase())) responseHeaders.set(k, v);

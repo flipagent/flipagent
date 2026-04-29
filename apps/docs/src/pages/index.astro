@@ -1,7 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import AgentInstall from "../components/AgentInstall.tsx";
-import ChatDemo from "../components/ChatDemo.tsx";
+import HeroPipeline from "../components/HeroPipeline.tsx";
 import PipelineCode from "../components/PipelineCode.tsx";
 import Faq from "../components/Faq.tsx";
 import Reveal from "../components/Reveal.tsx";
@@ -9,8 +9,10 @@ import HeadChip from "../components/HeadChip.astro";
 import MainFeatures from "../components/MainFeatures.astro";
 import "../components/TrustStrip.css";
 import "../components/MainFeatures.css";
+import "../components/playground/Playground.css";
+import "../components/ui/ui.css";
 ---
-<Layout title="flipagent — an eBay reselling business that runs itself">
+<Layout title="flipagent · ONE API for online reselling">
 	<section class="hero">
 		<div class="cmw cmw-bordered" style="padding-top:64px; padding-bottom:48px;">
 			<a href="/docs/" class="eyebrow-pill">
@@ -21,9 +23,9 @@ import "../components/MainFeatures.css";
 			</a>
 			<h1>Let your agent run the <span class="accent">eBay reselling business</span>.</h1>
 			<p class="lead">
-				It sources, lists, and ships every order while you sleep.
+				Sourcing and deal evaluation work today. Buying, listing, and shipping land next.
 			</p>
-			<ChatDemo client:load />
+			<HeroPipeline client:load />
 		</div>
 	</section>
 

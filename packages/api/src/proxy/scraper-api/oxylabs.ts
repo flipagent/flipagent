@@ -5,6 +5,7 @@
  */
 
 import { config } from "../../config.js";
+import { fetchRetry } from "../../utils/fetch-retry.js";
 
 interface OxylabsResult {
 	content: string;
@@ -28,7 +29,7 @@ export async function fetchHtmlViaOxylabs(targetUrl: string): Promise<string> {
 	const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
 	let res: Response;
 	try {
-		res = await fetch(ENDPOINT, {
+		res = await fetchRetry(ENDPOINT, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Authorization: `Basic ${auth}` },
 			body: JSON.stringify({ source: "universal", url: targetUrl, geo_location: "United States" }),

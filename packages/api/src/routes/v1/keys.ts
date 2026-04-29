@@ -36,6 +36,7 @@ keysRoute.get(
 			id: key.id,
 			tier: key.tier,
 			prefix: key.keyPrefix,
+			suffix: key.keySuffix,
 			name: key.name,
 			ownerEmail: key.ownerEmail,
 			createdAt: key.createdAt,
