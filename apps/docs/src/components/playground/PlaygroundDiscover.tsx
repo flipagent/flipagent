@@ -34,7 +34,7 @@ import { QuickStarts, type QuickStart } from "./QuickStarts";
 import { useRecentRuns, type RecentRun } from "./recent";
 import { RecentRuns } from "./RecentRuns";
 import { Trace } from "./Trace";
-import type { RankedDeal, Step } from "./types";
+import type { ItemSummary, RankedDeal, Step } from "./types";
 
 /* ------------------------------ options ------------------------------ */
 
@@ -111,6 +111,12 @@ interface DiscoverQuery {
 	shipsFrom: ShipsFrom;
 	sort: SortValue;
 	limit: number;
+	// Decision-floor filters — same defaults / option set as Evaluate.
+	// Drive the per-deal `evaluate` call's opts so ranking respects the
+	// reseller's margin floor + holding window.
+	minProfit: string;
+	sellWithin: string;
+	shipping: string;
 }
 
 const EMPTY_QUERY: DiscoverQuery = {
@@ -122,6 +128,9 @@ const EMPTY_QUERY: DiscoverQuery = {
 	shipsFrom: "",
 	sort: "",
 	limit: 20,
+	minProfit: "10",
+	sellWithin: "180",
+	shipping: "10",
 };
 
 function describe(q: DiscoverQuery): string {
@@ -367,7 +376,11 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 						</div>
 					)}
 					{outcome ? (
-						<DealsTable deals={outcome.deals} onEvaluate={onEvaluate} />
+						<DealsTable
+							deals={outcome.deals}
+							items={outcome.search.itemSummaries ?? []}
+							onEvaluate={onEvaluate}
+						/>
 					) : hasRun ? (
 						<Trace steps={steps} />
 					) : null}
@@ -393,9 +406,11 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 
 function DealsTable({
 	deals,
+	items,
 	onEvaluate,
 }: {
 	deals: RankedDeal[];
+	items: ItemSummary[];
 	onEvaluate: (itemId: string) => void;
 }) {
 	if (deals.length === 0) {
@@ -405,56 +420,73 @@ function DealsTable({
 			</p>
 		);
 	}
+	const byId = new Map(items.map((i) => [i.itemId, i]));
 	return (
 		<motion.section initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
 			<h2 className="text-[13px] font-medium text-[var(--text)] mb-3">
-				{deals.length} good deal{deals.length === 1 ? "" : "s"} found
+				Top {deals.length} deal{deals.length === 1 ? "" : "s"} · sorted by $/day
 			</h2>
-			<div className="flex flex-col gap-2">
-				{deals.map((d) => {
-					const tone =
-						d.verdict.rating === "buy"
-							? "border-[var(--brand)] text-[var(--brand)]"
-							: d.verdict.rating === "pass"
-								? "border-[var(--brand)] text-[var(--brand)]"
-								: "border-[var(--border)] text-[var(--text-3)]";
-					const profit = d.verdict.netCents != null && d.verdict.netCents > 0
-						? `Profit ~$${Math.round(d.verdict.netCents / 100)}`
-						: d.verdict.netCents != null
-							? `−$${Math.abs(Math.round(d.verdict.netCents / 100))} loss`
-							: null;
-					const ceiling = d.verdict.bidCeilingCents != null
-						? `safe bid up to $${Math.round(d.verdict.bidCeilingCents / 100)}`
-						: null;
-					const chance = d.verdict.probProfit != null
-						? `${Math.round(d.verdict.probProfit * 100)}% chance`
-						: null;
-					return (
-						<button
-							key={d.itemId}
-							type="button"
-							onClick={() => onEvaluate(d.itemId)}
-							className="w-full text-left px-4 py-3 border border-[var(--border-faint)] rounded-[6px] hover:border-[var(--border)] hover:bg-[var(--surface-2)] cursor-pointer transition-colors duration-100"
-						>
-							<div className="flex items-center gap-3">
-								<span className={`inline-block px-2 py-0.5 text-[10px] font-mono tracking-[0.04em] rounded-[3px] border text-center ${tone}`}>
-									{(d.verdict.rating ?? "—").toUpperCase()}
-								</span>
-								<span className="font-mono text-[12px] text-[var(--text-3)] flex-1 truncate">
-									{d.itemId}
-								</span>
-								<span className="text-[var(--text-3)]" aria-hidden="true">→</span>
-							</div>
-							<div className="mt-1.5 text-[12.5px] text-[var(--text-2)] flex flex-wrap gap-x-3 gap-y-1">
-								{profit && <span>{profit}</span>}
-								{chance && <span className="text-[var(--text-3)]">· {chance}</span>}
-								{ceiling && <span className="text-[var(--text-3)]">· {ceiling}</span>}
-							</div>
-						</button>
-					);
-				})}
+			<div className="flex flex-col gap-1.5">
+				{deals.map((d) => (
+					<DealRow key={d.itemId} deal={d} item={byId.get(d.itemId)} onEvaluate={onEvaluate} />
+				))}
 			</div>
 		</motion.section>
+	);
+}
+
+function DealRow({
+	deal,
+	item,
+	onEvaluate,
+}: {
+	deal: RankedDeal;
+	item: ItemSummary | undefined;
+	onEvaluate: (itemId: string) => void;
+}) {
+	const exit = deal.verdict.recommendedExit;
+	const buyCents = item?.price ? Math.round(Number.parseFloat(item.price.value) * 100) : undefined;
+	return (
+		<button
+			type="button"
+			onClick={() => onEvaluate(deal.itemId)}
+			className="w-full text-left grid grid-cols-[44px_1fr_auto] gap-3 items-center px-3 py-2.5 border border-[var(--border-faint)] rounded-[6px] hover:border-[var(--border)] hover:bg-[var(--surface-2)] cursor-pointer transition-colors duration-100"
+		>
+			<div className="w-11 h-11 rounded-[4px] border border-[var(--border-faint)] bg-[var(--surface)] overflow-hidden flex items-center justify-center text-[var(--text-4)]">
+				{item?.image?.imageUrl ? (
+					<img src={item.image.imageUrl} alt="" loading="lazy" className="w-full h-full object-cover" />
+				) : (
+					<span aria-hidden="true">·</span>
+				)}
+			</div>
+			<div className="min-w-0">
+				<div className="text-[13px] text-[var(--text)] truncate">
+					{item?.title ?? deal.itemId}
+				</div>
+				<div className="text-[11.5px] text-[var(--text-3)] mt-0.5">
+					{exit ? (
+						<>
+							list ${Math.round(exit.listPriceCents / 100)} · ~{Math.round(exit.expectedDays)}d ·{" "}
+							{exit.netCents >= 0 ? "+" : "−"}${Math.abs(Math.round(exit.netCents / 100))} net
+						</>
+					) : (
+						<>{item?.condition ?? "no exit plan"}</>
+					)}
+				</div>
+			</div>
+			<div className="text-right">
+				{buyCents != null && (
+					<div className="font-mono text-[13px] text-[var(--text)]">
+						${Math.round(buyCents / 100)}
+					</div>
+				)}
+				{exit && (
+					<div className="font-mono text-[11.5px] text-[var(--brand)] mt-0.5">
+						${Math.round(exit.dollarsPerDay / 100)}/day
+					</div>
+				)}
+			</div>
+		</button>
 	);
 }
 

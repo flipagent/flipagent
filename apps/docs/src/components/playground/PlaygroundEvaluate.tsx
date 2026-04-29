@@ -16,8 +16,7 @@ import {
 	type ComposeTab,
 } from "../compose/ComposeCard";
 import { FilterPill, type SelectOption } from "../compose/FilterPill";
-import { FormSelect } from "../compose/FormSelect";
-import { Field } from "../ui/Field";
+import { DealFilters } from "./DealFilters";
 import { EvaluateResult } from "./EvaluateResult";
 import {
 	EVALUATE_STEPS,
@@ -60,45 +59,9 @@ const SAMPLE_OPTIONS: ReadonlyArray<SelectOption<string>> = [
 	{ value: "200", label: "200 sales" },
 ];
 
-// Profit floor for the BUY verdict. Default is $10 — anything below
-// fees + shipping noise isn't a flip worth doing. Range covers thin
-// margin ($5) to selective ($100) without an `any` escape hatch; the
-// algorithm always needs SOME floor to separate "deal" from "noise".
-const MIN_PROFIT_OPTIONS: ReadonlyArray<SelectOption<string>> = [
-	{ value: "5", label: "$5" },
-	{ value: "10", label: "$10" },
-	{ value: "25", label: "$25" },
-	{ value: "50", label: "$50" },
-	{ value: "100", label: "$100" },
-];
-
-// Holding-window presets. Default is 6 months — the longest a typical
-// reseller would sit on a flip. Without a cap the recommended-exit
-// search can pick multi-year listings at the high-β tail (mathematically
-// optimal "least-loss" but useless as a recommendation), so an explicit
-// horizon is always present rather than `any`. Range covers fast flips
-// (a week) up to the 6-month outer bound.
-const SELL_WITHIN_OPTIONS: ReadonlyArray<SelectOption<string>> = [
-	{ value: "1", label: "1 day" },
-	{ value: "3", label: "3 days" },
-	{ value: "7", label: "7 days" },
-	{ value: "14", label: "14 days" },
-	{ value: "30", label: "1 month" },
-	{ value: "90", label: "3 months" },
-	{ value: "180", label: "6 months" },
-];
-
-// Shipping presets cover the realistic US-domestic spectrum: padded
-// envelope, typical 1-2lb box (default), Priority Mail mid, heavy box,
-// oversized. Power users with weird shipping costs can still go to the
-// /v1/evaluate API and pass their exact value.
-const SHIPPING_OPTIONS: ReadonlyArray<SelectOption<string>> = [
-	{ value: "5", label: "$5" },
-	{ value: "10", label: "$10" },
-	{ value: "15", label: "$15" },
-	{ value: "25", label: "$25" },
-	{ value: "50", label: "$50" },
-];
+// Min profit / Sell within / Shipping option arrays + the More-panel
+// component live in ./DealFilters so Discover renders the exact same
+// controls + defaults — single source of truth.
 
 const IconClock = (
 	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -354,41 +317,14 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 
 							{moreOpen && (
 								<div className="px-5 py-4 border-b border-[var(--border-faint)] bg-[color:var(--bg-soft)]/40 max-sm:px-4">
-									<div className="flex flex-col gap-3">
-										{/* FormSelect — bordered-box trigger that aligns with
-										    other form inputs (Discover's More uses raw <input>s
-										    too). Same widths so the chevrons stack tidily. */}
-										<Field label="Min profit">
-											{(labelId) => (
-												<FormSelect
-													value={minProfit}
-													options={MIN_PROFIT_OPTIONS}
-													onChange={setMinProfit}
-													aria-labelledby={labelId}
-												/>
-											)}
-										</Field>
-										<Field label="Sell within">
-											{(labelId) => (
-												<FormSelect
-													value={recoveryDays}
-													options={SELL_WITHIN_OPTIONS}
-													onChange={setRecoveryDays}
-													aria-labelledby={labelId}
-												/>
-											)}
-										</Field>
-										<Field label="Shipping">
-											{(labelId) => (
-												<FormSelect
-													value={shippingDollars}
-													options={SHIPPING_OPTIONS}
-													onChange={setShippingDollars}
-													aria-labelledby={labelId}
-												/>
-											)}
-										</Field>
-									</div>
+									<DealFilters
+										value={{ minProfit, sellWithin: recoveryDays, shipping: shippingDollars }}
+										onChange={(next) => {
+											setMinProfit(next.minProfit);
+											setRecoveryDays(next.sellWithin);
+											setShippingDollars(next.shipping);
+										}}
+									/>
 								</div>
 							)}
 						</>

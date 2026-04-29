@@ -9,10 +9,16 @@ export type RankedDeal = {
 
 /**
  * Score every entry in a search result against the same set of comps and
- * options, then return only the deals (`verdict.isDeal === true`) sorted by
- * expected take-home: `netCents × confidence`.
+ * options, then return the deals sorted by **capital efficiency** —
+ * `recommendedExit.dollarsPerDay`. Same metric `evaluate` itself
+ * maximises when picking the optimal list price, so Discover's ranking
+ * answers "where should my next $X go?" in the same units the optimizer
+ * uses internally.
  *
- * Active searches populate `itemSummaries`; sold (Marketplace Insights)
+ * Items without a recommendedExit (model couldn't run, or `evaluate`
+ * couldn't compute one) sink to the bottom — they're not "deals" in any
+ * actionable sense, but the caller may still want to see them. Active
+ * searches populate `itemSummaries`; sold (Marketplace Insights)
  * searches populate `itemSales`. We accept either — but evaluating sold
  * listings as "deals" rarely makes sense; pass active results.
  */
@@ -20,10 +26,10 @@ export function find(results: BrowseSearchResponse, opts: EvaluateOptions = {}):
 	const items = results.itemSummaries ?? results.itemSales ?? [];
 	return items
 		.map((item) => ({ itemId: item.itemId, verdict: evaluate(item, opts) }))
-		.filter((r) => r.verdict.isDeal)
+		.filter((r) => r.verdict.recommendedExit && r.verdict.recommendedExit.netCents > 0)
 		.sort((a, b) => {
-			const scoreA = a.verdict.netCents * a.verdict.confidence;
-			const scoreB = b.verdict.netCents * b.verdict.confidence;
-			return scoreB - scoreA;
+			const yieldA = a.verdict.recommendedExit?.dollarsPerDay ?? Number.NEGATIVE_INFINITY;
+			const yieldB = b.verdict.recommendedExit?.dollarsPerDay ?? Number.NEGATIVE_INFINITY;
+			return yieldB - yieldA;
 		});
 }
