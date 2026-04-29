@@ -53,9 +53,7 @@ export function pickProvider(): LlmProvider {
 	if (config.OPENAI_API_KEY) return createOpenAiProvider();
 	if (config.GOOGLE_API_KEY) return createGoogleProvider();
 
-	throw new Error(
-		"No LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY.",
-	);
+	throw new Error("No LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY.");
 }
 
 /** True when at least one LLM provider key is set. Used by /v1/health/features. */

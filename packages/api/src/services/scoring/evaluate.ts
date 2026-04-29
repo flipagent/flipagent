@@ -54,9 +54,7 @@ const DEFAULT_OUTBOUND_SHIPPING_CENTS = 1000;
 export function evaluate(item: Listing, opts: EvaluateOptions = {}): DealVerdict {
 	const listing = toQuantListing(item);
 	const market =
-		opts.comps && opts.comps.length > 0
-			? marketFromComps(opts.comps, undefined, undefined, opts.asks)
-			: EMPTY_MARKET;
+		opts.comps && opts.comps.length > 0 ? marketFromComps(opts.comps, undefined, undefined, opts.asks) : EMPTY_MARKET;
 
 	let outboundShippingCents: number;
 	let landedCostCents: number | null = null;
@@ -138,9 +136,7 @@ export function evaluate(item: Listing, opts: EvaluateOptions = {}): DealVerdict
 	// + active-blend search to pick the price that maximises $/day. Then
 	// subtract buy cost so the surfaced net is true flipping profit, not
 	// gross sale-side net (which is what optimalListPrice returns natively).
-	const askPriceCents = (opts.asks ?? [])
-		.map((a) => toCents(a.price?.value))
-		.filter((p) => p > 0);
+	const askPriceCents = (opts.asks ?? []).map((a) => toCents(a.price?.value)).filter((p) => p > 0);
 	// Listing type is the union of ItemSummary | ItemDetail; categoryId
 	// only lives on the detail shape, so guard the access.
 	const categoryId = "categoryId" in item ? item.categoryId : undefined;

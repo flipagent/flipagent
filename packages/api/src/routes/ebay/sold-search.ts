@@ -18,8 +18,8 @@ import { config, isInsightsApproved } from "../../config.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { getCached, hashQuery, setCached } from "../../proxy/cache.js";
 import { scrapeSearch } from "../../proxy/scrape.js";
-import { fetchRetry } from "../../utils/fetch-retry.js";
 import { BridgeError, bridgeSoldSearch } from "../../services/listings/bridge.js";
+import { fetchRetry } from "../../utils/fetch-retry.js";
 import { errorResponse, jsonResponse, paramsFor, tbCoerce } from "../../utils/openapi.js";
 
 export const ebaySoldSearchRoute = new Hono();
@@ -36,7 +36,10 @@ function parseConditionIdsFilter(filter: string | undefined): string[] | undefin
 	if (!filter) return undefined;
 	const m = filter.match(/conditionIds:\{([^}]+)\}/);
 	if (!m) return undefined;
-	const ids = m[1]!.split("|").map((s) => s.trim()).filter(Boolean);
+	const ids = m[1]!
+		.split("|")
+		.map((s) => s.trim())
+		.filter(Boolean);
 	return ids.length > 0 ? ids : undefined;
 }
 

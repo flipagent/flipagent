@@ -104,9 +104,7 @@ const Schema = Type.Object({
 	// explicitly selects, otherwise the first key set wins (anthropic →
 	// openai → google). Without any key, /v1/match returns 503; every
 	// other route works fine.
-	LLM_PROVIDER: Type.Optional(
-		Type.Union([Type.Literal("anthropic"), Type.Literal("openai"), Type.Literal("google")]),
-	),
+	LLM_PROVIDER: Type.Optional(Type.Union([Type.Literal("anthropic"), Type.Literal("openai"), Type.Literal("google")])),
 	ANTHROPIC_API_KEY: Type.Optional(Type.String()),
 	ANTHROPIC_MODEL: Type.Optional(Type.String()),
 	OPENAI_API_KEY: Type.Optional(Type.String()),

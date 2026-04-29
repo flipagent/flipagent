@@ -224,10 +224,9 @@ function blendedCenter(soldMeanCents: number, askPrices: ReadonlyArray<number>):
 	if (askPrices.length < 5) return soldMeanCents;
 	const sorted = [...askPrices].sort((a, b) => a - b);
 	const mid = Math.floor(sorted.length / 2);
-	const askMedian =
-		sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+	const askMedian = sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 	const drift = Math.abs(askMedian - soldMeanCents) / soldMeanCents;
-	if (drift <= 0.10) return soldMeanCents;
+	if (drift <= 0.1) return soldMeanCents;
 	return Math.round(0.5 * soldMeanCents + 0.5 * askMedian);
 }
 

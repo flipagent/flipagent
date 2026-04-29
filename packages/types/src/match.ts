@@ -25,7 +25,8 @@ export const MatchedItem = Type.Object(
 		item: ItemSummary,
 		bucket: MatchBucket,
 		reason: Type.String({
-			description: "One-line explanation, e.g. 'Same SKU YA1264153, both Brand New' or 'Different reference YA1264155 (PVD finish)'.",
+			description:
+				"One-line explanation, e.g. 'Same SKU YA1264153, both Brand New' or 'Different reference YA1264155 (PVD finish)'.",
 		}),
 	},
 	{ $id: "MatchedItem" },
@@ -41,9 +42,7 @@ export const MatchOptions = Type.Object(
 		 * faster, cheaper runs on SKUs whose listings reliably carry
 		 * the reference number in the title.
 		 */
-		useImages: Type.Optional(
-			Type.Boolean({ description: "Inspect listing images during matching. Default true." }),
-		),
+		useImages: Type.Optional(Type.Boolean({ description: "Inspect listing images during matching. Default true." })),
 	},
 	{ $id: "MatchOptions" },
 );

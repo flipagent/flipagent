@@ -16,14 +16,14 @@
  * commits to same-or-different.
  */
 
-import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import { MatchRequest, MatchResponse } from "@flipagent/types";
+import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { getCached, hashQuery, setCached } from "../../proxy/cache.js";
 import { scrapeItemDetail } from "../../proxy/scrape.js";
-import { matchPool, MatchUnavailableError } from "../../services/match/index.js";
+import { MatchUnavailableError, matchPool } from "../../services/match/index.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const matchRoute = new Hono();

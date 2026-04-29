@@ -105,9 +105,7 @@ async function triageChunk(
 	const candidateBlock = summariseForTriage(candidate);
 	// Use the original pool index in the prompt so the model's `i` field
 	// keys back to the global pool (caller doesn't have to remap).
-	const poolBlocks = chunk
-		.map(({ idx, item }) => `[${idx}] ${summariseForTriage(item)}`)
-		.join("\n");
+	const poolBlocks = chunk.map(({ idx, item }) => `[${idx}] ${summariseForTriage(item)}`).join("\n");
 
 	const user: LlmContent[] = [];
 	if (useImages && candidate.image?.imageUrl) {
@@ -153,9 +151,7 @@ async function triage(
 		if (slice.length > 0) chunks.push(slice);
 	}
 
-	const results = await Promise.allSettled(
-		chunks.map((chunk) => triageChunk(provider, candidate, chunk, useImages)),
-	);
+	const results = await Promise.allSettled(chunks.map((chunk) => triageChunk(provider, candidate, chunk, useImages)));
 
 	const byIdx = new Map<number, TriageItem>();
 	let okCount = 0;
@@ -322,7 +318,12 @@ export async function matchPoolWithLlm(
 	const chunkResults = await Promise.all(
 		verifyChunks.map(async (chunk) => {
 			try {
-				const verdicts = await verifyBatch(provider, candidateDetail, chunk.map((c) => c.detail), useImages);
+				const verdicts = await verifyBatch(
+					provider,
+					candidateDetail,
+					chunk.map((c) => c.detail),
+					useImages,
+				);
 				return chunk.map((c, i) => ({
 					item: c.item,
 					same: verdicts[i]?.same ?? false,
@@ -379,4 +380,3 @@ function parseJsonArray<T>(text: string): T[] {
 		return [];
 	}
 }
-
