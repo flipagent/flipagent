@@ -291,20 +291,30 @@
 
 .pg-result-facts-val {
 	font-family: var(--mono);
-	font-size: 13.5px;
+	font-size: 15px;
+	font-weight: 500;
 	color: var(--text);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.01em;
 }
 
-.pg-result-facts-val--good { color: var(--brand); }
-.pg-result-facts-val--warn { color: var(--brand); }
+.pg-result-facts-val--good { color: var(--success); }
+.pg-result-facts-val--warn { color: var(--danger); }
 
 .pg-result-facts-aside {
 	font-size: 11.5px;
 	color: var(--text-3);
+	font-variant-numeric: tabular-nums;
 }
 
-.pg-result-facts-aside--good { color: var(--brand); }
-.pg-result-facts-aside--warn { color: var(--brand); }
+.pg-result-facts-aside--good { color: var(--success); }
+.pg-result-facts-aside--warn { color: var(--danger); }
+
+/* Final row carries the answer — bump the value so the eye lands here last. */
+.pg-result-facts > .pg-result-facts-final .pg-result-facts-val {
+	font-size: 19px;
+	letter-spacing: -0.015em;
+}
 
 .pg-result-facts-warn {
 	font-size: 11.5px;

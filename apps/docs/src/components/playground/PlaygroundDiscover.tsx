@@ -34,6 +34,7 @@ import { QuickStarts, type QuickStart } from "./QuickStarts";
 import { useRecentRuns, type RecentRun } from "./recent";
 import { RecentRuns } from "./RecentRuns";
 import { Trace } from "./Trace";
+import { DealFilters, countActiveDealFilters } from "./DealFilters";
 import type { ItemSummary, RankedDeal, Step } from "./types";
 
 /* ------------------------------ options ------------------------------ */
@@ -175,8 +176,13 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 		let n = 0;
 		if (query.priceMin || query.priceMax) n++;
 		if (query.conditions.length > 0) n++;
+		n += countActiveDealFilters({
+			minProfit: query.minProfit,
+			sellWithin: query.sellWithin,
+			shipping: query.shipping,
+		});
 		return n;
-	}, [query.priceMin, query.priceMax, query.conditions]);
+	}, [query.priceMin, query.priceMax, query.conditions, query.minProfit, query.sellWithin, query.shipping]);
 
 	// TODO(scrape category browse): once `/v1/listings/search` accepts
 	// category-only queries (blocked on a parser for the new browse-layout
@@ -212,6 +218,9 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 				shipsFrom: target.shipsFrom || undefined,
 				sort: target.sort || undefined,
 				limit: target.limit,
+				minNetCents: Math.round(Number.parseFloat(target.minProfit) * 100),
+				maxDaysToSell: Number.parseInt(target.sellWithin, 10),
+				outboundShippingCents: Math.round(Number.parseFloat(target.shipping) * 100),
 			};
 			const runner = mockMode ? runDiscoverMock : runDiscover;
 			const result = await runner(inputs, (key, p) =>
@@ -360,6 +369,20 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 								/>
 							)}
 						</Field>
+						{/* Decision-floor filters — shared with Evaluate, same defaults.
+						    Min profit / Sell within / Shipping flow into each per-
+						    candidate evaluate() call so ranking respects the floor. */}
+						<DealFilters
+							value={{ minProfit: query.minProfit, sellWithin: query.sellWithin, shipping: query.shipping }}
+							onChange={(next) =>
+								setQuery((prev) => ({
+									...prev,
+									minProfit: next.minProfit,
+									sellWithin: next.sellWithin,
+									shipping: next.shipping,
+								}))
+							}
+						/>
 					</div>
 				</div>
 			)}

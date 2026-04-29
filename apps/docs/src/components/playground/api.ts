@@ -132,6 +132,13 @@ export const playgroundApi = {
 		};
 	}) => plan<Verdict>("POST", "/v1/evaluate", req),
 
-	discover: (req: { results: BrowseSearchResponse; opts?: { comps?: ItemSummary[] } }) =>
-		plan<{ deals: RankedDeal[] }>("POST", "/v1/discover", req),
+	discover: (req: {
+		results: BrowseSearchResponse;
+		opts?: {
+			comps?: ItemSummary[];
+			minNetCents?: number;
+			maxDaysToSell?: number;
+			outboundShippingCents?: number;
+		};
+	}) => plan<{ deals: RankedDeal[] }>("POST", "/v1/discover", req),
 };

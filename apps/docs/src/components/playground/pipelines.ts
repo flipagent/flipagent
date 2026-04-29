@@ -349,6 +349,11 @@ export interface DiscoverInputs {
 	shipsFrom?: string;
 	sort?: string;
 	limit?: number;
+	// Decision-floor opts forwarded to per-deal evaluate() — same shape +
+	// defaults as the Evaluate panel.
+	minNetCents?: number;
+	maxDaysToSell?: number;
+	outboundShippingCents?: number;
 }
 
 export interface DiscoverOutcome {
@@ -411,7 +416,15 @@ export async function runDiscover(inputs: DiscoverInputs, onStep: StepUpdate): P
 	const soldPool: ItemSummary[] = sold.itemSales ?? sold.itemSummaries ?? [];
 
 	const ranked = await runStep(DISCOVER_STEPS[2], onStep, () =>
-		playgroundApi.discover({ results: search, opts: { comps: soldPool } }),
+		playgroundApi.discover({
+			results: search,
+			opts: {
+				comps: soldPool,
+				minNetCents: inputs.minNetCents,
+				maxDaysToSell: inputs.maxDaysToSell,
+				outboundShippingCents: inputs.outboundShippingCents,
+			},
+		}),
 	);
 	if (!ranked) return null;
 
