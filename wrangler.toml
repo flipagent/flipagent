@@ -1,0 +1,16 @@
+name = "flipagent-docs"
+compatibility_date = "2025-01-01"
+
+# Cloudflare Workers Builds runs `npx wrangler deploy` from the repo root,
+# where it sees the monorepo workspace layout and refuses to guess which
+# project to deploy. Pinning wrangler.toml here resolves the project to
+# this single Worker (the marketing/docs site under apps/docs/dist).
+#
+# Astro static build output is served directly from Cloudflare's edge —
+# no Worker code, just static assets. The build pipeline that produces
+# apps/docs/dist is the root `npm run build` (composite, builds all
+# workspaces in dependency order then runs `astro build` last).
+
+[assets]
+directory = "./apps/docs/dist"
+not_found_handling = "404-page"
