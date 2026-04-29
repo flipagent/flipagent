@@ -6,7 +6,7 @@
 # The use of robots or other automated means to access the eBay site
 # without the express permission of eBay is strictly prohibited.
 # Notwithstanding the foregoing, eBay may permit automated access to
-# access certain eBay pages but soley for the limited purpose of
+# access certain eBay pages but solely for the limited purpose of
 # including content in publicly available search engines. Any other
 # use of robots or failure to obey the robots exclusion standards set
 # forth at <https://www.robotstxt.org/orig.html> is strictly
@@ -23,7 +23,7 @@
 # * Approved enterprise integrations must use our official API and 
 #   comply with our API License Agreement: https://developer.ebay.com/join/api-license-agreement 
 #
-# v24.5_COM_December_2025
+# v26.2_COM_April_2026
 ### DIRECTIVES ###
 
 User-agent: *
@@ -74,6 +74,7 @@ Disallow: /b/*?iid=*&*&chn=ps
 Disallow: /b/*?iid=*&var=*&*&chn=ps
 Disallow: /b/*?*_nkw
 Disallow: /b/*?*&
+Disallow: /pe/*
 Disallow: /b/*?*|
 Disallow: /b/*%EF
 Disallow: /b/*LH_
@@ -131,8 +132,10 @@ Disallow: /gh/cart
 Disallow: /gh/collectbehaviorinfo
 Disallow: /gh/collectsysteminfo
 Disallow: /gh/useracquisition
+Disallow: /gh/user_profile
 Disallow: /gsr/
 Disallow: /gss/
+Disallow: /gum/
 Disallow: /gwc/
 Disallow: /hcp/
 Disallow: /heute/
@@ -194,6 +197,7 @@ Disallow: /recfb?
 Disallow: /recs/
 Disallow: /res/
 Disallow: /rewards
+Disallow: /rtm*
 Disallow: /rvh/
 Disallow: /rye
 Allow: /sch/ebayadvsearch
@@ -205,6 +209,7 @@ Allow: /sch/i.html?*&mkcid=2
 Disallow: /sch/i.html?_nkw=
 Disallow: /sch/i.html?*_nkw=*&
 Disallow: /sch/
+Disallow: /sch/*_sacat=
 Disallow: /sch/ajax
 Disallow: /sch/ebayadvsearch?_
 Disallow: /sh/onboarding
@@ -257,6 +262,9 @@ Disallow: /ws/
 
 User-agent: bingbot
 Disallow: /*_kw
+Disallow: /b/*_mwBanner=1*rt=nc
+Disallow: /b/*rt=nc*_mwBanner=1 
+Disallow: /motors/diy/beacon/
 Disallow: /*?maspect
 Disallow: /*modules=SEARCH_REFINEMENTS_MODEL_V2
 Disallow: /*redirect=mobile
@@ -344,6 +352,7 @@ Disallow: /g/api/
 Disallow: /gh/collectbehaviorinfo
 Disallow: /gh/collectsysteminfo
 Disallow: /gh/useracquisition
+Disallow: /gh/user_profile
 Disallow: /gsr/
 Disallow: /gss/
 Disallow: /gwc/
@@ -407,6 +416,7 @@ Disallow: /recfb?
 Disallow: /recs/
 Disallow: /res/
 Disallow: /rewards
+Disallow: /rtm*
 Disallow: /rvh/
 Disallow: /rye
 Allow: /sch/ebayadvsearch
@@ -414,6 +424,7 @@ Allow: /sch/allcategories/
 Allow: /sch/i.html?*&mkcid=2
 Allow: /sch/i.html*_sop=12
 Disallow: /sch/
+Disallow: /sch/*_sacat=
 Disallow: /sch/ajax
 Disallow: /sch/ebayadvsearch?_
 Disallow: /sch/i.html?_nkw=
@@ -467,6 +478,7 @@ Disallow: /ws/
 
 User-agent: AdsBot-Google
 Disallow: /*src=urllib
+Disallow: /motors/diy/beacon/
 Disallow: /adell-mutfak
 Disallow: /ahu-kadin
 Disallow: /antika-sanat
@@ -501,27 +513,30 @@ User-agent: Twitterbot
 Disallow: /*src=urllib
 Disallow: /srv/
 
-User-agent: Bytespider 
-Disallow: /
+#
+# LLM / AI bot directives
+#
 
+User-agent: Bytespider
 User-agent: CCBot
-Disallow: /
-
 User-agent: ChatGLM-Spider
-Disallow: /
-
 User-agent: ClaudeBot
-Disallow: / 
-
 User-agent: PerplexityBot
-Disallow: / 
-
 User-agent: anthropic-ai
-Disallow: / 
-
 User-agent: AmazonBot
+User-agent: meta-externalagent
+User-agent: GPTBot
+User-agent: Applebot-Extended
 Disallow: /
-
+Allow: /motors/blog
+Allow: /motors/diy
+Allow: /help
+Allow: /sellercenter
+Allow: /sl/sell
+Allow: /sh/landing
+Allow: /giftcards
+Allow: /shp/calc/rates
+Allow: /adchoice
 
 # AUCTION Sitemaps
 Sitemap: https://www.ebay.com/lst/AUCTION-0-index.xml

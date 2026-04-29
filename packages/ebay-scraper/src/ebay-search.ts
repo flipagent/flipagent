@@ -89,7 +89,10 @@ const SORT_MAP: Record<NonNullable<EbaySearchParams["sort"]>, string> = {
 export function buildEbayUrl(params: EbaySearchParams, page: number): string {
 	const u = new URL(`${BASE_URL}/sch/i.html`);
 	u.searchParams.set("_nkw", params.keyword);
-	u.searchParams.set("_sacat", "0");
+	// Note: `_sacat=0` (any category) used to be set here. eBay's robots.txt
+	// v26.2_COM_April_2026 added `Disallow: /sch/*_sacat=` under
+	// User-agent: *, so we omit the param — `_sacat` is the default-any
+	// behaviour anyway, results are identical without it.
 	u.searchParams.set("_pgn", String(page));
 	if (params.soldOnly) {
 		u.searchParams.set("LH_Sold", "1");

@@ -1,9 +1,9 @@
 /**
  * Belt-and-suspenders guard against fetching URLs that eBay's robots.txt
  * explicitly Disallows under `User-agent: *` for paths we have no business
- * touching anyway. Source: eBay robots.txt v24.5_December_2025
+ * touching anyway. Source: eBay robots.txt v26.2_COM_April_2026
  * (`User-agent: *` block, lines covering /itm/* and the operational subpaths
- * under /sl/, /act/, /atc/, /signin/ etc.).
+ * under /sl/, /act/, /atc/, /signin/, /pe/, /rtm, /gum/ etc.).
  *
  * Scope and honesty: this guard does NOT block `/sch/i.html?_nkw=...`, eBay's
  * keyword search results page. That path IS formally Disallowed under
@@ -67,6 +67,11 @@ const DISALLOW_RULES: DisallowRule[] = [
 	{ pattern: "/feed/", test: (p) => p.startsWith("/feed/") },
 	{ pattern: "/fdbk/", test: (p) => p.startsWith("/fdbk/") },
 	{ pattern: "/ecaptcha/", test: (p) => p.startsWith("/ecaptcha/") },
+	// Added in v26.2_COM_April_2026.
+	{ pattern: "/pe/*", test: (p) => p.startsWith("/pe/") },
+	{ pattern: "/gum/", test: (p) => p.startsWith("/gum/") },
+	{ pattern: "/rtm*", test: (p) => p.startsWith("/rtm") },
+	{ pattern: "/gh/user_profile", test: (p) => p.startsWith("/gh/user_profile") },
 ];
 
 const EBAY_HOST_RE = /(^|\.)ebay\.[a-z.]+$/i;

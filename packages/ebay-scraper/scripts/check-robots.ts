@@ -30,7 +30,7 @@ async function fetchText(url: string, timeoutMs: number): Promise<string> {
 	}
 }
 
-const EXPECTED_VERSION = "v24.5_COM_December_2025";
+const EXPECTED_VERSION = "v26.2_COM_April_2026";
 const ROBOTS_URL = "https://www.ebay.com/robots.txt";
 const ENFORCED_AI_BOTS = [
 	"Bytespider",
