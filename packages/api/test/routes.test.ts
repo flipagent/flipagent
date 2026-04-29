@@ -114,15 +114,16 @@ describe("/v1/health/features", () => {
 		expect(body.ebayOAuth).toBe(false);
 		// Every flag is a boolean — no nulls.
 		for (const v of Object.values(body)) expect(typeof v).toBe("boolean");
-		// All eight flags present.
+		// All nine flags present.
 		expect(Object.keys(body).sort()).toEqual([
 			"betterAuth",
 			"ebayOAuth",
 			"email",
 			"googleOAuth",
 			"insightsApi",
+			"llm",
 			"orderApi",
-			"scrapeProxy",
+			"scraperApi",
 			"stripe",
 		]);
 	});

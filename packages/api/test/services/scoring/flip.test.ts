@@ -96,6 +96,7 @@ describe("evaluate", () => {
 			comps: COMPS,
 			minConfidence: 0,
 			minSalesPerDay: 0, // small fixture market — bypass liquidity floor
+			outboundShippingCents: 0, // pin outbound to 0 so margin math is independent of evaluate's $10 default
 		});
 		expect(v.rating).toBe("buy");
 		expect(v.isDeal).toBe(true);
@@ -110,6 +111,7 @@ describe("evaluate", () => {
 		const v = evaluate(summary({ price: { value: "60.00", currency: "USD" } }), {
 			comps: COMPS,
 			minSalesPerDay: 0, // small fixture market — bypass liquidity floor
+			outboundShippingCents: 0, // pin outbound to 0 so margin math is independent of evaluate's $10 default
 		});
 		expect(v.rating).toBe("watch");
 		expect(v.isDeal).toBe(false);

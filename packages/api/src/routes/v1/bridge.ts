@@ -95,7 +95,7 @@ bridgeRoute.get(
 			const claimed = await claimNextForApiKey(apiKeyId, tokenId);
 			if (claimed) {
 				dispatchOrderEvent(apiKeyId, claimed).catch((err) => console.error("[bridge] dispatch claimed:", err));
-				// Map source → task. eBay buy queues `buy_item`; forwarders
+				// Map source → task. eBay buy queues `ebay_buy_item`; forwarders
 				// queue service-specific tasks (`pull_packages` for PE today);
 				// `control` queues meta tasks (`reload_extension`); `browser`
 				// is the generic primitive (`browser_op`); `ebay_data` is
@@ -109,7 +109,7 @@ bridgeRoute.get(
 								? ("browser_op" as const)
 								: claimed.source === "ebay_data"
 									? ("ebay_query" as const)
-									: ("buy_item" as const);
+									: ("ebay_buy_item" as const);
 				const job = {
 					jobId: claimed.id,
 					task,

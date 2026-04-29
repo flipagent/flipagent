@@ -43,7 +43,7 @@ export type IssueBridgeTokenResponse = Static<typeof IssueBridgeTokenResponse>;
 /* --------------------------- poll envelope --------------------------- */
 
 /**
- * Generic task identifier. v1 ships `buy_item` (eBay) and `pull_packages`
+ * Generic task identifier. v1 ships `ebay_buy_item` (eBay) and `pull_packages`
  * (Planet Express forwarder). New (service, task) pairs plug in by
  * extending the unions and adding a per-service handler in the bridge
  * client. The `service` field carries which adapter to dispatch to.
@@ -55,7 +55,7 @@ export type IssueBridgeTokenResponse = Static<typeof IssueBridgeTokenResponse>;
  */
 export const BridgeJobTask = Type.Union(
 	[
-		Type.Literal("buy_item"),
+		Type.Literal("ebay_buy_item"),
 		Type.Literal("pull_packages"),
 		// Meta task: agent → bridge client `chrome.runtime.reload()`.
 		Type.Literal("reload_extension"),
@@ -92,11 +92,11 @@ export const BridgeJob = Type.Object(
 		args: Type.Object(
 			{
 				marketplace: BridgeMarketplace,
-				/** Required when `task = "buy_item"`; absent for other tasks. */
+				/** Required when `task = "ebay_buy_item"`; absent for other tasks. */
 				itemId: Type.Optional(Type.String()),
-				/** Required when `task = "buy_item"`. */
+				/** Required when `task = "ebay_buy_item"`. */
 				quantity: Type.Optional(Type.Integer({ minimum: 1 })),
-				/** Optional cap for buy_item — extension fails the job if listing or total exceeds it. */
+				/** Optional cap for ebay_buy_item — extension fails the job if listing or total exceeds it. */
 				maxPriceCents: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
 				/** Free-form per-task hints. PE pull_packages may pass `{ since: ISO }`, etc. */
 				metadata: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
@@ -126,7 +126,7 @@ export const BridgeResultRequest = Type.Object(
 		failureReason: Type.Optional(Type.String({ maxLength: 2000 })),
 		/**
 		 * Task-specific result payload. For `pull_packages`, the bridge client
-		 * reports `{ packages: [...] }`. For `buy_item`, the dedicated fields
+		 * reports `{ packages: [...] }`. For `ebay_buy_item`, the dedicated fields
 		 * above carry receipt info — `result` stays empty.
 		 */
 		result: Type.Optional(Type.Record(Type.String(), Type.Unknown())),

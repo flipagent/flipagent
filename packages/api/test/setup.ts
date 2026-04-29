@@ -27,3 +27,12 @@ if (!process.env.DATABASE_URL) {
 process.env.EBAY_CLIENT_ID = "";
 process.env.EBAY_CLIENT_SECRET = "";
 process.env.EBAY_RU_NAME = "";
+
+// Pin the per-route source toggles to `scrape` so the vi.mock on
+// proxy/scrape.js is what the routes actually exercise. Without this,
+// EBAY_*_SOURCE comes from the local .env (often `rest`) or is undefined,
+// and routes/ebay/{search,item-detail,sold-search}.ts return 503 either
+// because OAuth is wiped (rest path) or because the env is missing.
+process.env.EBAY_LISTINGS_SOURCE = "scrape";
+process.env.EBAY_DETAIL_SOURCE = "scrape";
+process.env.EBAY_SOLD_SOURCE = "scrape";

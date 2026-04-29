@@ -435,7 +435,7 @@ export const purchaseOrders = pgTable(
 		metadata: jsonb("metadata"),
 		/**
 		 * Task-specific result payload reported by the bridge client (Chrome
-		 * extension) on completion. For `buy_item`: receipt fields go on
+		 * extension) on completion. For `ebay_buy_item`: receipt fields go on
 		 * dedicated columns (ebayOrderId, totalCents, receiptUrl). For
 		 * `pull_packages` (Planet Express): shape is `{ packages: [...] }`.
 		 * Other tasks define their own shapes.
