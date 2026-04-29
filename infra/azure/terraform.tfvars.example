@@ -44,3 +44,24 @@ postgres_sku = "B_Standard_B1ms"
 # Email (Resend) — required for password reset.
 # resend_api_key = "re_..."
 # email_from     = "flipagent <noreply@flipagent.dev>"
+
+# eBay Trading Platform Notifications + per-route source toggles. DevID is the
+# third value on the eBay Application Keys page. NOTIFY_URL must be HTTPS-reachable
+# from eBay servers (e.g. https://api.flipagent.dev/v1/notifications/ebay/inbound).
+# Source toggles pick rest (Browse) | scrape | bridge per resource.
+# ebay_dev_id          = "00000000-0000-0000-0000-000000000000"
+# ebay_notify_url      = "https://api.flipagent.dev/v1/notifications/ebay/inbound"
+# ebay_listings_source = "rest"
+# ebay_detail_source   = "rest"
+# ebay_sold_source     = "scrape"
+
+# LLM provider for /v1/match. Pick one of anthropic | openai | google. Empty
+# `llm_provider` falls back to the first key set (anthropic → openai → google).
+# Without any key, /v1/match returns 503; everything else still works.
+# llm_provider      = "google"
+# anthropic_api_key = "sk-ant-..."
+# anthropic_model   = "claude-haiku-4-5"
+# openai_api_key    = "sk-..."
+# openai_model      = "gpt-5.4-mini"
+# google_api_key    = "..."
+# google_model      = "gemini-2.5-flash"

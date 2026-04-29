@@ -249,6 +249,38 @@ resource "azurerm_container_app" "api" {
     value = var.resend_api_key
   }
 
+  # LLM provider keys + eBay DevID — declared dynamically so empty values are
+  # silently skipped. Azure rejects secrets with empty `value`, and /v1/match +
+  # /v1/notifications already handle a missing env (the provider self-disables).
+  dynamic "secret" {
+    for_each = var.anthropic_api_key == "" ? [] : [1]
+    content {
+      name  = "anthropic-api-key"
+      value = var.anthropic_api_key
+    }
+  }
+  dynamic "secret" {
+    for_each = var.openai_api_key == "" ? [] : [1]
+    content {
+      name  = "openai-api-key"
+      value = var.openai_api_key
+    }
+  }
+  dynamic "secret" {
+    for_each = var.google_api_key == "" ? [] : [1]
+    content {
+      name  = "google-api-key"
+      value = var.google_api_key
+    }
+  }
+  dynamic "secret" {
+    for_each = var.ebay_dev_id == "" ? [] : [1]
+    content {
+      name  = "ebay-dev-id"
+      value = var.ebay_dev_id
+    }
+  }
+
   template {
     min_replicas = var.api_min_replicas
     max_replicas = var.api_max_replicas
@@ -372,6 +404,71 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "EMAIL_FROM"
         value = var.email_from
+      }
+
+      # LLM provider for /v1/match. Each secret-backed env mirrors its `dynamic
+      # secret` above — only emitted when the corresponding key is set.
+      env {
+        name  = "LLM_PROVIDER"
+        value = var.llm_provider
+      }
+      dynamic "env" {
+        for_each = var.anthropic_api_key == "" ? [] : [1]
+        content {
+          name        = "ANTHROPIC_API_KEY"
+          secret_name = "anthropic-api-key"
+        }
+      }
+      env {
+        name  = "ANTHROPIC_MODEL"
+        value = var.anthropic_model
+      }
+      dynamic "env" {
+        for_each = var.openai_api_key == "" ? [] : [1]
+        content {
+          name        = "OPENAI_API_KEY"
+          secret_name = "openai-api-key"
+        }
+      }
+      env {
+        name  = "OPENAI_MODEL"
+        value = var.openai_model
+      }
+      dynamic "env" {
+        for_each = var.google_api_key == "" ? [] : [1]
+        content {
+          name        = "GOOGLE_API_KEY"
+          secret_name = "google-api-key"
+        }
+      }
+      env {
+        name  = "GOOGLE_MODEL"
+        value = var.google_model
+      }
+
+      # eBay Trading Platform Notifications + per-route source toggles.
+      dynamic "env" {
+        for_each = var.ebay_dev_id == "" ? [] : [1]
+        content {
+          name        = "EBAY_DEV_ID"
+          secret_name = "ebay-dev-id"
+        }
+      }
+      env {
+        name  = "EBAY_NOTIFY_URL"
+        value = var.ebay_notify_url
+      }
+      env {
+        name  = "EBAY_LISTINGS_SOURCE"
+        value = var.ebay_listings_source
+      }
+      env {
+        name  = "EBAY_DETAIL_SOURCE"
+        value = var.ebay_detail_source
+      }
+      env {
+        name  = "EBAY_SOLD_SOURCE"
+        value = var.ebay_sold_source
       }
     }
 

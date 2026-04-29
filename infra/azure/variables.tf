@@ -211,3 +211,86 @@ variable "email_from" {
   type        = string
   default     = "flipagent <noreply@flipagent.dev>"
 }
+
+# --- LLM provider for /v1/match — leave empty to ship with /v1/match returning 503. --
+# `llm_provider` explicitly selects one of: anthropic | openai | google. With it
+# empty, the matcher picks the first provider whose API key is set
+# (anthropic → openai → google).
+
+variable "llm_provider" {
+  description = "Explicit LLM selection for /v1/match. anthropic | openai | google | empty (auto)."
+  type        = string
+  default     = ""
+}
+
+variable "anthropic_api_key" {
+  description = "Anthropic Claude API key. Empty disables the anthropic provider."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "anthropic_model" {
+  description = "Anthropic model ID for /v1/match (e.g. claude-haiku-4-5)."
+  type        = string
+  default     = ""
+}
+
+variable "openai_api_key" {
+  description = "OpenAI API key. Empty disables the openai provider."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "openai_model" {
+  description = "OpenAI model ID for /v1/match (e.g. gpt-5.4-mini)."
+  type        = string
+  default     = ""
+}
+
+variable "google_api_key" {
+  description = "Google AI Studio key for Gemini. NOT the Google OAuth client_id/secret used by Better-Auth."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "google_model" {
+  description = "Gemini model ID for /v1/match (e.g. gemini-2.5-flash)."
+  type        = string
+  default     = ""
+}
+
+# --- eBay platform notifications + per-route source toggles --
+
+variable "ebay_dev_id" {
+  description = "eBay DevID (third value on the Application Keys page). Required for /v1/notifications/ebay/* (Trading Platform Notifications)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "ebay_notify_url" {
+  description = "Public HTTPS URL eBay POSTs Trading XML notifications to. Must be reachable from eBay servers (e.g. https://api.flipagent.dev/v1/notifications/ebay/inbound)."
+  type        = string
+  default     = ""
+}
+
+variable "ebay_listings_source" {
+  description = "Source for /v1/listings/* — rest (Browse API) | scrape | bridge."
+  type        = string
+  default     = "rest"
+}
+
+variable "ebay_detail_source" {
+  description = "Source for /v1/listings/{id} — rest | scrape | bridge."
+  type        = string
+  default     = "rest"
+}
+
+variable "ebay_sold_source" {
+  description = "Source for /v1/sold/* — rest (Marketplace Insights, gated by ebay_insights_approved) | scrape | bridge."
+  type        = string
+  default     = "scrape"
+}
