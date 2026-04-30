@@ -32,6 +32,7 @@
 import type { DealCluster, DiscoverMeta, EvaluateMeta, MarketStats, TransportSource } from "@flipagent/types";
 import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import type { ApiKey } from "../../db/schema.js";
+import { legacyFromV1, toLegacyId } from "../../utils/item-id.js";
 import { getItemDetail } from "../listings/detail.js";
 import { searchActiveListings } from "../listings/search.js";
 import { searchSoldListings } from "../listings/sold.js";
@@ -49,7 +50,6 @@ import {
 } from "./pipeline.js";
 import { extractReturns } from "./returns.js";
 import type { EvaluateOptions } from "./types.js";
-import { legacyFromV1, toLegacyId } from "../../utils/item-id.js";
 
 // Re-export the shared error + event types so route layers that drive
 // /v1/discover only need to import from run-discover.js (mirrors how
@@ -126,10 +126,7 @@ function pickCanonical(items: ReadonlyArray<ItemSummary>): string {
 	// Cleanest title in the variant cluster — drop emoji-laden / all-caps
 	// spam titles in favor of a plain one for the sold-search query. If
 	// every title is spammy, fall back to the first.
-	const cleaner = (t: string) =>
-		// eslint-disable-next-line no-control-regex
-		// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional
-		t.replace(/[^ -~]/g, "").trim();
+	const cleaner = (t: string) => t.replace(/[^ -~]/g, "").trim();
 	const candidates = items
 		.map((i) => i.title)
 		.filter(Boolean)
@@ -459,11 +456,7 @@ async function runVariantSubFlow(
 	);
 
 	if (filtered.matchedSold.length < 1) {
-		throw new EvaluateError(
-			"not_enough_sold",
-			422,
-			`Variant "${canonical}" yielded 0 same-product sold listings.`,
-		);
+		throw new EvaluateError("not_enough_sold", 422, `Variant "${canonical}" yielded 0 same-product sold listings.`);
 	}
 
 	// 07. evaluate — same primitive `/v1/evaluate` uses. Score the rep

@@ -435,7 +435,6 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 	// today (see BrowseSearchQuery TODO).
 	const QUICKSTARTS: ReadonlyArray<QuickStart> = [
 		{ label: "Watches under $300", apply: () => applyPreset({ q: "watch", categoryId: "31387", priceMax: "300" }) },
-		{ label: "Jordan over $200", apply: () => applyPreset({ q: "air jordan", categoryId: "15709", priceMin: "200" }) },
 		{ label: "Pokémon Charizard", apply: () => applyPreset({ q: "charizard 1st edition", categoryId: "183454" }) },
 	];
 

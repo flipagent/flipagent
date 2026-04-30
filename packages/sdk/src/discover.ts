@@ -15,13 +15,7 @@
  * context (n<4 sold) too.
  */
 
-import type {
-	ComputeJobAck,
-	DealCluster,
-	DiscoverJob,
-	DiscoverRequest,
-	DiscoverResponse,
-} from "@flipagent/types";
+import type { ComputeJobAck, DealCluster, DiscoverJob, DiscoverRequest, DiscoverResponse } from "@flipagent/types";
 import type { FlipagentHttp } from "./http.js";
 
 export interface DiscoverJobsClient {

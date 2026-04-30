@@ -239,4 +239,3 @@ function toEvaluateJobShape(job: ComputeJob): EvaluateJob {
 		expiresAt: job.expiresAt.toISOString(),
 	};
 }
-

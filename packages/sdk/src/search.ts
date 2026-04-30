@@ -9,8 +9,8 @@
  * with one fewer URL to remember.
  */
 
-import type { BrowseSearchResponse } from "@flipagent/types/ebay/buy";
 import type { SearchMode } from "@flipagent/types";
+import type { BrowseSearchResponse } from "@flipagent/types/ebay/buy";
 import type { FlipagentHttp } from "./http.js";
 
 export interface SearchParams {
@@ -26,9 +26,7 @@ export interface SearchParams {
 	marketplace?: string;
 }
 
-export interface SearchClient {
-	(params: SearchParams): Promise<BrowseSearchResponse>;
-}
+export type SearchClient = (params: SearchParams) => Promise<BrowseSearchResponse>;
 
 export function createSearchClient(http: FlipagentHttp): SearchClient {
 	return (params) => http.get("/v1/search", { ...params });

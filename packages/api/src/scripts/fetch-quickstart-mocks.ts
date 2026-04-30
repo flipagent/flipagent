@@ -4,9 +4,8 @@
  * download each image, and emit a single `fixtures.json` blob ready to
  * paste into `apps/docs/src/components/playground/mockData.ts`.
  *
- * Five presets:
+ * Four presets:
  *   discover/watches        q="watch" cat=31387 priceMax=300
- *   discover/jordan         q="air jordan" cat=15709 priceMin=200
  *   discover/charizard      q="charizard 1st edition" cat=183454
  *   evaluate/406338886641   "Gucci YA1264153 watch"
  *   evaluate/358471670268   "Travis Scott AJ1 Mocha (sz 11)"
@@ -46,7 +45,6 @@ interface EvaluatePreset {
 
 const DISCOVER_PRESETS: DiscoverPreset[] = [
 	{ key: "watches", q: "watch", categoryId: "31387", priceMax: 300, conditionIds: ["3000"] },
-	{ key: "jordan", q: "air jordan", categoryId: "15709", priceMin: 200, conditionIds: ["3000"] },
 	{ key: "charizard", q: "charizard 1st edition", categoryId: "183454", conditionIds: ["3000"] },
 ];
 

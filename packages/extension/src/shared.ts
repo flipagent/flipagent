@@ -120,7 +120,7 @@ export async function issueBridgeToken(cfg: ExtensionConfig, deviceName: string)
 }
 
 export async function pollForJob(cfg: ExtensionConfig, signal?: AbortSignal): Promise<BridgePollJob | null> {
-	const url = cfg.baseUrl.replace(/\/+$/, "") + "/v1/bridge/poll";
+	const url = `${cfg.baseUrl.replace(/\/+$/, "")}/v1/bridge/poll`;
 	const res = await fetch(url, {
 		headers: { Authorization: `Bearer ${cfg.bridgeToken ?? ""}` },
 		signal,

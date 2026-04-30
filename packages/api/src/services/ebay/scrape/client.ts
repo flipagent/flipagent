@@ -87,9 +87,7 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 	// items past the end returns fewer than `limit`.
 	const sliced = items.slice(sliceStart, input.limit ? sliceStart + input.limit : undefined);
 	const envelope = { total, offset, limit: input.limit ?? sliced.length };
-	return params.soldOnly
-		? { itemSales: sliced, ...envelope }
-		: { itemSummaries: sliced, ...envelope };
+	return params.soldOnly ? { itemSales: sliced, ...envelope } : { itemSummaries: sliced, ...envelope };
 }
 
 export async function scrapeItemDetail(itemId: string): Promise<ItemDetail | null> {

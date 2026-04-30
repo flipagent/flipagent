@@ -32,7 +32,7 @@
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import type { ApiKey } from "../../db/schema.js";
 import { detailFetcherFor } from "../listings/detail.js";
-import { matchPool, MatchUnavailableError } from "./index.js";
+import { MatchUnavailableError, matchPool } from "./index.js";
 import type { MatchOptions } from "./types.js";
 
 /**

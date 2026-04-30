@@ -546,13 +546,13 @@ function parseJsonArray<T>(text: string): T[] {
 	const out: T[] = [];
 	let depth = 0;
 	let inString = false;
-	let escape = false;
+	let escaped = false;
 	let objStart = -1;
 	for (let i = start + 1; i < body.length; i++) {
 		const ch = body[i];
 		if (inString) {
-			if (escape) escape = false;
-			else if (ch === "\\") escape = true;
+			if (escaped) escaped = false;
+			else if (ch === "\\") escaped = true;
 			else if (ch === '"') inString = false;
 			continue;
 		}

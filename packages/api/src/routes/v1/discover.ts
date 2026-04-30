@@ -213,4 +213,3 @@ function toDiscoverJobShape(job: ComputeJob): DiscoverJob {
 		expiresAt: job.expiresAt.toISOString(),
 	};
 }
-

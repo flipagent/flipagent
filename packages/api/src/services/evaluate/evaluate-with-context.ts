@@ -22,9 +22,9 @@
 
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import { toLegacyId } from "../../utils/item-id.js";
+import { getItemDetail } from "../listings/detail.js";
 import { discoverDeals } from "./discover-deals.js";
 import { evaluate } from "./evaluate.js";
-import { getItemDetail } from "../listings/detail.js";
 import type { EvaluableItem, EvaluateOptions, Evaluation } from "./types.js";
 
 /**

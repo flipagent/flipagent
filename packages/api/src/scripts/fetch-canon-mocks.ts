@@ -40,7 +40,7 @@ const TRANSFORM_PROMPT =
 
 const VERIFY_PROMPT =
 	"You are comparing two photos. Photo A is the original eBay listing for a Canon EF 50mm f/1.8 STM lens. Photo B is a re-rendered catalog version. " +
-	"Return strict JSON: { \"sameProduct\": boolean, \"confidence\": 0..1, \"isThe50mmSTMLens\": boolean, \"hasHallucinatedText\": boolean, \"differences\": string[] }. " +
+	'Return strict JSON: { "sameProduct": boolean, "confidence": 0..1, "isThe50mmSTMLens": boolean, "hasHallucinatedText": boolean, "differences": string[] }. ' +
 	"ZERO TOLERANCE rules — set sameProduct=false if ANY apply: " +
 	"(a) the rendered lens shows a different model (any of: 50mm 1.4, 50mm 1.2, USM, ULTRASONIC, II, L-series red ring, white-barrel L); " +
 	"(b) the focal length, aperture (1:1.8), or 'STM' text is changed, missing, or invented; " +

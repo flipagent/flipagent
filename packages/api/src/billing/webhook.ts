@@ -52,11 +52,7 @@ export async function handleEvent(cfg: StripeConfig, event: Stripe.Event): Promi
 }
 
 async function applyTier(userId: string, tier: Tier, fields: Partial<typeof userTable.$inferInsert>): Promise<void> {
-	const [current] = await db
-		.select({ tier: userTable.tier })
-		.from(userTable)
-		.where(eq(userTable.id, userId))
-		.limit(1);
+	const [current] = await db.select({ tier: userTable.tier }).from(userTable).where(eq(userTable.id, userId)).limit(1);
 	const tierChanged = current?.tier !== tier;
 	// Bump `creditsResetAt` only when the tier actually transitions —
 	// status-only updates (e.g. `active` → `past_due`) shouldn't reset

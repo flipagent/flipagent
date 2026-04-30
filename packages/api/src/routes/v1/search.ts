@@ -46,9 +46,7 @@ searchRoute.get(
 			412: errorResponse("Configured source unavailable (e.g. bridge not paired)."),
 			429: errorResponse("Tier monthly limit reached."),
 			502: errorResponse("Upstream eBay or bridge transport failed."),
-			503: errorResponse(
-				"Required source not configured (e.g. mode=sold without EBAY_INSIGHTS_APPROVED).",
-			),
+			503: errorResponse("Required source not configured (e.g. mode=sold without EBAY_INSIGHTS_APPROVED)."),
 		},
 	}),
 	requireApiKey,

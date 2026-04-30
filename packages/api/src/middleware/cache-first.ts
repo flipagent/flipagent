@@ -36,6 +36,7 @@ class NotCacheable extends Error {
 }
 
 export function cacheFirst(opts: CacheFirstOpts) {
+	// biome-ignore lint/suspicious/noConfusingVoidType: Hono middleware return contract uses Response | void
 	return async (c: Context, next: Next): Promise<Response | void> => {
 		// Only safe-method reads benefit — POST/PUT/DELETE go straight
 		// through. HEAD is treated like GET (Hono normalises).
