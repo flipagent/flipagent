@@ -1,31 +1,44 @@
 /**
- * Single source of "evaluate one listing, end-to-end". Three callers
- * share the same pre-flight:
+ * One canonical scorer used by both pipelines:
  *
- *   1. enrich comparables + asks with `itemCreationDate`/`itemEndDate` so
- *      the hazard model can fit (sold-search and Browse search summaries
- *      omit start dates — they live only on detail).
- *   2. resolve the per-category fitted β when the observation archive
- *      has one (Phase 2 hosted moat); otherwise `evaluate()` falls back
- *      to the hardcoded category map in `categoryBeta()`.
- *   3. delegate to `evaluate()` with the enriched bundle.
+ *   - `/v1/evaluate`        → 1-item case (the seed)
+ *   - `/v1/discover` (per cluster) → N-item case (cluster's actives)
  *
- * Used by:
- *   - `/v1/evaluate` route (per-listing evaluation)
- *   - `services/evaluate/discover-deals` (Discover ranking, Map over a search page)
- *   - `services/watchlists/scan` (watchlist scan worker)
+ * Both delegate into `discoverDeals` (the N-item ranker). evaluate's
+ * 1-item path is just N=1 of the same function. This keeps a single
+ * code path for fitted-β resolution + per-item `evaluate()` math, so
+ * future ranking changes land in one place.
+ *
+ * Pre-flight (shared, both shapes):
+ *   1. enrich sold + active listings with `itemCreationDate` / `itemEndDate`
+ *      so the hazard model can fit (sold-search and Browse summaries
+ *      omit start dates — they live only on detail). Items where the
+ *      matcher already spliced dates (Option B) short-circuit.
+ *   2. delegate to `discoverDeals`, which resolves per-category fitted β
+ *      once and runs synchronous `evaluate()` per item.
  *
  * Async — enrichment may scrape detail pages.
  */
 
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import { toLegacyId } from "../../utils/item-id.js";
-import { fittedBetaFor } from "../calibration/beta-fit.js";
-import { getItemDetail } from "../listings/detail.js";
+import { discoverDeals } from "./discover-deals.js";
 import { evaluate } from "./evaluate.js";
+import { getItemDetail } from "../listings/detail.js";
 import type { EvaluableItem, EvaluateOptions, Evaluation } from "./types.js";
 
-async function enrichWithDuration<T extends ItemSummary>(items: ReadonlyArray<T>): Promise<T[]> {
+/**
+ * Pre-fill `itemCreationDate` / `itemEndDate` on listings whose summaries
+ * came back without them — sold-search and Browse search both omit start
+ * dates, but the hazard model needs them. Resolves to a new array with the
+ * same shape; missing detail lookups silently leave the entry as-is.
+ *
+ * Items the matcher's verify pass already fetched detail for (Option B
+ * splice) carry dates inline and short-circuit on the `if (creation &&
+ * end)` check — no extra round-trip. Items decided by triage / decision-
+ * cache hit fetch detail here through the standard 4h cached path.
+ */
+export async function enrichWithDuration<T extends ItemSummary>(items: ReadonlyArray<T>): Promise<T[]> {
 	return Promise.all(
 		items.map(async (item) => {
 			if (item.itemCreationDate && item.itemEndDate) return item;
@@ -46,15 +59,21 @@ async function enrichWithDuration<T extends ItemSummary>(items: ReadonlyArray<T>
 	);
 }
 
+/**
+ * Score a single listing against a sold pool. Thin wrapper over
+ * `discoverDeals` — same enrichment + same fitted-β + same `evaluate()`
+ * math, just N=1. Used by `/v1/evaluate` route. `discoverDeals` runs
+ * the N-item path directly.
+ */
 export async function evaluateWithContext(item: EvaluableItem, opts: EvaluateOptions = {}): Promise<Evaluation> {
-	const enrichedComps = opts.comparables ? await enrichWithDuration(opts.comparables) : undefined;
-	const enrichedAsks = opts.asks ? await enrichWithDuration(opts.asks) : undefined;
-	const categoryId = "categoryId" in item ? item.categoryId : undefined;
-	const fittedBeta = categoryId ? await fittedBetaFor(categoryId).catch(() => undefined) : undefined;
-	return evaluate(item, {
-		...opts,
-		comparables: enrichedComps,
-		asks: enrichedAsks,
-		beta: opts.beta ?? fittedBeta,
-	});
+	const enrichedSold = opts.sold ? await enrichWithDuration(opts.sold) : opts.sold;
+	const enrichedAsks = opts.asks ? await enrichWithDuration(opts.asks) : opts.asks;
+	const ranked = await discoverDeals(
+		{ itemSummaries: [item as ItemSummary], total: 1 },
+		{ ...opts, sold: enrichedSold, asks: enrichedAsks },
+	);
+	// `discoverDeals` returns every input entry (no filtering), so a
+	// 1-item input always yields a 1-item output. The fallback is a
+	// belt-and-suspenders against future ranker changes.
+	return ranked[0]?.evaluation ?? evaluate(item, { ...opts, sold: enrichedSold, asks: enrichedAsks });
 }

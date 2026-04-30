@@ -85,6 +85,7 @@ export async function fetchSoldSearchRest(
 	const params = new URLSearchParams();
 	params.set("q", query.q);
 	params.set("limit", String(query.limit ?? 50));
+	if (query.offset != null && query.offset > 0) params.set("offset", String(query.offset));
 	if (query.filter) params.set("filter", query.filter);
 	if (query.category_ids) params.set("category_ids", query.category_ids);
 	return (await callBrowseRest(

@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import {
 	endDateFromTimeLeft,
+	hasBestOfferFormat,
 	normalizeBuyingFormat,
 	parseFeedbackScore,
 	timeLeftFromEndDate,
@@ -73,7 +74,9 @@ describe("eBay search extractor — modern s-card layout (2025+)", () => {
 		expect(second.title).toBe("Canon EF 50mm f/1.4 USM Lens");
 		expect(second.price?.value).toBe("329.99");
 		expect(second.shippingOptions?.[0]?.shippingCost?.value).toBe("0.00");
-		expect(second.buyingOptions).toEqual(["FIXED_PRICE"]);
+		// "or Best Offer" attribute row → FIXED_PRICE + BEST_OFFER, mirroring
+		// what eBay's Browse REST returns for the same listing shape.
+		expect(second.buyingOptions).toEqual(["FIXED_PRICE", "BEST_OFFER"]);
 		expect(second.seller?.feedbackScore).toBe(14_500);
 	});
 });
@@ -94,6 +97,15 @@ describe("ebay-extract pure helpers", () => {
 		expect(normalizeBuyingFormat(["AUCTION"])).toBe("AUCTION");
 		expect(normalizeBuyingFormat(null)).toBeNull();
 		expect(normalizeBuyingFormat("Random text")).toBeNull();
+	});
+
+	it("hasBestOfferFormat: detects Best Offer signal independently of dominant format", () => {
+		expect(hasBestOfferFormat("or Best Offer")).toBe(true);
+		expect(hasBestOfferFormat("Buy It Now or Best Offer")).toBe(true);
+		expect(hasBestOfferFormat(["Buy It Now", "or Best Offer"])).toBe(true);
+		expect(hasBestOfferFormat("Buy It Now")).toBe(false);
+		expect(hasBestOfferFormat("Auction")).toBe(false);
+		expect(hasBestOfferFormat(null)).toBe(false);
 	});
 
 	it("endDateFromTimeLeft / timeLeftFromEndDate roundtrip", () => {

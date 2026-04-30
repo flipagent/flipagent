@@ -15,13 +15,11 @@
  *      flipagent surface over Trading API XML.
  *
  *   3. flipagent native — intelligence, ops, account:
- *      `/v1/{match,evaluate,discover,research,draft,reprice,ship,
- *      expenses,traces,trends}` (intelligence),
+ *      `/v1/{evaluate,discover,ship,expenses,trends}` (intelligence),
  *      `/v1/forwarder/{provider}/*` (forwarder ops),
  *      `/v1/{connect,me,keys,billing,health,capabilities,takedown}`
  *      (account/ops),
- *      `/v1/{bridge,browser,notifications,webhooks,queue,watchlists}`
- *      (agent plumbing).
+ *      `/v1/{bridge,browser,notifications,webhooks}` (agent plumbing).
  *
  * The buy-side queue lives behind `/v1/buy/order/*` (REST + bridge
  * transports under one surface) — there is no separate `/v1/orders/*`
@@ -45,6 +43,7 @@ import {
 	ebaySellRecommendationRoute,
 	ebaySellStoresRoute,
 } from "./_passthroughs.js";
+import { adminRoute } from "./admin.js";
 import { bestOfferRoute } from "./best-offer.js";
 import { billingRoute } from "./billing.js";
 import { bridgeRoute } from "./bridge.js";
@@ -56,24 +55,21 @@ import { ebaySoldSearchRoute } from "./buy/marketplace-insights.js";
 import { ebayOrderRoute } from "./buy/order.js";
 import { ebayOrderV2Route } from "./buy/order-guest.js";
 import { capabilitiesRoute } from "./capabilities.js";
+import { ebayCommerceCatalogProductRoute } from "./commerce/catalog.js";
 import { ebayCommerceTaxonomyRoute } from "./commerce/taxonomy.js";
 import { connectRoute } from "./connect.js";
 import { discoverRoute } from "./discover.js";
-import { draftRoute } from "./draft.js";
 import { evaluateRoute } from "./evaluate.js";
 import { expensesRoute } from "./expenses.js";
 import { feedbackRoute } from "./feedback.js";
 import { forwarderRoute } from "./forwarder.js";
 import { v1HealthRoute } from "./health.js";
 import { keysRoute } from "./keys.js";
-import { matchRoute } from "./match.js";
 import { meRoute } from "./me.js";
 import { messagesRoute } from "./messages.js";
 import { notificationsRoute } from "./notifications.js";
 import { ebayPostOrderRoute } from "./post-order.js";
-import { queueRoute } from "./queue.js";
-import { repriceRoute } from "./reprice.js";
-import { researchRoute } from "./research.js";
+import { searchRoute } from "./search.js";
 import { ebaySellAccountRoute } from "./sell/account.js";
 import { ebaySellFinancesRoute } from "./sell/finances.js";
 import { ebaySellFulfillmentRoute } from "./sell/fulfillment.js";
@@ -82,9 +78,7 @@ import { ebaySellMarketingRoute } from "./sell/marketing.js";
 import { ebaySellNegotiationRoute } from "./sell/negotiation.js";
 import { shipRoute } from "./ship.js";
 import { takedownRoute } from "./takedown.js";
-import { tracesRoute } from "./traces.js";
 import { trendsRoute } from "./trends.js";
-import { watchlistsRoute } from "./watchlists.js";
 import { webhooksRoute } from "./webhooks.js";
 
 export const v1Routes = new Hono();
@@ -120,6 +114,11 @@ v1Routes.route("/sell/metadata", ebaySellMetadataRoute);
 // ---- eBay mirror — Commerce ---------------------------------------------
 v1Routes.use("/commerce/*", requireApiKey);
 v1Routes.route("/commerce/taxonomy", ebayCommerceTaxonomyRoute);
+// Typed /product/:epid (transport-aware: REST when approved, scrape
+// otherwise). Mounted before the catch-all passthrough so the typed
+// route wins for that path; all other /commerce/catalog/* paths
+// (notably /product_summary/search) still flow through the passthrough.
+v1Routes.route("/commerce/catalog", ebayCommerceCatalogProductRoute);
 v1Routes.route("/commerce/catalog", ebayCommerceCatalogRoute);
 v1Routes.route("/commerce/identity", ebayCommerceIdentityRoute);
 v1Routes.route("/commerce/translation", ebayCommerceTranslationRoute);
@@ -134,15 +133,11 @@ v1Routes.route("/best-offer", bestOfferRoute);
 v1Routes.route("/feedback", feedbackRoute);
 
 // ---- flipagent intelligence ---------------------------------------------
-v1Routes.route("/match", matchRoute);
+v1Routes.route("/search", searchRoute);
 v1Routes.route("/evaluate", evaluateRoute);
 v1Routes.route("/discover", discoverRoute);
-v1Routes.route("/research", researchRoute);
-v1Routes.route("/draft", draftRoute);
-v1Routes.route("/reprice", repriceRoute);
 v1Routes.route("/ship", shipRoute);
 v1Routes.route("/expenses", expensesRoute);
-v1Routes.route("/traces", tracesRoute);
 v1Routes.route("/trends", trendsRoute);
 
 // ---- Forwarder ops (provider-namespaced; used in both buy + sell) -------
@@ -156,11 +151,10 @@ v1Routes.route("/billing", billingRoute);
 v1Routes.route("/health", v1HealthRoute);
 v1Routes.route("/capabilities", capabilitiesRoute);
 v1Routes.route("/takedown", takedownRoute);
+v1Routes.route("/admin", adminRoute);
 
 // ---- Agent plumbing -----------------------------------------------------
 v1Routes.route("/bridge", bridgeRoute);
 v1Routes.route("/browser", browserRoute);
 v1Routes.route("/notifications", notificationsRoute);
 v1Routes.route("/webhooks", webhooksRoute);
-v1Routes.route("/queue", queueRoute);
-v1Routes.route("/watchlists", watchlistsRoute);

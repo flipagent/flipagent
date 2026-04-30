@@ -1,26 +1,41 @@
 /**
- * Per-mode recent-runs store. Persists to localStorage so the user
- * comes back to the playground and sees their last few queries — one
- * click to re-run.
+ * Per-mode recent-runs store. Persists to localStorage as a "recent
+ * results" log: every status (success / failure / cancelled /
+ * in_progress) survives reload, and clicking a row opens the saved job
+ * via `/v1/{evaluate,discover}/jobs/{id}` — resume the live stream when
+ * still in progress, hydrate the saved result otherwise.
  *
  * Capped at 5 per mode. Re-running an identical query bumps the
- * timestamp instead of creating a duplicate (deduped by `id`).
+ * timestamp + flips status back to `in_progress` (deduped by `id`).
+ *
+ * `status` follows GitHub Actions semantics — success / failure /
+ * cancelled / in_progress — so the strip can render a state pill
+ * (orange check / red ✕ / dim ⊘ / brand spinner).
  */
 
 import { useEffect, useState } from "react";
 
-export type RecentMode = "discover" | "evaluate";
+export type RecentMode = "discover" | "evaluate" | "search";
+
+export type RecentStatus = "success" | "failure" | "cancelled" | "in_progress";
 
 export interface RecentRun<Q = unknown> {
 	id: string;
 	mode: RecentMode;
-	/** Human-readable summary shown in the row, e.g. "Wristwatches under $300". */
+	/** Human-readable label shown in the row, e.g. the listing title or query. */
 	label: string;
 	/** Inputs to feed back into the panel for one-click re-run. */
 	query: Q;
 	timestamp: number;
-	/** Optional outcome blurb, e.g. "24 deals" or "BUY · 78%". */
-	summary?: string;
+	status: RecentStatus;
+	/**
+	 * compute_jobs row id. Lets the panel resume an in-progress run
+	 * (`/jobs/{id}/stream` replays trace) or hydrate a terminal run
+	 * (`GET /jobs/{id}` returns saved result). Absent on legacy entries
+	 * created before the queue refactor — the panel falls back to a
+	 * fresh query rerun in that case.
+	 */
+	jobId?: string;
 }
 
 const CAP = 5;
@@ -66,6 +81,23 @@ export function useRecentRuns<Q = unknown>(mode: RecentMode) {
 		});
 	}
 
+	/**
+	 * Patch one entry in place — primary use is the boot sweep that
+	 * reconciles `in_progress` rows with the server's actual status via
+	 * `GET /jobs/{id}`. Same persistence semantics as `add`.
+	 */
+	function update(id: string, patch: Partial<RecentRun<Q>>) {
+		setRuns((prev) => {
+			const next = prev.map((r) => (r.id === id ? { ...r, ...patch } : r));
+			try {
+				window.localStorage.setItem(key, JSON.stringify(next));
+			} catch {
+				/* non-fatal */
+			}
+			return next;
+		});
+	}
+
 	function clear() {
 		setRuns([]);
 		try {
@@ -75,7 +107,7 @@ export function useRecentRuns<Q = unknown>(mode: RecentMode) {
 		}
 	}
 
-	return { runs, add, clear };
+	return { runs, add, update, clear };
 }
 
 export function timeAgo(ts: number): string {

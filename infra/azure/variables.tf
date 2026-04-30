@@ -104,7 +104,12 @@ variable "stripe_price_hobby" {
   default = ""
 }
 
-variable "stripe_price_pro" {
+variable "stripe_price_standard" {
+  type    = string
+  default = ""
+}
+
+variable "stripe_price_growth" {
   type    = string
   default = ""
 }
@@ -152,6 +157,37 @@ variable "ebay_order_api_approved" {
   description = "Set true ONLY after eBay approves flipagent's tenant for the Buy Order API. Until then /buy/order/v1/* and /v1/* return 501."
   type        = bool
   default     = false
+}
+
+variable "ebay_insights_approved" {
+  description = "Set true ONLY after eBay approves the tenant for the Marketplace Insights program (sold-listing history via REST). Without it, /v1/buy/marketplace_insights/item_sales/search falls back to scraping. Apply at developer.ebay.com → Marketplace Insights."
+  type        = bool
+  default     = false
+}
+
+variable "ebay_catalog_approved" {
+  description = "Set true ONLY after eBay approves the tenant for the Commerce Catalog API. Without it, /v1/commerce/catalog/product/{epid} falls back to scraping /p/{epid} + a representative listing. eBay denies most apps."
+  type        = bool
+  default     = false
+}
+
+variable "observation_enabled" {
+  description = "When true, every /v1/buy/browse/* and /v1/buy/marketplace_insights/item_sales/* response writes a row to listing_observations for long-tail historical depth + matcher fingerprinting + cross-user seller reputation. Hosted-only; self-host typically leaves off."
+  type        = bool
+  default     = false
+}
+
+variable "admin_emails" {
+  description = "Comma-separated email list auto-promoted to role=admin on next sign-in. Admins get the /v1/admin/* surface and the /admin dashboard page. Empty = no admins."
+  type        = string
+  default     = ""
+}
+
+variable "keys_encryption_key" {
+  description = "AES-256-GCM symmetric key (base64, 32 bytes) used to encrypt issued API key plaintext at rest. Required in production for the dashboard's 'reveal key' feature; without it the column stays null on new keys and reveal returns 503 (sha256 hash auth still works). Generate with `openssl rand -base64 32`."
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 # --- Better-Auth + GitHub/Google OAuth — leave empty to ship with the dashboard --
@@ -260,6 +296,12 @@ variable "google_model" {
   description = "Gemini model ID for /v1/match (e.g. gemini-2.5-flash)."
   type        = string
   default     = ""
+}
+
+variable "llm_max_concurrent" {
+  description = "Per-process LLM concurrency cap. matchPool fans out N×K verify chunks under multi-cluster discover; without a cap they all hit the provider at once and the slowest queue at provider side. Set to your tier's safe in-flight limit. Default 8."
+  type        = number
+  default     = 8
 }
 
 # --- eBay platform notifications + per-route source toggles --

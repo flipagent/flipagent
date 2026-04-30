@@ -31,7 +31,7 @@ interface RestCapability {
 	 * grants access). The flag name is opaque to `selectTransport` —
 	 * the route layer passes the resolved boolean through.
 	 */
-	envFlag?: "EBAY_ORDER_API_APPROVED" | "EBAY_INSIGHTS_APPROVED";
+	envFlag?: "EBAY_ORDER_API_APPROVED" | "EBAY_INSIGHTS_APPROVED" | "EBAY_CATALOG_APPROVED";
 }
 
 interface BridgeCapability {
@@ -106,7 +106,13 @@ export const RESOURCE_TRANSPORTS = {
 	"markets.policies": { rest: { needsAuth: "user" } },
 	"markets.taxonomy": { rest: { needsAuth: "app" } },
 	"markets.metadata": { rest: { needsAuth: "user" } },
-	"markets.catalog": { rest: { needsAuth: "app" } },
+	// Commerce Catalog REST is a Limited Release surface — most app keys
+	// (including ours, today) get `Insufficient permissions` from
+	// `/commerce/catalog/v1_beta/...` even with valid credentials. When
+	// EBAY_CATALOG_APPROVED is unset we fall through to scrape, which
+	// reproduces the documented `Product` shape via /p/{epid} JSON-LD +
+	// item-specifics from a representative listing under that EPID.
+	"markets.catalog": { rest: { needsAuth: "app", envFlag: "EBAY_CATALOG_APPROVED" }, scrape: true },
 	"markets.translation": { rest: { needsAuth: "app" } },
 	// Commerce identity
 	"identity.user": { rest: { needsAuth: "user" } },
@@ -153,6 +159,7 @@ export interface SelectTransportContext {
 	envFlags?: {
 		EBAY_ORDER_API_APPROVED?: boolean;
 		EBAY_INSIGHTS_APPROVED?: boolean;
+		EBAY_CATALOG_APPROVED?: boolean;
 	};
 }
 

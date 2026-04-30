@@ -23,12 +23,12 @@ this one we knowingly do not.
 
 Why we operate on it anyway:
 
-- **No legitimate substitute.** Sold-comp aggregation has no equivalent
-  channel for tenants without Marketplace Insights API access. eBay's
-  Marketplace Insights program is Limited Release with high rejection
-  rates for new applicants, and there is no buyable commercial sold-data
-  feed at the time of writing. A deal-finding product without sold-comp
-  data is not a product.
+- **No legitimate substitute.** Sold-listing aggregation has no
+  equivalent channel for tenants without Marketplace Insights API
+  access. eBay's Marketplace Insights program is Limited Release with
+  high rejection rates for new applicants, and there is no buyable
+  commercial sold-data feed at the time of writing. A deal-finding
+  product without sold-listing data is not a product.
 - **Robots.txt is a notice signal, not a contract.** *hiQ Labs v.
   LinkedIn* (9th Cir. 2022) and *Meta v. Bright Data* (N.D. Cal. 2024)
   confirm that public pages on the public internet do not generate CFAA
@@ -92,7 +92,6 @@ operational hygiene lives in `packages/api`:
   code path is a normal HTTPS client.
 - Takedown blocklist: approved itemIds are flushed from cache and
   refused on subsequent fetch attempts.
-- `SCRAPE_PAUSE=1` env flag for full pause during incident response.
 
 A self-hoster running the OSS scraper directly is operating their own
 instance under their own infrastructure and bears their own ToS posture.

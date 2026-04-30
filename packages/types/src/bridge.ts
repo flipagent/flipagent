@@ -14,7 +14,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { PurchaseOrderStatus } from "./orders.js";
+import { BridgeJobStatus } from "./bridge-jobs.js";
 
 /* --------------------------- bridge tokens --------------------------- */
 
@@ -85,7 +85,14 @@ export const BridgeMarketplace = Type.Union(
 );
 export type BridgeMarketplace = Static<typeof BridgeMarketplace>;
 
-export const BridgeJob = Type.Object(
+/**
+ * Poll-protocol envelope: what the extension receives from `/v1/bridge/poll`.
+ * Distinct from `BridgeJob` in `./bridge-jobs.js` (the persistent DB-row
+ * shape used in webhook payloads). This one is the projection sent over
+ * the longpoll wire — narrower, oriented to what the extension needs to
+ * execute the task.
+ */
+export const BridgePollJob = Type.Object(
 	{
 		jobId: Type.String({ format: "uuid", description: "Correlates result POST." }),
 		task: BridgeJobTask,
@@ -106,9 +113,9 @@ export const BridgeJob = Type.Object(
 		issuedAt: Type.String({ format: "date-time" }),
 		expiresAt: Type.String({ format: "date-time" }),
 	},
-	{ $id: "BridgeJob" },
+	{ $id: "BridgePollJob" },
 );
-export type BridgeJob = Static<typeof BridgeJob>;
+export type BridgePollJob = Static<typeof BridgePollJob>;
 
 /* ----------------------------- result ----------------------------- */
 
@@ -119,7 +126,7 @@ export type BridgeJob = Static<typeof BridgeJob>;
 export const BridgeResultRequest = Type.Object(
 	{
 		jobId: Type.String({ format: "uuid" }),
-		outcome: PurchaseOrderStatus,
+		outcome: BridgeJobStatus,
 		ebayOrderId: Type.Optional(Type.String()),
 		totalCents: Type.Optional(Type.Integer({ minimum: 0 })),
 		receiptUrl: Type.Optional(Type.String()),

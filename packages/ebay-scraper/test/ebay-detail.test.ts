@@ -29,4 +29,57 @@ describe("eBay detail extractor", () => {
 		expect(detail.categoryPath).toContain("Camera Lenses");
 		expect(detail.imageUrls.length).toBeGreaterThanOrEqual(2);
 	});
+
+	it("extracts the full-res URL from `data-zoom-src` even when `src` is a lazy-load placeholder", () => {
+		// Modern eBay listings serve a 1x1 GIF in `src` until the user
+		// scrolls; the actual hero image hides in `data-zoom-src`. Make
+		// sure the extractor reaches that attribute (regression for the
+		// "image doesn't show in evaluate" bug we hit on the GUCCI YA1264153
+		// listing where every selector match had a placeholder src).
+		const html = `<!doctype html><html><body>
+			<div class="ux-image-carousel-container">
+				<div class="ux-image-carousel-item">
+					<img
+						src="data:image/gif;base64,R0lGODlhAQABAAAAACw="
+						data-zoom-src="https://i.ebayimg.com/images/g/abc/s-l1600.jpg"
+						srcset="https://i.ebayimg.com/images/g/abc/s-l64.jpg 64w, https://i.ebayimg.com/images/g/abc/s-l500.jpg 500w"
+					/>
+				</div>
+				<div class="ux-image-carousel-item">
+					<img src="" data-zoom-src="https://i.ebayimg.com/images/g/abc/s-l1600-2.jpg" />
+				</div>
+			</div>
+			<h1 id="itemTitle">Test</h1>
+			</body></html>`;
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/406338886641", jsdomFactory);
+		expect(detail.imageUrls).toEqual([
+			"https://i.ebayimg.com/images/g/abc/s-l1600.jpg",
+			"https://i.ebayimg.com/images/g/abc/s-l1600-2.jpg",
+		]);
+	});
+
+	it("falls back to `srcset` highest-density when no zoom-src/data-src is set", () => {
+		const html = `<!doctype html><html><body>
+			<div class="ux-image-carousel-container">
+				<img srcset="https://i.ebayimg.com/x/s-l64.jpg 64w, https://i.ebayimg.com/x/s-l500.jpg 500w" />
+			</div>
+			<h1 id="itemTitle">Test</h1>
+			</body></html>`;
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/1", jsdomFactory);
+		expect(detail.imageUrls).toEqual(["https://i.ebayimg.com/x/s-l500.jpg"]);
+	});
+
+	it("skips data: URIs and known placeholder paths", () => {
+		const html = `<!doctype html><html><body>
+			<div class="ux-image-carousel-container">
+				<img src="data:image/gif;base64,R0lGODlh" />
+				<img src="https://example.com/placeholder.gif" />
+				<img src="https://example.com/spacer.gif" />
+				<img src="https://i.ebayimg.com/real.jpg" />
+			</div>
+			<h1 id="itemTitle">Test</h1>
+			</body></html>`;
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/1", jsdomFactory);
+		expect(detail.imageUrls).toEqual(["https://i.ebayimg.com/real.jpg"]);
+	});
 });

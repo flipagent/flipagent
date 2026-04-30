@@ -14,7 +14,7 @@ import { recordSearchObservations } from "../observations/index.js";
 import { hashQuery } from "../shared/cache.js";
 import type { FlipagentResult } from "../shared/result.js";
 import { selectTransport, TransportUnavailableError } from "../shared/transport.js";
-import { withCache } from "../shared/with-cache.js";
+import { timeoutMsForSource, withCache } from "../shared/with-cache.js";
 import { recordQueryPulse } from "../trends/index.js";
 import { bridgeSoldSearch } from "./bridge.js";
 import { rethrowAsListingsError } from "./bridge-status.js";
@@ -29,6 +29,8 @@ const SOLD_TTL_SEC = 60 * 60 * 12;
 export interface SoldSearchInput {
 	q: string;
 	limit?: number;
+	/** Page offset. REST forwards via Marketplace Insights `offset=`; scrape converts to eBay's `_pgn`. */
+	offset?: number;
 	filter?: string;
 	categoryIds?: string;
 	conditionIds?: string[];
@@ -74,10 +76,12 @@ export async function searchSoldListings(
 	}
 
 	const limit = input.limit ?? 50;
+	const offset = input.offset ?? 0;
 	const queryHash = hashQuery({
 		q: input.q,
 		filter: input.filter,
 		limit,
+		offset,
 		soldOnly: true,
 		categoryIds: input.categoryIds,
 	});
@@ -90,7 +94,7 @@ export async function searchSoldListings(
 			ttlSec: SOLD_TTL_SEC,
 			path: SOLD_PATH,
 			queryHash,
-			timeoutMs: source === "scrape" ? 60_000 : undefined,
+			timeoutMs: timeoutMsForSource(source),
 		},
 		async () => {
 			const body = await dispatch(input, { ...ctx, source }, limit);
@@ -110,6 +114,7 @@ async function dispatch(
 		const query: SoldSearchQuery = {
 			q: input.q,
 			limit,
+			...(input.offset != null && input.offset > 0 ? { offset: input.offset } : {}),
 			...(input.filter ? { filter: input.filter } : {}),
 			...(input.categoryIds ? { category_ids: input.categoryIds } : {}),
 		};
@@ -121,6 +126,7 @@ async function dispatch(
 				q: input.q,
 				soldOnly: true,
 				limit,
+				offset: input.offset,
 				conditionIds: input.conditionIds ?? parseConditionIdsFilter(input.filter),
 			});
 		} catch (err) {
@@ -135,6 +141,7 @@ async function dispatch(
 	const bridgeQuery: SoldSearchQuery = {
 		q: input.q,
 		limit,
+		...(input.offset != null && input.offset > 0 ? { offset: input.offset } : {}),
 		...(input.filter ? { filter: input.filter } : {}),
 		...(input.categoryIds ? { category_ids: input.categoryIds } : {}),
 	};

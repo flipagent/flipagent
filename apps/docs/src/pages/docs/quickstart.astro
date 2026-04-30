@@ -12,7 +12,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 
 				<h2>1. Get an API key</h2>
 				<p>
-					<a href="/signup/">Sign up</a>. The free tier is 100 calls a month, no card required. Your dashboard issues a key in one click; copy it from the modal (it's only shown once).
+					<a href="/signup/">Sign up</a>. The free tier is a one-time 500-credit grant — about 500 searches, or 10 AI evaluations, or 2 deal discoveries. Mix as you like. Credits don't refill on Free; upgrade for monthly credits. No card required. Your dashboard issues a key in one click; copy it from the modal (it's only shown once).
 				</p>
 				<p>
 					Self-hosting? Run the API in your own infrastructure and your dashboard will be at <code>your-host/dashboard/</code> instead. See <a href="/docs/self-host/">self-host</a>.
@@ -54,16 +54,13 @@ console.log(results.itemSummaries?.length, "active listings");`}</code></pre>
 				</div>
 
 				<h2>3. Score the deals</h2>
-				<p>Server-side scoring runs on the API, so the math is identical regardless of language. Pass active listings and (optionally) sold comparables; get back a ranked list:</p>
+				<p>Server-side scoring runs on the API, so the math is identical regardless of language. Both <code>discover.deals</code> and <code>evaluate.listing</code> are composite — pass a query (or an itemId) and the server searches sold + active, runs an LLM same-product filter, and scores in one call:</p>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>node</span></div>
-<pre><code>{`// Pull sold comparables for the same keyword
-const sold = await client.sold.search({ q: "canon 50mm", limit: 50 });
-
-// Rank deals across the active search using the sold comparables
+<pre><code>{`// Rank deals matching a query
 const { deals } = await client.discover.deals({
-  results,
-  opts: { comparables: sold.itemSummaries, minNetCents: 2000 },
+  q: "canon 50mm",
+  opts: { minNetCents: 2000 },
 });
 
 for (const d of deals) {
@@ -72,8 +69,7 @@ for (const d of deals) {
 
 // Or evaluate a single listing
 const evaluation = await client.evaluate.listing({
-  item: results.itemSummaries[0],
-  opts: { comparables: sold.itemSummaries },
+  itemId: results.itemSummaries[0].itemId,
 });`}</code></pre>
 				</div>
 

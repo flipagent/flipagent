@@ -9,8 +9,7 @@
  * switches (Dashboard never unmounts the panel — it just hides it).
  */
 
-import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	ComposeCard,
 	ComposeFilters,
@@ -23,19 +22,24 @@ import { FilterPill, type SelectOption } from "../compose/FilterPill";
 import { Chips, type ChipOption } from "../ui/Chips";
 import { Field } from "../ui/Field";
 import {
+	cancelComputeJob,
 	DISCOVER_STEPS,
+	fetchJobStatus,
+	friendlyErrorMessage,
 	initialSteps,
+	reopenDiscover,
 	runDiscover,
 	runDiscoverMock,
 	type DiscoverInputs,
 	type DiscoverOutcome,
 } from "./pipelines";
+import { useResumeSweep } from "./useResumeSweep";
 import { QuickStarts, type QuickStart } from "./QuickStarts";
 import { useRecentRuns, type RecentRun } from "./recent";
 import { RecentRuns } from "./RecentRuns";
-import { Trace } from "./Trace";
 import { DealFilters, countActiveDealFilters } from "./DealFilters";
-import type { ItemSummary, RankedDeal, Step } from "./types";
+import { DiscoverResult } from "./DiscoverResult";
+import type { Step } from "./types";
 
 /* ------------------------------ options ------------------------------ */
 
@@ -76,8 +80,13 @@ const SHIPS_FROM_OPTIONS: ReadonlyArray<SelectOption<ShipsFrom>> = [
 	{ value: "CN", label: "China" },
 ];
 
+// Maps to eBay Browse's `sort=` param — controls which items get pulled
+// into the candidate pool. NOT the discover ranking key (that's always
+// recommendedExit.dollarsPerDay, applied after fetch). Default is
+// eBay's BestMatch — labelled "Best match" so it doesn't collide with
+// the discover-side "best margin / $/day" framing in the result header.
 const SORT_OPTIONS: ReadonlyArray<SelectOption<SortValue>> = [
-	{ value: "", label: "Best margin" },
+	{ value: "", label: "Best match" },
 	{ value: "endingSoonest", label: "Ending soonest" },
 	{ value: "newlyListed", label: "Newly listed" },
 	{ value: "pricePlusShippingLowest", label: "Lowest price" },
@@ -151,7 +160,7 @@ function describe(q: DiscoverQuery): string {
 
 export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate">({
 	tabsProps,
-	onEvaluate,
+	onEvaluate: _onEvaluate,
 	mockMode = false,
 }: {
 	tabsProps: {
@@ -159,6 +168,8 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 		active: TabId;
 		onChange: (next: TabId) => void;
 	};
+	/** Reserved for a future "Evaluate this deal" jump from a row. Currently
+	 * unused — clicking a deal expands inline rather than swapping tabs. */
 	onEvaluate: (itemId: string) => void;
 	/** When true, run a canned pipeline against in-memory fixtures (logged-out hero). */
 	mockMode?: boolean;
@@ -167,10 +178,41 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 	const [moreOpen, setMoreOpen] = useState(false);
 	const [steps, setSteps] = useState<Step[]>(initialSteps(DISCOVER_STEPS));
 	const [pending, setPending] = useState(false);
-	const [outcome, setOutcome] = useState<DiscoverOutcome | null>(null);
+	// Partial outcome — clusters[] / deals[] fill in progressively as
+	// each cluster.ready event lands, then the final `done` replaces
+	// with the canonical full result. Keeps the table responsive: the
+	// first SKU's row appears within seconds, not after the slowest
+	// cluster finishes.
+	const [outcome, setOutcome] = useState<Partial<DiscoverOutcome>>({});
 	const [hasRun, setHasRun] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
+	// True iff the current `query` came verbatim from a QUICKSTART preset
+	// (no user edits). When false in mockMode, Run redirects to /signup
+	// instead of showing canned mock data — the canned response doesn't
+	// reflect what the visitor typed, so running it would be misleading.
+	const [fromPreset, setFromPreset] = useState(false);
+	// Selected cluster index drives the detail drawer in DiscoverResult.
+	// Reset on every fresh run so a stale index from a previous query
+	// doesn't open a now-different cluster's drawer.
+	const [selectedClusterIdx, setSelectedClusterIdx] = useState<number | null>(null);
 	const recent = useRecentRuns<DiscoverQuery>("discover");
+	// Active job + abort controller — see PlaygroundEvaluate for the model.
+	const jobIdRef = useRef<string | null>(null);
+	const abortRef = useRef<AbortController | null>(null);
+
+	useEffect(() => {
+		return () => {
+			abortRef.current?.abort();
+		};
+	}, []);
+
+	useResumeSweep("discover", recent);
+
+	function cancel() {
+		const id = jobIdRef.current;
+		if (id) void cancelComputeJob("discover", id);
+		abortRef.current?.abort();
+	}
 
 	const moreActive = useMemo(() => {
 		let n = 0;
@@ -193,24 +235,49 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 
 	function patch<K extends keyof DiscoverQuery>(k: K, v: DiscoverQuery[K]) {
 		setQuery((prev) => ({ ...prev, [k]: v }));
+		// Any user edit invalidates the preset signature — the canned mock
+		// no longer matches the visible query.
+		setFromPreset(false);
 	}
 
 	function applyPreset(preset: Partial<DiscoverQuery>) {
 		setQuery({ ...EMPTY_QUERY, ...preset });
+		setFromPreset(true);
 	}
 
 	async function execute(target: DiscoverQuery = query) {
+		// Logged-out + custom query → redirect to sign-in. The canned mock
+		// is fixed-content (same Watches/Pokémon/Jordan clusters regardless
+		// of input) so running it against arbitrary text would be
+		// misleading. Presets keep mock-running so the demo loop works.
+		if (mockMode && !fromPreset) {
+			const ret = window.location.pathname + window.location.search;
+			window.location.href = `/signup/?return=${encodeURIComponent(ret)}`;
+			return;
+		}
 		setHasRun(true);
-		setOutcome(null);
+		setOutcome({});
 		setErr(null);
 		setSteps(initialSteps(DISCOVER_STEPS));
 		setPending(true);
+		setSelectedClusterIdx(null);
+		const recentBase = {
+			id: JSON.stringify(target),
+			mode: "discover" as const,
+			label: describe(target),
+			query: target,
+		};
+		recent.add({ ...recentBase, timestamp: Date.now(), status: "in_progress" });
+		jobIdRef.current = null;
+		abortRef.current?.abort();
+		const controller = new AbortController();
+		abortRef.current = controller;
 		try {
 			const conditionIds = target.conditions.flatMap(
 				(k) => CONDITION_CHIPS.find((c) => c.value === k)?.ids ?? [],
 			);
 			const inputs: DiscoverInputs = {
-				q: target.q.trim() || undefined,
+				q: target.q.trim(),
 				categoryId: target.categoryId || undefined,
 				minPriceCents: target.priceMin ? Math.round(Number.parseFloat(target.priceMin) * 100) : undefined,
 				maxPriceCents: target.priceMax ? Math.round(Number.parseFloat(target.priceMax) * 100) : undefined,
@@ -223,20 +290,132 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 				outboundShippingCents: Math.round(Number.parseFloat(target.shipping) * 100),
 			};
 			const runner = mockMode ? runDiscoverMock : runDiscover;
-			const result = await runner(inputs, (key, p) =>
-				setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, ...p } : s))),
+			const result = await runner(
+				inputs,
+				{
+					onJobCreated: (id) => {
+						jobIdRef.current = id;
+						// Persist jobId on the in-progress placeholder so a
+						// reload-then-click can resume via /jobs/{id}/stream.
+						recent.update(recentBase.id, { jobId: id });
+					},
+					onStep: (key, p) =>
+						setSteps((prev) => {
+							const idx = prev.findIndex((s) => s.key === key);
+							if (idx >= 0) return prev.map((s, i) => (i === idx ? { ...s, ...p } : s));
+							// Dynamic step (e.g., per-cluster `search.sold.<n>` child) —
+							// append so the trace shows it under its parent.
+							return [...prev, { key, label: p.label ?? key, status: p.status ?? "pending", ...p }];
+						}),
+					onPartial: (patch) => setOutcome((prev) => ({ ...prev, ...patch })),
+				},
+				controller.signal,
 			);
-			if (result) {
-				setOutcome(result);
-				recent.add({
-					id: JSON.stringify(target),
-					mode: "discover",
-					label: describe(target),
-					query: target,
-					timestamp: Date.now(),
-					summary: `${result.deals.length} deals`,
-				});
+			if (result.kind === "success") {
+				setOutcome(result.value);
+			} else if (result.kind === "failed") {
+				// Stream-level failure — banner + freeze running steps in
+				// one place so we don't leave Search market spinning while
+				// only Evaluate shows red.
+				const friendly = friendlyErrorMessage(result.message, result.code);
+				setErr(friendly);
+				setSteps((prev) =>
+					prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: friendly } : s)),
+				);
+			} else if (result.kind === "cancelled") {
+				// User cancelled — flip every still-running step to skipped
+				// so spinners stop. Without this, the trace keeps animating
+				// even though pending is false and the worker is gone.
+				setSteps((prev) =>
+					prev.map((s) => (s.status === "running" ? { ...s, status: "skipped" } : s)),
+				);
 			}
+			const finalStatus =
+				result.kind === "success" ? "success" : result.kind === "cancelled" ? "cancelled" : "failure";
+			recent.add({
+				...recentBase,
+				timestamp: Date.now(),
+				status: finalStatus,
+				jobId: jobIdRef.current ?? undefined,
+			});
+		} catch (caught) {
+			const message = caught instanceof Error ? caught.message : String(caught);
+			setErr(`Something went wrong: ${message}`);
+			setSteps((prev) =>
+				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: message } : s)),
+			);
+			recent.add({ ...recentBase, timestamp: Date.now(), status: "failure", jobId: jobIdRef.current ?? undefined });
+		} finally {
+			setPending(false);
+		}
+	}
+
+	/**
+	 * Click handler for a Recent row. Replays the saved query into the
+	 * form and reopens the saved job — `/jobs/{id}/stream` covers
+	 * in_progress / completed / failed / cancelled in one shape. Legacy
+	 * entries without `jobId` fall back to a fresh run.
+	 */
+	function reopen(rec: RecentRun<DiscoverQuery>) {
+		setQuery(rec.query);
+		if (!rec.jobId) {
+			void execute(rec.query);
+			return;
+		}
+		void reopenSavedJob(rec);
+	}
+
+	async function reopenSavedJob(rec: RecentRun<DiscoverQuery>) {
+		const id = rec.jobId;
+		if (!id) return;
+		// Pre-flight — confirm the job row still exists. If the api key
+		// rotated or the row was reaped, don't flip Recent's saved
+		// status; the historical run was still real.
+		const exists = await fetchJobStatus("discover", id);
+		if (!exists) {
+			setErr("This run is no longer available — hit Run to re-execute with the same query.");
+			setHasRun(false);
+			return;
+		}
+		setHasRun(true);
+		setOutcome({});
+		setErr(null);
+		setSteps(initialSteps(DISCOVER_STEPS));
+		setPending(true);
+		setSelectedClusterIdx(null);
+		jobIdRef.current = id;
+		abortRef.current?.abort();
+		const controller = new AbortController();
+		abortRef.current = controller;
+		try {
+			const result = await reopenDiscover(
+				id,
+				{
+					onStep: (key, p) =>
+						setSteps((prev) => {
+							const idx = prev.findIndex((s) => s.key === key);
+							if (idx >= 0) return prev.map((s, i) => (i === idx ? { ...s, ...p } : s));
+							return [...prev, { key, label: p.label ?? key, status: p.status ?? "pending", ...p }];
+						}),
+					onPartial: (patch) => setOutcome((prev) => ({ ...prev, ...patch })),
+				},
+				controller.signal,
+			);
+			if (result.kind === "success") setOutcome(result.value);
+			else if (result.kind === "failed") {
+				const friendly = friendlyErrorMessage(result.message, result.code);
+				setErr(friendly);
+				setSteps((prev) =>
+					prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: friendly } : s)),
+				);
+			} else if (result.kind === "cancelled") {
+				setSteps((prev) =>
+					prev.map((s) => (s.status === "running" ? { ...s, status: "skipped" } : s)),
+				);
+			}
+			const finalStatus =
+				result.kind === "success" ? "success" : result.kind === "cancelled" ? "cancelled" : "failure";
+			if (rec.status !== finalStatus) recent.update(rec.id, { status: finalStatus });
 		} catch (caught) {
 			const message = caught instanceof Error ? caught.message : String(caught);
 			setErr(`Something went wrong: ${message}`);
@@ -248,14 +427,12 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 		}
 	}
 
-	function rerunRecent(run: RecentRun<DiscoverQuery>) {
-		setQuery(run.query);
-		void execute(run.query);
-	}
-
+	// Broad-keyword presets so each one fans out to multiple SKUs — that's
+	// where Discover's same-product clustering + cross-cluster ranking
+	// actually shows its work. A single-SKU preset collapses to one
+	// cluster, hiding the very thing the demo is supposed to communicate.
 	// Each preset MUST set `q` — backend rejects category-only queries
-	// today (see BrowseSearchQuery TODO). A category alone would fill the
-	// form but leave Run disabled, which reads as the demo being broken.
+	// today (see BrowseSearchQuery TODO).
 	const QUICKSTARTS: ReadonlyArray<QuickStart> = [
 		{ label: "Watches under $300", apply: () => applyPreset({ q: "watch", categoryId: "31387", priceMax: "300" }) },
 		{ label: "Jordan over $200", apply: () => applyPreset({ q: "air jordan", categoryId: "15709", priceMin: "200" }) },
@@ -270,6 +447,7 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 					value={query.q}
 					onChange={(v) => patch("q", v)}
 					onRun={() => execute()}
+					onCancel={cancel}
 					disabled={!canRun}
 					pending={pending}
 					placeholder='What are you looking for? — e.g. "watches under $300 ending soon"'
@@ -387,33 +565,19 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 				</div>
 			)}
 
-			{(outcome || hasRun || err) && (
+			{(hasRun || err) && (
 				<ComposeOutput>
 					{err && <p className="text-[13px] text-[#c0392b] mb-3">{err}</p>}
-					{pending && !outcome && (
-						<div className="flex items-center gap-2.5 mb-4 text-[12.5px] text-[var(--text-3)]">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin" aria-hidden="true">
-								<path d="M21 12a9 9 0 1 1-6.2-8.55" />
-							</svg>
-							<span>Running…</span>
-						</div>
-					)}
-					{outcome ? (
-						<DealsTable
-							deals={outcome.deals}
-							items={outcome.search.itemSummaries ?? []}
-							onEvaluate={onEvaluate}
+					{hasRun && !err && (
+						<DiscoverResult
+							outcome={outcome}
+							steps={steps}
+							pending={pending}
+							hasRun={hasRun}
+							sellWithinDays={Number.parseInt(query.sellWithin, 10) || undefined}
+							selectedClusterIdx={selectedClusterIdx}
+							onSelectCluster={setSelectedClusterIdx}
 						/>
-					) : hasRun ? (
-						<Trace steps={steps} />
-					) : null}
-					{outcome && (
-						<>
-							<h2 className="text-[12px] uppercase tracking-[0.06em] text-[var(--text-3)] mt-7 mb-2 font-mono">
-								Trace
-							</h2>
-							<Trace steps={steps} />
-						</>
 					)}
 				</ComposeOutput>
 			)}
@@ -421,104 +585,8 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 
 			<div className="max-w-[760px] mx-auto mt-4">
 				<QuickStarts items={QUICKSTARTS} />
-				<RecentRuns runs={recent.runs} onPick={rerunRecent} onClear={recent.clear} />
+				<RecentRuns runs={recent.runs} onPick={reopen} onClear={recent.clear} />
 			</div>
 		</>
 	);
-}
-
-function DealsTable({
-	deals,
-	items,
-	onEvaluate,
-}: {
-	deals: RankedDeal[];
-	items: ItemSummary[];
-	onEvaluate: (itemId: string) => void;
-}) {
-	if (deals.length === 0) {
-		return (
-			<p className="text-[13px] text-[var(--text-3)]">
-				No deals matched. Try a wider category, looser price cap, or a different keyword.
-			</p>
-		);
-	}
-	const byId = new Map(items.map((i) => [i.itemId, i]));
-	return (
-		<motion.section initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-			<h2 className="text-[13px] font-medium text-[var(--text)] mb-3">
-				Top {deals.length} deal{deals.length === 1 ? "" : "s"} · sorted by $/day
-			</h2>
-			<div className="flex flex-col gap-1.5">
-				{deals.map((d) => (
-					<DealRow key={d.itemId} deal={d} item={byId.get(d.itemId)} onEvaluate={onEvaluate} />
-				))}
-			</div>
-		</motion.section>
-	);
-}
-
-function DealRow({
-	deal,
-	item,
-	onEvaluate,
-}: {
-	deal: RankedDeal;
-	item: ItemSummary | undefined;
-	onEvaluate: (itemId: string) => void;
-}) {
-	const exit = deal.evaluation.recommendedExit;
-	const buyCents = item?.price ? Math.round(Number.parseFloat(item.price.value) * 100) : undefined;
-	return (
-		<button
-			type="button"
-			onClick={() => onEvaluate(deal.itemId)}
-			className="w-full text-left grid grid-cols-[44px_1fr_auto] gap-3 items-center px-3 py-2.5 border border-[var(--border-faint)] rounded-[6px] hover:border-[var(--border)] hover:bg-[var(--surface-2)] cursor-pointer transition-colors duration-100"
-		>
-			<div className="w-11 h-11 rounded-[4px] border border-[var(--border-faint)] bg-[var(--surface)] overflow-hidden flex items-center justify-center text-[var(--text-4)]">
-				{item?.image?.imageUrl ? (
-					<img src={item.image.imageUrl} alt="" loading="lazy" className="w-full h-full object-cover" />
-				) : (
-					<span aria-hidden="true">·</span>
-				)}
-			</div>
-			<div className="min-w-0">
-				<div className="text-[13px] text-[var(--text)] truncate">
-					{item?.title ?? deal.itemId}
-				</div>
-				<div className="text-[11.5px] text-[var(--text-3)] mt-0.5">
-					{exit ? (
-						<>
-							list ${Math.round(exit.listPriceCents / 100)} · ~{Math.round(exit.expectedDaysToSell)}d ·{" "}
-							{exit.netCents >= 0 ? "+" : "−"}${Math.abs(Math.round(exit.netCents / 100))} net
-						</>
-					) : (
-						<>{item?.condition ?? "no exit plan"}</>
-					)}
-				</div>
-			</div>
-			<div className="text-right">
-				{buyCents != null && (
-					<div className="font-mono text-[13px] text-[var(--text)]">
-						${Math.round(buyCents / 100)}
-					</div>
-				)}
-				{exit && (
-					<div className="font-mono text-[11.5px] text-[var(--brand)] mt-0.5">
-						${Math.round(exit.dollarsPerDay / 100)}/day
-					</div>
-				)}
-			</div>
-		</button>
-	);
-}
-
-function fmtUsd(cents: number | undefined): string {
-	if (cents == null) return "—";
-	return `$${(cents / 100).toFixed(2)}`;
-}
-
-function fmtPct(p: number | undefined): string {
-	if (p == null) return "—";
-	return `${Math.round(p * 100)}%`;
 }

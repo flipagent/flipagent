@@ -1,7 +1,7 @@
 {
 	"name": "flipagent-mcp",
 	"version": "0.0.1",
-	"description": "MCP server exposing eBay deal-finding tools to Claude Desktop, Cursor, Cline, Zed, Continue, Windsurf, and any MCP-compatible AI client. Drop-in compatible with eBay's Browse + Marketplace Insights APIs (set EBAY_BASE_URL to point at api.flipagent.dev or api.ebay.com).",
+	"description": "MCP server exposing flipagent's reseller toolchain (eBay search, sold-listing search, evaluate, discover, buy, list, ship, expenses) to Claude Desktop, Cursor, Cline, Zed, Continue, Windsurf, and any MCP-compatible AI client. Talks to api.flipagent.dev by default; point FLIPAGENT_BASE_URL elsewhere for self-host / staging.",
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",

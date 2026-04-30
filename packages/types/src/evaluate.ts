@@ -1,27 +1,83 @@
 /**
- * `/v1/evaluate/*` schemas — single-listing judgment. Decisions pillar.
- * `EvaluateOptions` is re-used by `/v1/discover` (same tunables apply
- * to the batch ranking).
+ * `/v1/evaluate/*` schema — id-driven single-listing judgment.
+ *
+ * Composite endpoint: caller passes `itemId`, the server fetches the
+ * detail, searches sold + active listings of the same product, runs
+ * the LLM same-product filter, and scores. Mirrors `/v1/discover`
+ * (the query-driven sibling) — both share `EvaluateOpts` for tunables.
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { ItemSummary } from "./ebay/buy.js";
-import { ForwarderInput, Listing } from "./ship.js";
+import { ItemDetail, ItemSummary } from "./ebay/buy.js";
+import { ForwarderInput } from "./ship.js";
+
+/* ----------------------------- shared meta ----------------------------- */
+
+/** Transport that served an upstream lookup. Mirrors `services/listings/search`. */
+export const TransportSource = Type.Union([Type.Literal("rest"), Type.Literal("scrape"), Type.Literal("bridge")], {
+	$id: "TransportSource",
+});
+export type TransportSource = Static<typeof TransportSource>;
+
+/* ----------------------------- market stats ----------------------------- */
+
+export const AskStats = Type.Object(
+	{
+		meanCents: Type.Integer(),
+		stdDevCents: Type.Integer(),
+		medianCents: Type.Integer(),
+		p25Cents: Type.Integer(),
+		p75Cents: Type.Integer(),
+		nActive: Type.Integer(),
+	},
+	{ $id: "AskStats" },
+);
+export type AskStats = Static<typeof AskStats>;
+
+/**
+ * Aggregated stats over the same-product sold pool the evaluation was
+ * scored against. Surfaced in `EvaluateResponse` so callers can render
+ * "median $X · IQR $A–$B · n=42 · sells 1.2/day · ~14d typical wait"
+ * without re-deriving the math client-side.
+ */
+export const MarketStats = Type.Object(
+	{
+		keyword: Type.String(),
+		marketplace: Type.String(),
+		windowDays: Type.Integer(),
+		meanCents: Type.Integer(),
+		stdDevCents: Type.Integer(),
+		medianCents: Type.Integer(),
+		medianCiLowCents: Type.Optional(Type.Integer()),
+		medianCiHighCents: Type.Optional(Type.Integer()),
+		p25Cents: Type.Integer(),
+		p75Cents: Type.Integer(),
+		nObservations: Type.Integer(),
+		salesPerDay: Type.Number(),
+		meanDaysToSell: Type.Optional(Type.Number()),
+		daysStdDev: Type.Optional(Type.Number()),
+		daysP50: Type.Optional(Type.Number()),
+		daysP70: Type.Optional(Type.Number()),
+		daysP90: Type.Optional(Type.Number()),
+		nDurations: Type.Optional(Type.Integer()),
+		asks: Type.Optional(AskStats),
+		asOf: Type.String(),
+	},
+	{ $id: "MarketStats" },
+);
+export type MarketStats = Static<typeof MarketStats>;
 
 /* ------------------------------- options ------------------------------- */
 
-export const EvaluateOptions = Type.Object(
+/**
+ * Public tunables for `/v1/evaluate` and `/v1/discover`. The sold +
+ * active pools are not part of the public surface — both composite
+ * endpoints derive them server-side. The internal service-layer
+ * options (`packages/api/src/services/evaluate/types.ts`) carry the
+ * pools for the underlying `evaluate()` function.
+ */
+export const EvaluateOpts = Type.Object(
 	{
-		comparables: Type.Optional(Type.Array(ItemSummary)),
-		/**
-		 * Currently-active competing listings. Feeds the `belowAsks` signal
-		 * + the position-aware competition factor + sold-mean vs active-median
-		 * blend in the recommended-exit search. Without asks, the recommended
-		 * exit falls back to sold-only hazard (correct for cold markets but
-		 * weak when the live market has moved relative to the 90-day sold
-		 * window).
-		 */
-		asks: Type.Optional(Type.Array(ItemSummary)),
 		forwarder: Type.Optional(ForwarderInput),
 		expectedSaleMultiplier: Type.Optional(Type.Number({ minimum: 0, maximum: 2 })),
 		minNetCents: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -46,9 +102,9 @@ export const EvaluateOptions = Type.Object(
 		 */
 		beta: Type.Optional(Type.Number({ minimum: 0, maximum: 10 })),
 	},
-	{ $id: "EvaluateOptions" },
+	{ $id: "EvaluateOpts" },
 );
-export type EvaluateOptions = Static<typeof EvaluateOptions>;
+export type EvaluateOpts = Static<typeof EvaluateOpts>;
 
 /* ------------------------------ evaluation ------------------------------ */
 
@@ -63,9 +119,10 @@ export const FiredSignal = Type.Object(
 export type FiredSignal = Static<typeof FiredSignal>;
 
 /**
- * p10/p90 of expected net (cents) across the IQR-cleaned comparable cohort.
- * Same input distribution as `expectedNetCents` (the mean) — the band is the
- * downside/upside if the comparables repeat. Null when fewer than 4 comparables.
+ * p10/p90 of expected net (cents) across the IQR-cleaned sold pool.
+ * Same input distribution as `expectedNetCents` (the mean) — the band
+ * is the downside/upside if the sold prices repeat. Null when fewer
+ * than 4 sold listings.
  */
 export const NetRangeCents = Type.Object(
 	{
@@ -84,17 +141,7 @@ export const Evaluation = Type.Object(
 		signals: Type.Array(FiredSignal),
 		rating: Type.Union([Type.Literal("buy"), Type.Literal("hold"), Type.Literal("skip")]),
 		reason: Type.String(),
-		/**
-		 * Max purchase price (cents) at which expected net ≥ `minNetCents`.
-		 * Inverse of the mean — "pay no more than this and the trade still
-		 * clears your margin floor." Null when comparables absent (no market).
-		 */
 		bidCeilingCents: Type.Union([Type.Integer(), Type.Null()]),
-		/**
-		 * Cost components behind `bidCeilingCents` so callers can render
-		 * "$ceiling = $sale − $fees − $ship − $targetNet" without re-
-		 * deriving the fee constants. Null when bidCeiling is null.
-		 */
 		safeBidBreakdown: Type.Union([
 			Type.Object({
 				estimatedSaleCents: Type.Integer(),
@@ -104,21 +151,7 @@ export const Evaluation = Type.Object(
 			}),
 			Type.Null(),
 		]),
-		/**
-		 * P(net > 0) under the empirical sold-price distribution. 0..1.
-		 * Null when fewer than 4 comparables to estimate from.
-		 */
-		winProbability: Type.Union([Type.Number({ minimum: 0, maximum: 1 }), Type.Null()]),
-		/** Risk band — null when fewer than 4 comparables. */
 		netRangeCents: Type.Union([NetRangeCents, Type.Null()]),
-		/**
-		 * One-shot exit plan for buyers: list at this price → expected to
-		 * sell in this many days → profit (after fees, shipping, AND buy
-		 * cost). The "answer" the playground surfaces. Derived from the
-		 * full hazard model + competition factor (active asks) + sold-mean
-		 * vs active-median blend. Null when comparables lack duration data or no
-		 * profitable price clears within the search grid.
-		 */
 		recommendedExit: Type.Union([
 			Type.Object({
 				listPriceCents: Type.Integer(),
@@ -133,35 +166,125 @@ export const Evaluation = Type.Object(
 );
 export type Evaluation = Static<typeof Evaluation>;
 
+/* ----------------------------- returns ----------------------------- */
+
+/**
+ * Returns policy for the listing — flipagent-derived from eBay's
+ * `returnTerms` block on the item detail. Surfaced on `EvaluateResponse`
+ * (NOT on the eBay-mirror `ItemDetail`) so the trust-signal display in
+ * UI clients doesn't require parsing the upstream block themselves.
+ *
+ * `null` when the upstream source didn't expose returns info (e.g. some
+ * scrape paths) — UIs render this as "—" rather than asserting "no returns".
+ */
+export const Returns = Type.Object(
+	{
+		/** True iff the seller accepts returns. */
+		accepted: Type.Boolean(),
+		/** Return window in days (eBay's `returnPeriod.value` when unit=DAY). Omitted when unknown. */
+		periodDays: Type.Optional(Type.Integer({ minimum: 0 })),
+		/** "BUYER" | "SELLER" — who pays return shipping. Omitted when not surfaced. */
+		shippingCostPaidBy: Type.Optional(Type.Union([Type.Literal("BUYER"), Type.Literal("SELLER")])),
+	},
+	{ $id: "Returns" },
+);
+export type Returns = Static<typeof Returns>;
+
+/* -------------------------------- meta -------------------------------- */
+
+/** What the server fetched, for caller audit + playground trace. */
+export const EvaluateMeta = Type.Object(
+	{
+		itemSource: TransportSource,
+		/** Same-product sold listings (kept after the LLM filter). Feeds margin math + win-probability. */
+		soldCount: Type.Integer(),
+		/** Source the sold pool came from. Null when the sold search failed (active still ran). */
+		soldSource: Type.Union([TransportSource, Type.Null()]),
+		/** Same-product active listings (kept after the LLM filter). Feeds the asks side. */
+		activeCount: Type.Integer(),
+		/** Source the active pool came from. Null when the active search failed (sold still ran). */
+		activeSource: Type.Union([TransportSource, Type.Null()]),
+		/** LLM filter outcome (rejected = different product). Useful for showing "12 kept / 8 rejected" in a trace. */
+		soldKept: Type.Integer(),
+		soldRejected: Type.Integer(),
+		activeKept: Type.Integer(),
+		activeRejected: Type.Integer(),
+	},
+	{ $id: "EvaluateMeta" },
+);
+export type EvaluateMeta = Static<typeof EvaluateMeta>;
+
 /* ---------------------------- POST /v1/evaluate ---------------------------- */
 
 export const EvaluateRequest = Type.Object(
 	{
-		item: Listing,
-		opts: Type.Optional(EvaluateOptions),
+		/** eBay item id — `v1|...|0` or legacy numeric. Detail fetch resolves either. */
+		itemId: Type.String({ minLength: 1 }),
+		/**
+		 * Sold-search lookback window in days. Filters the sold pool to
+		 * `lastSoldDate within [now - lookbackDays, now]`. Default 90 (eBay
+		 * Marketplace Insights' practical max). Lower it for fast-moving
+		 * markets where 90-day sold means anchored to stale prices.
+		 */
+		lookbackDays: Type.Optional(Type.Integer({ minimum: 1, maximum: 90 })),
+		/**
+		 * Cap on sold-search results before LLM same-product filtering.
+		 * Default 50 — the size at which IQR cleaning + percentile
+		 * estimates stabilise. Max 200 (eBay Browse page cap).
+		 */
+		soldLimit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+		opts: Type.Optional(EvaluateOpts),
 	},
 	{ $id: "EvaluateRequest" },
 );
 export type EvaluateRequest = Static<typeof EvaluateRequest>;
 
-export const EvaluateResponse = Evaluation;
-export type EvaluateResponse = Evaluation;
-
-/* ------------------------ POST /v1/evaluate/signals ------------------------ */
-
-export const EvaluateSignalsRequest = Type.Object(
+export const EvaluateResponse = Type.Object(
 	{
-		item: ItemSummary,
-		comparables: Type.Optional(Type.Array(ItemSummary)),
+		/** The fetched item detail — surfaced so UIs can render thumbnail/title/price without a second fetch. */
+		item: ItemDetail,
+		/** Same-product sold listings the evaluation was scored against. */
+		soldPool: Type.Array(ItemSummary),
+		/** Same-product active listings (asks). */
+		activePool: Type.Array(ItemSummary),
+		/** Sold listings the same-product filter rejected (different product). Empty when the LLM didn't run. UIs can render side-by-side with the matched pool to expose the filter's judgement. */
+		rejectedSoldPool: Type.Array(ItemSummary),
+		/** Active listings the same-product filter rejected. Same purpose as `rejectedSoldPool` but on the asks side. */
+		rejectedActivePool: Type.Array(ItemSummary),
+		/** Distribution stats over `soldPool` (median, IQR, salesPerDay, meanDaysToSell, …). */
+		market: MarketStats,
+		evaluation: Evaluation,
+		/**
+		 * flipagent-derived returns policy summary, parsed from the upstream
+		 * `returnTerms` block. `null` when the chosen transport didn't expose
+		 * the field (some scrape paths). Lives here, not on the eBay-mirror
+		 * `ItemDetail`, so the mirror stays a verbatim mirror.
+		 */
+		returns: Type.Union([Returns, Type.Null()]),
+		meta: EvaluateMeta,
 	},
-	{ $id: "EvaluateSignalsRequest" },
+	{ $id: "EvaluateResponse" },
 );
-export type EvaluateSignalsRequest = Static<typeof EvaluateSignalsRequest>;
+export type EvaluateResponse = Static<typeof EvaluateResponse>;
 
-export const EvaluateSignalsResponse = Type.Object(
-	{
-		signals: Type.Array(FiredSignal),
-	},
-	{ $id: "EvaluateSignalsResponse" },
+/* ---------------------- compute-job shape (async mode) ---------------------- */
+
+import { ComputeJobBase } from "./compute-jobs.js";
+
+/**
+ * `GET /v1/evaluate/jobs/{id}` body. `params` echoes the request that
+ * created the job so reload UI doesn't need separate state. `result` is
+ * present iff `status === "completed"`.
+ */
+export const EvaluateJob = Type.Intersect(
+	[
+		ComputeJobBase,
+		Type.Object({
+			kind: Type.Literal("evaluate"),
+			params: EvaluateRequest,
+			result: Type.Union([EvaluateResponse, Type.Null()]),
+		}),
+	],
+	{ $id: "EvaluateJob" },
 );
-export type EvaluateSignalsResponse = Static<typeof EvaluateSignalsResponse>;
+export type EvaluateJob = Static<typeof EvaluateJob>;

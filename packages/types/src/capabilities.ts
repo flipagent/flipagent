@@ -11,8 +11,13 @@
  *   approval_pending    — the underlying marketplace API is gated and
  *                         we're waiting on tenant approval (e.g. eBay
  *                         Order API, Marketplace Insights).
- *   scrape_fallback     — first-class API not available; we serve a
- *                         best-effort scraped result.
+ *   scrape               — served by the scrape transport. Either REST
+ *                         isn't approved/wired for this resource (key
+ *                         tier or upstream gated) or the resource is
+ *                         scrape-only by design. Scrape is a 1st-class
+ *                         transport in flipagent, equal to REST and
+ *                         bridge — the status reports the data path,
+ *                         not a degradation.
  *   unavailable         — the host instance hasn't been configured for
  *                         this capability (env vars unset).
  *
@@ -29,7 +34,7 @@ export const CapabilityStatus = Type.Union(
 		Type.Literal("needs_signin"),
 		Type.Literal("needs_oauth"),
 		Type.Literal("approval_pending"),
-		Type.Literal("scrape_fallback"),
+		Type.Literal("scrape"),
 		Type.Literal("unavailable"),
 	],
 	{ $id: "CapabilityStatus" },
@@ -46,7 +51,7 @@ export const MarketplaceCapabilities = Type.Object(
 	{
 		/** Active-listing search (`/v1/buy/browse/item_summary/search`). */
 		search: CapabilityStatus,
-		/** Sold-comparable search (`/v1/buy/marketplace_insights/item_sales/search`). For eBay, scrape transport when Marketplace Insights REST unapproved. */
+		/** Sold-listing search (`/v1/buy/marketplace_insights/item_sales/search`). For eBay, scrape transport when Marketplace Insights REST unapproved. */
 		sold: CapabilityStatus,
 		/** Single-listing detail (`/v1/buy/browse/item/{itemId}`). */
 		detail: CapabilityStatus,

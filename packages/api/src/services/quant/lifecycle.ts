@@ -1,27 +1,11 @@
 /**
- * Phase 3 (LIST) and Phase 4 (SIT) — once the deal is acquired, what
- * to do next.
- *
- *   optimalListPrice   — given duration data, recommend the price that
- *                        maximizes capital efficiency (yield per day).
- *   repriceAdvice      — for a listing that's already live, decide
- *                        hold / drop / delist based on time elapsed
- *                        vs market expected time-to-sell.
- *
- * Both functions degrade gracefully when the inputs lack data: e.g.
- * `optimalListPrice` returns null when `market.meanDaysToSell` is
- * absent, and `repriceAdvice` defaults to "hold" when it can't compute
- * a comparison.
+ * Phase 3 (LIST) — given duration data, recommend the price that
+ * maximizes capital efficiency (yield per day). Returns null when
+ * `market.meanDaysToSell` is absent.
  */
 
 import { feeBreakdown } from "./fees.js";
-import {
-	DEFAULT_FEES,
-	type FeeModel,
-	type ListPriceRecommendation,
-	type MarketStats,
-	type RepriceRecommendation,
-} from "./types.js";
+import { DEFAULT_FEES, type FeeModel, type ListPriceRecommendation, type MarketStats } from "./types.js";
 
 /**
  * Default elasticity of sale rate w.r.t. log-price z-score:
@@ -258,71 +242,4 @@ function competitionFactor(priceCents: number, sortedAskPrices: ReadonlyArray<nu
 	}
 	const share = (sortedAskPrices.length - cBelow) / sortedAskPrices.length;
 	return Math.max(COMPETITION_FLOOR, share);
-}
-
-export interface RepriceState {
-	/** Current list price in cents. */
-	currentPriceCents: number;
-	/** When the listing went live. ISO string or Date. */
-	listedAt: string | Date;
-	/** "Now" — defaults to the wall clock. */
-	now?: Date;
-}
-
-/**
- * Decide whether a sitting listing should hold, drop, or delist based
- * on how long it's been live vs the market's expected time-to-sell.
- *
- * Heuristic (uses `market.meanDaysToSell` when available):
- *   daysListed < 1.0 × T̄        → hold
- *   1.0 × T̄ ≤ daysListed < 1.5  → hold (still within typical range)
- *   1.5 × T̄ ≤ daysListed < 2.5  → drop 5%
- *   2.5 × T̄ ≤ daysListed < 4.0  → drop 10%
- *   daysListed ≥ 4.0 × T̄        → delist
- *
- * When `meanDaysToSell` is missing, returns `hold` regardless — no
- * model, don't bluff. The caller can substitute a manual rule.
- */
-export function repriceAdvice(market: MarketStats, state: RepriceState): RepriceRecommendation {
-	const now = state.now ?? new Date();
-	const listed = state.listedAt instanceof Date ? state.listedAt : new Date(state.listedAt);
-	const daysListed = Math.max(0, (now.getTime() - listed.getTime()) / 86_400_000);
-
-	if (!market.meanDaysToSell || market.meanDaysToSell <= 0) {
-		return {
-			action: "hold",
-			daysListed,
-			reason: "no time-to-sell data — hold by default",
-		};
-	}
-
-	const ratio = daysListed / market.meanDaysToSell;
-	if (ratio < 1.5) {
-		return {
-			action: "hold",
-			daysListed,
-			reason: `${daysListed.toFixed(1)}d listed vs ${market.meanDaysToSell.toFixed(1)}d expected — within range`,
-		};
-	}
-	if (ratio < 2.5) {
-		return {
-			action: "drop",
-			daysListed,
-			suggestedPriceCents: Math.round(state.currentPriceCents * 0.95),
-			reason: `${ratio.toFixed(1)}× expected duration — drop 5%`,
-		};
-	}
-	if (ratio < 4.0) {
-		return {
-			action: "drop",
-			daysListed,
-			suggestedPriceCents: Math.round(state.currentPriceCents * 0.9),
-			reason: `${ratio.toFixed(1)}× expected duration — drop 10%`,
-		};
-	}
-	return {
-		action: "delist",
-		daysListed,
-		reason: `${ratio.toFixed(1)}× expected duration — stale, consider relisting from scratch`,
-	};
 }

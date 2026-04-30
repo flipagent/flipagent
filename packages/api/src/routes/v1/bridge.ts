@@ -19,9 +19,9 @@
  */
 
 import {
-	BridgeJob,
 	BridgeLoginStatusRequest,
 	BridgeLoginStatusResponse,
+	BridgePollJob,
 	BridgeResultRequest,
 	BridgeResultResponse,
 	IssueBridgeTokenRequest,
@@ -35,9 +35,10 @@ import { db } from "../../db/client.js";
 import { bridgeTokens } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { requireBridgeToken } from "../../middleware/bridge-auth.js";
-import { bridgeTaskForSource } from "../../services/ebay/bridge/tasks.js";
-import { claimNextForApiKey, getOrderForApiKey, transition } from "../../services/orders/queue.js";
-import { dispatchOrderEvent } from "../../services/webhooks/dispatch.js";
+import { claimNextForApiKey, getJobForApiKey, transition } from "../../services/bridge-jobs/queue.js";
+import { bridgeTaskForOrder } from "../../services/ebay/bridge/tasks.js";
+import { reconcileBridgeResult } from "../../services/forwarder/reconcile.js";
+import { dispatchCycleEvent, dispatchOrderEvent } from "../../services/webhooks/dispatch.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const bridgeRoute = new Hono();
@@ -81,7 +82,7 @@ bridgeRoute.get(
 		description:
 			"Auth: bridge token. Polls every second within the longpoll window for queued jobs belonging to the bridge token's api key. The first match is atomically claimed (FOR UPDATE SKIP LOCKED) and returned. 204 indicates an idle window — the client should reissue immediately. The flipagent Chrome extension's service worker drives this loop on a `chrome.alarms` tick.",
 		responses: {
-			200: jsonResponse("Job claimed.", BridgeJob),
+			200: jsonResponse("Job claimed.", BridgePollJob),
 			204: { description: "No job within the longpoll window. Reissue." },
 			401: errorResponse("Missing or invalid bridge token."),
 		},
@@ -96,10 +97,12 @@ bridgeRoute.get(
 			const claimed = await claimNextForApiKey(apiKeyId, tokenId);
 			if (claimed) {
 				dispatchOrderEvent(apiKeyId, claimed).catch((err) => console.error("[bridge] dispatch claimed:", err));
-				// Map source → bridge task. Centralised in `BRIDGE_TASKS` so
-				// we have one canonical naming + the extension's recipe
-				// runtime can key off task name.
-				const task = bridgeTaskForSource(claimed.source);
+				// Pick the canonical bridge task. `bridgeTaskForOrder` reads
+				// metadata.task when set (forwarder photos / dispatch /
+				// future per-action jobs) and falls back to source-only
+				// mapping otherwise — keeps the extension's recipe runtime
+				// keyed on a single discriminator (task name).
+				const task = bridgeTaskForOrder(claimed.source, claimed.metadata as Record<string, unknown> | null);
 				const job = {
 					jobId: claimed.id,
 					task,
@@ -144,14 +147,14 @@ bridgeRoute.post(
 		const apiKeyId = c.var.bridgeApiKey.id;
 		const tokenId = c.var.bridgeToken.id;
 
-		const order = await getOrderForApiKey(body.jobId, apiKeyId);
-		if (!order) return c.json({ error: "not_found", message: `No job ${body.jobId} for this token.` }, 404);
-		if (order.claimedByTokenId !== tokenId) {
+		const job = await getJobForApiKey(body.jobId, apiKeyId);
+		if (!job) return c.json({ error: "not_found", message: `No job ${body.jobId} for this token.` }, 404);
+		if (job.claimedByTokenId !== tokenId) {
 			return c.json({ error: "not_owner", message: "This token did not claim that job." }, 404);
 		}
 
 		const updated = await transition({
-			id: order.id,
+			id: job.id,
 			apiKeyId,
 			to: body.outcome,
 			ebayOrderId: body.ebayOrderId,
@@ -160,9 +163,45 @@ bridgeRoute.post(
 			failureReason: body.failureReason,
 			result: body.result,
 		});
-		if (!updated) return c.json({ error: "transition_failed", message: "Could not update order." }, 409);
+		if (!updated) return c.json({ error: "transition_failed", message: "Could not update job." }, 409);
 
 		dispatchOrderEvent(apiKeyId, updated).catch((err) => console.error("[bridge] dispatch result:", err));
+		// Fire cycle webhooks for the agent automation surface and
+		// reconcile the local forwarder_inventory table. The job's
+		// `metadata.kind` discriminator picks which event/reconcile
+		// path to use; buy-side (no metadata.kind) is already covered
+		// by `dispatchOrderEvent` above. All cycle events carry just
+		// enough payload for the agent to act without a follow-up GET.
+		if (updated.status === "completed") {
+			const meta = (updated.metadata as Record<string, unknown> | null) ?? null;
+			const result = (updated.result as Record<string, unknown> | null) ?? null;
+			// Reconcile first so the webhook receiver can immediately
+			// query /v1/forwarder/{provider}/inventory and see fresh
+			// state. Errors are logged + swallowed — webhook delivery
+			// must not block on reconcile failure.
+			reconcileBridgeResult({
+				apiKeyId,
+				source: updated.source,
+				kind: typeof meta?.kind === "string" ? (meta.kind as string) : null,
+				itemId: updated.itemId,
+				metadata: meta,
+				result,
+			}).catch((err) => console.error("[bridge] inventory reconcile:", err));
+
+			if (meta?.kind === "forwarder.refresh") {
+				dispatchCycleEvent(apiKeyId, "forwarder.received", {
+					provider: updated.source,
+					packages: result?.packages ?? [],
+				}).catch((err) => console.error("[bridge] forwarder.received webhook:", err));
+			} else if (meta?.kind === "forwarder.dispatch") {
+				dispatchCycleEvent(apiKeyId, "forwarder.shipped", {
+					provider: updated.source,
+					packageId: updated.itemId,
+					ebayOrderId: (meta.request as Record<string, unknown> | undefined)?.ebayOrderId ?? null,
+					shipment: result?.shipment ?? null,
+				}).catch((err) => console.error("[bridge] forwarder.shipped webhook:", err));
+			}
+		}
 		return c.json({ ok: true as const });
 	},
 );

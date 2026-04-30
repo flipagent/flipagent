@@ -205,8 +205,12 @@ resource "azurerm_container_app" "api" {
     value = var.stripe_price_hobby
   }
   secret {
-    name  = "stripe-price-pro"
-    value = var.stripe_price_pro
+    name  = "stripe-price-standard"
+    value = var.stripe_price_standard
+  }
+  secret {
+    name  = "stripe-price-growth"
+    value = var.stripe_price_growth
   }
 
   # eBay OAuth — empty values are fine; the api gracefully 503s downstream.
@@ -221,6 +225,15 @@ resource "azurerm_container_app" "api" {
   secret {
     name  = "ebay-ru-name"
     value = var.ebay_ru_name
+  }
+
+  # AES-256-GCM symmetric key (base64) used to encrypt issued API key
+  # plaintext at rest. Required in production for the dashboard's
+  # "reveal key" feature; sha256 hash auth still works without it.
+  # Generate with `openssl rand -base64 32`.
+  secret {
+    name  = "keys-encryption-key"
+    value = var.keys_encryption_key
   }
 
   # Better-Auth + GitHub/Google OAuth + email.
@@ -332,8 +345,12 @@ resource "azurerm_container_app" "api" {
         secret_name = "stripe-price-hobby"
       }
       env {
-        name        = "STRIPE_PRICE_PRO"
-        secret_name = "stripe-price-pro"
+        name        = "STRIPE_PRICE_STANDARD"
+        secret_name = "stripe-price-standard"
+      }
+      env {
+        name        = "STRIPE_PRICE_GROWTH"
+        secret_name = "stripe-price-growth"
       }
 
       # eBay OAuth.
@@ -364,6 +381,31 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "EBAY_ORDER_API_APPROVED"
         value = var.ebay_order_api_approved ? "1" : "0"
+      }
+      env {
+        name  = "EBAY_INSIGHTS_APPROVED"
+        value = var.ebay_insights_approved ? "1" : "0"
+      }
+      env {
+        name  = "EBAY_CATALOG_APPROVED"
+        value = var.ebay_catalog_approved ? "1" : "0"
+      }
+      env {
+        name  = "OBSERVATION_ENABLED"
+        value = var.observation_enabled ? "1" : "0"
+      }
+      env {
+        name  = "ADMIN_EMAILS"
+        value = var.admin_emails
+      }
+
+      # AES-256-GCM key for encrypting issued API key plaintext at rest.
+      # Generated once with `openssl rand -base64 32` and stored in Key
+      # Vault. Required in production — without it, the dashboard's
+      # "reveal key" feature returns 503 (sha256 hash auth still works).
+      env {
+        name        = "KEYS_ENCRYPTION_KEY"
+        secret_name = "keys-encryption-key"
       }
 
       # Better-Auth + GitHub/Google OAuth.
@@ -444,6 +486,10 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "GOOGLE_MODEL"
         value = var.google_model
+      }
+      env {
+        name  = "LLM_MAX_CONCURRENT"
+        value = tostring(var.llm_max_concurrent)
       }
 
       # eBay Trading Platform Notifications + per-route source toggles.

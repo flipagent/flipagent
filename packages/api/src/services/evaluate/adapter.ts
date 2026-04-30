@@ -62,23 +62,23 @@ export function toQuantListing(item: ItemSummary | ItemDetail): QuantListing {
 }
 
 /**
- * Build `MarketStats` from sold comparables (and optionally currently-
- * active listings of the same SKU). Comparables from
+ * Build `MarketStats` from a sold pool (and optionally a same-product
+ * active pool). Sold listings from
  * `/buy/marketplace_insights/v1_beta/item_sales/search` populate
  * `lastSoldDate` and `price`. Active listings from
  * `/buy/browse/v1/item_summary/search` populate the asks side.
  *
  * `details` is optional — when provided it lets us compute time-to-sell
- * per comparable from `itemCreationDate` + (`itemEndDate` ?? `lastSoldDate`).
- * Missing detail entries are fine — those comparables just contribute to
+ * per listing from `itemCreationDate` + (`itemEndDate` ?? `lastSoldDate`).
+ * Missing detail entries are fine — those listings just contribute to
  * price stats without duration.
  *
  * `active` is optional too — when provided the returned `MarketStats`
  * carries `asks` populated, which unlocks the `below_asks` signal in
  * `computeScore()` and lets `optimalListPrice` price competitively.
  */
-export function marketFromComparables(
-	comparables: ReadonlyArray<ItemSummary>,
+export function marketFromSold(
+	sold: ReadonlyArray<ItemSummary>,
 	context: { keyword?: string; marketplace?: string; windowDays?: number } = {},
 	details?: ReadonlyArray<ItemDetail>,
 	active?: ReadonlyArray<ItemSummary>,
@@ -87,12 +87,12 @@ export function marketFromComparables(
 	if (details) {
 		for (const d of details) detailsById.set(d.itemId, d);
 	}
-	const sold: PriceObservation[] = comparables.map((c) => {
-		const d = detailsById.get(c.itemId);
-		const durationDays = computeDurationDays(c, d);
+	const observations: PriceObservation[] = sold.map((s) => {
+		const d = detailsById.get(s.itemId);
+		const durationDays = computeDurationDays(s, d);
 		return {
-			priceCents: toCents(c.price?.value),
-			soldAt: c.lastSoldDate,
+			priceCents: toCents(s.price?.value),
+			soldAt: s.lastSoldDate,
 			...(durationDays !== undefined ? { durationDays } : {}),
 		};
 	});
@@ -100,7 +100,7 @@ export function marketFromComparables(
 		priceCents: toCents(a.price?.value),
 	}));
 	return summarizeMarket(
-		{ sold, asks },
+		{ sold: observations, asks },
 		{
 			keyword: context.keyword ?? "",
 			marketplace: context.marketplace ?? "EBAY_US",
@@ -113,16 +113,27 @@ export function marketFromComparables(
  * Days between listing creation and sale (or listing end).
  *   duration = end − start
  *   start    = detail.itemCreationDate
- *   end      = detail.itemEndDate ?? comparable.lastSoldDate
+ *   end      = detail.itemEndDate ?? listing.lastSoldDate
  * Returns undefined when either timestamp is missing or unparseable.
+ *
+ * Relisted-item guard: when the detail's `itemEndDate` is in the future,
+ * the seller has relisted the item under the same itemId — eBay's detail
+ * endpoint returns the CURRENT live listing's dates, not the historical
+ * sold instance's. Trusting those dates produces wildly wrong durations
+ * (we saw e.g. detail.creationDate Oct 2025 + detail.endDate May 2026
+ * for an item that actually sold Apr 22 in ~5 days). Skip duration for
+ * those listings rather than poison the distribution.
  */
-function computeDurationDays(comparable: ItemSummary, detail: ItemDetail | undefined): number | undefined {
+function computeDurationDays(listing: ItemSummary, detail: ItemDetail | undefined): number | undefined {
+	const detailEndMs = detail?.itemEndDate ? Date.parse(detail.itemEndDate) : NaN;
+	const detailIsCurrentLive = Number.isFinite(detailEndMs) && detailEndMs > Date.now();
 	// itemCreationDate / itemEndDate are on the summary too (sold_search +
-	// listings/search both populate them). Detail wins when present, but
-	// the summary fallback unlocks duration math for the common case where
-	// the caller hasn't fetched per-comparable details.
-	const startIso = detail?.itemCreationDate ?? comparable.itemCreationDate;
-	const endIso = detail?.itemEndDate ?? comparable.itemEndDate ?? comparable.lastSoldDate;
+	// listings/search both populate them). Detail wins when present AND
+	// not pointing at a relisted instance; the summary fallback unlocks
+	// duration math for the common case where the caller hasn't fetched
+	// per-listing details.
+	const startIso = (!detailIsCurrentLive && detail?.itemCreationDate) || listing.itemCreationDate;
+	const endIso = (!detailIsCurrentLive && detail?.itemEndDate) || listing.itemEndDate || listing.lastSoldDate;
 	if (!startIso || !endIso) return undefined;
 	const start = Date.parse(startIso);
 	const end = Date.parse(endIso);

@@ -1,6 +1,6 @@
 /**
- * `client.sold.*` — comparable-sales lookup. Server-side caches sold
- * comparables so repeated calls within the cache TTL hit the same upstream
+ * `client.sold.*` — sold-listing search (last 90 days). Server-side
+ * caches so repeated calls within the cache TTL hit the same upstream
  * once.
  */
 

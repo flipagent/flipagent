@@ -18,7 +18,6 @@ import {
 import { tools } from "../src/tools/index.js";
 
 const mockConfig: Config = {
-	ebayBaseUrl: "https://api.flipagent.dev",
 	flipagentBaseUrl: "https://api.flipagent.dev",
 	authToken: "fa_test",
 	mock: true,
@@ -45,8 +44,8 @@ describe("tool execute (mock mode)", () => {
 });
 
 describe("tools registry", () => {
-	it("registers all 31 tools", () => {
-		expect(tools).toHaveLength(31);
+	it("registers all 30 tools", () => {
+		expect(tools).toHaveLength(30);
 	});
 
 	it("covers eBay read/sell + flipagent evaluate/discover/ship", () => {
@@ -71,7 +70,6 @@ describe("tools registry", () => {
 				"ebay_list_payouts",
 				// flipagent value-add (Decisions / Overnight / Operations pillars)
 				"evaluate_listing",
-				"evaluate_signals",
 				"discover_deals",
 				"ship_quote",
 				"ship_providers",

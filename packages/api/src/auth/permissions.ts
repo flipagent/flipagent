@@ -41,13 +41,13 @@ function buildResponse(binding: Binding | undefined): PermissionsResponse {
 	const scopes = binding ? binding.scopes.split(" ").filter(Boolean) : [];
 
 	// Browse: REST when host has app credentials, scrape otherwise.
-	const browse: ScopeStatus = ebayConfigured ? "ok" : "scrape_fallback";
+	const browse: ScopeStatus = ebayConfigured ? "ok" : "scrape";
 
 	// Marketplace Insights: REST passthrough only when eBay has approved the
 	// tenant for the Insights program (EBAY_INSIGHTS_APPROVED=1). Without
 	// approval we always scrape. The user's stored scope list is irrelevant —
 	// Insights uses an app-level token, not user OAuth.
-	const marketplaceInsights: ScopeStatus = isInsightsApproved() ? "ok" : "scrape_fallback";
+	const marketplaceInsights: ScopeStatus = isInsightsApproved() ? "ok" : "scrape";
 
 	// User-OAuth-gated scopes: needs eBay configured + connected + the scope.
 	function userScope(suffix: string): ScopeStatus {

@@ -9,12 +9,15 @@
  * TTL 30d because eBay listings expire and seller framing shifts over
  * time. Older decisions go stale and are re-evaluated when next seen.
  *
- * Hosted-only: gated by `OBSERVATION_ENABLED`. Self-host always pays
- * the LLM cost.
+ * Always on. The cache holds *decisions* (binary same-product outcomes)
+ * — pure performance optimisation, not telemetry. The separate
+ * `OBSERVATION_ENABLED` flag gates the listing-content archive
+ * (`listing_observations` table), which IS a hosted telemetry feature.
+ * Mixing the two gates meant self-host always paid full LLM cost on
+ * repeat pairs; that's no longer the case.
  */
 
 import { and, eq, gt, sql } from "drizzle-orm";
-import { config } from "../../config.js";
 import { db } from "../../db/client.js";
 import { matchDecisions } from "../../db/schema.js";
 
@@ -26,7 +29,6 @@ export async function getCachedMatchDecision(
 	candidateId: string,
 	itemId: string,
 ): Promise<{ decision: CachedDecision; reason: string } | null> {
-	if (!config.OBSERVATION_ENABLED) return null;
 	const [row] = await db
 		.select({ decision: matchDecisions.decision, reason: matchDecisions.reason })
 		.from(matchDecisions)
@@ -49,7 +51,6 @@ export async function setCachedMatchDecision(
 	decision: CachedDecision,
 	reason: string,
 ): Promise<void> {
-	if (!config.OBSERVATION_ENABLED) return;
 	const expiresAt = new Date(Date.now() + TTL_MS);
 	try {
 		await db

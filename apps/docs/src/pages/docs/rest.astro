@@ -19,7 +19,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/buy/browse/item/v1%7C123456789%7C0" \\
   -H "Authorization: Bearer fa_free_xxx"`}</code></pre></div>
 
-				<h2>Sold comparables</h2>
+				<h2>Sold listings (last 90 days)</h2>
 				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/buy/marketplace_insights/item_sales/search?q=canon%2050mm&limit=50" \\
   -H "Authorization: Bearer fa_free_xxx"`}</code></pre></div>
 				<p>Returns <code>itemSales[]</code>: Marketplace-Insights-shape entries with <code>lastSoldDate</code>.</p>
@@ -28,15 +28,15 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<div class="code"><pre><code>{`curl -X POST "https://api.flipagent.dev/v1/evaluate" \\
   -H "Authorization: Bearer fa_free_xxx" \\
   -H "Content-Type: application/json" \\
-  -d '{"item": {...}, "opts": {"comparables": [...]}}'`}</code></pre></div>
-				<p>Returns an <code>Evaluation</code> with <code>rating: "buy" | "hold" | "skip"</code>, signals, and net margin.</p>
+  -d '{"itemId": "v1|123456789|0", "opts": {"minNetCents": 2000}}'`}</code></pre></div>
+				<p>Composite: server fetches the item detail, searches sold + active listings of the same product, runs an LLM same-product filter, and scores. Returns <code>{`{ item, soldPool, activePool, rejectedSoldPool, rejectedActivePool, market, evaluation, meta }`}</code> — evaluation carries <code>rating: "buy" | "hold" | "skip"</code>, signals, and the recommended exit; meta describes what was fetched (<code>itemSource</code>, <code>soldCount</code>, <code>soldSource</code>, <code>activeCount</code>, <code>activeSource</code>, plus kept/rejected counts after the filter).</p>
 
-				<h2>Rank deals across a search</h2>
+				<h2>Find deals matching a query</h2>
 				<div class="code"><pre><code>{`curl -X POST "https://api.flipagent.dev/v1/discover" \\
   -H "Authorization: Bearer fa_free_xxx" \\
   -H "Content-Type: application/json" \\
-  -d '{"results": {"itemSummaries": [...]}, "opts": {"minNetCents": 2000}}'`}</code></pre></div>
-				<p>Returns <code>{`{ deals: RankedDeal[] }`}</code> sorted by margin × confidence. One usage event regardless of how many items are scored. Capped at 200 items per call.</p>
+  -d '{"q": "charizard 1st edition", "limit": 50, "opts": {"minNetCents": 2000}}'`}</code></pre></div>
+				<p>Composite: server runs the active search, clusters candidates by product (<code>epid</code> → <code>gtin</code> → LLM batch grouping), then per cluster fetches sold listings, applies the LLM same-product filter, and scores. Returns <code>{`{ deals: RankedDeal[], clusters: DealCluster[], rejectedSoldPool, rejectedActivePool, meta }`}</code> — deals are filtered to positive-net and sorted by <code>recommendedExit.dollarsPerDay</code> (capital efficiency); each cluster carries its own canonical name + market stats (sold median, IQR, sales/day) so UIs can group results by SKU. One usage event per call. Capped at 200 candidates.</p>
 
 				<h2>Forwarder quote</h2>
 				<div class="code"><pre><code>{`curl -X POST "https://api.flipagent.dev/v1/ship/quote" \\
@@ -72,7 +72,8 @@ const { itemSummaries, total } = await res.json();`}</code></pre></div>
 					<tbody>
 						<tr><td>400</td><td><code>validation_failed</code></td><td>Body / query failed schema validation.</td></tr>
 						<tr><td>401</td><td><code>unauthorized</code> / <code>invalid_key</code></td><td>Missing or revoked key.</td></tr>
-						<tr><td>429</td><td><code>rate_limited</code></td><td>Tier monthly quota exhausted.</td></tr>
+						<tr><td>429</td><td><code>credits_exceeded</code></td><td>Monthly credit budget exhausted.</td></tr>
+						<tr><td>429</td><td><code>burst_rate_limited</code></td><td>Per-minute or per-hour burst cap hit.</td></tr>
 						<tr><td>502</td><td><code>upstream_failed</code></td><td>eBay returned an error or our scrape was blocked.</td></tr>
 						<tr><td>503</td><td><code>billing_not_configured</code></td><td>Stripe isn't enabled on the server. Hosted users won't see this.</td></tr>
 					</tbody>

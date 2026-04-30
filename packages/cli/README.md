@@ -27,14 +27,13 @@ env > stored config.
 # Search active listings (eBay-shape envelope)
 flipagent search "canon ef 50mm 1.8" --limit 10
 
-# Sold-comps for the last 90 days
+# Search sold listings (last 90 days)
 flipagent sold "canon ef 50mm 1.8" --limit 50
 
-# Score one listing — fetches detail, optionally pulls comps
+# Score one listing — composite (server fetches detail + sold + active)
 flipagent evaluate v1|123456789|0
-flipagent evaluate v1|123456789|0 --comps-q "canon ef 50mm 1.8"
 
-# Full pipeline: search + sold + ranked deals
+# Rank deals for a query — composite (server runs the full pipeline)
 flipagent discover "canon ef 50mm 1.8" --min-net 2000
 
 # Forwarder catalog + per-item quote
@@ -66,7 +65,7 @@ flipagent whoami
 
 flipagent search <query> [--limit N] [--filter <expr>] [--sort <key>]
 flipagent sold <query> [--limit N]
-flipagent evaluate <itemId> [--comps-q <query>]
+flipagent evaluate <itemId> [--lookback-days N] [--sold-limit N] [--min-net <cents>]
 flipagent discover <query> [--limit N] [--min-net <cents>]
 flipagent ship providers
 flipagent ship quote --item <id> --weight <g> --dest <state> [--provider <id>]
@@ -100,7 +99,7 @@ If you'd rather paste it yourself, drop this into your client's MCP config:
 
 ## Get a key
 
-[flipagent.dev/signup](https://flipagent.dev/signup) — free tier (100 calls / month, no card).
+[flipagent.dev/signup](https://flipagent.dev/signup) — free tier (500 credits one-time, no card).
 
 ## License
 

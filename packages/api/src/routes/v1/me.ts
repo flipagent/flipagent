@@ -24,7 +24,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { decryptKeyPlaintext, isKeyRevealConfigured } from "../../auth/key-cipher.js";
 import { issueKey, revokeKey, type Tier } from "../../auth/keys.js";
-import { snapshotUsage } from "../../auth/limits.js";
+import { snapshotUsage, usageToWire } from "../../auth/limits.js";
 import { computePermissionsForUser } from "../../auth/permissions.js";
 import { db } from "../../db/client.js";
 import { apiKeys, usageEvents } from "../../db/schema.js";
@@ -59,12 +59,8 @@ meRoute.get(
 			name: user.name,
 			image: user.image ?? null,
 			tier,
-			usage: {
-				used: usage.used,
-				limit: Number.isFinite(usage.limit) ? usage.limit : null,
-				remaining: Number.isFinite(usage.remaining) ? usage.remaining : null,
-				resetAt: usage.resetAt,
-			},
+			role: user.role,
+			usage: usageToWire(usage),
 		});
 	},
 );
@@ -82,12 +78,7 @@ meRoute.get(
 	async (c) => {
 		const user = c.var.user;
 		const usage = await snapshotUsage({ apiKeyId: "", userId: user.id }, user.tier as Tier);
-		return c.json({
-			used: usage.used,
-			limit: Number.isFinite(usage.limit) ? usage.limit : null,
-			remaining: Number.isFinite(usage.remaining) ? usage.remaining : null,
-			resetAt: usage.resetAt,
-		});
+		return c.json(usageToWire(usage));
 	},
 );
 
@@ -321,7 +312,7 @@ meRoute.get(
 		tags: ["Dashboard"],
 		summary: "Per-scope permission status for the signed-in user",
 		description:
-			"Tells the dashboard (and SDK consumers) what they can call right now: `ok` works, `scrape_fallback` uses the scraper because REST isn't approved/wired, `needs_oauth` means the user must connect eBay, `approval_pending` means eBay program approval pending, `unavailable` means the host has no env wired (self-host case).",
+			"Tells the dashboard (and SDK consumers) what they can call right now: `ok` works, `scrape` is served via the scrape transport (REST not approved/wired or resource is scrape-only), `needs_oauth` means the user must connect eBay, `approval_pending` means eBay program approval pending, `unavailable` means the host has no env wired (self-host case).",
 		responses: {
 			200: jsonResponse("Permission map.", PermissionsResponse),
 			401: errorResponse("Not signed in."),

@@ -36,9 +36,38 @@ export interface ScrapeSearchInput {
 	/** Pipe-joined into eBay's `LH_ItemCondition`. Same numeric enum as Browse `conditionIds`. */
 	conditionIds?: string[];
 	limit?: number;
+	/**
+	 * Pagination offset, in *items*. Translates to eBay's per-page `_pgn`
+	 * (eBay search-page renders ~60 cards per page) plus a client-side
+	 * slice within the page. Capped at the same offset+limit ≤ 10000
+	 * ceiling REST applies — eBay's web SRP technically goes further
+	 * but we don't expose that since the REST mirror can't.
+	 */
+	offset?: number;
 }
 
+/**
+ * eBay's web search results page renders ~60 cards per page. The
+ * exact number drifts (older categories, sponsored injections), but
+ * 60 is the modal page size and what `_pgn` advances by. Used here
+ * only for offset → page number math; we still slice to the caller's
+ * `limit` after parsing.
+ */
+const EBAY_SRP_PAGE_SIZE = 60;
+const SCRAPE_PAGINATION_CAP = 10000;
+
 export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSearchResponse> {
+	const offset = Math.max(0, input.offset ?? 0);
+	if (offset > SCRAPE_PAGINATION_CAP) {
+		// Match REST's behaviour: deep paging beyond 10K is not exposed.
+		// Surface as an empty page rather than 4xx — the route layer
+		// already handles the friendly framing.
+		return input.soldOnly
+			? { itemSales: [], total: 0, offset, limit: input.limit ?? 0 }
+			: { itemSummaries: [], total: 0, offset, limit: input.limit ?? 0 };
+	}
+	const ebayPage = Math.floor(offset / EBAY_SRP_PAGE_SIZE) + 1;
+	const sliceStart = offset % EBAY_SRP_PAGE_SIZE;
 	const params: EbaySearchParams = {
 		keyword: input.q,
 		soldOnly: input.soldOnly,
@@ -48,16 +77,19 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 		conditionIds: input.conditionIds,
 		pages: 1,
 	};
-	const url = buildEbayUrl(params, 1);
+	const url = buildEbayUrl(params, ebayPage);
 	const html = await fetchHtmlViaScraperApi(url);
 	const items = parseEbaySearchHtml(html, params, domFactory);
 	const total = parseResultCount(domFactory(html)) ?? items.length;
-	const result: BrowseSearchResponse = params.soldOnly ? { itemSales: items, total } : { itemSummaries: items, total };
-	if (input.limit) {
-		if (result.itemSummaries) result.itemSummaries = result.itemSummaries.slice(0, input.limit);
-		if (result.itemSales) result.itemSales = result.itemSales.slice(0, input.limit);
-	}
-	return result;
+	// Slice within the fetched page first (offset within the page),
+	// then cap at limit. When `limit` straddles the page boundary the
+	// tail is silently dropped — matches REST behaviour where requesting
+	// items past the end returns fewer than `limit`.
+	const sliced = items.slice(sliceStart, input.limit ? sliceStart + input.limit : undefined);
+	const envelope = { total, offset, limit: input.limit ?? sliced.length };
+	return params.soldOnly
+		? { itemSales: sliced, ...envelope }
+		: { itemSummaries: sliced, ...envelope };
 }
 
 export async function scrapeItemDetail(itemId: string): Promise<ItemDetail | null> {

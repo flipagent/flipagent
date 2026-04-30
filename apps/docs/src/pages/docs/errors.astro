@@ -32,7 +32,8 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td>401</td><td><code>not_connected</code></td><td>Sell-side or Order route called before <code>/v1/connect/ebay</code> bound the calling key to an eBay account.</td></tr>
 						<tr><td>403</td><td><code>forbidden</code></td><td>Authenticated, but not allowed to access this resource.</td></tr>
 						<tr><td>404</td><td><code>not_found</code></td><td>Item or path doesn't exist.</td></tr>
-						<tr><td>429</td><td><code>rate_limited</code></td><td>Tier monthly limit hit. See <a href="/docs/rate-limits/">rate limits</a>.</td></tr>
+						<tr><td>429</td><td><code>credits_exceeded</code></td><td>Monthly credit budget exhausted. Body carries <code>creditsUsed</code> / <code>creditsLimit</code> / <code>resetAt</code>. See <a href="/docs/rate-limits/">rate limits</a>.</td></tr>
+						<tr><td>429</td><td><code>burst_rate_limited</code></td><td>Per-minute or per-hour burst cap hit. Body carries <code>window</code>. Slow down or upgrade.</td></tr>
 						<tr><td>500</td><td><code>internal_error</code></td><td>Unhandled exception. We get notified; retry with exponential backoff.</td></tr>
 						<tr><td>500</td><td><code>handler_failed</code></td><td>Stripe webhook handler threw. Stripe will retry per its dunning schedule.</td></tr>
 						<tr><td>500</td><td><code>checkout_failed</code></td><td>Stripe Checkout / Customer Portal session creation failed upstream.</td></tr>

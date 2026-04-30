@@ -33,7 +33,7 @@ export function ebayDetailToBrowse(raw: EbayItemDetail): ItemDetail | null {
 	const aspects = raw.aspects ?? [];
 	const localizedAspects: LocalizedAspect[] | undefined =
 		aspects.length > 0 ? aspects.map(({ name, value }) => ({ name, value, type: "STRING" })) : undefined;
-	return {
+	const item: ItemDetail = {
 		itemId: `v1|${raw.itemId}|0`,
 		legacyItemId: raw.itemId,
 		title: raw.title,
@@ -45,6 +45,7 @@ export function ebayDetailToBrowse(raw: EbayItemDetail): ItemDetail | null {
 			raw.shippingCents != null
 				? [{ shippingCost: { value: (raw.shippingCents / 100).toFixed(2), currency: raw.currency } }]
 				: undefined,
+		buyingOptions: deriveBuyingOptions(raw),
 		bidCount: raw.bidCount ?? undefined,
 		watchCount: raw.watchCount ?? undefined,
 		itemCreationDate: raw.itemCreationDate ?? undefined,
@@ -64,12 +65,50 @@ export function ebayDetailToBrowse(raw: EbayItemDetail): ItemDetail | null {
 		categoryPath: raw.categoryPath.length > 0 ? raw.categoryPath.join("|") : undefined,
 		categoryId: raw.categoryIds.length > 0 ? raw.categoryIds[raw.categoryIds.length - 1] : undefined,
 		categoryIdPath: raw.categoryIds.length > 0 ? raw.categoryIds.join("|") : undefined,
-		additionalImages: raw.imageUrls.length > 0 ? raw.imageUrls.map((url) => ({ imageUrl: url })) : undefined,
+		// eBay Browse REST splits images into a single primary + an array
+		// of extras. Match that shape: first url → `image`, rest →
+		// `additionalImages`. Without this, the playground item hero, match
+		// thumbnails, and observations.imageUrl all read empty.
+		image: raw.imageUrls[0] ? { imageUrl: raw.imageUrls[0] } : undefined,
+		additionalImages: raw.imageUrls.length > 1 ? raw.imageUrls.slice(1).map((url) => ({ imageUrl: url })) : undefined,
 		localizedAspects,
 		brand: findAspect(aspects, "Brand"),
 		gtin: findGtin(aspects),
 		topRatedBuyingExperience: raw.topRatedBuyingExperience || undefined,
 	};
+	// Attach `returnTerms` as a runtime extension. The eBay-mirror
+	// `ItemDetail` type doesn't declare it (mirror is intentionally narrow),
+	// but the REST passthrough already carries it through at runtime via
+	// the upstream JSON cast — adding it here gives scrape the same runtime
+	// shape so `services/evaluate/returns.ts` reads both transports through
+	// one extractor without branching.
+	if (raw.returnTerms) {
+		(item as Record<string, unknown>).returnTerms = raw.returnTerms;
+	}
+	return item;
+}
+
+/**
+ * Derive `buyingOptions` from the scraped detail signals. eBay's REST
+ * surfaces this directly; from HTML we assemble it:
+ *
+ *   - listing has time-left counter            → AUCTION
+ *   - otherwise (priced page rendered)         → FIXED_PRICE
+ *   - "or Best Offer" textspan present         → also BEST_OFFER
+ *   - listing ENDED/COMPLETED                  → omit (no live options)
+ *
+ * Returned `undefined` (not empty array) when the listing is no longer
+ * live — the field is `Type.Optional` in the mirror, so omitting reads
+ * correctly downstream.
+ */
+function deriveBuyingOptions(raw: EbayItemDetail): ItemDetail["buyingOptions"] {
+	const status = raw.listingStatus?.toUpperCase();
+	if (status === "ENDED" || status === "COMPLETED") return undefined;
+	const opts: Array<"AUCTION" | "FIXED_PRICE" | "BEST_OFFER"> = [];
+	if (raw.timeLeftText) opts.push("AUCTION");
+	else opts.push("FIXED_PRICE");
+	if (raw.bestOfferEnabled) opts.push("BEST_OFFER");
+	return opts;
 }
 
 function parseItemLocation(text: string | null | undefined): ItemLocation | undefined {

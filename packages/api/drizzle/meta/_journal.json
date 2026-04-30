@@ -141,6 +141,55 @@
       "when": 1778108663891,
       "tag": "0019_drop_listing_durations",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1778195063891,
+      "tag": "0020_forwarder_inventory",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1778281463891,
+      "tag": "0021_drop_watchlists",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1778367863891,
+      "tag": "0022_rename_purchase_orders_to_bridge_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1778454263891,
+      "tag": "0023_compute_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1778540663891,
+      "tag": "0024_rename_tier_pro_business",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1778627063891,
+      "tag": "0025_admin_role_credit_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1778713463891,
+      "tag": "0026_user_credits_reset_at",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,7 @@
  * Per-listing observation recorder. Fire-and-forget hook called from
  * each `/v1/buy/browse/*` and `/v1/buy/marketplace_insights/item_sales/*` response
  * handler. Captures a snapshot of every listing the request returned,
- * tagged with the originating query so historical comparable lookups can
+ * tagged with the originating query so historical sold-listing lookups can
  * traverse forward (item history) or sideways (cohort behaviour).
  *
  * Hosted-only: gated by `config.OBSERVATION_ENABLED`. Self-host

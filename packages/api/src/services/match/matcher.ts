@@ -1,29 +1,45 @@
 /**
- * Two-pass LLM product matcher. Provider-agnostic — picks Anthropic /
- * OpenAI / Google from env via `pickProvider()`.
+ * Two-pass LLM product matcher. Self-contained — provider-agnostic via
+ * `pickProvider()`, fetches detail through the shared cached path, and
+ * memoises pair decisions in the 30-day decision cache.
  *
- *   Pass 1 — batch triage. One model call sees the candidate and the
- *   full pool's titles / conditions / prices (and thumbnail images
- *   when `useImages`). It drops any pool item that is obviously a
- *   different product.
+ *   Pass 1 — batch triage. One model call per chunk-of-25 sees the
+ *   candidate and pool items' titles / conditions / prices (and
+ *   thumbnail images when `useImages`). Lenient: drops only obviously
+ *   different products.
  *
- *   Pass 2 — deep verify. Each survivor's full ItemDetail (aspects +
- *   image set) is fetched and compared to the candidate's detail, one
- *   call per pair. The model returns a strict yes/no on "same product
- *   in the same configuration" — different reference, different
- *   finish, different colour, different condition, or missing
- *   accessories all count as `reject`.
+ *   Decision cache check. Each surviving (candidate, item) pair is
+ *   looked up in the 30-day decision cache. Hits skip both detail
+ *   fetch and verify LLM. The cache check happens BEFORE any detail
+ *   fetch so a warm cache costs zero Oxylabs scrapes.
  *
- * The two-pass shape exists for cost: pass 1 (one batched call,
- * shallow data) cuts the pool to a manageable size; pass 2 (one call
- * per survivor, rich data) does the careful work only on items that
- * passed the cheap filter.
+ *   Pass 2 — deep verify. For un-cached survivors only: fetch full
+ *   ItemDetail (brand, gtin, categoryPath, localizedAspects, full
+ *   image set) and send candidate + chunk-of-10 survivors to one LLM
+ *   call. Strict: rejects different reference / variant / condition.
+ *   Decisions are written back to the cache.
+ *
+ * Same shape used by /v1/evaluate (single seed) and /v1/discover
+ * (per-cluster). No skip-verify mode. Detail resolution is a `port`
+ * (`DetailFetcher`) — the caller supplies an adapter (typically
+ * `detailFetcherFor(apiKey)` from the listings service) so the matcher
+ * stays decoupled from eBay transport, auth, and tier-quota concerns.
  */
 
-import type { MatchedItem, MatchResponse } from "@flipagent/types";
 import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import { getCachedMatchDecision, setCachedMatchDecision } from "./decision-cache.js";
 import { type LlmContent, type LlmProvider, pickProvider } from "./llm/index.js";
+import type { MatchedItem, MatchResponse } from "./types.js";
+
+/**
+ * Resolve an `ItemSummary` to its full `ItemDetail`. Returns null when
+ * the item has no resolvable id or the upstream couldn't render. Pure
+ * port: matcher knows nothing about eBay transport, auth, caching, or
+ * tier limits — caller's adapter (`detailFetcherFor(apiKey)`) owns all
+ * of that. Cache-friendly: the standard adapter delegates to the 4h
+ * detail cache so repeat calls are free.
+ */
+export type DetailFetcher = (item: ItemSummary) => Promise<ItemDetail | null>;
 
 // Both prompts share one mental model: "would a buyer expecting the candidate
 // accept this as a substitute?" — phrased that way the rule generalises across
@@ -214,6 +230,14 @@ interface DetailLike {
 	localizedAspects?: ReadonlyArray<{ name: string; value: string }>;
 	image?: { imageUrl: string };
 	price?: { value: string; currency: string };
+	/**
+	 * Carried through so verified items can splice dates back into the
+	 * returned ItemSummary, letting downstream `enrichWithDuration`
+	 * short-circuit. Not used by `summariseDetail` (LLM doesn't need
+	 * dates for product disambiguation).
+	 */
+	itemCreationDate?: string;
+	itemEndDate?: string;
 }
 
 function summariseDetail(d: DetailLike): string {
@@ -290,16 +314,11 @@ const VERIFY_CHUNK = 10;
 
 /* ---------------------------------- entry --------------------------------- */
 
-export interface LlmMatchDeps {
-	/** Resolves an ItemSummary's full detail. Caller controls caching. */
-	getDetail: (item: ItemSummary) => Promise<ItemDetail | null>;
-}
-
 export async function matchPoolWithLlm(
 	candidate: ItemSummary,
 	pool: ReadonlyArray<ItemSummary>,
 	options: { useImages?: boolean },
-	deps: LlmMatchDeps,
+	fetchDetail: DetailFetcher,
 ): Promise<MatchResponse> {
 	const useImages = options.useImages ?? true;
 
@@ -309,7 +328,11 @@ export async function matchPoolWithLlm(
 
 	const provider = pickProvider();
 
-	// Pass 1 — triage
+	// ─── Pass 1: triage ──────────────────────────────────────────────────
+	// Lenient text-only filter that drops obviously different products
+	// using only title + price hints. Cheap (no detail fetch). Chunk
+	// failures pass through to verify (declared behaviour: borderline
+	// cases get the rich detail in pass 2).
 	const triaged = await triage(provider, candidate, pool, useImages);
 	const survivors: { idx: number; item: ItemSummary }[] = [];
 	const rejected: MatchedItem[] = [];
@@ -317,65 +340,94 @@ export async function matchPoolWithLlm(
 		const item = pool[i];
 		if (!item) continue;
 		const t = triaged.get(i);
-		// No triage signal (chunk error after retries, or LLM lost the
-		// index in its response) → send to verify. The system prompt
-		// declares triage lenient: "borderline cases pass through; the
-		// next stage has full details and decides." Treating system
-		// failures as silent rejects violated that intent — sold-pool
-		// chunks that hit a transient LLM blip would all surface as
-		// "Dropped during triage" with no real signal.
-		if (!t) {
+		if (!t || t.decision !== "drop") {
 			survivors.push({ idx: i, item });
-		} else if (t.decision === "drop") {
+		} else {
 			rejected.push({
 				item,
 				bucket: "reject",
 				reason: t.reason || "Triage drop (no reason given).",
 			});
-		} else {
-			survivors.push({ idx: i, item });
 		}
 	}
 
-	// Pass 2 — batched deep verify. One call per chunk of survivors keeps
-	// the system prompt + candidate detail amortised across N pairs and
-	// removes the per-item fanout failure mode. Detail resolution still
-	// fans out (cache hits are free, scrapes are I/O bound).
-	const candidateDetail = (await deps.getDetail(candidate)) ?? toDetailLike(candidate);
-	const survivorsWithDetail = await Promise.all(
-		survivors.map(async ({ item }) => ({
-			item,
-			detail: (await deps.getDetail(item)) ?? toDetailLike(item),
-		})),
-	);
+	if (survivors.length === 0) {
+		return { match: [], reject: rejected, totals: { match: 0, reject: rejected.length } };
+	}
 
-	// Decision-cache short-circuit: each (candidate, item) pair gets a
-	// 30-day cached decision. Hits return from DB without the LLM call;
-	// misses go to the verify chunks below. Hosted-only feature — caches
-	// only populate when OBSERVATION_ENABLED=1, otherwise the helper
-	// returns null and every pair runs verify.
-	const cachedResults: { item: ItemSummary; same: boolean; reason: string }[] = [];
-	const survivorsToVerify: typeof survivorsWithDetail = [];
-	await Promise.all(
-		survivorsWithDetail.map(async (entry) => {
-			const cached = await getCachedMatchDecision(candidate.itemId, entry.item.itemId).catch(() => null);
-			if (cached) {
-				cachedResults.push({
-					item: entry.item,
-					same: cached.decision === "match",
-					reason: cached.reason,
-				});
-			} else {
-				survivorsToVerify.push(entry);
-			}
+	// ─── Detail enrichment ───────────────────────────────────────────────
+	// Fetch detail for ALL triage survivors and splice
+	// `itemCreationDate` / `itemEndDate` back onto the summary. This step
+	// runs unconditionally (regardless of the (candidate, item) match-
+	// decision cache below) because:
+	//
+	//   1. The match itself is fundamentally a detail-vs-detail
+	//      comparison — title triage is a coarse pre-filter, not the
+	//      decision. Items that survive triage MUST have detail before
+	//      we trust them as same-product candidates.
+	//   2. Hazard / duration math downstream (`computeDurationDays` in
+	//      services/evaluate/adapter) needs creation + end dates.
+	//      Sold-search cards carry `lastSoldDate` only; creation date
+	//      lives on the detail page's SEMANTIC_DATA. Without this fetch,
+	//      `meanDaysToSell` permanently nulls for warm caches where pass
+	//      2 used to do the work as a side effect.
+	//
+	// `fetchDetail` is wired through 4h `withCache` so warm runs are
+	// near-instant. Cold runs match the cost we'd have paid when pass 2
+	// fetched detail for every uncached survivor.
+	const candidateDetail = (await fetchDetail(candidate)) ?? toDetailLike(candidate);
+	const survivorsEnriched = await Promise.all(
+		survivors.map(async (entry) => {
+			const detail = (await fetchDetail(entry.item)) ?? toDetailLike(entry.item);
+			return {
+				idx: entry.idx,
+				item: spliceDateFields(entry.item, detail),
+				detail,
+			};
 		}),
 	);
 
-	// Verify chunks run in parallel. Each chunk's LLM call is independent,
-	// so sequential `await` was strict latency loss — N survivors → ⌈N/10⌉
-	// calls, each ~5-15s wall time. Promise.all collapses that to one
-	// chunk's worth of latency. Chunk-level failures are isolated by the
-	// per-chunk try/catch so a network blip doesn't lose every survivor.
+	// ─── Decision cache lookup ───────────────────────────────────────────
+	// Saves the *LLM verify* cost on warm pairs (the expensive part).
+	// Detail is already fetched + spliced above, so cached items still
+	// carry duration data downstream — the cache miss/hit only changes
+	// whether we re-run the verify LLM, not whether we have detail.
+	const cachedMatched: MatchedItem[] = [];
+	const cachedRejected: MatchedItem[] = [];
+	const survivorsToVerify: typeof survivorsEnriched = [];
+	await Promise.all(
+		survivorsEnriched.map(async (entry) => {
+			const cached = await getCachedMatchDecision(candidate.itemId, entry.item.itemId).catch(() => null);
+			if (!cached) {
+				survivorsToVerify.push(entry);
+				return;
+			}
+			const m: MatchedItem = {
+				item: entry.item,
+				bucket: cached.decision === "match" ? "match" : "reject",
+				reason: cached.reason || "Cached decision.",
+			};
+			(cached.decision === "match" ? cachedMatched : cachedRejected).push(m);
+		}),
+	);
+
+	if (survivorsToVerify.length === 0) {
+		// Every survivor decided by triage + cache. Detail still fetched +
+		// spliced, so `match[]` items carry creation / end dates for the
+		// duration math.
+		return {
+			match: cachedMatched,
+			reject: [...rejected, ...cachedRejected],
+			totals: { match: cachedMatched.length, reject: rejected.length + cachedRejected.length },
+		};
+	}
+
+	// ─── Pass 2: deep verify LLM ─────────────────────────────────────────
+	// Reuses the already-fetched details — no double round-trip. Verify
+	// chunks run in parallel. Each chunk's LLM call is independent, so
+	// sequential `await` was strict latency loss — N survivors → ⌈N/10⌉
+	// calls, each ~5-15s wall time. Chunk-level failures are isolated
+	// per-chunk so a network blip doesn't lose every survivor.
 	const verifyChunks: (typeof survivorsToVerify)[] = [];
 	for (let off = 0; off < survivorsToVerify.length; off += VERIFY_CHUNK) {
 		verifyChunks.push(survivorsToVerify.slice(off, off + VERIFY_CHUNK));
@@ -406,23 +458,24 @@ export async function matchPoolWithLlm(
 			}
 		}),
 	);
-	const verifyResults = [...cachedResults, ...chunkResults.flat()];
-
-	const match: MatchedItem[] = [];
-	for (const r of verifyResults) {
+	const verifyMatched: MatchedItem[] = [];
+	const verifyRejected: MatchedItem[] = [];
+	for (const r of chunkResults.flat()) {
 		const labeled: MatchedItem = {
-			item: r.item,
+			item: r.item, // dates already spliced via survivorsEnriched
 			bucket: r.same ? "match" : "reject",
 			reason: r.reason,
 		};
-		if (r.same) match.push(labeled);
-		else rejected.push(labeled);
+		(r.same ? verifyMatched : verifyRejected).push(labeled);
 	}
 
 	return {
-		match,
-		reject: rejected,
-		totals: { match: match.length, reject: rejected.length },
+		match: [...cachedMatched, ...verifyMatched],
+		reject: [...rejected, ...cachedRejected, ...verifyRejected],
+		totals: {
+			match: cachedMatched.length + verifyMatched.length,
+			reject: rejected.length + cachedRejected.length + verifyRejected.length,
+		},
 	};
 }
 
@@ -435,19 +488,92 @@ function toDetailLike(item: ItemSummary): DetailLike {
 	};
 }
 
+/**
+ * Splice `itemCreationDate` / `itemEndDate` from a fetched detail back
+ * into the summary, ONLY if the summary lacked them. Lets downstream
+ * `enrichWithDuration` short-circuit on items the verify pass already
+ * fetched detail for, eliminating a round-trip through the 4h detail
+ * cache. Other detail fields (brand / gtin / aspects) stay in the
+ * detail cache — callers who need them fetch on demand.
+ */
+function spliceDateFields(item: ItemSummary, detail: DetailLike): ItemSummary {
+	if (!detail.itemCreationDate && !detail.itemEndDate) return item;
+	if (item.itemCreationDate && item.itemEndDate) return item;
+	return {
+		...item,
+		itemCreationDate: item.itemCreationDate ?? detail.itemCreationDate,
+		itemEndDate: item.itemEndDate ?? detail.itemEndDate,
+	};
+}
+
 /* --------------------------- JSON parse helpers --------------------------- */
 
 /**
- * Models sometimes wrap JSON in ```json fences or trailing text. Strip
- * the first balanced array/object and parse — defensive but tolerant.
+ * Tolerant JSON-array extractor. Models add markdown fences, prose
+ * preambles, and — most painfully — get cut off mid-stream when the
+ * `maxTokens` budget runs out, leaving an unclosed array. We recover
+ * what we can:
+ *
+ *   1. Strip ```json / ``` fences if present.
+ *   2. Try a clean parse on the first balanced `[...]` bracket.
+ *   3. If that fails (truncation: trailing comma, half-written object,
+ *      missing `]`), walk the text and extract every COMPLETE top-level
+ *      `{...}` object via brace-depth tracking. Skip the partial last
+ *      one. Returns those parsed objects.
+ *
+ * This means a triage / verify call that runs out of tokens mid-output
+ * still surfaces the entries the model managed to commit, instead of
+ * returning empty and forcing a retry that often hits the same cap.
  */
+export { parseJsonArray as __parseJsonArrayForTest };
 function parseJsonArray<T>(text: string): T[] {
-	const m = text.match(/\[[\s\S]*\]/);
-	if (!m) return [];
-	try {
-		const v = JSON.parse(m[0]);
-		return Array.isArray(v) ? (v as T[]) : [];
-	} catch {
-		return [];
+	let body = text.trim();
+	const fence = body.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+	if (fence) body = fence[1] ?? body;
+
+	const arrMatch = body.match(/\[[\s\S]*\]/);
+	if (arrMatch) {
+		try {
+			const v = JSON.parse(arrMatch[0]);
+			if (Array.isArray(v)) return v as T[];
+		} catch {
+			// Fall through to object-by-object recovery below.
+		}
 	}
+
+	const start = body.indexOf("[");
+	if (start === -1) return [];
+	const out: T[] = [];
+	let depth = 0;
+	let inString = false;
+	let escape = false;
+	let objStart = -1;
+	for (let i = start + 1; i < body.length; i++) {
+		const ch = body[i];
+		if (inString) {
+			if (escape) escape = false;
+			else if (ch === "\\") escape = true;
+			else if (ch === '"') inString = false;
+			continue;
+		}
+		if (ch === '"') {
+			inString = true;
+			continue;
+		}
+		if (ch === "{") {
+			if (depth === 0) objStart = i;
+			depth++;
+		} else if (ch === "}") {
+			depth--;
+			if (depth === 0 && objStart !== -1) {
+				try {
+					out.push(JSON.parse(body.slice(objStart, i + 1)) as T);
+				} catch {
+					// Skip malformed object, keep going.
+				}
+				objStart = -1;
+			}
+		}
+	}
+	return out;
 }

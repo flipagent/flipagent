@@ -18,6 +18,10 @@
 			"types": "./dist/ebay/buy.d.ts",
 			"import": "./dist/ebay/buy.js"
 		},
+		"./ebay/commerce": {
+			"types": "./dist/ebay/commerce.d.ts",
+			"import": "./dist/ebay/commerce.js"
+		},
 		"./ebay/sell": {
 			"types": "./dist/ebay/sell.d.ts",
 			"import": "./dist/ebay/sell.js"

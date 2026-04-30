@@ -274,8 +274,8 @@
 	color: #2f8f3a;
 	border-color: rgba(74, 222, 128, 0.4);
 }
-.dash-tier-pill[data-tier="pro"],
-.dash-tier-pill[data-tier="business"] {
+.dash-tier-pill[data-tier="standard"],
+.dash-tier-pill[data-tier="growth"] {
 	background: var(--brand-soft);
 	color: var(--brand);
 }
@@ -723,6 +723,11 @@
 	background: var(--brand);
 	transition: width 0.3s ease;
 }
+/* Threshold modifiers for the credit usage bar — match the 80%/95%
+   levels snapshotUsage will surface in 429 + (planned) email alerts. */
+.dash-bar-fill--ok { background: var(--brand); }
+.dash-bar-fill--warn { background: #d97706; }
+.dash-bar-fill--danger { background: #dc2626; }
 
 .dash-meta {
 	margin-top: 14px;

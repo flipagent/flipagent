@@ -15,7 +15,7 @@
  * Chrome). Akamai sees a normal session.
  */
 
-import type { BridgeJob, BridgeResultRequest, PurchaseOrderStatus } from "@flipagent/types";
+import type { BridgeJobStatus, BridgePollJob, BridgeResultRequest } from "@flipagent/types";
 import { runEbayQuery } from "./ebay-query.js";
 import {
 	apiCall,
@@ -33,14 +33,10 @@ const POLL_ALARM = "flipagent-poll";
 const POLL_PERIOD_MIN = 0.5; // 30 s — MV3 alarms minimum is 30 s in production
 const POLL_TIMEOUT_MS = 25_000;
 
-/* --------------------------- alarm + side panel --------------------------- */
+/* ------------------------------- alarm setup ------------------------------- */
 
 chrome.runtime.onInstalled.addListener(() => {
 	chrome.alarms.create(POLL_ALARM, { periodInMinutes: POLL_PERIOD_MIN });
-	// Toolbar icon click → open the side panel (Chrome 114+).
-	chrome.sidePanel
-		.setPanelBehavior({ openPanelOnActionClick: true })
-		.catch((err) => console.warn("[flipagent] sidePanel.setPanelBehavior failed:", err));
 });
 chrome.runtime.onStartup.addListener(() => {
 	chrome.alarms.create(POLL_ALARM, { periodInMinutes: POLL_PERIOD_MIN });
@@ -49,14 +45,14 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 	if (alarm.name === POLL_ALARM) void tick().catch((err) => console.error("[flipagent] tick error:", err));
 });
 
-/** Broadcast an activity event to the side panel (and any other extension UI). */
+/** Broadcast an activity event to the popup (and any other extension UI). */
 function emit(kind: "info" | "success" | "error", message: string, detail?: string): void {
 	void chrome.runtime.sendMessage({ type: "flipagent:event", kind, message, detail }).catch(() => {
-		// Side panel may be closed — drop silently.
+		// Popup may be closed — drop silently.
 	});
 }
 
-// Messages from popup / sidepanel / content script.
+// Messages from popup / content script.
 chrome.runtime.onMessage.addListener((msg, _sender, send) => {
 	if (msg?.type === "flipagent:poll-now") {
 		void tick()
@@ -108,8 +104,8 @@ async function onCancelAndClose(): Promise<{ ok: boolean; error?: string }> {
 			}
 		}
 		// 3. clear local snapshot. (Background also clears on terminal
-		//    `flipagent:order-progress`; this just makes the side panel
-		//    react instantly without round-tripping the API.)
+		//    `flipagent:order-progress`; this just makes the popup react
+		//    instantly without round-tripping the API.)
 		await chrome.storage.local.remove("flipagent_in_flight");
 		emit("info", "Order cancelled & tab closed");
 		return { ok: true };
@@ -180,7 +176,7 @@ async function tick(): Promise<void> {
 	// don't get the user's SameSite-protected eBay cookies, which made
 	// every probe falsely report "not logged in".
 
-	let job: BridgeJob | null = null;
+	let job: BridgePollJob | null = null;
 	try {
 		job = await withTimeout(pollForJob(cfg), POLL_TIMEOUT_MS);
 	} catch (err) {
@@ -239,7 +235,7 @@ async function tick(): Promise<void> {
 		const failureReason = `dispatcher_failed: ${(err as Error).message ?? String(err)}`;
 		await chrome.storage.local.remove("flipagent_in_flight").catch(() => {});
 		emit("error", "Dispatcher failed", failureReason);
-		await reportResult(cfg, { jobId: job.jobId, outcome: "failed" as PurchaseOrderStatus, failureReason }).catch(
+		await reportResult(cfg, { jobId: job.jobId, outcome: "failed" as BridgeJobStatus, failureReason }).catch(
 			() => {},
 		);
 	}
@@ -261,7 +257,7 @@ void saveConfig; // suppress unused-import noise; saveConfig is used elsewhere i
  * Wait for the content script's response, then post it as the bridge
  * result so the API's sync wait can return inline.
  */
-async function runEbayQueryTask(cfg: ExtensionConfig, job: BridgeJob): Promise<void> {
+async function runEbayQueryTask(cfg: ExtensionConfig, job: BridgePollJob): Promise<void> {
 	try {
 		const meta = (job.args.metadata ?? {}) as Record<string, unknown>;
 		const result = await runEbayQuery(meta);
@@ -279,7 +275,7 @@ async function runEbayQueryTask(cfg: ExtensionConfig, job: BridgeJob): Promise<v
 	}
 }
 
-async function runBrowserOp(cfg: ExtensionConfig, job: BridgeJob): Promise<void> {
+async function runBrowserOp(cfg: ExtensionConfig, job: BridgePollJob): Promise<void> {
 	try {
 		const meta = (job.args.metadata ?? {}) as Record<string, unknown>;
 		const tabPattern = typeof meta.tabUrlPattern === "string" ? meta.tabUrlPattern : null;
@@ -337,7 +333,7 @@ async function sendToTabWithInjectFallback(tabId: number, msg: unknown): Promise
 	}
 }
 
-async function dispatchJob(cfg: ExtensionConfig, job: BridgeJob): Promise<void> {
+async function dispatchJob(cfg: ExtensionConfig, job: BridgePollJob): Promise<void> {
 	const url = itemUrlFor(job.args.marketplace, job.args.itemId);
 	if (!url) {
 		await chrome.storage.local.remove("flipagent_in_flight").catch(() => {});

@@ -85,6 +85,23 @@
 	color: var(--text-2);
 }
 
+.feat-meta-soon {
+	display: inline-flex;
+	align-items: center;
+	height: 18px;
+	padding: 0 7px;
+	border: 1px solid var(--brand);
+	border-radius: 9px;
+	color: var(--brand);
+	font-size: 9.5px;
+	letter-spacing: 0.14em;
+}
+
+.main-feature--soon .feat-viz {
+	opacity: 0.55;
+	filter: grayscale(0.4);
+}
+
 .feat-lede {
 	font-size: 22px;
 	line-height: 1.45;

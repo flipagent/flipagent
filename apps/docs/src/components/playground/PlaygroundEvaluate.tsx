@@ -6,7 +6,7 @@
  * Recent runs and Quick starts live below the card.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	ComposeCard,
 	ComposeFilters,
@@ -19,13 +19,18 @@ import { FilterPill, type SelectOption } from "../compose/FilterPill";
 import { DealFilters } from "./DealFilters";
 import { EvaluateResult } from "./EvaluateResult";
 import {
+	cancelComputeJob,
 	EVALUATE_STEPS,
+	fetchJobStatus,
+	friendlyErrorMessage,
 	initialSteps,
 	parseItemId,
+	reopenEvaluate,
 	runEvaluate,
 	runEvaluateMock,
 	type EvaluateOutcome,
 } from "./pipelines";
+import { useResumeSweep } from "./useResumeSweep";
 import { QuickStarts, type QuickStart } from "./QuickStarts";
 import { useRecentRuns, type RecentRun } from "./recent";
 import { RecentRuns } from "./RecentRuns";
@@ -38,11 +43,6 @@ interface EvaluateQuery {
 	minProfit: number;
 	recoveryDays: number;
 }
-
-const QUICKSTART_EXAMPLES: ReadonlyArray<{ label: string; itemId: string }> = [
-	{ label: "Gucci YA1264153 watch", itemId: "406338886641" },
-	{ label: "Travis Scott AJ1 Mocha (sz 11)", itemId: "358471670268" },
-];
 
 // eBay's Marketplace Insights / sold-listings page caps at ~90 days.
 // Going further returns stale or empty data, so we don't expose it.
@@ -59,10 +59,6 @@ const SAMPLE_OPTIONS: ReadonlyArray<SelectOption<string>> = [
 	{ value: "200", label: "200 sales" },
 ];
 
-// Min profit / Sell within / Shipping option arrays + the More-panel
-// component live in ./DealFilters so Discover renders the exact same
-// controls + defaults — single source of truth.
-
 const IconClock = (
 	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
 		<circle cx="8" cy="8" r="6" />
@@ -75,25 +71,15 @@ const IconStack = (
 		<path d="M3 8l5 2 5-2M3 11l5 2 5-2" />
 	</svg>
 );
-const IconDollar = (
-	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-		<path d="M11 5.5C11 4 9.5 3 8 3S5 4 5 5.5 6.5 7 8 7s3 1 3 2.5S9.5 12 8 12s-3-1-3-2.5" />
-		<path d="M8 2v12" />
-	</svg>
-);
-const IconHourglass = (
-	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-		<path d="M5 2h6M5 14h6" />
-		<path d="M5 2c0 4 6 4 6 8s-6 4-6 8" />
-		<path d="M11 2c0 4-6 4-6 8s6 4 6 8" />
-	</svg>
-);
-const IconShip = (
-	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-		<path d="M2 6h12l-2 5H4L2 6z" />
-		<path d="M5 6V3h6v3" />
-	</svg>
-);
+
+const QUICKSTART_EXAMPLES: ReadonlyArray<{ label: string; itemId: string }> = [
+	{ label: "Gucci YA1264153 watch", itemId: "406338886641" },
+	{ label: "Travis Scott AJ1 Mocha (sz 11)", itemId: "358471670268" },
+];
+
+// Min profit / Sell within / Shipping option arrays + the More-panel
+// component live in ./DealFilters so Discover renders the exact same
+// controls + defaults — single source of truth.
 
 export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate">({
 	tabsProps,
@@ -122,13 +108,36 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 	const [shippingDollars, setShippingDollars] = useState("10");
 	const [steps, setSteps] = useState<Step[]>(initialSteps(EVALUATE_STEPS));
 	const [pending, setPending] = useState(false);
-	const [outcome, setOutcome] = useState<EvaluateOutcome | null>(null);
-	// Intermediate state — fills in as each step completes so the UI can
-	// render whatever's available with skeletons for the rest.
-	const [partial, setPartial] = useState<Partial<EvaluateOutcome>>({});
+	// Partial state — populated incrementally as detail / sold / active
+	// step results land via the SSE stream so the result panel hydrates
+	// in pieces (item hero first, then market summary, then evaluation)
+	// instead of staying blank until the whole pipeline finishes.
+	const [outcome, setOutcome] = useState<Partial<EvaluateOutcome>>({});
 	const [err, setErr] = useState<string | null>(null);
 	const [hasRun, setHasRun] = useState(false);
 	const recent = useRecentRuns<EvaluateQuery>("evaluate");
+	// Active job + abort controller. Track in refs (not state) since the
+	// values are only consumed by the cancel handler / unmount cleanup —
+	// no re-render needed when they change.
+	const jobIdRef = useRef<string | null>(null);
+	const abortRef = useRef<AbortController | null>(null);
+
+	// Drop the SSE connection when the panel unmounts. The server-side
+	// job keeps running regardless — that's the whole point of the
+	// queue model — so the user can come back via Recent and resubscribe.
+	useEffect(() => {
+		return () => {
+			abortRef.current?.abort();
+		};
+	}, []);
+
+	useResumeSweep("evaluate", recent);
+
+	function cancel() {
+		const id = jobIdRef.current;
+		if (id) void cancelComputeJob("evaluate", id);
+		abortRef.current?.abort();
+	}
 
 	useEffect(() => {
 		if (seed && seed !== input) {
@@ -149,9 +158,19 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 			);
 			return;
 		}
+		// Logged-out + custom listing → redirect to sign-in. The mock
+		// fixture is fixed regardless of itemId (GENERIC_FALLBACK), so
+		// running it on arbitrary input would show fake numbers tied to a
+		// listing the visitor didn't actually pick. The QUICKSTART itemIds
+		// keep mock-running so the demo still works one click in.
+		const isPresetItem = QUICKSTART_EXAMPLES.some((q) => q.itemId === itemId);
+		if (mockMode && !isPresetItem) {
+			const ret = window.location.pathname + window.location.search;
+			window.location.href = `/signup/?return=${encodeURIComponent(ret)}`;
+			return;
+		}
 		setErr(null);
-		setOutcome(null);
-		setPartial({});
+		setOutcome({});
 		setSteps(initialSteps(EVALUATE_STEPS));
 		setHasRun(true);
 		setPending(true);
@@ -161,65 +180,219 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 		const rd = override?.recoveryDays ?? Number.parseInt(recoveryDays, 10);
 		const shipDollars = Number.parseFloat(shippingDollars);
 		const shipCents = Number.isFinite(shipDollars) && shipDollars >= 0 ? Math.round(shipDollars * 100) : undefined;
+		const recentBase = {
+			id: `${itemId}|${lb}|${sl}|${mp}|${rd}`,
+			mode: "evaluate" as const,
+			query: {
+				input: rawInput.trim(),
+				lookbackDays: lb,
+				sampleLimit: sl,
+				minProfit: mp,
+				recoveryDays: rd,
+			},
+		};
+		// Drop an in-progress placeholder immediately so the user sees the
+		// run in the Recent strip with a spinner. The id is deterministic,
+		// so the eventual success/failure entry overwrites this in place.
+		// `jobId` is filled in via `onJobCreated` once the server returns
+		// its row id — until then the placeholder has no jobId.
+		recent.add({ ...recentBase, label: itemId, timestamp: Date.now(), status: "in_progress" });
+		// Fresh abort controller per run so a stale cancel from a prior
+		// attempt doesn't kill this one.
+		jobIdRef.current = null;
+		abortRef.current?.abort();
+		const controller = new AbortController();
+		abortRef.current = controller;
+		// Best-known label for the Recent row. Starts as the raw item id;
+		// upgrades to the listing title the moment the detail step lands
+		// (mid-run, via onPartial). Final status writes pick this up so a
+		// failure halfway through still shows "Gucci YA1264153 watch"
+		// instead of "v1|406338886641|0".
+		let label = itemId;
 		try {
 			const runner = mockMode ? runEvaluateMock : runEvaluate;
 			const result = await runner(
 				{
 					itemId,
 					lookbackDays: lb,
-					sampleLimit: sl,
-					minNetCents: mp > 0 ? mp * 100 : undefined, // 0 from legacy "any" preset → server default
+					soldLimit: sl,
+					minNetCents: mp > 0 ? mp * 100 : undefined,
 					outboundShippingCents: shipCents,
 					maxDaysToSell: rd > 0 ? rd : undefined,
 				},
-				(key, p) => {
-					setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, ...p } : s)));
-					if (p.status === "ok" && p.result !== undefined) {
-						const r = p.result as Record<string, unknown>;
-						setPartial((prev) => {
-							if (key === "detail") return { ...prev, detail: p.result as EvaluateOutcome["detail"] };
-							if (key === "sold")
-								return {
-									...prev,
-									soldPool: (r.itemSales ?? r.itemSummaries ?? []) as EvaluateOutcome["soldPool"],
-								};
-							if (key === "active")
-								return { ...prev, activePool: (r.itemSummaries ?? []) as EvaluateOutcome["activePool"] };
-							if (key === "match") return { ...prev, buckets: p.result as EvaluateOutcome["buckets"] };
-							if (key === "marketSummary") return { ...prev, marketSummary: p.result as EvaluateOutcome["marketSummary"] };
-							if (key === "evaluate") return { ...prev, evaluation: p.result as EvaluateOutcome["evaluation"] };
-							return prev;
-						});
-					}
-				},
-			);
-			if (result) {
-				setOutcome(result);
-				const summary = result.evaluation.rating
-					? `${result.evaluation.rating.toUpperCase()}${
-							result.evaluation.winProbability != null
-								? ` · ${Math.round(result.evaluation.winProbability * 100)}%`
-								: ""
-						}`
-					: undefined;
-				recent.add({
-					id: `${itemId}|${lb}|${sl}|${mp}|${rd}`,
-					mode: "evaluate",
-					label: result.detail.title || itemId,
-					query: {
-						input: rawInput.trim(),
-						lookbackDays: lb,
-						sampleLimit: sl,
-						minProfit: mp,
-						recoveryDays: rd,
+				{
+					onJobCreated: (id) => {
+						jobIdRef.current = id;
+						// Persist jobId on the in-progress placeholder so a
+						// reload-then-click can resume via /jobs/{id}/stream.
+						recent.update(recentBase.id, { jobId: id });
 					},
-					timestamp: Date.now(),
-					summary,
-				});
+					onStep: (key, p) =>
+						setSteps((prev) => {
+							const idx = prev.findIndex((s) => s.key === key);
+							if (idx >= 0) return prev.map((s, i) => (i === idx ? { ...s, ...p } : s));
+							return [...prev, { key, label: p.label ?? key, status: p.status ?? "pending", ...p }];
+						}),
+					onPartial: (patch) => {
+						setOutcome((prev) => ({ ...prev, ...patch }));
+						const title = patch.item?.title?.trim();
+						if (title && title !== label) {
+							label = title;
+							recent.update(recentBase.id, { label });
+						}
+					},
+				},
+				controller.signal,
+			);
+			if (result.kind === "success") {
+				setOutcome(result.value);
+				const title = result.value.item.title?.trim();
+				if (title) label = title;
+			} else if (result.kind === "failed") {
+				// Stream-level failure — surface a banner and flip every
+				// still-running step row to error in one place. Doing this
+				// here (not inside consumeStream) keeps step state and
+				// top-level error in sync; otherwise "Search market"
+				// stays spinning while only "Evaluate" shows red.
+				const friendly = friendlyErrorMessage(result.message, result.code);
+				setErr(friendly);
+				setSteps((prev) =>
+					prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: friendly } : s)),
+				);
+			} else if (result.kind === "cancelled") {
+				// User cancelled — flip every still-running step to skipped
+				// so spinners stop. Without this, the trace keeps animating
+				// even though pending is false and the worker is gone.
+				setSteps((prev) =>
+					prev.map((s) => (s.status === "running" ? { ...s, status: "skipped" } : s)),
+				);
 			}
+			const finalStatus =
+				result.kind === "success" ? "success" : result.kind === "cancelled" ? "cancelled" : "failure";
+			recent.add({
+				...recentBase,
+				label,
+				timestamp: Date.now(),
+				status: finalStatus,
+				jobId: jobIdRef.current ?? undefined,
+			});
 		} catch (err) {
-			// Anything an inner step couldn't handle (or a bug). Surface to the
-			// user instead of leaving the panel pinned on "Running".
+			// Last-resort catch — runner now returns a discriminated outcome
+			// instead of throwing for stream errors, but a bug above (e.g.
+			// `createEvaluateJob` rejecting) could still land here.
+			const message = err instanceof Error ? err.message : String(err);
+			setErr(`Something went wrong: ${message}`);
+			setSteps((prev) =>
+				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: message } : s)),
+			);
+			recent.add({
+				...recentBase,
+				label,
+				timestamp: Date.now(),
+				status: "failure",
+				jobId: jobIdRef.current ?? undefined,
+			});
+		} finally {
+			setPending(false);
+		}
+	}
+
+	/**
+	 * Click handler for a Recent row. Replays the saved query into the
+	 * form (so re-running with the same params is one click on Run) and
+	 * reopens the saved job — `/jobs/{id}/stream` covers both flavours:
+	 *  - in_progress  → live resume (existing trace + new events)
+	 *  - completed    → replay the saved trace + show the saved result
+	 *  - failed       → replay + surface the error
+	 *  - cancelled    → replay + show the partial trace
+	 *
+	 * Legacy entries (created before the queue refactor) have no
+	 * `jobId`; for those we fall back to a fresh run with the saved
+	 * params, matching the pre-queue UX.
+	 */
+	function reopen(rec: RecentRun<EvaluateQuery>) {
+		setInput(rec.query.input);
+		setLookbackDays(String(rec.query.lookbackDays ?? 90));
+		setSampleLimit(String(rec.query.sampleLimit ?? 50));
+		setMinProfit(String(rec.query.minProfit ?? 0));
+		setRecoveryDays(String(rec.query.recoveryDays ?? 0));
+
+		if (!rec.jobId) {
+			void run(rec.query.input, {
+				lookbackDays: rec.query.lookbackDays ?? 90,
+				sampleLimit: rec.query.sampleLimit ?? 50,
+				minProfit: rec.query.minProfit ?? 0,
+				recoveryDays: rec.query.recoveryDays ?? 0,
+			});
+			return;
+		}
+
+		void reopenSavedJob(rec);
+	}
+
+	async function reopenSavedJob(rec: RecentRun<EvaluateQuery>) {
+		const id = rec.jobId;
+		if (!id) return;
+		// Pre-flight — confirm the job row still exists. If the api key
+		// rotated or the row was reaped, surface that without flipping
+		// Recent's saved status (a successful run from the past should
+		// stay marked successful even if the data is gone).
+		const exists = await fetchJobStatus("evaluate", id);
+		if (!exists) {
+			setErr("This run is no longer available — hit Run to re-execute with the same query.");
+			setHasRun(false);
+			return;
+		}
+		setErr(null);
+		setOutcome({});
+		setSteps(initialSteps(EVALUATE_STEPS));
+		setHasRun(true);
+		setPending(true);
+		jobIdRef.current = id;
+		abortRef.current?.abort();
+		const controller = new AbortController();
+		abortRef.current = controller;
+		try {
+			const result = await reopenEvaluate(
+				id,
+				{
+					onStep: (key, p) =>
+						setSteps((prev) => {
+							const idx = prev.findIndex((s) => s.key === key);
+							if (idx >= 0) return prev.map((s, i) => (i === idx ? { ...s, ...p } : s));
+							return [...prev, { key, label: p.label ?? key, status: p.status ?? "pending", ...p }];
+						}),
+					onPartial: (patch) => {
+						setOutcome((prev) => ({ ...prev, ...patch }));
+						// Upgrade the Recent label to the listing title once the
+						// detail step replays — covers reopens of rows that were
+						// abandoned mid-run before detail landed the first time.
+						const title = patch.item?.title?.trim();
+						if (title && title !== rec.label) recent.update(rec.id, { label: title });
+					},
+				},
+				controller.signal,
+			);
+			// Sync the saved Recent row to whatever the stream actually
+			// delivered — covers the case where the user reopened an
+			// `in_progress` row that finished (or got cancelled / failed)
+			// while they had it open.
+			const finalStatus =
+				result.kind === "success" ? "success" : result.kind === "cancelled" ? "cancelled" : "failure";
+			if (result.kind === "success") setOutcome(result.value);
+			else if (result.kind === "failed") {
+				const friendly = friendlyErrorMessage(result.message, result.code);
+				setErr(friendly);
+				setSteps((prev) =>
+					prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: friendly } : s)),
+				);
+			} else if (result.kind === "cancelled") {
+				setSteps((prev) =>
+					prev.map((s) => (s.status === "running" ? { ...s, status: "skipped" } : s)),
+				);
+			}
+			if (rec.status !== finalStatus) recent.update(rec.id, { status: finalStatus });
+		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			setErr(`Something went wrong: ${message}`);
 			setSteps((prev) =>
@@ -228,20 +401,6 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 		} finally {
 			setPending(false);
 		}
-	}
-
-	function rerunRecent(rec: RecentRun<EvaluateQuery>) {
-		setInput(rec.query.input);
-		setLookbackDays(String(rec.query.lookbackDays));
-		setSampleLimit(String(rec.query.sampleLimit));
-		setMinProfit(String(rec.query.minProfit ?? 0));
-		setRecoveryDays(String(rec.query.recoveryDays ?? 0));
-		void run(rec.query.input, {
-			lookbackDays: rec.query.lookbackDays,
-			sampleLimit: rec.query.sampleLimit,
-			minProfit: rec.query.minProfit ?? 0,
-			recoveryDays: rec.query.recoveryDays ?? 0,
-		});
 	}
 
 	const QUICKSTARTS: ReadonlyArray<QuickStart> = QUICKSTART_EXAMPLES.map((ex) => ({
@@ -261,6 +420,7 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 					value={input}
 					onChange={setInput}
 					onRun={() => run(input)}
+					onCancel={cancel}
 					disabled={pending || !input.trim()}
 					pending={pending}
 					placeholder="Paste any /itm/ URL — or an item id like 406338886641"
@@ -331,12 +491,12 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 					);
 				})()}
 
-				{(outcome || hasRun || err) && (
+				{(hasRun || err) && (
 					<ComposeOutput>
 						{err && <p className="text-[13px] text-[#c0392b] mb-3">{err}</p>}
 						{hasRun && !err && (
 							<EvaluateResult
-								outcome={outcome ?? partial}
+								outcome={outcome}
 								steps={steps}
 								sellWithinDays={Number.parseInt(recoveryDays, 10) || undefined}
 								pending={pending}
@@ -348,7 +508,7 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 
 			<div className="max-w-[760px] mx-auto mt-4">
 				<QuickStarts items={QUICKSTARTS} />
-				<RecentRuns runs={recent.runs} onPick={rerunRecent} onClear={recent.clear} />
+				<RecentRuns runs={recent.runs} onPick={reopen} onClear={recent.clear} />
 			</div>
 		</>
 	);

@@ -14,7 +14,7 @@ import { db } from "../db/client.js";
 import { type ApiKey, apiKeys } from "../db/schema.js";
 import { encryptKeyPlaintext, isKeyRevealConfigured } from "./key-cipher.js";
 
-export type Tier = "free" | "hobby" | "pro" | "business";
+export type Tier = "free" | "hobby" | "standard" | "growth";
 
 export interface GeneratedKey {
 	plaintext: string;

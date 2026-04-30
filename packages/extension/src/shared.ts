@@ -5,8 +5,8 @@
  */
 
 import type {
-	BridgeJob,
 	BridgeLoginStatusRequest,
+	BridgePollJob,
 	BridgeResultRequest,
 	IssueBridgeTokenResponse,
 } from "@flipagent/types";
@@ -119,7 +119,7 @@ export async function issueBridgeToken(cfg: ExtensionConfig, deviceName: string)
 	return r.body;
 }
 
-export async function pollForJob(cfg: ExtensionConfig, signal?: AbortSignal): Promise<BridgeJob | null> {
+export async function pollForJob(cfg: ExtensionConfig, signal?: AbortSignal): Promise<BridgePollJob | null> {
 	const url = cfg.baseUrl.replace(/\/+$/, "") + "/v1/bridge/poll";
 	const res = await fetch(url, {
 		headers: { Authorization: `Bearer ${cfg.bridgeToken ?? ""}` },
@@ -127,7 +127,7 @@ export async function pollForJob(cfg: ExtensionConfig, signal?: AbortSignal): Pr
 	});
 	if (res.status === 204) return null;
 	if (!res.ok) throw new ApiError(res.status, "/v1/bridge/poll", await res.text().catch(() => ""));
-	return (await res.json()) as BridgeJob;
+	return (await res.json()) as BridgePollJob;
 }
 
 export async function reportResult(cfg: ExtensionConfig, body: BridgeResultRequest): Promise<void> {

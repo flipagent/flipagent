@@ -5,10 +5,10 @@ description: Set up flipagent — ONE API for online reselling — for the user.
 
 # flipagent agent onboarding
 
-flipagent is one API for the online reselling cycle: search listings,
-look up sold-comps, score deals, quote forwarder cost, place orders,
-list inventory, ship, track payouts. Today it covers eBay; future
-adapters will cover Amazon, Mercari, Poshmark via the same paths.
+flipagent is one API for the online reselling cycle: search active +
+sold listings, score deals, quote forwarder cost, place orders, list
+inventory, ship, track payouts. Today it covers eBay; future adapters
+will cover Amazon, Mercari, Poshmark via the same paths.
 
 You are an AI agent helping a user wire flipagent into their workflow.
 Follow the steps in order. Don't skip Step 4 (verification) — silent
@@ -32,7 +32,7 @@ If unsure, ask the user.
 ## Step 2 — Get an API key
 
 First check `FLIPAGENT_API_KEY` in the environment. If present and
-matching `^fa_(free|hobby|pro|business)_[A-Za-z0-9]{16,}$`, skip ahead
+matching `^fa_(free|hobby|standard|growth|pro|business)_[A-Za-z0-9]{16,}$`, skip ahead
 to verification (`curl -H "Authorization: Bearer $FLIPAGENT_API_KEY"
 https://api.flipagent.dev/v1/keys/me` should return 200).
 
@@ -40,7 +40,7 @@ If absent or invalid:
 
 1. Direct the user to `https://flipagent.dev/signup` (open the URL if
    you have a browser tool; otherwise instruct the user to open it).
-   Tell them: "Free tier is 100 calls/month, no card."
+   Tell them: "Free tier is a one-time 500 credits (≈500 searches, or 10 evaluations, or 2 discoveries — credits don't refill on Free), no card."
 2. Ask the user to paste back the key (`fa_free_*`).
 3. Verify:
    ```
@@ -117,8 +117,8 @@ Available namespaces (every endpoint at `api.flipagent.dev/v1/*`):
 | Namespace | Use for |
 |---|---|
 | `client.listings.*` | search + detail (eBay-shape responses) |
-| `client.sold.*` | comparable-sales lookup (last 90 days) |
-| `client.evaluate.*` | score one listing → DealVerdict (Decisions pillar) |
+| `client.sold.*` | sold-listing search (last 90 days) |
+| `client.evaluate.*` | score one listing → buy/hold/skip + signals (Decisions pillar) |
 | `client.discover.*` | rank deals across a search (Overnight pillar) |
 | `client.ship.*` | forwarder quote + provider catalog (Operations pillar) |
 | `client.orders.*` | buy flow (Limited Release; needs `/v1/connect/ebay`) |
@@ -168,7 +168,7 @@ If verification fails:
 | HTTP status | Meaning | Fix |
 |---|---|---|
 | 401 | Key invalid or revoked | Re-do Step 2 |
-| 429 | Tier quota exhausted | Wait until UTC monthly reset, or upgrade at `/v1/billing/checkout` |
+| 429 | Credit budget hit (`error: "credits_exceeded"`) or burst rate limit (`error: "burst_rate_limited"`) | For credits_exceeded: paid tiers reset on the 1st UTC (`resetAt` in body); Free is a one-time grant — only path forward is upgrade at `/v1/billing/checkout`. For burst: back off then retry. |
 | 502 | Upstream eBay transient | Retry once. If repeats, log and surface to user |
 | 503 | Service-side env not configured (unusual on hosted) | Check `https://api.flipagent.dev/healthz` |
 
@@ -176,12 +176,12 @@ If verification fails:
 
 After verified setup, summarize the agent's new capabilities:
 
-- **Discover deals**: search + sold-comp + ranked-deals all in one
-  reseller workflow. End-to-end with `client.listings.search` →
-  `client.sold.search` → `client.discover.deals({ results, opts: {
-  comps } })`.
-- **Decide on a single listing**: `client.evaluate.listing({ item, opts:
-  { comps } })` → buy / watch / skip verdict + signals fired.
+- **Discover deals**: active search + sold search + same-product
+  filter + ranked deals — all in one call. End-to-end with
+  `client.discover.deals({ q, opts })` (composite).
+- **Decide on a single listing**: `client.evaluate.listing({ itemId })`
+  → composite (server fetches detail + sold + active) → rating
+  buy/hold/skip + signals + recommendedExit.
 - **Estimate landed cost**: `client.ship.quote({ item, forwarder })` →
   total delivered cost via Planet Express (more forwarders coming).
 - **Sell-side** (after `/v1/connect/ebay`): create inventory items,
@@ -191,12 +191,8 @@ The user will likely ask you to do real work (e.g. "find me canon
 lenses under $100 with positive margin"). The full chain looks like:
 
 ```
-listings.search(q="canon lens", filter="price:[..100]")
-  ↓
-sold.search(q="canon lens")
-  ↓
-discover.deals({ results, opts: { comps, minNetCents: 1500 } })
-  ↓
+discover.deals({ q: "canon lens", filter: "price:[..100]", opts: { minNetCents: 1500 } })
+  ↓                                  (server runs active search + sold search + filter + rank)
 ship.quote({ item: deals[0].item, forwarder: { destState, weightG } })
   ↓
 present top 3 to user with rationale

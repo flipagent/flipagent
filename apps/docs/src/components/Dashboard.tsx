@@ -20,14 +20,16 @@ import { apiBase, apiFetch, authClient, signOut } from "../lib/authClient";
 import type { ComposeTab } from "./compose/ComposeCard";
 import { PlaygroundDiscover } from "./playground/PlaygroundDiscover";
 import { PlaygroundEvaluate } from "./playground/PlaygroundEvaluate";
+import { PlaygroundSearch } from "./playground/PlaygroundSearch";
 import "./Dashboard.css";
 import "./ui/ui.css";
 import "./playground/Playground.css";
 
-type Tier = "free" | "hobby" | "pro" | "business";
+type Tier = "free" | "hobby" | "standard" | "growth";
 
 type View =
 	| "overview"
+	| "playground/search"
 	| "playground/discover"
 	| "playground/evaluate"
 	| "keys"
@@ -42,8 +44,16 @@ type Profile = {
 	name: string;
 	image: string | null;
 	tier: Tier;
+	role: "user" | "admin";
 	emailVerified: boolean;
-	usage: { used: number; limit: number | null; remaining: number | null; resetAt: string };
+	usage: {
+		creditsUsed: number;
+		creditsLimit: number;
+		creditsRemaining: number;
+		bonusCredits?: number;
+		// Null for Free (one-time grant); ISO timestamp for paid (monthly refill).
+		resetAt: string | null;
+	};
 };
 type KeyRow = {
 	id: string;
@@ -103,7 +113,7 @@ const DEFAULT_FEATURES: Features = {
 	stripe: true,
 };
 
-type ScopeStatus = "ok" | "scrape_fallback" | "needs_oauth" | "approval_pending" | "unavailable";
+type ScopeStatus = "ok" | "scrape" | "needs_oauth" | "approval_pending" | "unavailable";
 type Permissions = {
 	ebayConnected: boolean;
 	ebayUserName: string | null;
@@ -272,10 +282,26 @@ export default function Dashboard() {
 							refreshProfile={refreshProfile}
 						/>
 					)}
-					{(view === "playground/discover" || view === "playground/evaluate") && (
+					{(view === "playground/search" ||
+						view === "playground/discover" ||
+						view === "playground/evaluate") && (
 						<PlaygroundShell
-							active={view === "playground/discover" ? "discover" : "evaluate"}
-							onChange={(next) => setView(next === "discover" ? "playground/discover" : "playground/evaluate")}
+							active={
+								view === "playground/search"
+									? "search"
+									: view === "playground/discover"
+										? "discover"
+										: "evaluate"
+							}
+							onChange={(next) =>
+								setView(
+									next === "search"
+										? "playground/search"
+										: next === "discover"
+											? "playground/discover"
+											: "playground/evaluate",
+								)
+							}
 							evaluateSeed={evaluateSeed}
 							onEvaluate={(itemId) => {
 								setEvaluateSeed(itemId);
@@ -501,8 +527,9 @@ function Sidebar({
 
 	const overviewMatch = matches("Overview");
 	const pgItems: { v: View; icon: keyof typeof ICONS; label: string; pill?: string }[] = [
-		{ v: "playground/discover", icon: "gauge", label: "Discover deals" },
-		{ v: "playground/evaluate", icon: "chart", label: "Evaluate listing" },
+		{ v: "playground/search", icon: "search", label: "Search" },
+		{ v: "playground/discover", icon: "compass", label: "Discover deals" },
+		{ v: "playground/evaluate", icon: "gauge", label: "Evaluate listing" },
 	];
 	type SidebarGroup = { label: string; items: { v: View; icon: keyof typeof ICONS; label: string }[] };
 	const groups: SidebarGroup[] = [
@@ -769,8 +796,8 @@ const ICONS = {
 	home: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 8l6-5 6 5M3 7v6.5h10V7" /></svg>,
 	search: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="7" cy="7" r="4.5" /><path d="m13 13-2.5-2.5" /></svg>,
 	doc: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 1.5h7L13 4v10.5H3z" /><path d="M10 1.5V4h3M5.5 8h5M5.5 11h5" /></svg>,
-	chart: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 13h12M4 13V8M7 13V4M10 13V9M13 13V6" /></svg>,
-	gauge: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="5.5" /><path d="M8 8l3-3" /></svg>,
+	compass: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6" /><path d="M8 3l2 5-2 5-2-5z" /></svg>,
+	gauge: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11a5 5 0 0 1 10 0" /><path d="M8 11l2.5-2.5" /><circle cx="8" cy="11" r="0.6" fill="currentColor" /></svg>,
 	box: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 5l6-3 6 3v6l-6 3-6-3V5z" /><path d="M2 5l6 3 6-3M8 8v6" /></svg>,
 	key: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="11" r="2.5" /><path d="M7 9l6-6M11 5l1.5 1.5" /></svg>,
 	bar: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 13V3M2.5 13h11M5 11V8M8 11V5M11 11V7" /></svg>,
@@ -996,14 +1023,14 @@ function Overview({
 }) {
 	const primaryKey = keys[0];
 
-	// Re-pull profile when Overview mounts so usage.used reflects any
-	// playground calls made earlier this session (drives the checklist).
+	// Re-pull profile when Overview mounts so usage reflects any playground
+	// calls made earlier this session (drives the checklist).
 	useEffect(() => {
 		refreshProfile();
 	}, []);
 
 	const hasKey = keys.length > 0;
-	const hasCall = profile.usage.used > 0;
+	const hasCall = profile.usage.creditsUsed > 0;
 	const hasEbay = ebay?.oauth.connected ?? false;
 	const showChecklist = useShowChecklist({ hasKey, hasCall, hasEbay });
 	// During onboarding the checklist already nudges "Create your first key",
@@ -1032,13 +1059,13 @@ function Overview({
 				<EndpointCard
 					title="Discover deals"
 					tag="API"
-					body="Sweep a category for under-priced active listings. Ranked by margin × confidence, end-to-end trace."
+					body="Sweep a category for under-priced active listings. Ranked by capital efficiency ($/day), end-to-end trace."
 					onClick={() => onGoto("playground/discover")}
 				/>
 				<EndpointCard
 					title="Evaluate listing"
 					tag="API"
-					body="Drop in any eBay item. Full pipeline: detail → curated comparables → market summary → buy/pass call."
+					body="Drop in any eBay item. Full pipeline: detail → sold + active search → same-product filter → buy/pass call."
 					onClick={() => onGoto("playground/evaluate")}
 				/>
 			</div>
@@ -1101,8 +1128,8 @@ function Overview({
 				<div>
 					<div className="dash-card-eyebrow">This month</div>
 					<div className="dash-card-h2">
-						{profile.usage.used.toLocaleString()}
-						<span className="dash-of"> / {profile.usage.limit ? profile.usage.limit.toLocaleString() : "∞"} calls</span>
+						{profile.usage.creditsUsed.toLocaleString()}
+						<span className="dash-of"> / {profile.usage.creditsLimit.toLocaleString()} credits</span>
 					</div>
 				</div>
 				<button type="button" className="dash-btn" onClick={() => onGoto("usage")}>Details</button>
@@ -1191,30 +1218,41 @@ async function rawApiGet(path: string): Promise<{ status: number; body: unknown 
 /* ─────────── Playground shell ─────────── */
 
 const PG_TAB_ICONS = {
+	search: (
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+			<circle cx="10.5" cy="10.5" r="6.5" />
+			<path d="m20 20-4.5-4.5" />
+		</svg>
+	),
 	discover: (
 		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-			<circle cx="11" cy="11" r="7" />
-			<path d="m20 20-3.5-3.5" />
+			<circle cx="12" cy="12" r="9" />
+			<path d="M12 5l3 7-3 7-3-7z" />
 		</svg>
 	),
 	evaluate: (
 		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-			<circle cx="12" cy="12" r="9" />
-			<path d="M12 7v5l3 2" />
+			<path d="M4 14a8 8 0 0 1 16 0" />
+			<path d="M12 14l3-4" />
+			<circle cx="12" cy="14" r="0.9" fill="currentColor" />
 		</svg>
 	),
 };
 
-const PG_TABS: ReadonlyArray<ComposeTab<"discover" | "evaluate">> = [
+type PgTabId = "search" | "discover" | "evaluate";
+
+const PG_TABS: ReadonlyArray<ComposeTab<PgTabId>> = [
+	{ id: "search", label: "Search", icon: PG_TAB_ICONS.search },
 	{ id: "discover", label: "Discover", icon: PG_TAB_ICONS.discover },
 	{ id: "evaluate", label: "Evaluate", icon: PG_TAB_ICONS.evaluate },
 ];
 
 /**
- * Frames Discover + Evaluate. Each panel renders its own ComposeCard +
- * Tabs (so it can position QuickStarts/RecentRuns below the card on
- * its own). PlaygroundShell mounts both and toggles visibility — form
- * state and trace history survive across tab switches.
+ * Frames Search + Discover + Evaluate. Each panel renders its own
+ * ComposeCard + Tabs (so it can position QuickStarts/RecentRuns below
+ * the card on its own). PlaygroundShell mounts all three and toggles
+ * visibility — form state and trace history survive across tab
+ * switches.
  */
 function PlaygroundShell({
 	active,
@@ -1222,14 +1260,17 @@ function PlaygroundShell({
 	evaluateSeed,
 	onEvaluate,
 }: {
-	active: "discover" | "evaluate";
-	onChange: (next: "discover" | "evaluate") => void;
+	active: PgTabId;
+	onChange: (next: PgTabId) => void;
 	evaluateSeed: string | null;
 	onEvaluate: (itemId: string) => void;
 }) {
 	const tabsProps = { tabs: PG_TABS, active, onChange } as const;
 	return (
 		<>
+			<div className={active === "search" ? "" : "hidden"}>
+				<PlaygroundSearch tabsProps={tabsProps} />
+			</div>
 			<div className={active === "discover" ? "" : "hidden"}>
 				<PlaygroundDiscover tabsProps={tabsProps} onEvaluate={onEvaluate} />
 			</div>
@@ -1635,10 +1676,22 @@ type BreakdownRow = {
 	errorCount: number;
 };
 
+// Credit cost per call by endpoint, mirroring auth/limits.ts:creditsForEndpoint.
+// Used in the breakdown table to render `count × credits = total` for each
+// endpoint. Keep in sync with the server-side function.
+function creditsForEndpoint(endpoint: string): number {
+	if (endpoint.startsWith("/v1/evaluate")) return 50;
+	if (endpoint.startsWith("/v1/discover")) return 250;
+	if (endpoint.startsWith("/v1/browser")) return 5;
+	return 1;
+}
+
 function UsagePanel({ profile }: { profile: Profile }) {
-	const used = profile.usage.used;
-	const limit = profile.usage.limit;
-	const pct = limit && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+	const used = profile.usage.creditsUsed;
+	const limit = profile.usage.creditsLimit;
+	const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+	const level = pct >= 95 ? "danger" : pct >= 80 ? "warn" : "ok";
+
 	const [breakdown, setBreakdown] = useState<BreakdownRow[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
@@ -1653,44 +1706,58 @@ function UsagePanel({ profile }: { profile: Profile }) {
 		})();
 	}, []);
 
-	const maxCount = breakdown && breakdown.length > 0 ? Math.max(...breakdown.map((r) => r.count)) : 1;
+	// Order endpoints by total credits spent, not call count — cheap calls
+	// shouldn't crowd out the expensive ones at the top of the breakdown.
+	const ranked = breakdown
+		? [...breakdown]
+				.map((r) => ({ ...r, credits: r.count * creditsForEndpoint(r.endpoint) }))
+				.sort((a, b) => b.credits - a.credits)
+		: null;
+	const maxCredits = ranked && ranked.length > 0 ? Math.max(...ranked.map((r) => r.credits)) : 1;
 
 	return (
 		<>
 			<section className="dash-page-head">
 				<h1>Usage</h1>
-				<p>Resets {new Date(profile.usage.resetAt).toLocaleDateString()} (UTC).</p>
+				<p>
+					{profile.usage.resetAt
+						? `Resets ${new Date(profile.usage.resetAt).toLocaleDateString()} (UTC).`
+						: "Free tier credits are a one-time grant — they don't refill. Upgrade for monthly credits."}
+				</p>
 			</section>
 
 			<div className="dash-card">
 				<div className="dash-card-eyebrow">This month</div>
 				<div className="dash-card-h2">
-					{used.toLocaleString()} <span className="dash-of">/ {limit ? limit.toLocaleString() : "∞"} calls</span>
+					{used.toLocaleString()} <span className="dash-of">/ {limit.toLocaleString()} credits</span>
 				</div>
-				{limit && (
-					<div className="dash-bar"><div className="dash-bar-fill" style={{ width: `${pct}%` }} /></div>
-				)}
+				<div className="dash-bar">
+					<div className={`dash-bar-fill dash-bar-fill--${level}`} style={{ width: `${pct}%` }} />
+				</div>
 			</div>
 
 			<div className="dash-card">
 				<div className="dash-card-eyebrow">By endpoint</div>
 				<div className="dash-card-h2">
-					{breakdown ? `${breakdown.length} unique paths` : "Loading…"}
+					{ranked ? `${ranked.length} unique paths` : "Loading…"}
 				</div>
 				{error && <p className="dash-muted">Couldn't load: {error}</p>}
-				{breakdown && breakdown.length === 0 && (
+				{ranked && ranked.length === 0 && (
 					<p className="dash-muted">No metered calls yet this month. Try the Search playground.</p>
 				)}
-				{breakdown && breakdown.length > 0 && (
+				{ranked && ranked.length > 0 && (
 					<ul className="dash-bars">
-						{breakdown.map((row) => {
-							const widthPct = Math.max(4, Math.round((row.count / maxCount) * 100));
+						{ranked.map((row) => {
+							const widthPct = Math.max(4, Math.round((row.credits / maxCredits) * 100));
 							const errPct = row.count > 0 ? Math.round((row.errorCount / row.count) * 100) : 0;
+							const perCall = creditsForEndpoint(row.endpoint);
 							return (
 								<li key={row.endpoint} className="dash-bars-row">
 									<div className="dash-bars-head">
 										<code className="dash-bars-endpoint">{row.endpoint}</code>
-										<span className="dash-bars-count">{row.count.toLocaleString()}</span>
+										<span className="dash-bars-count">
+											{row.count.toLocaleString()} × {perCall} = {row.credits.toLocaleString()} credits
+										</span>
 									</div>
 									<div className="dash-bars-track">
 										<div className="dash-bars-fill" style={{ width: `${widthPct}%` }} />
@@ -1918,7 +1985,7 @@ function SettingsPanel({
 		}
 	}
 
-	async function upgrade(plan: "hobby" | "pro") {
+	async function upgrade(plan: "hobby" | "standard" | "growth") {
 		setBillingBusy(plan);
 		onError(null);
 		try {
@@ -2011,12 +2078,12 @@ function SettingsPanel({
 							<button type="button" className="dash-btn" onClick={() => upgrade("hobby")} disabled={billingBusy !== null}>
 								{billingBusy === "hobby" ? "Opening…" : "Upgrade to Hobby"}
 							</button>
-							<button type="button" className="dash-btn dash-btn--brand" onClick={() => upgrade("pro")} disabled={billingBusy !== null}>
-								{billingBusy === "pro" ? "Opening…" : "Upgrade to Pro"}
+							<button type="button" className="dash-btn dash-btn--brand" onClick={() => upgrade("standard")} disabled={billingBusy !== null}>
+								{billingBusy === "standard" ? "Opening…" : "Upgrade to Standard"}
 							</button>
 						</>
 					)}
-					{features.stripe && (profile.tier === "hobby" || profile.tier === "pro") && (
+					{features.stripe && (profile.tier === "hobby" || profile.tier === "standard" || profile.tier === "growth") && (
 						<button type="button" className="dash-btn" onClick={billingPortal} disabled={billingBusy !== null}>
 							{billingBusy === "portal" ? "Opening…" : "Manage billing"}
 						</button>
@@ -2105,10 +2172,10 @@ function SettingsPanel({
 
 const STATUS_COPY: Record<ScopeStatus, { label: string; tone: "ok" | "warn" | "info" | "off"; help: string }> = {
 	ok: { label: "Active", tone: "ok", help: "Calls succeed against this user's token." },
-	scrape_fallback: {
+	scrape: {
 		label: "Active",
 		tone: "info",
-		help: "Works without connecting — flipagent serves this via the scraper.",
+		help: "Served via the scrape transport — works without connecting your eBay account.",
 	},
 	needs_oauth: {
 		label: "Connect required",
@@ -2125,7 +2192,7 @@ const STATUS_COPY: Record<ScopeStatus, { label: string; tone: "ok" | "warn" | "i
 
 /** 5 backend states → 3 visual tones for the status pill. */
 function statusTone(s: ScopeStatus): "good" | "warn" | "off" {
-	if (s === "ok" || s === "scrape_fallback") return "good";
+	if (s === "ok" || s === "scrape") return "good";
 	if (s === "approval_pending" || s === "needs_oauth") return "warn";
 	return "off";
 }
@@ -2135,7 +2202,7 @@ function statusTone(s: ScopeStatus): "good" | "warn" | "off" {
  *  most-blocking. In practice all 3 sell scopes flip together via one OAuth, so
  *  partial-grant cases are rare — but we still pick the worst to be safe. */
 function rollupStatus(statuses: ScopeStatus[]): ScopeStatus {
-	const order: ScopeStatus[] = ["unavailable", "needs_oauth", "approval_pending", "scrape_fallback", "ok"];
+	const order: ScopeStatus[] = ["unavailable", "needs_oauth", "approval_pending", "scrape", "ok"];
 	return statuses.reduce<ScopeStatus>(
 		(worst, cur) => (order.indexOf(cur) < order.indexOf(worst) ? cur : worst),
 		"ok",

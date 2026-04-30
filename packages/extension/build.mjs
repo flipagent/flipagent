@@ -4,9 +4,9 @@
  * Bundles:
  *   src/background.ts → dist/background.js   (MV3 service worker)
  *   src/content.ts    → dist/content.js      (injected into ebay.com tabs)
- *   src/sidepanel.ts  → dist/sidepanel.js    (chrome.sidePanel UI; Chrome 114+)
+ *   src/popup.ts      → dist/popup.js        (toolbar action popup UI)
  *
- * Static assets (manifest, html, icons) are copied verbatim.
+ * Static assets (manifest, html, css, icons) are copied verbatim.
  *
  * Usage:
  *   node build.mjs            — one-shot build
@@ -36,12 +36,14 @@ const sharedOpts = {
 const targets = [
 	{ entryPoints: [resolve(root, "src/background.ts")], outfile: resolve(outDir, "background.js") },
 	{ entryPoints: [resolve(root, "src/content.ts")], outfile: resolve(outDir, "content.js") },
-	{ entryPoints: [resolve(root, "src/sidepanel.ts")], outfile: resolve(outDir, "sidepanel.js") },
+	{ entryPoints: [resolve(root, "src/popup.ts")], outfile: resolve(outDir, "popup.js") },
 ];
 
 function copyStatic() {
 	cpSync(resolve(root, "manifest.json"), resolve(outDir, "manifest.json"));
-	cpSync(resolve(root, "src/sidepanel.html"), resolve(outDir, "sidepanel.html"));
+	cpSync(resolve(root, "src/popup.html"), resolve(outDir, "popup.html"));
+	cpSync(resolve(root, "src/popup.css"), resolve(outDir, "popup.css"));
+	cpSync(resolve(root, "src/logo-mark.png"), resolve(outDir, "logo-mark.png"));
 	cpSync(resolve(root, "icons"), resolve(outDir, "icons"), { recursive: true });
 }
 

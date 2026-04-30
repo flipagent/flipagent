@@ -76,8 +76,8 @@ function ebayCapabilities(input: EbayInputs): MarketplaceCapabilities {
 		isInsightsApproved() || isScraperApiConfigured() || input.extensionPaired ? "ok" : "unavailable";
 
 	// Evaluate: pure server-side scoring; works whenever the api can
-	// fetch comparables. Requires the api key tier to allow it (rate-limit
-	// is enforced upstream, not here).
+	// fetch sold + active. Requires the api key tier to allow it
+	// (rate-limit is enforced upstream, not here).
 	const evaluate: CapabilityStatus = "ok";
 
 	// Buy-side: needs bridge client paired AND user signed into eBay

@@ -61,12 +61,149 @@ export const ForwarderRefreshResponse = Type.Object(
 );
 export type ForwarderRefreshResponse = Static<typeof ForwarderRefreshResponse>;
 
+/**
+ * Per-package photos captured at intake by the forwarder. PE attaches
+ * 2-6 photos per inbound parcel (front/back/condition shots). Bridge
+ * task scrapes the package detail page and returns the image URLs.
+ */
+export const ForwarderPackagePhoto = Type.Object(
+	{
+		url: Type.String({ format: "uri" }),
+		capturedAt: Type.Optional(Type.String({ format: "date-time" })),
+		caption: Type.Optional(Type.String()),
+	},
+	{ $id: "ForwarderPackagePhoto" },
+);
+export type ForwarderPackagePhoto = Static<typeof ForwarderPackagePhoto>;
+
+export const ForwarderShipmentRequest = Type.Object(
+	{
+		toAddress: Type.Object({
+			name: Type.String(),
+			line1: Type.String(),
+			line2: Type.Optional(Type.String()),
+			city: Type.String(),
+			state: Type.String({ description: "ISO 3166-2 region; for US use 2-letter (e.g. NY)" }),
+			postalCode: Type.String(),
+			country: Type.String({ description: "ISO 3166-1 alpha-2 (e.g. US, KR)" }),
+			phone: Type.Optional(Type.String()),
+			email: Type.Optional(Type.String({ format: "email" })),
+		}),
+		service: Type.Optional(
+			Type.Union([
+				Type.Literal("usps_priority"),
+				Type.Literal("usps_ground_advantage"),
+				Type.Literal("ups_ground"),
+				Type.Literal("fedex_home"),
+			]),
+		),
+		declaredValueCents: Type.Optional(Type.Integer({ minimum: 0 })),
+		ebayOrderId: Type.Optional(Type.String({ description: "Origin marketplace order id, for traceability." })),
+		notes: Type.Optional(Type.String()),
+	},
+	{ $id: "ForwarderShipmentRequest" },
+);
+export type ForwarderShipmentRequest = Static<typeof ForwarderShipmentRequest>;
+
+/**
+ * The shipment row a successful dispatch produces. `shipmentId` is
+ * provider-internal (PE's outbound shipment id); `tracking` is the
+ * carrier's tracking number once a label is generated. Both can be
+ * null while the bridge is mid-flight.
+ */
+export const ForwarderShipment = Type.Object(
+	{
+		shipmentId: Type.Union([Type.String(), Type.Null()]),
+		carrier: Type.Union([Type.String(), Type.Null()]),
+		tracking: Type.Union([Type.String(), Type.Null()]),
+		costCents: Type.Union([Type.Integer(), Type.Null()]),
+		labelUrl: Type.Union([Type.String({ format: "uri" }), Type.Null()]),
+		shippedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+	},
+	{ $id: "ForwarderShipment" },
+);
+export type ForwarderShipment = Static<typeof ForwarderShipment>;
+
+/**
+ * Forwarder inventory row — one per package the user holds at the
+ * forwarder. Reconciled by the bridge result handler; queryable via
+ * `GET /v1/forwarder/{provider}/inventory[/{packageId}]`. Linked to
+ * a marketplace sku via `POST .../packages/{packageId}/link` so the
+ * sold-event handler can find the package without the agent
+ * threading the mapping by hand.
+ */
+export const ForwarderInventoryStatus = Type.Union(
+	[
+		Type.Literal("received"),
+		Type.Literal("photographed"),
+		Type.Literal("listed"),
+		Type.Literal("sold"),
+		Type.Literal("dispatched"),
+		Type.Literal("shipped"),
+	],
+	{ $id: "ForwarderInventoryStatus" },
+);
+export type ForwarderInventoryStatus = Static<typeof ForwarderInventoryStatus>;
+
+export const ForwarderInventoryRow = Type.Object(
+	{
+		id: Type.String({ format: "uuid" }),
+		provider: ForwarderProvider,
+		packageId: Type.String(),
+		sku: Type.Union([Type.String(), Type.Null()]),
+		ebayOfferId: Type.Union([Type.String(), Type.Null()]),
+		ebayInboundOrderId: Type.Union([Type.String(), Type.Null()]),
+		status: ForwarderInventoryStatus,
+		photos: Type.Union([Type.Array(ForwarderPackagePhoto), Type.Null()]),
+		weightG: Type.Union([Type.Integer(), Type.Null()]),
+		dimsCm: Type.Union([
+			Type.Object({
+				l: Type.Optional(Type.Number()),
+				w: Type.Optional(Type.Number()),
+				h: Type.Optional(Type.Number()),
+			}),
+			Type.Null(),
+		]),
+		inboundTracking: Type.Union([Type.String(), Type.Null()]),
+		outboundShipmentId: Type.Union([Type.String(), Type.Null()]),
+		outboundCarrier: Type.Union([Type.String(), Type.Null()]),
+		outboundTracking: Type.Union([Type.String(), Type.Null()]),
+		outboundCostCents: Type.Union([Type.Integer(), Type.Null()]),
+		outboundLabelUrl: Type.Union([Type.String(), Type.Null()]),
+		shippedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+		createdAt: Type.String({ format: "date-time" }),
+		updatedAt: Type.String({ format: "date-time" }),
+	},
+	{ $id: "ForwarderInventoryRow" },
+);
+export type ForwarderInventoryRow = Static<typeof ForwarderInventoryRow>;
+
+export const ForwarderInventoryListResponse = Type.Object(
+	{ rows: Type.Array(ForwarderInventoryRow) },
+	{ $id: "ForwarderInventoryListResponse" },
+);
+export type ForwarderInventoryListResponse = Static<typeof ForwarderInventoryListResponse>;
+
+export const ForwarderLinkRequest = Type.Object(
+	{
+		sku: Type.String({ minLength: 1, maxLength: 200 }),
+		ebayOfferId: Type.Optional(Type.String({ maxLength: 200 })),
+	},
+	{ $id: "ForwarderLinkRequest" },
+);
+export type ForwarderLinkRequest = Static<typeof ForwarderLinkRequest>;
+
 export const ForwarderJobResponse = Type.Object(
 	{
 		jobId: Type.String({ format: "uuid" }),
 		provider: ForwarderProvider,
 		status: ForwarderJobStatus,
+		/** Set when this job's task was `forwarder.refresh`. */
 		packages: Type.Optional(Type.Array(ForwarderPackage)),
+		/** Set when this job's task was `forwarder.photos`. */
+		photos: Type.Optional(Type.Array(ForwarderPackagePhoto)),
+		/** Set when this job's task was `forwarder.dispatch`. */
+		shipment: Type.Optional(ForwarderShipment),
 		failureReason: Type.Union([Type.String(), Type.Null()]),
 		createdAt: Type.String({ format: "date-time" }),
 		updatedAt: Type.String({ format: "date-time" }),

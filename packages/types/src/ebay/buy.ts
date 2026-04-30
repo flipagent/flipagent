@@ -47,6 +47,17 @@ const BuyingOptions = Type.Array(
 	Type.Union([Type.Literal("AUCTION"), Type.Literal("FIXED_PRICE"), Type.Literal("BEST_OFFER")]),
 );
 
+export const ItemLocation = Type.Object(
+	{
+		city: Type.Optional(Type.String()),
+		stateOrProvince: Type.Optional(Type.String()),
+		postalCode: Type.Optional(Type.String()),
+		country: Type.Optional(Type.String()),
+	},
+	{ $id: "ItemLocation" },
+);
+export type ItemLocation = Static<typeof ItemLocation>;
+
 /**
  * `ItemSummary` — element of search results. Mirror of eBay Browse
  * `ItemSummary`, augmented with the sold-only fields from
@@ -65,6 +76,10 @@ export const ItemSummary = Type.Object(
 		legacyItemId: Type.Optional(Type.String()),
 		title: Type.String(),
 		itemWebUrl: Type.String(),
+		/** Affiliate-tracking variant of `itemWebUrl` when the request used the affiliate header. */
+		itemAffiliateWebUrl: Type.Optional(Type.String()),
+		/** Browse REST resource href for the item — `getItem` URL. */
+		itemHref: Type.Optional(Type.String()),
 		condition: Type.Optional(Type.String()),
 		conditionId: Type.Optional(Type.String()),
 		price: Type.Optional(Money),
@@ -78,7 +93,7 @@ export const ItemSummary = Type.Object(
 		/**
 		 * ISO 8601 listing creation timestamp. Paired with `itemEndDate` or
 		 * `lastSoldDate`, this gives the list-to-sell duration that the
-		 * hazard model reads directly from summaries — no per-comparable detail
+		 * hazard model reads directly from summaries — no per-listing detail
 		 * fetch required.
 		 */
 		itemCreationDate: Type.Optional(Type.String()),
@@ -87,7 +102,32 @@ export const ItemSummary = Type.Object(
 		seller: Type.Optional(Seller),
 		image: Type.Optional(Image),
 		thumbnailImages: Type.Optional(Type.Array(Image)),
+		additionalImages: Type.Optional(Type.Array(Image)),
 		topRatedBuyingExperience: Type.Optional(Type.Boolean()),
+		/**
+		 * eBay product identifier — present when the listing is linked to a
+		 * catalog product. Same `epid` across every listing of the same SKU,
+		 * so a single search response can be deterministically grouped by
+		 * product without any per-item detail fetch.
+		 */
+		epid: Type.Optional(Type.String()),
+		/** Global Trade Item Number — UPC / EAN / ISBN. Fallback grouping key when `epid` isn't catalog-linked. */
+		gtin: Type.Optional(Type.String()),
+		/** Top-level eBay category id for the listing. */
+		categoryId: Type.Optional(Type.String()),
+		/** Leaf category ids — Browse search returns these on items in catalog-linked or specific-category results. */
+		leafCategoryIds: Type.Optional(Type.Array(Type.String())),
+		/** Item-group container ref when the listing is part of a multi-variation group. */
+		itemGroupHref: Type.Optional(Type.String()),
+		/** Multi-variation group type tag (e.g. "SELLER_DEFINED_VARIATIONS"). */
+		itemGroupType: Type.Optional(Type.String()),
+		itemLocation: Type.Optional(ItemLocation),
+		/** Marketplace the listing is on — `EBAY_US`, `EBAY_GB`, … */
+		listingMarketplaceId: Type.Optional(Type.String()),
+		/** True when the item is restricted to adult buyers. */
+		adultOnly: Type.Optional(Type.Boolean()),
+		/** True when at least one coupon is available against the item. */
+		availableCoupons: Type.Optional(Type.Boolean()),
 	},
 	{ $id: "ItemSummary" },
 );
@@ -129,17 +169,6 @@ export const BrowseSearchResponse = Type.Object(
 	{ $id: "BrowseSearchResponse" },
 );
 export type BrowseSearchResponse = Static<typeof BrowseSearchResponse>;
-
-export const ItemLocation = Type.Object(
-	{
-		city: Type.Optional(Type.String()),
-		stateOrProvince: Type.Optional(Type.String()),
-		postalCode: Type.Optional(Type.String()),
-		country: Type.Optional(Type.String()),
-	},
-	{ $id: "ItemLocation" },
-);
-export type ItemLocation = Static<typeof ItemLocation>;
 
 export const EstimatedAvailability = Type.Object(
 	{
@@ -275,6 +304,7 @@ export const SoldSearchQuery = Type.Object(
 		),
 		filter: Type.Optional(Type.String()),
 		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+		offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
 	},
 	{ $id: "SoldSearchQuery" },
 );

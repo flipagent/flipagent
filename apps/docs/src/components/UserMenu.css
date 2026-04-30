@@ -41,3 +41,21 @@
 .user-menu-label {
 	letter-spacing: -0.005em;
 }
+
+.user-menu-admin {
+	display: inline-flex;
+	align-items: center;
+	height: 32px;
+	padding: 0 10px;
+	margin-right: 6px;
+	border-radius: 8px;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--brand);
+	background: var(--brand-soft);
+	border: 1px solid color-mix(in srgb, var(--brand) 25%, transparent);
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	transition: background 0.15s ease;
+}
+.user-menu-admin:hover { background: color-mix(in srgb, var(--brand-soft) 60%, white); }

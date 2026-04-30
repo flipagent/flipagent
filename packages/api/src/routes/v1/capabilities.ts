@@ -25,7 +25,7 @@ capabilitiesRoute.get(
 		tags: ["Capabilities"],
 		summary: "Per-marketplace capability map for this api key",
 		description:
-			"Returns which calls work (`ok`), which need user action (`needs_signin`, `needs_oauth`), which are gated by upstream approval (`approval_pending`), which fall back to scraping (`scrape_fallback`), and which are unconfigured on this host (`unavailable`). The agent's first-call discovery surface.",
+			"Returns which calls work (`ok`), which need user action (`needs_signin`, `needs_oauth`), which are gated by upstream approval (`approval_pending`), which are served by the scrape transport (`scrape`), and which are unconfigured on this host (`unavailable`). The agent's first-call discovery surface.",
 		responses: {
 			200: jsonResponse("Capability map.", CapabilitiesResponse),
 			401: errorResponse("Missing or invalid API key."),

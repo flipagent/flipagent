@@ -15,7 +15,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { createMiddleware } from "hono/factory";
 import { getAuth } from "../auth/better-auth.js";
 import { findActiveKey, type Tier, touchLastUsed } from "../auth/keys.js";
-import { recordUsage, snapshotUsage } from "../auth/limits.js";
+import { creditsForEndpoint, recordUsage, snapshotBurst, snapshotUsage } from "../auth/limits.js";
 import { config, isAuthConfigured, isStripeConfigured } from "../config.js";
 import { db } from "../db/client.js";
 import { type ApiKey, apiKeys } from "../db/schema.js";
@@ -84,16 +84,37 @@ export const requireApiKey = createMiddleware(async (c, next) => {
 		}
 	}
 
-	const usage = await snapshotUsage({ apiKeyId: row.id, userId: row.userId }, row.tier as Tier);
+	// Two independent gates:
+	//   1. Monthly credit budget — every metered endpoint charges N credits.
+	//      Pricing-driven; what 429 surfaces.
+	//   2. Burst (per-minute / per-hour) — abuse protection on raw call rate.
+	// Both must pass; both surface as 429 with distinct `error` codes so
+	// clients can react differently (upgrade vs back off).
+	const tier = row.tier as Tier;
+	const credits = creditsForEndpoint(c.req.path);
+	const [usage, burst] = await Promise.all([
+		snapshotUsage({ apiKeyId: row.id, userId: row.userId }, tier),
+		snapshotBurst({ apiKeyId: row.id, userId: row.userId }, tier),
+	]);
+
 	if (usage.overLimit) {
-		c.header("X-RateLimit-Limit", String(usage.limit));
+		c.header("X-RateLimit-Limit", String(usage.creditsLimit));
 		c.header("X-RateLimit-Remaining", "0");
-		c.header("X-RateLimit-Reset", usage.resetAt);
+		// `usage.resetAt` is null for the Free tier (one-time grant). Skip the
+		// header rather than serialise "null" — clients reading X-RateLimit-Reset
+		// expect either an ISO date or absence.
+		if (usage.resetAt) c.header("X-RateLimit-Reset", usage.resetAt);
+		c.header("X-Flipagent-Credits-Charged", String(credits));
 		const upgrade = dashboardUrlIfAvailable("/pricing/", isStripeConfigured());
+		// Free is a one-time grant (resetAt = null); paid tiers refill monthly.
+		// The message reflects that so users know whether to wait or upgrade.
+		const scope = usage.resetAt ? "Monthly" : "One-time";
 		return c.json(
 			{
-				error: "rate_limited",
-				message: `Tier "${row.tier}" allows ${usage.limit}/mo; you've used ${usage.used}.`,
+				error: "credits_exceeded",
+				message: `${scope} credit budget for tier "${row.tier}" is ${usage.creditsLimit}; you've used ${usage.creditsUsed}.`,
+				creditsUsed: usage.creditsUsed,
+				creditsLimit: usage.creditsLimit,
 				resetAt: usage.resetAt,
 				...(upgrade ? { upgrade } : {}),
 			},
@@ -101,19 +122,41 @@ export const requireApiKey = createMiddleware(async (c, next) => {
 		);
 	}
 
+	if (burst.minuteOver || burst.hourOver) {
+		const window = burst.minuteOver ? "minute" : "hour";
+		c.header("X-RateLimit-Reset", new Date(Date.now() + (burst.minuteOver ? 60_000 : 3_600_000)).toISOString());
+		return c.json(
+			{
+				error: "burst_rate_limited",
+				window,
+				message: `Burst rate limit hit (per-${window}). Slow down or upgrade for higher limits.`,
+			},
+			429,
+		);
+	}
+
 	c.set("apiKey", row);
-	c.header("X-RateLimit-Limit", Number.isFinite(usage.limit) ? String(usage.limit) : "unlimited");
-	c.header("X-RateLimit-Remaining", Number.isFinite(usage.remaining) ? String(usage.remaining) : "unlimited");
-	c.header("X-RateLimit-Reset", usage.resetAt);
+	c.header("X-RateLimit-Limit", String(usage.creditsLimit));
+	c.header("X-RateLimit-Remaining", String(usage.creditsRemaining));
+	if (usage.resetAt) c.header("X-RateLimit-Reset", usage.resetAt);
+	c.header("X-Flipagent-Credits-Charged", String(credits));
 
 	await next();
 
 	const latencyMs = Date.now() - startedAt;
 	const statusCode = c.res.status;
+	// Cache hits don't count against the monthly quota — the pricing page
+	// promises this. The resource service sets `X-Flipagent-From-Cache: true`
+	// (via renderResultHeaders) whenever the response was served from the
+	// shared cache layer, so we skip the usage_events insert for those.
+	// touchLastUsed still runs so "last used" stays meaningful.
+	const fromCache = c.res.headers.get("X-Flipagent-From-Cache") === "true";
 	await Promise.all([
-		recordUsage({ apiKeyId: row.id, userId: row.userId, endpoint: c.req.path, statusCode, latencyMs }).catch((err) =>
-			console.error("[auth] recordUsage failed:", err),
-		),
+		fromCache
+			? Promise.resolve()
+			: recordUsage({ apiKeyId: row.id, userId: row.userId, endpoint: c.req.path, statusCode, latencyMs }).catch(
+					(err) => console.error("[auth] recordUsage failed:", err),
+				),
 		touchLastUsed(row.id).catch((err) => console.error("[auth] touchLastUsed failed:", err)),
 	]);
 });

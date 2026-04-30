@@ -14,13 +14,13 @@ import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
-	type PurchaseOrder as DbPurchaseOrder,
+	type BridgeJob as DbBridgeJob,
 	type WebhookEndpoint as DbWebhookEndpoint,
 	type NewWebhookDelivery,
 	webhookDeliveries,
 	webhookEndpoints,
 } from "../../db/schema.js";
-import { toPublicShape } from "../orders/queue.js";
+import { toPublicShape } from "../bridge-jobs/queue.js";
 
 const DELIVERY_TIMEOUT_MS = 5_000;
 
@@ -74,7 +74,27 @@ export type OrderEventType =
 	| "order.cancelled"
 	| "order.expired";
 
-export function eventTypeForStatus(status: DbPurchaseOrder["status"]): OrderEventType {
+/**
+ * Marketplace + forwarder lifecycle events. Subscribers receive these
+ * to drive the connective tissue of the full reseller cycle:
+ *
+ *   item.sold            an inbound sale notification landed; hook to
+ *                        kick off forwarder dispatch from the buyer
+ *                        address you fetch off the eBay order.
+ *   forwarder.received   refresh detected a new package in the inbox;
+ *                        hook to fetch photos + auto-draft a listing.
+ *   forwarder.shipped    a dispatch job completed; hook to mark the
+ *                        eBay order shipped + supply tracking.
+ *
+ * Receivers self-discover by registering an endpoint via /v1/webhooks
+ * and listing the events they care about. We never assume any
+ * particular automation lives server-side — the events are the contract.
+ */
+export type CycleEventType = "item.sold" | "forwarder.received" | "forwarder.shipped";
+
+export type AnyEventType = OrderEventType | CycleEventType;
+
+export function eventTypeForStatus(status: DbBridgeJob["status"]): OrderEventType {
 	return `order.${status}` as OrderEventType;
 }
 
@@ -89,7 +109,7 @@ interface DispatchOptions {
  */
 export async function dispatchOrderEvent(
 	apiKeyId: string,
-	order: DbPurchaseOrder,
+	order: DbBridgeJob,
 	opts: DispatchOptions = {},
 ): Promise<void> {
 	const eventType = eventTypeForStatus(order.status);
@@ -114,9 +134,41 @@ export async function dispatchOrderEvent(
 	await Promise.all(matching.map((ep) => deliverOne(ep, eventType, envelope, rawBody, fetchImpl)));
 }
 
+/**
+ * Fire a `item.sold` / `forwarder.received` / `forwarder.shipped`
+ * envelope to subscribed endpoints. Same signing + delivery-log
+ * machinery as `dispatchOrderEvent`; the only difference is the
+ * envelope's `data` payload is event-specific (caller-supplied).
+ */
+export async function dispatchCycleEvent(
+	apiKeyId: string,
+	eventType: CycleEventType,
+	data: Record<string, unknown>,
+	opts: DispatchOptions = {},
+): Promise<void> {
+	const endpoints = await db
+		.select()
+		.from(webhookEndpoints)
+		.where(and(eq(webhookEndpoints.apiKeyId, apiKeyId), isNull(webhookEndpoints.revokedAt)));
+
+	const matching = endpoints.filter((e) => e.events.includes(eventType));
+	if (matching.length === 0) return;
+
+	const now = opts.now ?? new Date();
+	const envelope = {
+		id: randomUUID(),
+		type: eventType,
+		createdAt: now.toISOString(),
+		data,
+	};
+	const rawBody = JSON.stringify(envelope);
+	const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
+	await Promise.all(matching.map((ep) => deliverOne(ep, eventType, envelope, rawBody, fetchImpl)));
+}
+
 async function deliverOne(
 	endpoint: DbWebhookEndpoint,
-	eventType: OrderEventType,
+	eventType: AnyEventType,
 	envelope: unknown,
 	rawBody: string,
 	fetchImpl: typeof globalThis.fetch,

@@ -18,7 +18,8 @@ postgres_sku = "B_Standard_B1ms"
 # stripe_secret_key     = "sk_live_..."
 # stripe_webhook_secret = "whsec_..."
 # stripe_price_hobby    = "price_..."
-# stripe_price_pro      = "price_..."
+# stripe_price_standard = "price_..."
+# stripe_price_growth   = "price_..."
 
 # eBay OAuth — leave empty to ship with /sell/*, /commerce/*, /v1/connect/ebay
 # returning 503 not_configured. Register the keyset + RuName at developer.ebay.com.
@@ -29,6 +30,25 @@ postgres_sku = "B_Standard_B1ms"
 # ebay_base_url           = "https://api.ebay.com"
 # ebay_auth_url           = "https://auth.ebay.com"
 # ebay_order_api_approved = false   # flip to true ONLY after eBay grants approval
+# ebay_insights_approved  = false   # flip to true ONLY after Marketplace Insights approval
+# ebay_catalog_approved   = false   # flip to true ONLY after Commerce Catalog approval
+
+# Per-listing observation archive — hosted-only feature. When true, every
+# /v1/buy/browse/* + /v1/buy/marketplace_insights/* response writes one row
+# to listing_observations for historical depth + cross-user reputation.
+# Self-host typically leaves off (default).
+# observation_enabled = false
+
+# Operator allow-list. Comma-separated emails auto-promoted to role=admin
+# on next session. Admins get the /v1/admin/* surface and the /admin
+# dashboard page. Empty = no admins.
+# admin_emails = "you@flipagent.dev,ops@flipagent.dev"
+
+# AES-256-GCM symmetric key (base64) used to encrypt issued API key
+# plaintext at rest. REQUIRED in production for the dashboard's
+# "reveal key" feature; sha256 hash auth still works without it.
+# Generate once with `openssl rand -base64 32`. Stored in Key Vault.
+# keys_encryption_key = "..."
 
 # Better-Auth + dashboard sign-in. Leave empty to ship with /v1/me/* + /api/auth/*
 # returning 503. APP_URL is the dashboard origin; BETTER_AUTH_URL is this api's
@@ -55,9 +75,12 @@ postgres_sku = "B_Standard_B1ms"
 # ebay_detail_source   = "rest"
 # ebay_sold_source     = "scrape"
 
-# LLM provider for /v1/match. Pick one of anthropic | openai | google. Empty
-# `llm_provider` falls back to the first key set (anthropic → openai → google).
-# Without any key, /v1/match returns 503; everything else still works.
+# LLM provider for the same-product matcher used internally by
+# /v1/evaluate and /v1/discover. Pick one of anthropic | openai | google.
+# Empty `llm_provider` falls back to the first key set
+# (anthropic → openai → google). Without any key, the composite
+# endpoints fall back to the unfiltered sold + active pools; every
+# other route still works.
 # llm_provider      = "google"
 # anthropic_api_key = "sk-ant-..."
 # anthropic_model   = "claude-haiku-4-5"

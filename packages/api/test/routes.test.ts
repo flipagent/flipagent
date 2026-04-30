@@ -90,10 +90,15 @@ describe("/v1/keys", () => {
 		await new Promise((r) => setTimeout(r, 100));
 		const res = await call("/v1/keys/me", { headers: { authorization: `Bearer ${key}` } });
 		expect(res.status).toBe(200);
-		const body = (await res.json()) as { tier: string; usage: { used: number; limit: number } };
+		const body = (await res.json()) as {
+			tier: string;
+			usage: { creditsUsed: number; creditsLimit: number; creditsRemaining: number };
+		};
 		expect(body.tier).toBe("free");
-		expect(body.usage.limit).toBe(100);
-		expect(body.usage.used).toBeGreaterThanOrEqual(1);
+		// Free tier: 500 credits one-time (auth/limits.ts TIER_LIMITS.free).
+		// The earlier /v1/keys/me call charged 1 credit, so creditsUsed >= 1.
+		expect(body.usage.creditsLimit).toBe(500);
+		expect(body.usage.creditsUsed).toBeGreaterThanOrEqual(1);
 	});
 
 	it("POST /v1/keys/revoke disables the key", async () => {
@@ -145,8 +150,8 @@ describe("/v1/keys/permissions", () => {
 		};
 		// setup.ts wipes eBay env so user-OAuth scopes are "unavailable" + browse fallback.
 		expect(body.ebayConnected).toBe(false);
-		expect(body.scopes.browse).toBe("scrape_fallback");
-		expect(body.scopes.marketplaceInsights).toBe("scrape_fallback");
+		expect(body.scopes.browse).toBe("scrape");
+		expect(body.scopes.marketplaceInsights).toBe("scrape");
 		expect(body.scopes.inventory).toBe("unavailable");
 		expect(body.scopes.orderApi).toBe("unavailable");
 	});
@@ -177,7 +182,8 @@ describe("/v1/buy/browse (mocked scrape)", () => {
 			headers: { authorization: `Bearer ${key}` },
 		});
 		expect(res.status).toBe(200);
-		expect(res.headers.get("x-ratelimit-limit")).toBe("100");
+		// Free tier: 500 credits one-time (auth/limits.ts TIER_LIMITS.free).
+		expect(res.headers.get("x-ratelimit-limit")).toBe("500");
 		expect(res.headers.get("x-flipagent-source")).toMatch(/^(scrape|cache:scrape)$/);
 		const body = (await res.json()) as { itemSummaries: Array<{ itemId: string }> };
 		expect(body.itemSummaries.length).toBe(1);

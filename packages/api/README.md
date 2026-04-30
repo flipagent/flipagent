@@ -43,7 +43,7 @@ packages/api/
 │   │   ├── match | evaluate | discover | research | draft | reprice | ship | expenses
 │   │   ├── scoring | quant   deal-finding math (cents-denominated, no I/O)
 │   │   ├── forwarder/        Planet Express rate tables, dim-weight calc
-│   │   └── notifications | webhooks | observations | trends | watchlists
+│   │   └── notifications | webhooks | observations | trends
 │   └── routes/v1/            one file per resource — validates input,
 │                             calls the resource service, renders headers
 └── drizzle/                  generated migrations
@@ -113,8 +113,8 @@ Override defaults via env: `PORT=4001 TUNNEL_HOSTNAME=other.example.dev npm run 
 | Billing | `POST /v1/billing/{checkout,portal,webhook}` | mixed | Stripe-driven |
 | Dashboard | `GET /v1/me/*` | session | Dashboard backend |
 | **Discovery** | `GET /v1/buy/browse/*`, `GET /v1/buy/marketplace_insights/item_sales/search` | API key | scraped or app-token passthrough |
-| **Decisions** | `POST /v1/evaluate`, `POST /v1/evaluate/signals` | API key | server-side scoring |
-| **Overnight** | `POST /v1/discover` | API key | rank up to 200 items per call |
+| **Decisions** | `POST /v1/evaluate` (sync) + `/v1/evaluate/jobs/*` (async + SSE + cancel) | API key | composite — detail + sold/active search + LLM same-product filter + score |
+| **Discover** | `POST /v1/discover` (sync) + `/v1/discover/jobs/*` (async + SSE + cancel) | API key | composite — query → ranked deals |
 | **Operations** | `POST /v1/ship/quote`, `GET /v1/ship/providers` | API key | forwarder math |
 | Buy-side | `/v1/buy/order/*`, `/v1/buy/feed/*`, `/v1/buy/deal/*`, `/v1/buy/offer/*` | API key + (eBay OAuth where applicable) | passthrough + bridge transports |
 | Sell-side | `/v1/sell/{inventory,fulfillment,finances,account,marketing,negotiation,analytics,compliance,recommendation,logistics,stores,feed,metadata}/*` | API key + eBay OAuth | passthrough to api.ebay.com |
@@ -148,13 +148,14 @@ Each marketplace request goes through:
    active searches, 4h for item detail, 12h for sold prices.
 2. **Scrape via @flipagent/ebay-scraper** (when `EBAY_CLIENT_ID` unset)
    **or OAuth passthrough to api.ebay.com** (when set). The passthrough
-   layer translates `/v1/{resource}/...` to eBay's verbose REST paths
-   (`/sell/inventory/v1/...`) via the `PATH_MAP` in
-   `proxy/ebay-passthrough.ts`.
+   layer rewrites our `/v1/<group>/<resource>/...` to eBay's
+   `/<group>/<resource>/v1/...` shape via the `PATH_MAP` in
+   `services/ebay/rest/client.ts`.
 
-Every response carries `X-Flipagent-Source` (`cache:scrape`,
-`scrape`, `ebay-passthrough`, etc.) and `X-Flipagent-Cached-At` when
-relevant.
+Every response carries `X-Flipagent-Source` (`scrape`, `rest`,
+`bridge`, `trading`, …) plus `X-Flipagent-From-Cache` and
+`X-Flipagent-Cached-At` when the response was served from
+`proxy_response_cache`.
 
 ## Stripe billing
 
@@ -166,7 +167,8 @@ the api stays up.
 STRIPE_SECRET_KEY=sk_live_xxx       # or sk_test_ in dev
 STRIPE_WEBHOOK_SECRET=whsec_xxx
 STRIPE_PRICE_HOBBY=price_xxx        # recurring monthly product
-STRIPE_PRICE_PRO=price_xxx
+STRIPE_PRICE_STANDARD=price_xxx
+STRIPE_PRICE_GROWTH=price_xxx
 ```
 
 Wire the webhook URL in the Stripe dashboard:

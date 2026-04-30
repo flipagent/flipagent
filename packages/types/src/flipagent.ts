@@ -9,12 +9,20 @@ import { type Static, Type } from "@sinclair/typebox";
 /* ----------------------------------- tier ---------------------------------- */
 
 export const Tier = Type.Union(
-	[Type.Literal("free"), Type.Literal("hobby"), Type.Literal("pro"), Type.Literal("business")],
+	[Type.Literal("free"), Type.Literal("hobby"), Type.Literal("standard"), Type.Literal("growth")],
 	{
 		$id: "Tier",
 	},
 );
 export type Tier = Static<typeof Tier>;
+
+/**
+ * Operator role. `admin` unlocks the `/v1/admin/*` surface and the
+ * `/admin` dashboard page; everyone else is `user`. Bootstrap by adding
+ * the email to `ADMIN_EMAILS` on the api host.
+ */
+export const Role = Type.Union([Type.Literal("user"), Type.Literal("admin")], { $id: "Role" });
+export type Role = Static<typeof Role>;
 
 /* ------------------------------- error codes ------------------------------- */
 
@@ -29,7 +37,12 @@ export const ErrorCode = Type.Union(
 		Type.Literal("unauthorized"),
 		Type.Literal("unauthenticated"),
 		Type.Literal("forbidden"),
+		// "rate_limited" is the legacy alias kept for backward compat with
+		// older self-host releases; the live API now emits "credits_exceeded"
+		// (monthly budget) or "burst_rate_limited" (per-min/per-hour) instead.
 		Type.Literal("rate_limited"),
+		Type.Literal("credits_exceeded"),
+		Type.Literal("burst_rate_limited"),
 		Type.Literal("not_found"),
 		Type.Literal("upstream_failed"),
 		Type.Literal("billing_not_configured"),
@@ -105,7 +118,7 @@ export const FeaturesResponse = Type.Object(
 		stripe: Type.Boolean({ description: "All four STRIPE_* vars — gates /v1/billing/*." }),
 		llm: Type.Boolean({
 			description:
-				"At least one of ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY set — gates the LLM comparable matcher (/v1/match).",
+				"At least one of ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY set — gates the same-product matcher used internally by /v1/evaluate and /v1/discover.",
 		}),
 	},
 	{ $id: "FeaturesResponse" },
@@ -120,7 +133,9 @@ export type FeaturesResponse = Static<typeof FeaturesResponse>;
  * "you haven't connected your eBay account" from "eBay hasn't approved you".
  *
  *   ok                — endpoint works for this user
- *   scrape_fallback   — REST not approved/wired; falls through to scraper
+ *   scrape            — served by the scrape transport (REST not
+ *                       approved/wired, or resource is scrape-only).
+ *                       1st-class data path, not a degradation.
  *   needs_oauth       — host is configured but user hasn't completed OAuth
  *   approval_pending  — needs eBay program approval (Order API, Insights)
  *   unavailable       — host doesn't have the env wired (self-host case)
@@ -128,7 +143,7 @@ export type FeaturesResponse = Static<typeof FeaturesResponse>;
 export const ScopeStatus = Type.Union(
 	[
 		Type.Literal("ok"),
-		Type.Literal("scrape_fallback"),
+		Type.Literal("scrape"),
 		Type.Literal("needs_oauth"),
 		Type.Literal("approval_pending"),
 		Type.Literal("unavailable"),
@@ -192,6 +207,25 @@ export const KeyCreateResponse = Type.Object(
 );
 export type KeyCreateResponse = Static<typeof KeyCreateResponse>;
 
+const Usage = Type.Object({
+	// One unified credit budget. Each call charges N credits depending on
+	// what it does (1 for search/marketplace mirror, 50 for evaluate, 250
+	// for discover, 5 for browser ops, 0 for cache hits). See
+	// /docs/rate-limits for the full table.
+	creditsUsed: Type.Integer(),
+	creditsLimit: Type.Integer(),
+	creditsRemaining: Type.Integer(),
+	// Sum of active admin-granted credit adjustments folded into
+	// `creditsLimit`. 0 when the user has no grants. Surfaced separately
+	// so the dashboard can render a "+N admin bonus" hint without
+	// re-querying the grant ledger.
+	bonusCredits: Type.Integer({ default: 0 }),
+	// Refill timestamp. Null for the Free tier — its 500 credits are a
+	// one-time grant, not a monthly allotment. Paid tiers refill on the
+	// 1st of each month (UTC).
+	resetAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+});
+
 export const KeyInfo = Type.Object(
 	{
 		id: Type.String(),
@@ -202,12 +236,7 @@ export const KeyInfo = Type.Object(
 		ownerEmail: Type.Union([Type.String({ format: "email" }), Type.Null()]),
 		createdAt: Type.String({ format: "date-time" }),
 		lastUsedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
-		usage: Type.Object({
-			used: Type.Integer(),
-			limit: Type.Union([Type.Integer(), Type.Null()]),
-			remaining: Type.Union([Type.Integer(), Type.Null()]),
-			resetAt: Type.String({ format: "date-time" }),
-		}),
+		usage: Usage,
 	},
 	{ $id: "KeyInfo" },
 );
@@ -224,13 +253,6 @@ export type KeyRevokeResponse = Static<typeof KeyRevokeResponse>;
 
 /* ----------------------------- /v1/me (dashboard) ---------------------------- */
 
-const Usage = Type.Object({
-	used: Type.Integer(),
-	limit: Type.Union([Type.Integer(), Type.Null()]),
-	remaining: Type.Union([Type.Integer(), Type.Null()]),
-	resetAt: Type.String({ format: "date-time" }),
-});
-
 export const MeProfile = Type.Object(
 	{
 		id: Type.String(),
@@ -239,6 +261,7 @@ export const MeProfile = Type.Object(
 		name: Type.String(),
 		image: Type.Union([Type.String(), Type.Null()]),
 		tier: Tier,
+		role: Role,
 		usage: Usage,
 	},
 	{ $id: "MeProfile" },
@@ -286,7 +309,9 @@ export type MeKeyRevealResponse = Static<typeof MeKeyRevealResponse>;
 
 export const BillingCheckoutRequest = Type.Object(
 	{
-		tier: Type.Union([Type.Literal("hobby"), Type.Literal("pro")]),
+		// Tier the user wants to subscribe to.
+		// hobby = $19/mo, standard = $99/mo, growth = $399/mo.
+		tier: Type.Union([Type.Literal("hobby"), Type.Literal("standard"), Type.Literal("growth")]),
 	},
 	{ $id: "BillingCheckoutRequest" },
 );

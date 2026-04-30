@@ -8,8 +8,9 @@
  * Caller sees a single sync response — no purchaseOrderId polling.
  *
  * Use cases:
- *   1. Agent fallback when high-level scrapers (eBay buy, PE inbox)
- *      fail — LLM directly inspects DOM and adapts.
+ *   1. Direct DOM access for cases the high-level tools don't cover
+ *      — custom marketplaces, new fields, ad-hoc reads. 1st-class
+ *      surface, not a fallback for the typed scrapers.
  *   2. Interactive selector tuning during dev — query a page live
  *      without writing & shipping new content-script code.
  */

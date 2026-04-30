@@ -5,8 +5,8 @@
  *
  * All three transports (rest / scrape / bridge) flow through here so
  * route handlers stay thin (input → call → headers) and any callers
- * outside the route — the watchlist scan worker, future agent flows —
- * inherit the same cache + observation hooks for free.
+ * outside the route inherit the same cache + observation hooks for
+ * free.
  *
  * Pulse fires every call (cache hit included) so warm caches don't
  * mute the demand signal. Observation writes only fire on a fresh
@@ -22,7 +22,7 @@ import { hashQuery } from "../../services/shared/cache.js";
 import { recordSearchObservations } from "../observations/index.js";
 import type { FlipagentResult } from "../shared/result.js";
 import { selectTransport, TransportUnavailableError } from "../shared/transport.js";
-import { withCache } from "../shared/with-cache.js";
+import { timeoutMsForSource, withCache } from "../shared/with-cache.js";
 import { recordQueryPulse } from "../trends/index.js";
 import { bridgeListingsSearch } from "./bridge.js";
 import { rethrowAsListingsError } from "./bridge-status.js";
@@ -44,6 +44,12 @@ export type ListingsSource = "rest" | "scrape" | "bridge";
 export interface ActiveSearchInput {
 	q: string;
 	limit?: number;
+	/**
+	 * Page offset — REST passthrough only (eBay Browse caps practical
+	 * pagination at offset+limit ≤ 10000). Scrape source ignores it
+	 * (the search-page parser only reads page 1); bridge mirrors REST.
+	 */
+	offset?: number;
 	filter?: string;
 	sort?: string;
 	categoryIds?: string;
@@ -102,11 +108,13 @@ export async function searchActiveListings(
 	}
 	const resolved: Required<Pick<ActiveSearchContext, "source">> & ActiveSearchContext = { ...ctx, source };
 	const limit = input.limit ?? 25;
+	const offset = input.offset ?? 0;
 	const queryHash = hashQuery({
 		q: input.q,
 		filter: input.filter,
 		sort: input.sort,
 		limit,
+		offset,
 		soldOnly: false,
 		categoryIds: input.categoryIds,
 	});
@@ -116,7 +124,13 @@ export async function searchActiveListings(
 	void recordQueryPulse({ keyword: input.q, categoryId: input.categoryIds });
 
 	const result = await withCache(
-		{ scope: `listings:active:${source}`, ttlSec: ACTIVE_TTL_SEC, path: ACTIVE_PATH, queryHash },
+		{
+			scope: `listings:active:${source}`,
+			ttlSec: ACTIVE_TTL_SEC,
+			path: ACTIVE_PATH,
+			queryHash,
+			timeoutMs: timeoutMsForSource(source),
+		},
 		async () => {
 			const body = await dispatch(input, resolved, limit);
 			// Observation writes only on a fresh fetch — re-archiving on
@@ -137,6 +151,7 @@ async function dispatch(
 		const query: BrowseSearchQuery = {
 			q: input.q,
 			limit,
+			...(input.offset != null && input.offset > 0 ? { offset: input.offset } : {}),
 			...(input.filter ? { filter: input.filter } : {}),
 			...(input.sort ? { sort: input.sort } : {}),
 			...(input.categoryIds ? { category_ids: input.categoryIds } : {}),
@@ -152,6 +167,7 @@ async function dispatch(
 				conditionIds: input.conditionIds ?? parseConditionIdsFilter(input.filter),
 				sort: input.sort ? SCRAPE_SORT_MAP[input.sort] : undefined,
 				limit,
+				offset: input.offset,
 			});
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
@@ -165,6 +181,7 @@ async function dispatch(
 	const bridgeQuery: BrowseSearchQuery = {
 		q: input.q,
 		limit,
+		...(input.offset != null && input.offset > 0 ? { offset: input.offset } : {}),
 		...(input.filter ? { filter: input.filter } : {}),
 		...(input.sort ? { sort: input.sort } : {}),
 		...(input.categoryIds ? { category_ids: input.categoryIds } : {}),

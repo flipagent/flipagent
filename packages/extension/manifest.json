@@ -2,7 +2,7 @@
 	"manifest_version": 3,
 	"name": "flipagent",
 	"version": "0.0.1",
-	"description": "Local executor for flipagent /v1/buy/order/* (bridge transport) — drives buy-flow clicks inside your real eBay session.",
+	"description": "Local executor for flipagent's bridge surfaces — eBay buy/order, package-forwarder ops, and browser DOM queries — running inside your real Chrome session.",
 	"icons": {
 		"16": "icons/icon-16.png",
 		"32": "icons/icon-32.png",
@@ -10,14 +10,12 @@
 		"128": "icons/icon-128.png"
 	},
 	"action": {
-		"default_title": "flipagent — open side panel",
+		"default_title": "flipagent",
+		"default_popup": "popup.html",
 		"default_icon": {
 			"16": "icons/icon-16.png",
 			"32": "icons/icon-32.png"
 		}
-	},
-	"side_panel": {
-		"default_path": "sidepanel.html"
 	},
 	"background": {
 		"service_worker": "background.js",
@@ -35,7 +33,7 @@
 			"run_at": "document_idle"
 		}
 	],
-	"permissions": ["storage", "alarms", "tabs", "scripting", "sidePanel"],
+	"permissions": ["storage", "alarms", "tabs", "scripting"],
 	"host_permissions": [
 		"https://www.ebay.com/*",
 		"https://*.ebay.com/*",

@@ -1,39 +1,37 @@
 /**
- * Two-bucket classifier (`match` / `reject`) over a pool of `ItemSummary`.
- * Decision is delegated to an LLM that reads titles, structured aspects,
- * conditions, and (optionally) listing images. The deterministic
- * IDF-weighted token overlap of earlier versions has been retired —
- * it produced false negatives on listings whose sellers omitted the
- * reference number from the title.
+ * Same-product classifier — internal-only. Used by composite
+ * intelligence pipelines (`/v1/evaluate`, `/v1/discover`,
+ * watchlists/scan) to filter raw search pools down to listings that
+ * describe the same product as the seed item.
  *
- * The matcher is intentionally strict. Any meaningful difference
- * (model number, finish, colour, condition, missing accessories) sends
- * the comparable to `reject`. Borderline / score-tuning is gone — the
- * decision is binary because the LLM has enough context to commit.
+ * Two-bucket output (`match` / `reject`). Decision is delegated to an
+ * LLM that reads titles, structured aspects, conditions, and
+ * (optionally) listing images. The matcher is intentionally strict —
+ * any meaningful difference (model number, finish, colour, condition,
+ * missing accessories) sends the listing to `reject`.
  *
  * Provider is one of Anthropic / OpenAI / Google — picked from env
- * (`LLM_PROVIDER` overrides; otherwise the first key set wins). The
- * matcher itself is provider-agnostic.
+ * (`LLM_PROVIDER` overrides; otherwise the first key set wins). When no
+ * provider is configured, `matchPool` throws `MatchUnavailableError`
+ * and callers fall back to the unfiltered pool.
  *
- * The response cache (`/v1/match` keyed off candidate + sorted pool ids
- * + useImages) lives in this service, not in the route — watchlist
- * scans get the same hit-through behaviour as live HTTP callers.
+ * The response cache (keyed off candidate + sorted pool ids + useImages)
+ * lives in this service so every internal caller gets the same hit-through
+ * behaviour.
  */
 
-import type { MatchDelegateResponse, MatchOptions, MatchResponse } from "@flipagent/types";
 import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import { hashQuery } from "../shared/cache.js";
 import type { FlipagentResult } from "../shared/result.js";
 import { withCache } from "../shared/with-cache.js";
-import { buildDelegatePrompt } from "./delegate.js";
 import { isAnyLlmConfigured } from "./llm/index.js";
-import { type LlmMatchDeps, matchPoolWithLlm } from "./matcher.js";
-import { saveDelegateTrace } from "./trace.js";
+import { type DetailFetcher, matchPoolWithLlm } from "./matcher.js";
+import type { MatchOptions, MatchResponse } from "./types.js";
 
-const MATCH_PATH = "/v1/match";
+export type { DetailFetcher } from "./matcher.js";
+
+const MATCH_PATH = "internal:match";
 const MATCH_TTL_SEC = 60 * 60 * 2;
-
-export interface MatchPoolDeps extends LlmMatchDeps {}
 
 export type MatchPoolResult = FlipagentResult<MatchResponse>;
 
@@ -58,55 +56,42 @@ function matchQueryHash(candidate: ItemSummary, pool: ReadonlyArray<ItemSummary>
 	});
 }
 
-export type MatchPoolOutcome =
-	| { mode: "hosted"; result: MatchPoolResult }
-	| { mode: "delegate"; delegate: MatchDelegateResponse };
-
 /**
- * Single entry point — branches on `options.mode`. Hosted runs the
- * two-pass LLM matcher with response cache; delegate builds a prompt
- * for the caller's LLM and persists the prompt-side trace context.
+ * Run the LLM matcher over `pool` against `candidate`. Independent
+ * module: depends only on its own decision cache + an LLM provider +
+ * the caller-supplied detail-fetch port. The matcher knows nothing
+ * about eBay transport, auth, or tier limits.
  *
- * Routes stay uniform: validate input → call this → render headers
- * (hosted) or return the delegate envelope. No layer-specific
- * branching at the route.
+ * Wraps the whole call in the response cache so identical (candidate,
+ * pool) hits are instant. The 30-day decision cache short-circuits
+ * per-pair work even on cold (candidate, pool) combinations.
+ *
+ * Throws `MatchUnavailableError` when no LLM provider is configured —
+ * composite callers catch this and fall back to the unfiltered pool so
+ * endpoints stay up on self-host without a key.
  */
 export async function matchPool(
 	candidate: ItemSummary,
 	pool: ReadonlyArray<ItemSummary>,
 	options: MatchOptions,
-	deps: MatchPoolDeps,
-): Promise<MatchPoolOutcome> {
-	if (options?.mode === "delegate") {
-		const delegate = buildDelegatePrompt(candidate, pool, options);
-		// Persist the prompt-side context for /v1/traces/match. Fire and
-		// forget — a failed insert shouldn't block the response.
-		void saveDelegateTrace({
-			traceId: delegate.traceId,
-			candidate,
-			pool,
-			useImages: options.useImages ?? true,
-		}).catch((err) => console.error("[match.delegate] trace persist failed:", err));
-		return { mode: "delegate", delegate };
-	}
-
+	fetchDetail: DetailFetcher,
+): Promise<MatchPoolResult> {
 	if (!isAnyLlmConfigured()) {
 		throw new MatchUnavailableError(
-			"No LLM provider configured — /v1/match needs ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY.",
+			"No LLM provider configured — set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY.",
 		);
 	}
 	const queryHash = matchQueryHash(candidate, pool, options);
-	const result = await withCache(
-		// Hosted matcher can run for tens of seconds (parallel verify
-		// chunks); give it a generous deadline that still bails before
-		// an HTTP timeout would.
+	return withCache(
+		// Matcher can run for tens of seconds (parallel verify chunks);
+		// give it a generous deadline that still bails before an HTTP
+		// timeout would.
 		{ scope: "match:hosted", ttlSec: MATCH_TTL_SEC, path: MATCH_PATH, queryHash, timeoutMs: 90_000 },
 		async () => {
-			const body = await matchPoolWithLlm(candidate, pool, options, deps);
+			const body = await matchPoolWithLlm(candidate, pool, options, fetchDetail);
 			return { body, source: "llm" };
 		},
 	);
-	return { mode: "hosted", result };
 }
 
 export type { ItemDetail };

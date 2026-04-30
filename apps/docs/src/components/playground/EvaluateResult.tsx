@@ -14,16 +14,12 @@
 
 import { motion } from "motion/react";
 import { useState } from "react";
+import { InfoTooltip } from "../ui/InfoTooltip";
 import { PriceHistogram } from "./PriceHistogram";
 import { Trace } from "./Trace";
 import type { EvaluateOutcome } from "./pipelines";
-import type { ItemDetail, ItemSummary, MarketStats, Step } from "./types";
+import type { ItemDetail, ItemSummary, MarketStats, Returns, Step } from "./types";
 
-const RATING_TONE: Record<string, string> = {
-	buy: "good",
-	hold: "warn",
-	skip: "neutral",
-};
 
 function fmtUsd(cents: number | undefined | null): string {
 	if (cents == null) return "—";
@@ -35,6 +31,100 @@ function fmtUsdRound(cents: number | undefined | null): string {
 	if (cents == null) return "—";
 	const sign = cents < 0 ? "−" : "";
 	return `${sign}$${Math.abs(Math.round(cents / 100))}`;
+}
+
+/**
+ * Force eBay's "no redirect" mode on a listing URL. Sold/ended
+ * listings that are catalog-linked normally 301 to `/p/<epid>` (the
+ * product hub) regardless of which params are on the URL — eBay
+ * decides server-side from the listing's own state, not from the
+ * query string. Verified by curl test: stripping `epid` alone
+ * doesn't help, but appending `?nordt=true` (eBay's internal "no
+ * redirect" flag) returns the original listing page directly.
+ *
+ * Without this, every sold listing of a given SKU collapses to the
+ * same destination in the user's browser, which reads as "all the
+ * links go to the same page" even though each row's underlying URL
+ * is unique. We also drop `epid` and a couple of search-context
+ * tracking params to keep the URL tidy. Defensive try/catch so a
+ * malformed URL doesn't break the row.
+ */
+export function cleanItemUrl(url: string): string {
+	try {
+		const u = new URL(url);
+		for (const param of ["epid", "_skw", "itmprp", "tkp"]) {
+			u.searchParams.delete(param);
+		}
+		u.searchParams.set("nordt", "true");
+		return u.toString();
+	} catch {
+		return url;
+	}
+}
+
+/** "18420" → "18k", "1842" → "1.8k", "342" → "342". Compact feedback-score formatting for the hero meta. */
+function compactNum(n: number): string {
+	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+	if (n >= 10_000) return `${Math.round(n / 1000)}k`;
+	if (n >= 1_000) return `${(n / 1000).toFixed(1)}k`;
+	return String(n);
+}
+
+/**
+ * Read the primary shipping option's cost. eBay returns shippingOptions[0]
+ * as the buyer's default shipping. `shippingCostType === "FREE_SHIPPING"`
+ * (with a missing or "0.00" cost) is the explicit free path; everything
+ * else with a numeric cost is paid shipping. Returns null when shipping is
+ * not surfaced at all (some scrape detail rows).
+ */
+function shippingCents(item: ItemSummary): { cents: number; isFree: boolean } | null {
+	const opt = item.shippingOptions?.[0];
+	if (!opt) return null;
+	const cost = opt.shippingCost;
+	const cents = cost ? Math.round(Number.parseFloat(cost.value) * 100) : null;
+	const isFree = opt.shippingCostType === "FREE_SHIPPING" || cents === 0;
+	if (isFree) return { cents: 0, isFree: true };
+	if (cents == null || !Number.isFinite(cents)) return null;
+	return { cents, isFree: false };
+}
+
+/**
+ * Compact seller signal — feedback rate with total count in parentheses.
+ * Lives in the Buy-at row's aside chain alongside shipping + returns so
+ * all buyer-trust signals are read together at decision time. Returns
+ * `null` when no signal is available.
+ */
+function sellerMetaText(seller: ItemSummary["seller"]): string | null {
+	if (!seller) return null;
+	const pct = seller.feedbackPercentage ? trimTrailingZero(seller.feedbackPercentage) : null;
+	const score = typeof seller.feedbackScore === "number" ? compactNum(seller.feedbackScore) : null;
+	if (!pct && !score) return null;
+	return pct
+		? score
+			? `${pct}% feedback (${score})`
+			: `${pct}% feedback`
+		: `${score} sales`;
+}
+
+function trimTrailingZero(s: string): string {
+	// "100.0" → "100", "98.5" stays "98.5"
+	return s.replace(/\.0+$/, "");
+}
+
+/**
+ * Compact returns indicator — short label ("30-day returns" / "No returns")
+ * for the Buy-at row's aside chain. `warn` flips on for negative states so
+ * the caller can color-code risk.
+ */
+function returnsMetaText(returns: Returns | null): { text: string; warn: boolean } | null {
+	if (!returns) return null;
+	if (returns.accepted) {
+		return {
+			text: returns.periodDays != null ? `${returns.periodDays}-day returns` : "Returns OK",
+			warn: false,
+		};
+	}
+	return { text: "No returns", warn: true };
 }
 
 export function EvaluateResult({
@@ -50,9 +140,6 @@ export function EvaluateResult({
 	/** True while the chain is still running — sections without data show skeletons. */
 	pending?: boolean;
 }) {
-	const candidatePriceCents = outcome.detail?.price
-		? Math.round(Number.parseFloat(outcome.detail.price.value) * 100)
-		: null;
 	const finalPayload = isComplete(outcome) ? (outcome as EvaluateOutcome) : null;
 	// Run halted with sections still missing — flag the wrapper so live skeletons
 	// (which would normally shimmer) freeze + tint to read as "didn't load",
@@ -67,37 +154,7 @@ export function EvaluateResult({
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ duration: 0.25 }}
 		>
-			{outcome.detail ? <ItemHero item={outcome.detail} /> : <ItemHeroSkeleton />}
-
-			{outcome.soldPool ? (() => {
-				// Once match completes, narrow both chart series to same-
-				// product items. A listing that appears in BOTH pools (e.g.
-				// recently-sold-and-still-active) belongs in BOTH series —
-				// its sold price and active ask are distinct data points.
-				let soldSeries: ItemSummary[] = outcome.soldPool;
-				let activeSeries: ItemSummary[] = outcome.activePool ?? [];
-				if (outcome.buckets) {
-					const sIds = new Set(outcome.soldPool.map((i) => i.itemId));
-					const aIds = new Set((outcome.activePool ?? []).map((i) => i.itemId));
-					soldSeries = outcome.buckets.match.filter((m) => sIds.has(m.item.itemId)).map((m) => m.item);
-					activeSeries = outcome.buckets.match.filter((m) => aIds.has(m.item.itemId)).map((m) => m.item);
-				}
-				return (
-					<PriceHistogram
-						sold={soldSeries}
-						active={activeSeries}
-						candidatePriceCents={candidatePriceCents}
-					/>
-				);
-			})() : pending ? (
-				<ChartSkeleton />
-			) : null}
-
-			<Facts outcome={outcome} pending={pending} />
-
-			{(outcome.evaluation || pending) && (
-				<Recommendation outcome={outcome} sellWithinDays={sellWithinDays} pending={pending} />
-			)}
+			<EvaluateResultBody outcome={outcome} sellWithinDays={sellWithinDays} pending={pending} />
 
 			{finalPayload ? (
 				<Footer payload={finalPayload} steps={steps} />
@@ -110,13 +167,59 @@ export function EvaluateResult({
 	);
 }
 
+/**
+ * Body of an Evaluate-style result — hero · histogram · facts. No
+ * footer (caller supplies its own trace/copy footer). Exported so
+ * Discover's side-detail pane can render the same exact layout for a
+ * single deal: feed in `{ item, evaluation, market, soldPool, activePool }`
+ * built from the deal + its cluster, get back identical visual output.
+ *
+ * Skeletons fire when `pending` and the underlying data slot is empty —
+ * matches Evaluate's main-result behavior.
+ */
+export function EvaluateResultBody({
+	outcome,
+	sellWithinDays,
+	pending = false,
+}: {
+	outcome: Partial<EvaluateOutcome>;
+	sellWithinDays?: number;
+	pending?: boolean;
+}) {
+	const candidatePriceCents = outcome.item?.price
+		? Math.round(Number.parseFloat(outcome.item.price.value) * 100)
+		: null;
+	return (
+		<>
+			{outcome.item ? <ItemHero item={outcome.item} /> : <ItemHeroSkeleton />}
+
+			{outcome.soldPool && outcome.soldPool.length > 0 ? (
+				<PriceHistogram
+					sold={outcome.soldPool}
+					active={outcome.activePool ?? []}
+					candidatePriceCents={candidatePriceCents}
+				/>
+			) : pending ? (
+				<ChartSkeleton />
+			) : null}
+
+			<Facts
+				outcome={outcome}
+				pending={pending}
+				returns={outcome.returns ?? null}
+				sellWithinDays={sellWithinDays}
+			/>
+		</>
+	);
+}
+
 function isComplete(o: Partial<EvaluateOutcome>): boolean {
-	return !!(o.detail && o.soldPool && o.activePool && o.buckets && o.marketSummary && o.evaluation);
+	return !!(o.item && o.evaluation && o.meta);
 }
 
 /* ----------------------------- item hero ----------------------------- */
 
-function ItemHeroSkeleton() {
+export function ItemHeroSkeleton() {
 	return (
 		<div className="pg-result-hero pg-result-hero--skel">
 			<div className="pg-result-hero-thumb pg-result-skel" />
@@ -128,124 +231,211 @@ function ItemHeroSkeleton() {
 	);
 }
 
-function ChartSkeleton() {
+export function ChartSkeleton() {
 	return <div className="pg-result-chart-skel pg-result-skel" />;
 }
 
-function ItemHero({ item }: { item: ItemDetail }) {
+/** Hero accepts any item with the visual subset Evaluate + Discover share.
+ *  ItemDetail extends ItemSummary, so both shapes satisfy this. */
+type HeroItem = ItemSummary & { brand?: string };
+
+export function ItemHero({ item }: { item: HeroItem }) {
 	const img = item.image?.imageUrl;
 	return (
-		<a
-			href={item.itemWebUrl}
-			target="_blank"
-			rel="noopener noreferrer"
-			className="pg-result-hero"
-		>
+		<div className="pg-result-hero">
 			<div className="pg-result-hero-thumb">
 				{img ? <img src={img} alt="" loading="lazy" /> : <span aria-hidden="true">·</span>}
 			</div>
 			<div className="pg-result-hero-body">
-				<div className="pg-result-hero-title">{item.title}</div>
+				<div className="pg-result-hero-title-row">
+					<span className="pg-result-hero-title">{item.title}</span>
+					<CopyTitleButton text={item.title} />
+				</div>
 				<div className="pg-result-hero-meta">
 					{item.condition && <span>{item.condition}</span>}
 					{item.brand && <span>{item.brand}</span>}
 					{item.price && <span className="font-mono">${item.price.value}</span>}
 				</div>
 			</div>
-			<svg
+			<a
+				href={cleanItemUrl(item.itemWebUrl)}
+				target="_blank"
+				rel="noopener noreferrer"
 				className="pg-result-hero-link"
-				width="13"
-				height="13"
-				viewBox="0 0 16 16"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.5"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-				aria-hidden="true"
+				title="Open on eBay"
+				aria-label="Open on eBay"
 			>
-				<path d="M9 3h4v4M13 3 7 9M7 5H4.5A1.5 1.5 0 0 0 3 6.5v5A1.5 1.5 0 0 0 4.5 13h5a1.5 1.5 0 0 0 1.5-1.5V9" />
-			</svg>
-		</a>
+				<svg
+					width="13"
+					height="13"
+					viewBox="0 0 16 16"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="1.5"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+					aria-hidden="true"
+				>
+					<path d="M9 3h4v4M13 3 7 9M7 5H4.5A1.5 1.5 0 0 0 3 6.5v5A1.5 1.5 0 0 0 4.5 13h5a1.5 1.5 0 0 0 1.5-1.5V9" />
+				</svg>
+			</a>
+		</div>
+	);
+}
+
+export function CopyTitleButton({ text }: { text: string }) {
+	const [copied, setCopied] = useState(false);
+	async function copy(e: React.MouseEvent) {
+		e.stopPropagation();
+		e.preventDefault();
+		try {
+			await navigator.clipboard.writeText(text);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 1200);
+		} catch {
+			/* clipboard blocked — silent */
+		}
+	}
+	return (
+		<button
+			type="button"
+			onClick={copy}
+			className="pg-copy-title"
+			data-copied={copied ? "true" : undefined}
+			title={copied ? "Copied" : "Copy title"}
+			aria-label={copied ? "Copied" : "Copy title"}
+		>
+			{copied ? (
+				<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+					<path d="m3 8 3 3 7-7" />
+				</svg>
+			) : (
+				<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+					<rect x="5" y="5" width="9" height="9" rx="1.5" />
+					<path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+				</svg>
+			)}
+		</button>
 	);
 }
 
 /* ------------------------------ facts ------------------------------ */
 
-function Facts({ outcome, pending }: { outcome: Partial<EvaluateOutcome>; pending: boolean }) {
+/**
+ * Median + p25 + p75 from a sold pool. Cents-denominated. Returns null
+ * when fewer than 4 entries (matches server-side
+ * MIN_SOLD_FOR_DISTRIBUTION). Sold price prefers `lastSoldPrice`
+ * (Marketplace Insights) and falls back to `price` (Browse search).
+ */
+function soldStats(sold: ItemSummary[]): { medianCents: number; p25Cents: number; p75Cents: number; n: number } | null {
+	const cents = sold
+		.map((s) => {
+			const v = s.lastSoldPrice?.value ?? s.price?.value;
+			if (!v) return null;
+			const n = Math.round(Number.parseFloat(v) * 100);
+			return Number.isFinite(n) ? n : null;
+		})
+		.filter((n): n is number => n != null)
+		.sort((a, b) => a - b);
+	if (cents.length < 4) return null;
+	const at = (p: number) => cents[Math.min(cents.length - 1, Math.floor(p * cents.length))]!;
+	return { medianCents: at(0.5), p25Cents: at(0.25), p75Cents: at(0.75), n: cents.length };
+}
+
+function Facts({
+	outcome,
+	pending,
+	returns,
+	sellWithinDays,
+}: {
+	outcome: Partial<EvaluateOutcome>;
+	pending: boolean;
+	returns: Returns | null;
+	/** When set and the recommended exit's expected wait exceeds it, the
+	 *  Net profit row appends a "· over your N-day window" warn aside so
+	 *  the buyer sees the timeline mismatch without a separate block. */
+	sellWithinDays?: number;
+}) {
+	const evaluation = outcome.evaluation;
+	const market = outcome.market;
+	const meta = outcome.meta;
 	const [soldOpen, setSoldOpen] = useState(false);
 	const [activeOpen, setActiveOpen] = useState(false);
-	const [matchedOpen, setMatchedOpen] = useState(true);
-	const [rejectedOpen, setRejectedOpen] = useState(true);
-	const market = outcome.marketSummary?.market;
-	const evaluation = outcome.evaluation;
-	const buckets = outcome.buckets;
-	const soldPool = outcome.soldPool;
-	const activePool = outcome.activePool;
-	// The pipeline feeds match() with sold + active combined (deduped to
-	// save LLM tokens). On display, route each evaluation to BOTH cohorts it
-	// originally appeared in — a relisted-and-recently-sold listing
-	// genuinely belongs in both Sold (price truth) and Active (live
-	// competition). The histogram's lastSoldPrice/price field separation
-	// keeps the math correct without us splitting the match call.
-	const soldIdSet = soldPool ? new Set(soldPool.map((i) => i.itemId)) : null;
-	const activeIdSet = activePool ? new Set(activePool.map((i) => i.itemId)) : null;
-	const inSold = (id: string) => soldIdSet?.has(id) ?? false;
-	const inActive = (id: string) => activeIdSet?.has(id) ?? false;
-	const soldMatches = buckets ? buckets.match.filter((m) => inSold(m.item.itemId)) : [];
-	const soldRejects = buckets ? buckets.reject.filter((m) => inSold(m.item.itemId)) : [];
-	const activeMatches = buckets ? buckets.match.filter((m) => inActive(m.item.itemId)) : [];
-	const activeRejects = buckets ? buckets.reject.filter((m) => inActive(m.item.itemId)) : [];
-	// Active asks stats — computed client-side off matched-active items.
-	// `price.value` is the asking price for FIXED_PRICE; for AUCTION it's
-	// the starting/current price (close enough for "asks distribution").
-	const askCents = activeMatches
-		.map((m) => (m.item.price ? Math.round(Number.parseFloat(m.item.price.value) * 100) : null))
+	const [bidsOpen, setBidsOpen] = useState(false);
+	// Prefer server-computed market stats (have CI + meanDaysToSell);
+	// fall back to a quick client-side soldStats for the ad-hoc cases.
+	const stats = outcome.soldPool ? soldStats(outcome.soldPool) : null;
+	const referenceSaleCents =
+		market?.medianCents ?? stats?.medianCents ?? evaluation?.safeBidBreakdown?.estimatedSaleCents ?? null;
+	const p25 = market?.p25Cents ?? stats?.p25Cents ?? null;
+	const p75 = market?.p75Cents ?? stats?.p75Cents ?? null;
+	// `meta` is no longer used in the row text — the LLM filter ratio
+	// ("5 matched of 50 fetched") read as jargon for end users. The View
+	// button still exposes the kept/rejected breakdown on demand for
+	// anyone auditing the filter.
+	void meta;
+
+	// Active asks — lowest / highest current asking price across the
+	// matched-active pool. `price.value` is the asking price for FIXED_PRICE;
+	// for AUCTION it's the starting/current price (close enough for the
+	// asks distribution).
+	const activePool = outcome.activePool ?? [];
+	const askCents = activePool
+		.map((a) => (a.price ? Math.round(Number.parseFloat(a.price.value) * 100) : null))
 		.filter((c): c is number => c != null && Number.isFinite(c));
 	const lowestAskCents = askCents.length > 0 ? Math.min(...askCents) : null;
 	const highestAskCents = askCents.length > 0 ? Math.max(...askCents) : null;
-	// Active bids — only AUCTION items with a current bid count for a
-	// "what buyers are actually willing to pay" data point.
-	const auctionBids = activeMatches
-		.map((m) => {
-			const opts = m.item.buyingOptions ?? [];
-			if (!opts.includes("AUCTION")) return null;
-			const bp = m.item.currentBidPrice;
-			if (!bp) return null;
-			const cents = Math.round(Number.parseFloat(bp.value) * 100);
+
+	// Active bids — every AUCTION item in the matched-active pool, with
+	// items that already have a current bid surfaced first. The View
+	// button reuses MatchInline so the user can audit what's being bid
+	// on alongside what's still waiting for its first bid.
+	const auctionItems = activePool
+		.filter((a) => (a.buyingOptions ?? []).includes("AUCTION"))
+		.slice()
+		.sort((a, b) => {
+			const ab = a.currentBidPrice ? Number.parseFloat(a.currentBidPrice.value) : -1;
+			const bb = b.currentBidPrice ? Number.parseFloat(b.currentBidPrice.value) : -1;
+			return bb - ab;
+		});
+	const auctionBidCents = auctionItems
+		.map((a) => {
+			const v = a.currentBidPrice?.value;
+			if (!v) return null;
+			const cents = Math.round(Number.parseFloat(v) * 100);
 			return Number.isFinite(cents) ? cents : null;
 		})
 		.filter((c): c is number => c != null);
-	const highestBidCents = auctionBids.length > 0 ? Math.max(...auctionBids) : null;
+	const highestBidCents = auctionBidCents.length > 0 ? Math.max(...auctionBidCents) : null;
 
-	const candCents = outcome.detail?.price
-		? Math.round(Number.parseFloat(outcome.detail.price.value) * 100)
+	const candCents = outcome.item?.price
+		? Math.round(Number.parseFloat(outcome.item.price.value) * 100)
 		: null;
-	const deltaSold = candCents != null && market?.medianCents ? candCents - market.medianCents : null;
-	const deltaAsk = candCents != null && lowestAskCents != null ? candCents - lowestAskCents : null;
-
-	const lowSample = market != null && market.nObservations > 0 && market.nObservations < 5;
+	const lowSample = outcome.meta != null && outcome.meta.soldCount > 0 && outcome.meta.soldCount < 5;
 
 	return (
-		<>
 		<dl className="pg-result-facts">
-			{/* Sold — what people actually paid. The strongest market signal. */}
-			<Row label="Sold for">
-				{market ? (
+			{/* Sold — what people actually paid. The strongest market signal.
+			    Label "Avg. sold" describes the stat directly (the value is
+			    the IQR-cleaned median — robust to outliers, which is what
+			    "average sold" colloquially means to resellers). Aside
+			    order: value · range · count · [View]. */}
+			<Row label="Avg. sold">
+				{referenceSaleCents != null ? (
 					<>
-						<span className="pg-result-facts-val">{fmtUsd(market.medianCents)}</span>
-						<span className="pg-result-facts-aside">
-							{fmtUsdRound(market.p25Cents)}–{fmtUsdRound(market.p75Cents)} range
-						</span>
-						{soldPool && (
+						<span className="pg-result-facts-val">{fmtUsd(referenceSaleCents)}</span>
+						{p25 != null && p75 != null && (
 							<span className="pg-result-facts-aside">
-								· {buckets ? soldMatches.length : <Skel w={14} h={12} />} of {soldPool.length}
+								{fmtUsdRound(p25)}–{fmtUsdRound(p75)} range
 							</span>
 						)}
-						{lowSample && (
-							<span className="pg-result-facts-warn">limited data (n={market.nObservations})</span>
+						{outcome.soldPool && outcome.soldPool.length > 0 && (
+							<span className="pg-result-facts-aside">· {outcome.soldPool.length} sales</span>
 						)}
-						{buckets && soldPool && soldPool.length > 0 && (
+						{lowSample && (
+							<span className="pg-result-facts-warn">low sample</span>
+						)}
+						{((outcome.soldPool?.length ?? 0) + (outcome.rejectedSoldPool?.length ?? 0)) > 0 && (
 							<button
 								type="button"
 								onClick={() => setSoldOpen((o) => !o)}
@@ -256,59 +446,76 @@ function Facts({ outcome, pending }: { outcome: Partial<EvaluateOutcome>; pendin
 						)}
 					</>
 				) : (
-					<Skel w={140} />
+					<Skel w={180} />
 				)}
 			</Row>
-			{soldOpen && buckets && soldPool && soldPool.length > 0 && (
+			{soldOpen && (
 				<MatchInline
-					matches={soldMatches}
-					rejects={soldRejects}
-					matchedOpen={matchedOpen}
-					rejectedOpen={rejectedOpen}
-					setMatchedOpen={setMatchedOpen}
-					setRejectedOpen={setRejectedOpen}
+					kept={outcome.soldPool ?? []}
+					rejected={outcome.rejectedSoldPool ?? []}
 				/>
 			)}
 
-			{/* Velocity — selling pace + typical wait merged into one row.
-			    Reseller cares: how often, and how long until I sell mine. */}
-			<Row label="Velocity">
-				{market ? (
-					<>
-						<span className="pg-result-facts-val">{market.salesPerDay.toFixed(2)} / day</span>
-						<SellingPaceTag market={market} />
-						{market.meanDaysToSell != null && (
-							<span className="pg-result-facts-aside">~{Math.round(market.meanDaysToSell)}d to sell</span>
-						)}
-					</>
+			{/* Days to sell — mean days from list to sale. Pairs with
+			    "Avg. sold" above; together they answer "what does the
+			    market do with this SKU?" in price + time. Sales/day stays
+			    as a supporting aside (same pace, different lens — useful
+			    for buyers thinking in flow rate). Label echoes the
+			    "~Yd to sell" wording in the Resells-at row so the time
+			    vocab is consistent down the column. When duration data
+			    is missing (no `meanDaysToSell`) the row morphs into
+			    "Sells per day" with sales/day as the primary value, so
+			    we never hide market pace. */}
+			<Row label={market?.meanDaysToSell != null ? "Days to sell" : "Sells per day"}>
+				{market && market.nObservations > 0 ? (
+					market.meanDaysToSell != null ? (
+						<>
+							<span className="pg-result-facts-val">~{Math.round(market.meanDaysToSell)}d</span>
+							<span className="pg-result-facts-aside">{market.salesPerDay.toFixed(2)}/day</span>
+						</>
+					) : (
+						<span className="pg-result-facts-val">{market.salesPerDay.toFixed(2)}</span>
+					)
+				) : pending ? (
+					<Skel w={120} />
 				) : (
-					<Skel w={130} />
+					<span className="pg-result-facts-aside">no data</span>
 				)}
 			</Row>
 
-			{/* Active asks — what competitors are charging right now. */}
+			{/* Active asks — what competitors are charging right now. Sold gives
+			    past transaction price; this row gives the current competitive
+			    floor a reseller would have to undercut (or beat on speed) to
+			    win the next sale. */}
 			<Row label="Active asks">
-				{activePool ? (
-					<>
-						{lowestAskCents != null ? (
-							<>
-								<span className="pg-result-facts-val">{fmtUsdRound(lowestAskCents)}</span>
-								<span className="pg-result-facts-aside">lowest</span>
-								{highestAskCents != null && highestAskCents !== lowestAskCents && (
-									<span className="pg-result-facts-aside">
-										· {fmtUsdRound(lowestAskCents)}–{fmtUsdRound(highestAskCents)} range
-									</span>
-								)}
-							</>
-						) : buckets ? (
-							<span className="pg-result-facts-aside">none matched</span>
+				{(() => {
+					const rejectedActiveCount = outcome.rejectedActivePool?.length ?? 0;
+					const hasAnyActive = activePool.length > 0 || rejectedActiveCount > 0;
+					if (!hasAnyActive) {
+						return pending ? (
+							<Skel w={140} />
 						) : (
-							<Skel w={120} />
-						)}
-						<span className="pg-result-facts-aside">
-							· {buckets ? activeMatches.length : <Skel w={14} h={12} />} of {activePool.length}
-						</span>
-						{buckets && activePool.length > 0 && (
+							<span className="pg-result-facts-aside">no current asks</span>
+						);
+					}
+					return (
+						<>
+							{lowestAskCents != null ? (
+								<>
+									<span className="pg-result-facts-val">{fmtUsdRound(lowestAskCents)}</span>
+									<span className="pg-result-facts-aside">lowest</span>
+									{highestAskCents != null && highestAskCents !== lowestAskCents && (
+										<span className="pg-result-facts-aside">
+											· {fmtUsdRound(lowestAskCents)}–{fmtUsdRound(highestAskCents)} range
+										</span>
+									)}
+								</>
+							) : (
+								<span className="pg-result-facts-aside">no priced listings</span>
+							)}
+							{activePool.length > 0 && (
+								<span className="pg-result-facts-aside">· {activePool.length} listings</span>
+							)}
 							<button
 								type="button"
 								onClick={() => setActiveOpen((o) => !o)}
@@ -316,74 +523,217 @@ function Facts({ outcome, pending }: { outcome: Partial<EvaluateOutcome>; pendin
 							>
 								{activeOpen ? "Hide" : "View"}
 							</button>
-						)}
-					</>
-				) : (
-					<Skel w={140} />
-				)}
+						</>
+					);
+				})()}
 			</Row>
-			{activeOpen && buckets && activePool && activePool.length > 0 && (
-				<MatchInline
-					matches={activeMatches}
-					rejects={activeRejects}
-					matchedOpen={matchedOpen}
-					rejectedOpen={rejectedOpen}
-					setMatchedOpen={setMatchedOpen}
-					setRejectedOpen={setRejectedOpen}
-				/>
+			{activeOpen && (
+				<MatchInline kept={activePool} rejected={outcome.rejectedActivePool ?? []} />
 			)}
 
-			{/* Active bids — only when at least one matched auction has a
-			    real bid. Tells you what buyers are actually willing to pay
-			    today, which the asks number can't. */}
-			{highestBidCents != null && (
-				<Row label="Active bids">
-					<span className="pg-result-facts-val">{fmtUsdRound(highestBidCents)}</span>
-					<span className="pg-result-facts-aside">highest current bid</span>
-					<span className="pg-result-facts-aside">· {auctionBids.length} bidding</span>
-				</Row>
-			)}
+			{/* Active bids — current bidding action on AUCTION items in the
+			    matched-active pool. Reads as live demand pressure: a high bid
+			    count + climbing price means the SKU is attracting buyers in
+			    real time, separate from the historical sold pool above. */}
+			<Row label="Active bids">
+				{(() => {
+					if (auctionItems.length === 0) {
+						return pending ? (
+							<Skel w={140} />
+						) : (
+							<span className="pg-result-facts-aside">no auctions</span>
+						);
+					}
+					return (
+						<>
+							{highestBidCents != null ? (
+								<>
+									<span className="pg-result-facts-val">{fmtUsdRound(highestBidCents)}</span>
+									<span className="pg-result-facts-aside">highest</span>
+									<span className="pg-result-facts-aside">· {auctionBidCents.length} auctions</span>
+								</>
+							) : (
+								<>
+									<span className="pg-result-facts-aside">no bids yet</span>
+									<span className="pg-result-facts-aside">· {auctionItems.length} auctions</span>
+								</>
+							)}
+							<button
+								type="button"
+								onClick={() => setBidsOpen((o) => !o)}
+								className="pg-result-facts-toggle"
+							>
+								{bidsOpen ? "Hide" : "View"}
+							</button>
+						</>
+					);
+				})()}
+			</Row>
+			{bidsOpen && <MatchInline kept={auctionItems} rejected={[]} />}
 
-			{/* This listing's position vs market. Two deltas — vs sold
-			    median (true value) and vs lowest active ask (competition). */}
-			<Row label="Listed at">
-				{outcome.detail ? (
-					<>
-						<span className="pg-result-facts-val">{fmtUsd(candCents)}</span>
-						{deltaSold != null && Math.abs(deltaSold) >= 100 && (
-							<span
-								className={`pg-result-facts-aside${
-									deltaSold > 0 ? " pg-result-facts-aside--warn" : " pg-result-facts-aside--good"
-								}`}
-							>
-								{deltaSold > 0 ? "+" : "−"}${Math.abs(Math.round(deltaSold / 100))}{" "}
-								vs sold
-							</span>
-						)}
-						{deltaAsk != null && Math.abs(deltaAsk) >= 100 && (
-							<span
-								className={`pg-result-facts-aside${
-									deltaAsk > 0 ? " pg-result-facts-aside--warn" : " pg-result-facts-aside--good"
-								}`}
-							>
-								· {deltaAsk > 0 ? "+" : "−"}${Math.abs(Math.round(deltaAsk / 100))}{" "}
-								vs lowest ask
-							</span>
-						)}
-					</>
+			{/* ─── Deal block — four rows form one arithmetic cascade:
+			      Buy at      $A           ← all-in cost (item + ship, or "free shipping")
+			      Resells at  $B           ← competition-aware exit · new lowest ask · ~Yd
+			      Costs       $C           ← $X fees + $Y ship  (sum of fees on B + outbound ship)
+			      Est. profit $B − $C − $A  verdict (+ window-overrun warning)
+			    Reading top-to-bottom the user sees: buy $A → resell $B →
+			    minus costs $C → profit. `decisionStart` divider sits
+			    above "Buy at" so the market-context block above visibly
+			    hands off to the action math below. `Buy at` / `Resells
+			    at` form an entry/exit verb pair — both directive,
+			    parallel structure makes the position lifecycle (in →
+			    out) read at a glance. `Est.` prefix on Profit signals
+			    it's a model estimate, not a realised number. Costs sit
+			    in their own row rather than as a Profit aside so the
+			    subtraction is visible — the cents-rounding gap between
+			    displayed components and the exact internal Profit math
+			    is acceptable trade for the clarity. Replaces the older
+			    Buy-under / Listed-at / Net-profit triplet — same data,
+			    cleaner story flow. */}
+
+			{/* Buy at — what changes hands at checkout, plus the trust
+			    signals a buyer weighs at the moment of clicking buy
+			    (seller feedback, return policy). All-in price as the
+			    headline; the breakdown ($item + $ship) only appears in
+			    the aside when shipping isn't free, so the common
+			    free-shipping case stays a single short line. Seller +
+			    returns trail the shipping aside as `·`-separated chips
+			    so they sit next to the buy decision rather than buried
+			    in the item hero overhead. */}
+			<Row label="Buy at" decisionStart>
+				{outcome.item ? (
+					(() => {
+						const item = outcome.item!;
+						const ship = shippingCents(item);
+						const sellerText = sellerMetaText(item.seller);
+						const returnsInfo = returnsMetaText(returns);
+						const headlineCents =
+							ship && !ship.isFree && candCents != null
+								? candCents + ship.cents
+								: candCents;
+						const asides: Array<{ text: string; warn?: boolean }> = [];
+						if (ship?.isFree) {
+							asides.push({ text: "free shipping" });
+						} else if (ship && candCents != null) {
+							asides.push({
+								text: `${fmtUsd(candCents)} + ${fmtUsd(ship.cents)} ship`,
+							});
+						}
+						if (sellerText) asides.push({ text: sellerText });
+						if (returnsInfo) asides.push({ text: returnsInfo.text, warn: returnsInfo.warn });
+						return (
+							<>
+								<span className="pg-result-facts-val">{fmtUsd(headlineCents)}</span>
+								{asides.map((a, i) => (
+									<span
+										key={a.text}
+										className={`pg-result-facts-aside${a.warn ? " pg-result-facts-aside--warn" : ""}`}
+									>
+										{i > 0 ? "· " : ""}
+										{a.text}
+									</span>
+								))}
+							</>
+						);
+					})()
 				) : (
 					<Skel w={80} />
 				)}
 			</Row>
 
-			{/* Conclusion — buyer-mode resale outlook. Reads as a
-			    forecast in the buyer's own narrative order: "resells at
-			    $X, in ~Yd, nets $Z, $W/day." Label is "Resells at"
-			    (descriptive) not "List at" (which read as instruction
-			    and confused buyers — they aren't the seller). Net sign
-			    drives row colour; the Recommend row above already states
-			    buy/hold/skip. */}
-			<Row label="Resells at" final>
+			{/* Sell at — directive recommendation: this is the price our
+			    `optimalListPrice` model picked given current competition +
+			    hazard model (same number Profit's arithmetic uses).
+			    Imperative verb makes the recommendation status explicit
+			    (vs descriptive "You'd sell"). Aside frames position
+			    against the active-asks floor in action terms ("new
+			    lowest ask") rather than gap math ("−$X vs lowest ask")
+			    — the user already sees the absolute lowest in the
+			    Active-asks row above, so they can triangulate the gap
+			    themselves; what matters here is *what your listing does
+			    to the marketplace floor* if you list at this price.
+			    When the model picks a price above current floor (rare —
+			    typically means active asks are anchored low vs sold
+			    market), the position aside is hidden so days carry the
+			    aside alone rather than showing a confusing premium
+			    framing. Skipped when neither recommendedExit nor
+			    safeBidBreakdown is computable — keeps the deal block
+			    tight rather than showing a placeholder. */}
+			<Row
+				label="Resells at"
+				info="Our recommended list price. Balances sale speed (vs current asks) with per-sale margin (vs sold history)."
+			>
+				{(() => {
+					const exitCents =
+						evaluation?.recommendedExit?.listPriceCents ??
+						evaluation?.safeBidBreakdown?.estimatedSaleCents ??
+						null;
+					if (exitCents == null) {
+						return pending ? (
+							<Skel w={140} />
+						) : (
+							<span className="pg-result-facts-aside">insufficient data</span>
+						);
+					}
+					const days = evaluation?.recommendedExit?.expectedDaysToSell;
+					const askDelta = lowestAskCents != null ? exitCents - lowestAskCents : null;
+					let position: string | null = null;
+					if (askDelta != null) {
+						if (askDelta < -100) position = "new lowest ask";
+						else if (askDelta <= 100) position = "matches lowest ask";
+						// askDelta > 100 → above current floor; hide aside.
+					}
+					return (
+						<>
+							<span className="pg-result-facts-val">{fmtUsdRound(exitCents)}</span>
+							{position && <span className="pg-result-facts-aside">{position}</span>}
+							{days != null && (
+								<span className="pg-result-facts-aside">
+									{position ? "· " : ""}~{Math.round(days)}d to sell
+								</span>
+							)}
+						</>
+					);
+				})()}
+			</Row>
+
+			{/* Costs — fees + outbound ship, surfaced as a discrete row so
+			    the subtraction is visible (Resells at − Costs − You pay =
+			    Est. profit). Both components come from `safeBidBreakdown`,
+			    which is computed against the same exit price the
+			    "Resells at" row shows, so the totals are internally
+			    consistent. Skipped when safeBidBreakdown is null (no
+			    sold pool to derive an exit price from) — without an
+			    exit, fees can't be computed. */}
+			<Row label="Costs">
+				{evaluation?.safeBidBreakdown ? (
+					<>
+						<span className="pg-result-facts-val">
+							{fmtUsdRound(
+								evaluation.safeBidBreakdown.feesCents +
+									evaluation.safeBidBreakdown.shippingCents,
+							)}
+						</span>
+						<span className="pg-result-facts-aside">
+							{fmtUsdRound(evaluation.safeBidBreakdown.feesCents)} fees +{" "}
+							{fmtUsdRound(evaluation.safeBidBreakdown.shippingCents)} ship
+						</span>
+					</>
+				) : pending ? (
+					<Skel w={140} />
+				) : (
+					<span className="pg-result-facts-aside">—</span>
+				)}
+			</Row>
+
+			{/* Est. profit — the bottom-line answer. Color-coded sign on
+			    the value carries the verdict directionally (red = loss,
+			    green = profit) so the user reads good-or-bad at a glance
+			    without needing a separate BUY/HOLD/SKIP chip; the number
+			    itself is the conclusion. The only aside is the
+			    window-overrun warning when the user set a sell-within
+			    budget and the recommended exit blows it. */}
+			<Row label="Est. profit">
 				{evaluation?.recommendedExit ? (
 					<>
 						<span
@@ -395,18 +745,21 @@ function Facts({ outcome, pending }: { outcome: Partial<EvaluateOutcome>; pendin
 										: ""
 							}`}
 						>
-							{fmtUsdRound(evaluation.recommendedExit.listPriceCents)}
-						</span>
-						<span className="pg-result-facts-aside">
-							in ~{Math.round(evaluation.recommendedExit.expectedDaysToSell)}d ·{" "}
 							{evaluation.recommendedExit.netCents >= 0 ? "+" : "−"}
-							{fmtUsdRound(Math.abs(evaluation.recommendedExit.netCents))} net ·{" "}
-							{fmtUsdRound(evaluation.recommendedExit.dollarsPerDay)}/day
+							{fmtUsdRound(Math.abs(evaluation.recommendedExit.netCents))}
 						</span>
+						{sellWithinDays != null &&
+							sellWithinDays > 0 &&
+							evaluation.recommendedExit.expectedDaysToSell > sellWithinDays && (
+								<span className="pg-result-facts-aside pg-result-facts-aside--warn">
+									over your {sellWithinDays}-day window
+								</span>
+							)}
 					</>
 				) : evaluation ? (
-					// True null path — model couldn't run (no duration data,
-					// σ=0, etc). Surface what we have so the row isn't empty.
+					// True null path — hazard model couldn't run (no duration
+					// data, σ=0, etc). Surface what we have so the row isn't
+					// empty; days are missing here by design.
 					<>
 						<span
 							className={`pg-result-facts-val${
@@ -417,71 +770,53 @@ function Facts({ outcome, pending }: { outcome: Partial<EvaluateOutcome>; pendin
 										: ""
 							}`}
 						>
-							{fmtUsdRound(evaluation.expectedNetCents)}
+							{(evaluation.expectedNetCents ?? 0) >= 0 ? "+" : "−"}
+							{fmtUsdRound(Math.abs(evaluation.expectedNetCents ?? 0))}
 						</span>
-						<span className="pg-result-facts-aside">
-							net at typical exit · time-to-sell unknown
-						</span>
+						<span className="pg-result-facts-aside">at typical exit</span>
 					</>
 				) : (
-					<Skel w={120} />
+					<Skel w={180} />
 				)}
 			</Row>
 		</dl>
-		</>
 	);
 }
 
+/**
+ * Inline list of same-product filter outcomes — kept (green) and rejected
+ * (greyed) — shown when the user clicks "View" on a Sold for / Active
+ * asks row. Lets the user audit the LLM's judgement: which listings were
+ * deemed the same product, and which were excluded.
+ */
 function MatchInline({
-	matches,
-	rejects,
-	matchedOpen,
-	rejectedOpen,
-	setMatchedOpen,
-	setRejectedOpen,
+	kept,
+	rejected,
 }: {
-	matches: { item: ItemSummary; reason: string }[];
-	rejects: { item: ItemSummary; reason: string }[];
-	matchedOpen: boolean;
-	rejectedOpen: boolean;
-	setMatchedOpen: (fn: (o: boolean) => boolean) => void;
-	setRejectedOpen: (fn: (o: boolean) => boolean) => void;
+	kept: ItemSummary[];
+	rejected: ItemSummary[];
 }) {
-	if (matches.length === 0 && rejects.length === 0) return null;
+	if (kept.length === 0 && rejected.length === 0) return null;
 	return (
 		<div className="pg-result-matches">
-			{matches.length > 0 && (
+			{kept.length > 0 && (
 				<>
-					<button
-						type="button"
-						className="pg-result-matches-head"
-						onClick={() => setMatchedOpen((o) => !o)}
-						aria-expanded={matchedOpen}
-					>
-						<Caret open={matchedOpen} />
-						<span>Matched · {matches.length}</span>
-					</button>
-					{matchedOpen &&
-						matches.map((m) => (
-							<MatchRow key={m.item.itemId} item={m.item} reason={m.reason} bucket="match" />
-						))}
+					<div className="pg-result-matches-head">
+						<span>Kept · {kept.length}</span>
+					</div>
+					{kept.map((item) => (
+						<MatchRow key={`k-${item.itemId}`} item={item} bucket="match" />
+					))}
 				</>
 			)}
-			{rejects.length > 0 && (
+			{rejected.length > 0 && (
 				<>
-					<button
-						type="button"
-						className="pg-result-matches-head pg-result-matches-head--reject"
-						onClick={() => setRejectedOpen((o) => !o)}
-						aria-expanded={rejectedOpen}
-					>
-						<Caret open={rejectedOpen} />
-						<span>Rejected · {rejects.length}</span>
-					</button>
-					{rejectedOpen &&
-						rejects.map((m) => (
-							<MatchRow key={m.item.itemId} item={m.item} reason={m.reason} bucket="reject" />
-						))}
+					<div className="pg-result-matches-head pg-result-matches-head--reject">
+						<span>Rejected · {rejected.length}</span>
+					</div>
+					{rejected.map((item) => (
+						<MatchRow key={`r-${item.itemId}`} item={item} bucket="reject" />
+					))}
 				</>
 			)}
 		</div>
@@ -491,7 +826,7 @@ function MatchInline({
 /** Static gray placeholder while a row's data is in flight. No animation —
  * the spinner on the Run button + spinner on the running trace step
  * already signal progress; movement here would compete. */
-function Skel({ w = 80, h = 14 }: { w?: number; h?: number }) {
+export function Skel({ w = 80, h = 14 }: { w?: number; h?: number }) {
 	return (
 		<span
 			aria-hidden="true"
@@ -501,51 +836,61 @@ function Skel({ w = 80, h = 14 }: { w?: number; h?: number }) {
 	);
 }
 
-function Row({ label, children, final }: { label: string; children: React.ReactNode; final?: boolean }) {
+export function Row({
+	label,
+	children,
+	decisionStart,
+	info,
+}: {
+	label: string;
+	children: React.ReactNode;
+	/** Mark this row as the first of the buyer-decision block (Buy at →
+	 *  Resells at → Costs → Est. profit). Draws a divider above so the
+	 *  market context visibly hands off to the action rows. */
+	decisionStart?: boolean;
+	/** When set, renders an `InfoTooltip` (Radix-backed shadcn-style
+	 *  popup) next to the label. Used for rows whose value isn't
+	 *  obvious from the column name alone (e.g. model-picked exit
+	 *  price). Pass plain text or rich JSX. */
+	info?: React.ReactNode;
+}) {
 	return (
-		<div className={final ? "pg-result-facts-final" : undefined}>
-			<dt>{label}</dt>
+		<div className={decisionStart ? "pg-result-facts-decision-start" : undefined}>
+			<dt>
+				{label}
+				{info && <InfoTooltip>{info}</InfoTooltip>}
+			</dt>
 			<dd>{children}</dd>
 		</div>
 	);
 }
 
-function Caret({ open }: { open: boolean }) {
-	return (
-		<svg
-			width="9"
-			height="9"
-			viewBox="0 0 16 16"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="1.8"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-			className="pg-result-matches-caret"
-			data-open={open ? "true" : "false"}
-			aria-hidden="true"
-		>
-			<path d="M5 4l4 4-4 4" />
-		</svg>
-	);
-}
-
 function MatchRow({
 	item,
-	reason,
 	bucket,
 }: {
 	item: ItemSummary;
-	reason: string;
 	bucket: "match" | "reject";
 }) {
+	const priceText = item.lastSoldPrice?.value ?? item.price?.value;
+	const isAuction = item.buyingOptions?.includes("AUCTION") ?? false;
+	const acceptsOffer = item.buyingOptions?.includes("BEST_OFFER") ?? false;
+	const currentBid = item.currentBidPrice?.value;
+	// One tag per row, picked by the seller's listing mode. AUCTION is
+	// the dominant case to flag (price moves) so it wins over BEST_OFFER
+	// when both are present (eBay technically allows it, rare in
+	// practice). The bid sub-tag tells the reseller whether the auction
+	// is hot ("$X bid") or sitting cold ("no bids") — matters for
+	// pricing inference: cold auctions mean the visible asks may be
+	// over-anchored vs actual demand.
+	let modeTag: string | null = null;
+	if (isAuction) {
+		modeTag = currentBid ? `Auction · $${currentBid} bid` : "Auction · no bids";
+	} else if (acceptsOffer) {
+		modeTag = "Best Offer";
+	}
 	return (
-		<a
-			href={item.itemWebUrl}
-			target="_blank"
-			rel="noopener noreferrer"
-			className={`pg-result-matches-row pg-result-matches-row--${bucket}`}
-		>
+		<div className={`pg-result-matches-row pg-result-matches-row--${bucket}`}>
 			<div className="pg-result-matches-thumb">
 				{item.image?.imageUrl ? (
 					<img src={item.image.imageUrl} alt="" loading="lazy" />
@@ -554,14 +899,39 @@ function MatchRow({
 				)}
 			</div>
 			<div className="pg-result-matches-body">
-				<div className="pg-result-matches-title">{item.title}</div>
+				<div className="pg-result-matches-title-row">
+					<span className="pg-result-matches-title">{item.title}</span>
+					<CopyTitleButton text={item.title} />
+				</div>
 				<div className="pg-result-matches-meta">
 					{item.condition && <span>{item.condition}</span>}
-					{item.lastSoldPrice && <span className="font-mono">${item.lastSoldPrice.value}</span>}
+					{priceText && <span className="font-mono">${priceText}</span>}
+					{modeTag && <span className="pg-result-matches-tag">{modeTag}</span>}
 				</div>
-				<div className="pg-result-matches-reason">{reason}</div>
 			</div>
-		</a>
+			<a
+				href={cleanItemUrl(item.itemWebUrl)}
+				target="_blank"
+				rel="noopener noreferrer"
+				className="pg-result-matches-link"
+				title="Open on eBay"
+				aria-label="Open on eBay"
+			>
+				<svg
+					width="11"
+					height="11"
+					viewBox="0 0 16 16"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="1.5"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+					aria-hidden="true"
+				>
+					<path d="M9 3h4v4M13 3 7 9M7 5H4.5A1.5 1.5 0 0 0 3 6.5v5A1.5 1.5 0 0 0 4.5 13h5a1.5 1.5 0 0 0 1.5-1.5V9" />
+				</svg>
+			</a>
+		</div>
 	);
 }
 
@@ -573,48 +943,9 @@ function SellingPaceTag({ market }: { market: MarketStats }) {
 	return <span className="pg-result-facts-aside">—</span>;
 }
 
-/* --------------------------- recommendation --------------------------- */
-
-function Recommendation({
-	outcome,
-	sellWithinDays,
-	pending,
-}: {
-	outcome: Partial<EvaluateOutcome>;
-	sellWithinDays?: number;
-	pending: boolean;
-}) {
-	const evaluation = outcome.evaluation;
-	const tone = RATING_TONE[evaluation?.rating ?? ""] ?? "neutral";
-
-	const wait = outcome.marketSummary?.market.meanDaysToSell;
-	const slowWarning =
-		evaluation && sellWithinDays && sellWithinDays > 0 && wait != null && wait > sellWithinDays
-			? `Heads up: typical wait is ~${Math.round(wait)} days — beyond your ${sellWithinDays}-day window.`
-			: null;
-
-	return (
-		<section className="pg-result-rec">
-			<div className="pg-result-rec-line-prim">
-				<span className="pg-result-rec-prefix">Recommend</span>
-				{evaluation ? (
-					<span className={`pg-result-rec-rating pg-result-rec-rating--${tone}`}>
-						{(evaluation.rating ?? "—").toUpperCase()}
-					</span>
-				) : pending ? (
-					<Skel w={60} h={14} />
-				) : (
-					<span className="pg-result-rec-rating">—</span>
-				)}
-			</div>
-			{slowWarning && <p className="pg-result-rec-line pg-result-rec-warn">{slowWarning}</p>}
-		</section>
-	);
-}
-
 /* ----------------------------- footer (copy + trace) ----------------------------- */
 
-function Footer({ payload, steps }: { payload: unknown; steps: Step[] }) {
+export function Footer({ payload, steps }: { payload: unknown; steps: Step[] }) {
 	// Default open — the trace was visible while the chain ran, so collapsing
 	// it the moment the run completes feels like the table just disappeared.
 	// User can still hide if they want.

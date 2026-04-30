@@ -31,7 +31,7 @@ rootRoute.get(
 				"GET /v1/buy/browse/item/{itemId}",
 				"GET /v1/buy/browse/item/get_items",
 				"GET /v1/buy/browse/item/get_items_by_item_group",
-				// Buy — Marketplace Insights (sold-comp lookup)
+				// Buy — Marketplace Insights (sold-listing lookup)
 				"GET /v1/buy/marketplace_insights/item_sales/search",
 				// Buy — Order (Limited Release; bridge-implemented for now)
 				"POST /v1/buy/order/checkout_session/initiate",
@@ -88,10 +88,20 @@ rootRoute.get(
 				"POST /v1/forwarder/{provider}/refresh",
 				"GET /v1/forwarder/{provider}/jobs/{jobId}",
 				// flipagent: evaluate (single-listing judgment — Decisions pillar)
+				// Sync POST + 4 queue-backed jobs surfaces (async create / poll / SSE
+				// stream / cancel). Tab close mid-run keeps the worker running.
 				"POST /v1/evaluate",
-				"POST /v1/evaluate/signals",
+				"POST /v1/evaluate/jobs",
+				"GET /v1/evaluate/jobs/{id}",
+				"GET /v1/evaluate/jobs/{id}/stream",
+				"POST /v1/evaluate/jobs/{id}/cancel",
 				// flipagent: discover (rank deals across a search — Overnight pillar)
+				// Same 5-route shape as evaluate.
 				"POST /v1/discover",
+				"POST /v1/discover/jobs",
+				"GET /v1/discover/jobs/{id}",
+				"GET /v1/discover/jobs/{id}/stream",
+				"POST /v1/discover/jobs/{id}/cancel",
 				// flipagent: ship (forwarder quote + provider catalog — Operations pillar)
 				"POST /v1/ship/quote",
 				"GET /v1/ship/providers",

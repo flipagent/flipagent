@@ -57,11 +57,32 @@ export default function Auth() {
 		}
 	}
 
+	/**
+	 * Where to land the user after auth. Defaults to /dashboard/, but
+	 * honours `?return=<path>` so a click on the landing playground that
+	 * gated to /signup lands the visitor right back where they were after
+	 * sign-in. Same-origin path-only — anything that looks like an
+	 * absolute URL or doesn't start with `/` falls back to /dashboard/
+	 * so a bad query string can't be turned into an open redirect.
+	 */
+	function postAuthDestination(): string {
+		const fallback = "/dashboard/";
+		try {
+			const raw = new URLSearchParams(window.location.search).get("return");
+			if (!raw) return fallback;
+			if (!raw.startsWith("/") || raw.startsWith("//")) return fallback;
+			return raw;
+		} catch {
+			return fallback;
+		}
+	}
+
 	async function handleEmail(e: React.FormEvent) {
 		e.preventDefault();
 		setPending("email");
 		try {
-			const callbackURL = `${window.location.origin}/dashboard/`;
+			const dest = postAuthDestination();
+			const callbackURL = `${window.location.origin}${dest}`;
 			if (tab === "login") {
 				await authClient.signIn.email({ email, password, callbackURL });
 			} else {
@@ -74,7 +95,7 @@ export default function Auth() {
 			}
 			// Only on success — wrong password should not promote "email" to last-used.
 			rememberLastUsed("email");
-			window.location.href = "/dashboard/";
+			window.location.href = dest;
 		} catch (err) {
 			toast.error(extractMessage(err));
 			setPending(null);
@@ -91,7 +112,7 @@ export default function Auth() {
 		try {
 			await authClient.signIn.social({
 				provider,
-				callbackURL: `${window.location.origin}/dashboard/`,
+				callbackURL: `${window.location.origin}${postAuthDestination()}`,
 			});
 		} catch (err) {
 			toast.error(extractMessage(err));

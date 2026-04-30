@@ -5,8 +5,8 @@ import PricingTiers from "../components/PricingTiers.astro";
 <Layout title="Pricing · flipagent">
 	<section class="hero" style="padding:64px 0 32px;">
 		<div class="cmw cmw-bordered">
-			<h1>Start free. Pay when you scale.</h1>
-			<p class="lead">Per-call against the unified <code>/v1/*</code> surface. Account and billing routes are free.</p>
+			<h1>Start free. Pay <span class="accent">when you scale</span>.</h1>
+			<p class="lead">Credits cover everything: marketplace search, AI evaluation, deal discovery. Free is a one-time 500-credit trial; paid plans refill monthly. One unit, predictable budget, transparent costs.</p>
 		</div>
 	</section>
 
@@ -16,14 +16,85 @@ import PricingTiers from "../components/PricingTiers.astro";
 		</div>
 	</section>
 
+	<section class="section" style="padding-top:32px;">
+		<div class="cmw" style="max-width:760px;">
+			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">API <span class="accent">credits</span></h2>
+			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
+				Credits are consumed on every API request, varying by endpoint and feature. Free starts you with 500 credits — they're a one-time grant, not a monthly stipend. Paid plans refill on the 1st of each month (UTC). Cached responses cost 0 credits. If you connect your eBay account, marketplace reads route through eBay's REST API and don't decrement your balance either.
+			</p>
+			<table class="api" style="margin-top:16px;">
+				<thead>
+					<tr>
+						<th>Feature</th>
+						<th>Endpoint</th>
+						<th style="text-align:right;">Credits</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>Search</td>
+						<td><code>/v1/search</code>, <code>/v1/buy/*</code>, <code>/v1/sell/*</code>, <code>/v1/commerce/*</code>, <code>/v1/post-order/*</code></td>
+						<td style="text-align:right;">1 / call</td>
+					</tr>
+					<tr>
+						<td>Evaluate</td>
+						<td><code>/v1/evaluate</code></td>
+						<td style="text-align:right;">50 / call</td>
+					</tr>
+					<tr>
+						<td>Discover</td>
+						<td><code>/v1/discover</code></td>
+						<td style="text-align:right;">250 / call</td>
+					</tr>
+					<tr>
+						<td>Browser op</td>
+						<td><code>/v1/browser/*</code></td>
+						<td style="text-align:right;">5 / call</td>
+					</tr>
+					<tr>
+						<td>Cached response</td>
+						<td>any endpoint, when served from cache</td>
+						<td style="text-align:right;">0</td>
+					</tr>
+					<tr>
+						<td>REST passthrough</td>
+						<td>marketplace reads when eBay is connected</td>
+						<td style="text-align:right;">0</td>
+					</tr>
+				</tbody>
+			</table>
+			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65; margin-top:16px;">
+				Free routes (uncounted): <code>/v1/health</code>, <code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/takedown</code>, <code>/v1/billing/*</code>, <code>/v1/capabilities</code>.
+			</p>
+		</div>
+	</section>
+
+	<section class="section" style="padding-top:32px;">
+		<div class="cmw" style="max-width:760px;">
+			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">Connect eBay for <span class="accent">free search</span></h2>
+			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
+				When you bind your API key to a connected eBay account, marketplace reads route through eBay's REST API directly — faster, more reliable, and they don't decrement your credit balance. Evaluate and discover still cost credits because the heavy lifting happens on our side (LLM matching, hazard model, cluster fan-out).
+			</p>
+		</div>
+	</section>
+
+	<section class="section" style="padding-top:32px;">
+		<div class="cmw" style="max-width:760px;">
+			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">Going over</h2>
+			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
+				Once you exhaust your credits you'll get a <code>429</code>. Paid plans reset 00:00 UTC on the 1st of next month; Free is one-time, so a maxed-out Free key can only proceed by upgrading. Burst rate limits (per-minute, per-hour) sit alongside the credit budget and protect against runaway scripts; normal automation never trips them. We surface the next-plan-up math in your dashboard at 80% utilization.
+			</p>
+		</div>
+	</section>
+
 	<section class="section" style="padding-top:32px; padding-bottom:96px;">
 		<div class="cmw" style="max-width:760px;">
-			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">What counts as a call</h2>
+			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">Enterprise &amp; self-host</h2>
 			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
-				Any call to a marketplace or intelligence endpoint counts toward your monthly quota: <code>/v1/buy/*</code>, <code>/v1/sell/*</code>, <code>/v1/commerce/*</code>, <code>/v1/post-order/*</code>, <code>/v1/forwarder/*</code>, <code>/v1/messages</code>, <code>/v1/best-offer</code>, <code>/v1/feedback</code>, <code>/v1/match</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/research</code>, <code>/v1/draft</code>, <code>/v1/reprice</code>, <code>/v1/ship</code>. Cache hits still count, because you're paying for latency, parsers, and takedown handling, not just the upstream call.
+				<strong style="color:var(--text-1);">Enterprise</strong> — custom credit volume, dedicated infra, SLA, white-label. <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>.
 			</p>
 			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
-				Free routes: <code>/v1/health</code>, <code>/v1/me/keys</code>, <code>/v1/takedown</code>, and the billing routes themselves.
+				<strong style="color:var(--text-1);">Self-host</strong> — the API server is open source. Run it with your own scraper credentials and your own LLM key; pay nothing to flipagent. Source on <a href="https://github.com/jinhokim98/flipagent">GitHub</a>.
 			</p>
 		</div>
 	</section>

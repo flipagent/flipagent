@@ -17,24 +17,42 @@ const STATUS_LABEL: Record<Step["status"], string> = {
 };
 
 export function Trace({ steps }: { steps: Step[] }) {
+	// Top-level steps get numbered slots; their children stack vertically
+	// under each parent (with a `└` prefix) so each parallel call has full
+	// row width for its URL, status, and duration. The parent itself becomes
+	// a header row with the bundle status (ok if any child ok, error if all
+	// failed).
+	const topLevel = steps.filter((s) => !s.parent);
+	const childrenByParent = new Map<string, Step[]>();
+	for (const s of steps) {
+		if (!s.parent) continue;
+		const arr = childrenByParent.get(s.parent) ?? [];
+		arr.push(s);
+		childrenByParent.set(s.parent, arr);
+	}
 	return (
 		<ol className="pg-trace">
-			{steps.map((s, i) => (
-				<TraceStep key={s.key} step={s} index={i + 1} />
+			{topLevel.map((s, i) => (
+				<TraceStep
+					key={s.key}
+					step={s}
+					index={i + 1}
+					children={childrenByParent.get(s.key) ?? []}
+				/>
 			))}
 		</ol>
 	);
 }
 
-function TraceStep({ step, index }: { step: Step; index: number }) {
+function TraceStep({ step, index, children }: { step: Step; index: number; children: Step[] }) {
 	const [open, setOpen] = useState(false);
-	const hasRequest = step.call !== undefined;
-	const hasResponse = step.result !== undefined || step.error !== undefined;
-	const expandable = hasRequest || hasResponse;
-	// Live-tick the duration counter while the step is running so the
-	// number visibly climbs instead of staying frozen until the response
-	// lands. Stops the moment status flips off "running"; the server's
-	// final durationMs takes over.
+	const hasChildren = children.length > 0;
+	// A row is expandable when it actually has something to show: a
+	// `call` (running / ok / error all set this on `started`), a parsed
+	// `result`, an `error`, or children to drill into. Pending rows have
+	// none of those — keeping them non-expandable avoids the meaningless
+	// "Queued." placeholder + a clickable affordance that does nothing.
+	const expandable = step.call !== undefined || step.result !== undefined || step.error !== undefined || hasChildren;
 	const liveMs = useLiveDuration(step.status);
 	const displayMs = step.status === "running" ? liveMs : step.durationMs;
 	return (
@@ -51,9 +69,12 @@ function TraceStep({ step, index }: { step: Step; index: number }) {
 				{/* Always render the call slot — even empty — so grid auto-
 				    placement keeps the URL column anchored at col 3 (the 1fr
 				    flex column). Without this, hero-demo steps that skip
-				    `call` push the status pill into 1fr and it stretches. */}
+				    `call` push the status pill into 1fr and it stretches.
+				    For parent rows that group K parallel children, show a
+				    live "X/K done · avg Yms" summary instead of an empty
+				    slot so the row carries information at a glance. */}
 				<span className="pg-step-call dash-mono">
-					{step.call ? `${step.call.method} ${step.call.path}` : null}
+					{step.call ? `${step.call.method} ${step.call.path}` : hasChildren ? formatChildSummary(children) : null}
 				</span>
 				{step.httpStatus != null && (
 					<span className="pg-step-http dash-mono" data-tone={httpTone(step.httpStatus)}>
@@ -95,6 +116,121 @@ function TraceStep({ step, index }: { step: Step; index: number }) {
 					<span className="pg-step-duration dash-mono">{displayMs}ms</span>
 				)}
 			</button>
+			{expandable && open && (() => {
+				const showResponse = (step.result !== undefined && !hasChildren) || step.error;
+				const showWaiting = !step.call && !step.result && !step.error && !hasChildren && step.status === "running";
+				const showQueued = !step.call && !step.result && !step.error && !hasChildren && step.status === "pending";
+				if (!step.call && !showResponse && !showWaiting && !showQueued) return null;
+				return (
+					<div className="pg-step-body">
+						{step.call && (
+							<section className="pg-step-section">
+								<header className="pg-step-section-h">
+									<span>Request</span>
+									<CopyButton text={curlFor(step.call, step.requestBody)} />
+								</header>
+								<pre className="pg-json pg-json--compact">{step.call.method} {step.call.path}</pre>
+								{step.requestBody !== undefined && (
+									<pre className="pg-json">{JSON.stringify(step.requestBody, null, 2)}</pre>
+								)}
+							</section>
+						)}
+						{showResponse && (
+							<section className="pg-step-section">
+								<header className="pg-step-section-h">
+									<span>Response</span>
+									{step.result !== undefined && !hasChildren && (
+										<CopyButton text={JSON.stringify(step.result, null, 2)} />
+									)}
+								</header>
+								{step.error && <p className="pg-step-error">{step.error}</p>}
+								{step.result !== undefined && !hasChildren && (
+									<pre className="pg-json">{JSON.stringify(step.result, null, 2)}</pre>
+								)}
+							</section>
+						)}
+						{showWaiting && <p className="pg-step-empty">Waiting for response…</p>}
+						{showQueued && <p className="pg-step-empty">Queued.</p>}
+					</div>
+				);
+			})()}
+			{hasChildren && open && (
+				<ul className="pg-trace-children">
+					{children.map((child) => (
+						<TraceChild key={child.key} step={child} />
+					))}
+				</ul>
+			)}
+		</li>
+	);
+}
+
+/**
+ * Live "X/K done" progress rendered in a parent step's call slot. The
+ * parent already carries its own wall-time on the right; per-child
+ * durations live on each child row, so the parent only needs the count.
+ */
+function formatChildSummary(children: Step[]): string {
+	const total = children.length;
+	const done = children.filter((c) => c.status === "ok" || c.status === "error").length;
+	return `${done}/${total} done`;
+}
+
+/**
+ * Child step inside a parent group (e.g. search.sold under search).
+ * Shares the row anatomy with TraceStep but uses a `└` prefix instead
+ * of a numbered index — children inherit their position from the
+ * parent slot and stack vertically under it.
+ */
+function TraceChild({ step }: { step: Step }) {
+	const [open, setOpen] = useState(false);
+	// Same expandable rule as parents — pending rows have nothing to
+	// drill into so they stay non-clickable.
+	const expandable = step.call !== undefined || step.result !== undefined || step.error !== undefined;
+	const liveMs = useLiveDuration(step.status);
+	const displayMs = step.status === "running" ? liveMs : step.durationMs;
+	return (
+		<li className={`pg-step pg-step--child pg-step--${step.status}`}>
+			<button
+				type="button"
+				className="pg-step-head"
+				onClick={() => expandable && setOpen((o) => !o)}
+				aria-expanded={expandable ? open : undefined}
+				disabled={!expandable}
+			>
+				<span className="pg-step-num">└</span>
+				<span className="pg-step-label">{step.label}</span>
+				<span className="pg-step-call dash-mono">
+					{step.call ? `${step.call.method} ${step.call.path}` : null}
+				</span>
+				{step.httpStatus != null && (
+					<span className="pg-step-http dash-mono" data-tone={httpTone(step.httpStatus)}>
+						{step.httpStatus}
+					</span>
+				)}
+				{(step.httpStatus == null || step.httpStatus === 0) && step.status !== "pending" && (
+					<span className={`pg-step-pill pg-step-pill--${step.status}`}>
+						{step.status === "running" && (
+							<svg
+								width="9"
+								height="9"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								className="animate-spin"
+								aria-hidden="true"
+							>
+								<path d="M21 12a9 9 0 1 1-6.2-8.55" />
+							</svg>
+						)}
+						{STATUS_LABEL[step.status]}
+					</span>
+				)}
+				{displayMs != null && <span className="pg-step-duration dash-mono">{displayMs}ms</span>}
+			</button>
 			{expandable && open && (
 				<div className="pg-step-body">
 					{step.call && (
@@ -124,7 +260,10 @@ function TraceStep({ step, index }: { step: Step; index: number }) {
 						</section>
 					)}
 					{!step.call && !step.result && !step.error && step.status === "running" && (
-						<p className="pg-step-error">Waiting for response…</p>
+						<p className="pg-step-empty">Waiting for response…</p>
+					)}
+					{!step.call && !step.result && !step.error && step.status === "pending" && (
+						<p className="pg-step-empty">Queued.</p>
 					)}
 				</div>
 			)}

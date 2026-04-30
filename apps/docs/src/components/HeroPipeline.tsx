@@ -34,23 +34,24 @@ import type { Step } from "./playground/types";
 
 type TabId = "discover" | "evaluate" | "buy" | "list" | "ship";
 
-const ITEM_PHOTO = "/demo/canon-50.jpg";
-const ITEM_TITLE = "Canon EF 50mm f/1.8 STM · used";
-const ITEM_URL = "https://www.ebay.com/itm/206202523567";
-const ITEM_ID = "v1|206202523567|0";
+const ITEM_PHOTO = "/demo/canon-50-1.png";
+const ITEM_TITLE = "Canon EF 50mm f/1.8 STM · used · with caps";
+const ITEM_URL = "https://www.ebay.com/itm/377151909505";
+const ITEM_ID = "v1|377151909505|0";
 
 /* ------------------------------- icons ------------------------------- */
 
-const IconSearch = (
+const IconCompass = (
 	<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-		<circle cx="11" cy="11" r="7" />
-		<path d="m20 20-3.5-3.5" />
+		<circle cx="12" cy="12" r="9" />
+		<path d="M12 5l3 7-3 7-3-7z" />
 	</svg>
 );
 const IconGauge = (
 	<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-		<path d="M12 14a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-		<path d="M12 4v2M4 12h2M12 20v-2M20 12h-2M5.6 5.6l1.4 1.4M16.9 7l1.5-1.4M5.6 18.4 7 17M16.9 17l1.5 1.4" />
+		<path d="M4 14a8 8 0 0 1 16 0" />
+		<path d="M12 14l3-4" />
+		<circle cx="12" cy="14" r="0.9" fill="currentColor" />
 	</svg>
 );
 const IconBuy = (
@@ -123,7 +124,7 @@ const IconShield = (
 );
 
 const TABS: ReadonlyArray<ComposeTab<TabId>> = [
-	{ id: "discover", label: "Discover", icon: IconSearch },
+	{ id: "discover", label: "Discover", icon: IconCompass },
 	{ id: "evaluate", label: "Evaluate", icon: IconGauge },
 	{ id: "buy", label: "Buy", icon: IconBuy },
 	{ id: "list", label: "List", icon: IconList },
@@ -608,14 +609,15 @@ function ListStage({ tabsProps }: { tabsProps: TabsProps }) {
 				},
 			},
 			{
-				key: "marketSummary",
-				label: "Calculate market price",
-				call: { method: "POST", path: "/v1/research/summary" },
+				key: "evaluate",
+				label: "Score the listing",
+				call: { method: "POST", path: "/v1/evaluate" },
 				result: {
-					listPriceRecommendation: {
-						listPriceCents: priceCents,
-						sellProb14d: listAt === "p25" ? 0.78 : listAt === "p75" ? 0.21 : 0.52,
-						expectedDaysToSell: listAt === "p25" ? 7 : listAt === "p75" ? 32 : 14,
+					evaluation: {
+						recommendedExit: {
+							listPriceCents: priceCents,
+							expectedDaysToSell: listAt === "p25" ? 7 : listAt === "p75" ? 32 : 14,
+						},
 					},
 				},
 			},
@@ -706,7 +708,7 @@ function ListStage({ tabsProps }: { tabsProps: TabsProps }) {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.25 }}
 						>
-							<ItemHero sub={`listed $${(priceCents / 100).toFixed(0)} · 247 comparables`} />
+							<ItemHero sub={`listed $${(priceCents / 100).toFixed(0)} · 247 sold`} />
 							<Facts rows={facts} />
 							<Recommendation
 								prefix="Listed"

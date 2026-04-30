@@ -50,6 +50,7 @@ ebaySearchRoute.get(
 				{
 					q: query.q,
 					limit: query.limit,
+					offset: query.offset,
 					filter: query.filter,
 					sort: query.sort,
 					categoryIds: query.category_ids,

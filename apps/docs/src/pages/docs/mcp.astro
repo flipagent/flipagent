@@ -52,15 +52,9 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td><code>ebay_taxonomy_suggest</code></td><td><code>GET /v1/commerce/taxonomy/category_tree/&#123;id&#125;/get_category_suggestions</code></td></tr>
 						<tr><td><code>ebay_taxonomy_aspects</code></td><td><code>GET /v1/commerce/taxonomy/category_tree/&#123;id&#125;/get_item_aspects_for_category</code></td></tr>
 						<tr><td colspan="2"><strong>Decisions</strong></td></tr>
-						<tr><td><code>evaluate_listing</code></td><td><code>POST /v1/evaluate</code></td></tr>
-						<tr><td><code>evaluate_signals</code></td><td><code>POST /v1/evaluate/signals</code></td></tr>
-						<tr><td><code>research_summary</code></td><td><code>POST /v1/research/summary</code></td></tr>
-						<tr><td><code>match_pool</code></td><td><code>POST /v1/match</code> &mdash; hosted or delegate, see below</td></tr>
-						<tr><td><code>flipagent_match_trace</code></td><td><code>POST /v1/traces/match</code> &mdash; opt-out telemetry, see below</td></tr>
+						<tr><td><code>evaluate_listing</code></td><td><code>POST /v1/evaluate</code> &mdash; composite (search + LLM same-product filter + score)</td></tr>
 						<tr><td colspan="2"><strong>Overnight</strong></td></tr>
-						<tr><td><code>discover_deals</code></td><td><code>POST /v1/discover</code></td></tr>
-						<tr><td><code>draft_listing</code></td><td><code>POST /v1/draft</code></td></tr>
-						<tr><td><code>reprice_listing</code></td><td><code>POST /v1/reprice</code></td></tr>
+						<tr><td><code>discover_deals</code></td><td><code>POST /v1/discover</code> &mdash; query-driven deal ranking</td></tr>
 						<tr><td colspan="2"><strong>Operations</strong></td></tr>
 						<tr><td><code>ship_quote</code></td><td><code>POST /v1/ship/quote</code></td></tr>
 						<tr><td><code>ship_providers</code></td><td><code>GET /v1/ship/providers</code></td></tr>
@@ -75,48 +69,8 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 					</tbody>
 				</table>
 
-				<h2 id="hosted-vs-delegate">Hosted vs delegate</h2>
-				<p><code>match_pool</code> is the only tool that runs an LLM. It supports two execution modes — pick whichever fits your host agent.</p>
-				<table class="api">
-					<thead><tr><th>Mode</th><th>Where the LLM runs</th><th>Best for</th></tr></thead>
-					<tbody>
-						<tr><td><code>hosted</code> (default)</td><td>flipagent backend &mdash; we eat the cost</td><td>weak-host agents, scripts, cron, deterministic batched runs</td></tr>
-						<tr><td><code>delegate</code></td><td>your host agent's own LLM</td><td>strong agents already paying for inference (Claude Code, Cursor) &mdash; saves the round-trip</td></tr>
-					</tbody>
-				</table>
-				<p>Switch via <code>options.mode</code>:</p>
-				<div class="code"><pre><code>{`await match_pool({
-  candidate,
-  pool: sold.itemSales,
-  options: { mode: "delegate" }
-});
-// → { mode: "delegate", system, user, itemIds, outputSchema, traceId }`}</code></pre></div>
-				<p>In delegate mode the server returns a ready-to-run prompt + JSON schema. Your host LLM reasons over it, returns <code>[&#123;i, bucket, reason&#125;]</code> per pool item, and you materialise the two-bucket <code>MatchResponse</code> locally.</p>
-
-				<h2 id="telemetry">Telemetry &amp; opt-out</h2>
-				<p><code>flipagent_match_trace</code> is the only telemetry path. After delegate-mode <code>match_pool</code>, the host can post its decisions back so flipagent's calibration data stays current as host LLMs drift.</p>
-				<ul>
-					<li><strong>Opt-out, not opt-in.</strong> Runs by default.</li>
-					<li><strong>Anonymous.</strong> We store the trace id we issued, the per-item decisions, and a SHA-256 prefix of your API key for rate-limit accounting. No account link.</li>
-					<li><strong>Bounded.</strong> Only triggers after delegate-mode <code>match_pool</code>. Hosted runs and read-only tools never produce traces.</li>
-				</ul>
-				<p>Disable with an environment variable in your MCP client config (matches the OSS norm — <code>HOMEBREW_NO_ANALYTICS</code>, <code>NEXT_TELEMETRY_DISABLED</code>, <code>ASTRO_TELEMETRY_DISABLED</code>):</p>
-				<div class="code"><pre><code>{`{
-  "mcpServers": {
-    "flipagent": {
-      "command": "npx",
-      "args": ["-y", "flipagent-mcp"],
-      "env": {
-        "FLIPAGENT_API_KEY": "fa_free_xxx",
-        "FLIPAGENT_TELEMETRY": "0"
-      }
-    }
-  }
-}`}</code></pre></div>
-				<p>Accepted off-values: <code>0</code>, <code>off</code>, <code>false</code>, <code>no</code>, <code>disabled</code>. When disabled, <code>flipagent_match_trace</code> short-circuits with <code>&#123; skipped: "telemetry_disabled" &#125;</code> and never makes a network call.</p>
-
 				<h2>Compose your own logic</h2>
-				<p>Tools are typed and orthogonal. Agents can chain <code>ebay_search</code> → <code>ebay_sold_search</code> → <code>match_pool</code> → <code>discover_deals</code> → <code>ship_quote</code> to assemble end-to-end reselling workflows. See the <a href="/docs/api/">API reference</a> for request shapes.</p>
+				<p>Tools are typed and orthogonal. <code>evaluate_listing</code> and <code>discover_deals</code> are composite — server-side they fetch the item, search sold + active, run an LLM same-product filter, and score in a single call. Agents can also chain low-level tools (<code>ebay_search</code> → <code>ebay_sold_search</code> → <code>discover_deals</code> → <code>ship_quote</code>) to assemble custom reselling workflows. See the <a href="/docs/api/">API reference</a> for request shapes.</p>
 			</article>
 		</div>
 	</div>

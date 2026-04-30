@@ -11,7 +11,7 @@ import { KeyInfo, KeyRevokeResponse, PermissionsResponse } from "@flipagent/type
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { revokeKey, type Tier } from "../../auth/keys.js";
-import { snapshotUsage } from "../../auth/limits.js";
+import { snapshotUsage, usageToWire } from "../../auth/limits.js";
 import { computePermissionsForApiKey } from "../../auth/permissions.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { errorResponse, jsonResponse } from "../../utils/openapi.js";
@@ -41,12 +41,7 @@ keysRoute.get(
 			ownerEmail: key.ownerEmail,
 			createdAt: key.createdAt,
 			lastUsedAt: key.lastUsedAt,
-			usage: {
-				used: usage.used,
-				limit: Number.isFinite(usage.limit) ? usage.limit : null,
-				remaining: Number.isFinite(usage.remaining) ? usage.remaining : null,
-				resetAt: usage.resetAt,
-			},
+			usage: usageToWire(usage),
 		});
 	},
 );

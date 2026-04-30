@@ -18,9 +18,22 @@ export interface ComposeTab<Id extends string = string> {
 	icon: ReactNode;
 }
 
-export function ComposeCard({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function ComposeCard({
+	children,
+	className = "",
+	width = "narrow",
+}: {
+	children: ReactNode;
+	className?: string;
+	/** "narrow" (default, ~760px — Evaluate / Hero) or "wide" (~1180px —
+	 *  Discover with the side-detail panel open). Animates between states. */
+	width?: "narrow" | "wide";
+}) {
+	const widthClass = width === "wide" ? "max-w-[1320px]" : "max-w-[760px]";
 	return (
-		<div className={`max-w-[760px] mx-auto mt-[10vh] ${className}`}>
+		<div
+			className={`${widthClass} mx-auto mt-[10vh] ${className} transition-[max-width] duration-300 ease-out`}
+		>
 			<div className="border border-[var(--border)] rounded-[12px] bg-[var(--surface)] overflow-hidden text-left shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_36px_rgba(0,0,0,0.06)]">
 				{children}
 			</div>
@@ -65,6 +78,7 @@ export function ComposeInput({
 	value,
 	onChange,
 	onRun,
+	onCancel,
 	placeholder,
 	disabled,
 	pending,
@@ -72,10 +86,13 @@ export function ComposeInput({
 	value: string;
 	onChange: (v: string) => void;
 	onRun: () => void;
+	/** When supplied + `pending`, the Run button flips to a Cancel ✕ that fires this. */
+	onCancel?: () => void;
 	placeholder?: string;
 	disabled?: boolean;
 	pending?: boolean;
 }) {
+	const showCancel = Boolean(pending && onCancel);
 	return (
 		<div className="flex items-center gap-2 px-2.5 py-2.5 border-b border-[var(--border-faint)]">
 			<div className="flex items-center pl-2 pr-1 text-[var(--text-3)] font-mono text-[14px]">›</div>
@@ -90,12 +107,17 @@ export function ComposeInput({
 			/>
 			<button
 				type="button"
-				onClick={onRun}
-				disabled={disabled}
-				aria-label="Run"
+				onClick={showCancel ? onCancel : onRun}
+				disabled={!showCancel && disabled}
+				aria-label={showCancel ? "Cancel" : "Run"}
+				title={showCancel ? "Cancel run" : "Run"}
 				className="flex items-center justify-center w-9 h-9 rounded-[8px] bg-[var(--brand)] text-white shrink-0 transition-transform duration-100 active:scale-95 shadow-[inset_0_-4px_8px_rgba(255,0,0,0.2),0_2px_4px_rgba(255,77,0,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
 			>
-				{pending ? (
+				{showCancel ? (
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+						<path d="M6 6l12 12M18 6l-12 12" />
+					</svg>
+				) : pending ? (
 					<svg
 						width="14"
 						height="14"

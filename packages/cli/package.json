@@ -1,7 +1,7 @@
 {
 	"name": "flipagent-cli",
 	"version": "0.0.1",
-	"description": "flipagent CLI — log in, drive the API from your shell (search / sold / evaluate / discover / ship), and one-command-set-up the flipagent MCP server for Claude Desktop / Cursor / Cline / Zed / Windsurf. Buy-side execution (/v1/buy/order/*) lives in the flipagent Chrome extension. Zero runtime deps.",
+	"description": "flipagent CLI — log in, drive the API from your shell (search / sold / evaluate / discover / ship), and one-command-set-up the flipagent MCP server for Claude Desktop / Cursor / Cline / Zed / Windsurf. Buy-side execution (/v1/buy/order/*) runs in two transports — REST passthrough (with eBay Buy Order API approval) or the flipagent Chrome extension. Zero runtime deps.",
 	"type": "module",
 	"main": "./dist/index.js",
 	"bin": {

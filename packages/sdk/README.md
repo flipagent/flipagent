@@ -13,28 +13,28 @@ import { createFlipagentClient } from "@flipagent/sdk";
 
 const client = createFlipagentClient({ apiKey: process.env.FLIPAGENT_API_KEY! });
 
-// Discovery — search active listings (eBay-shape response)
-const results = await client.listings.search({ q: "canon ef 50mm 1.8", limit: 50 });
+// Search active listings (eBay-shape response)
+const { itemSummaries } = await client.listings.search({ q: "canon ef 50mm 1.8", limit: 50 });
 
-// Sold comps — last 90 days
-const sold = await client.sold.search({ q: "canon ef 50mm 1.8", limit: 50 });
+// Search sold listings (last 90 days)
+const { itemSales } = await client.sold.search({ q: "canon ef 50mm 1.8", limit: 50 });
 
-// Decisions — score one listing
-const verdict = await client.evaluate.listing({ item, opts: { comps } });
+// Score one listing — composite (server fetches detail + sold + active)
+const evaluation = await client.evaluate.listing({ itemId: "v1|123456789|0" });
 
-// Overnight — rank deals across a search
-const { deals } = await client.discover.deals({ results, opts: { minNetCents: 2000 } });
+// Rank deals for a query — composite (server runs the full pipeline)
+const { deals } = await client.discover.deals({ q: "canon ef 50mm 1.8", opts: { minNetCents: 2000 } });
 
-// Operations — landed cost via forwarder
-const quote = await client.ship.quote({ item, forwarder: { destState: "NY", weightG: 500 } });
+// Estimate landed cost via a forwarder
+const quote = await client.ship.quote({ item: itemSummaries[0], forwarder: { destState: "NY", weightG: 500 } });
 ```
 
 ## Namespaces
 
 | Group | Namespaces |
 |---|---|
-| Marketplace passthrough | `listings`, `sold`, `orders`, `inventory`, `fulfillment`, `finance`, `markets` |
-| flipagent intelligence | `market`, `match`, `evaluate`, `discover`, `ship`, `draft`, `reprice`, `expenses` |
+| Marketplace passthrough | `listings`, `sold`, `buy.order`, `inventory`, `fulfillment`, `finance`, `markets`, `forwarder` |
+| flipagent intelligence | `evaluate`, `discover`, `ship`, `expenses` |
 | Ops | `webhooks`, `capabilities` |
 | Escape hatch | `client.http.{get,post,put,delete,patch}(path, body?)` |
 
@@ -43,7 +43,7 @@ the user to authorize their eBay account first via `/v1/connect/ebay`.
 
 ## Get a key
 
-Free tier: 100 calls/month, no card. Sign up at
+Free tier: 500 credits one-time (lifetime grant, doesn't refill), no card. Sign up at
 [flipagent.dev/signup](https://flipagent.dev/signup).
 
 ## Docs

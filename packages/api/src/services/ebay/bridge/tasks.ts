@@ -22,8 +22,10 @@ export const BRIDGE_TASKS = {
 	EBAY_INBOX_OFFERS: "ebay_inbox_offers",
 	EBAY_INBOX_CASES: "ebay_inbox_cases",
 	EBAY_INBOX_SAVED_SEARCHES: "ebay_inbox_saved_searches",
-	// Forwarder
+	// Forwarder — Planet Express
 	PLANETEXPRESS_PULL_PACKAGES: "pull_packages",
+	PLANETEXPRESS_PACKAGE_PHOTOS: "planetexpress_package_photos",
+	PLANETEXPRESS_PACKAGE_DISPATCH: "planetexpress_package_dispatch",
 	// Generic primitives
 	BROWSER_OP: "browser_op",
 	RELOAD_EXTENSION: "reload_extension",
@@ -32,11 +34,27 @@ export const BRIDGE_TASKS = {
 export type BridgeTask = (typeof BRIDGE_TASKS)[keyof typeof BRIDGE_TASKS];
 
 /**
- * Map the order's `source` column (set when the order is queued) to
- * the canonical bridge task name. The bridge route uses this when
- * handing a claimed job to the extension; keeping one map prevents
- * the inline `if (source === "planetexpress") ... else ...` chain
- * from sprawling as new task types are added.
+ * Pick the canonical bridge task for a queued order. Reads
+ * `metadata.task` first when set — that's the explicit override used
+ * by per-action queueing (forwarder photos / dispatch / etc.) so a
+ * single source value (e.g. `"planetexpress"`) can fan out to several
+ * task names without bloating the source enum. Falls back to the
+ * source-only mapping for callers that didn't set a task explicitly.
+ */
+export function bridgeTaskForOrder(source: string, metadata: Record<string, unknown> | null | undefined): BridgeTask {
+	if (metadata && typeof metadata === "object") {
+		const t = metadata.task;
+		if (typeof t === "string" && (Object.values(BRIDGE_TASKS) as string[]).includes(t)) {
+			return t as BridgeTask;
+		}
+	}
+	return bridgeTaskForSource(source);
+}
+
+/**
+ * Source-only fallback. Preserved for back-compat (a few callers still
+ * inspect this directly) and for orders whose metadata predates the
+ * `task` discriminator.
  */
 export function bridgeTaskForSource(source: string): BridgeTask {
 	switch (source) {

@@ -1,68 +1,242 @@
 /**
- * `/v1/evaluate/*` — single-item judgment. flipagent's "should I buy
- * this listing?" surface. Wraps the local scoring services so all SDK
- * clients (TS today, future Python/Rust) get identical evaluations via
- * one HTTP call.
+ * `/v1/evaluate/*` — id-driven listing judgment.
  *
- *   POST /v1/evaluate           — full evaluation (rating + signals + landed cost)
- *   POST /v1/evaluate/signals   — fired signal detectors only (no evaluation)
+ * Five surfaces — one sync convenience + four queue-backed:
  *
- * Maps to the Decisions pillar on the marketing site (#01: numbers
- * decide, not vibes).
+ *   POST /v1/evaluate                       — sync mode. Creates a compute
+ *                                             job, awaits terminal status,
+ *                                             returns the final result. MCP
+ *                                             / SDK / agents that want a
+ *                                             one-shot call land here.
+ *   POST /v1/evaluate/jobs                  — async mode. Creates the job
+ *                                             and returns `{ id, status }`
+ *                                             immediately. Caller polls
+ *                                             /jobs/{id} or subscribes to
+ *                                             /jobs/{id}/stream.
+ *   GET  /v1/evaluate/jobs/{id}             — poll status + result.
+ *   GET  /v1/evaluate/jobs/{id}/stream      — SSE: replay accumulated trace
+ *                                             events, then live-stream
+ *                                             until the job is terminal.
+ *                                             Survives mid-run reload.
+ *   POST /v1/evaluate/jobs/{id}/cancel      — request cancel. Worker tears
+ *                                             down at the next step
+ *                                             boundary.
+ *
+ * Maps to the Decisions pillar on the marketing site (#01).
  */
 
-import { EvaluateRequest, EvaluateResponse, EvaluateSignalsRequest, EvaluateSignalsResponse } from "@flipagent/types";
+import { ComputeJobAck, EvaluateJob, EvaluateRequest, EvaluateResponse } from "@flipagent/types";
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { describeRoute } from "hono-openapi";
+import type { ComputeJob } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
-import { evaluateWithContext } from "../../services/evaluate/evaluate-with-context.js";
-import { extractSignals } from "../../services/evaluate/signals.js";
+import { dispatch } from "../../services/compute-jobs/dispatcher.js";
+import { httpStatusForPipelineError } from "../../services/compute-jobs/error-mapping.js";
+import { cancelJob, createJob, getJob } from "../../services/compute-jobs/queue.js";
+import { streamComputeJobEvents } from "../../services/compute-jobs/sse-stream.js";
+import { runEvaluatePipeline } from "../../services/evaluate/run.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const evaluateRoute = new Hono();
+
+/* ----------------------------- sync POST ----------------------------- */
 
 evaluateRoute.post(
 	"/",
 	describeRoute({
 		tags: ["Evaluate"],
-		summary: "Score a single listing as a flip opportunity",
+		summary: "Score a single listing as a flip opportunity (sync)",
 		description:
-			"Pass at least a handful of `opts.comparables` for margin math; without them the rating is `skip`. Set `opts.forwarder` to attach a US-domestic landed cost. ItemSummary inputs lack `description`, which lowers the confidence multiplier — pass an ItemDetail or override `opts.minConfidence` for a confident `buy`.",
+			"Composite: server fetches the item detail, runs sold + active searches in parallel, LLM-filters to same-product, runs the evaluation. Returns `{ item, evaluation, meta, soldPool, activePool, rejectedSoldPool, rejectedActivePool, market }` once the pipeline reaches a terminal state. For a streaming view of each step, use `POST /v1/evaluate/jobs` then `GET /v1/evaluate/jobs/{id}/stream`. Internally this creates a compute_job and awaits terminal — same code path as the async surface, just collapsed for one-shot callers.",
 		responses: {
-			200: jsonResponse("Listing evaluation.", EvaluateResponse),
+			200: jsonResponse("Final evaluation + pools.", EvaluateResponse),
 			400: errorResponse("Validation failed."),
 			401: errorResponse("Missing or invalid API key."),
+			404: errorResponse("Item not found."),
+			422: errorResponse("Too few sold matches to evaluate."),
 			429: errorResponse("Rate limit exceeded."),
+			502: errorResponse("Upstream eBay failure."),
+			503: errorResponse("eBay or scraper not configured."),
 		},
 	}),
 	requireApiKey,
 	tbBody(EvaluateRequest),
 	async (c) => {
-		const { item, opts } = c.req.valid("json");
-		const evaluation = await evaluateWithContext(item, opts ?? {});
-		return c.json(evaluation);
+		const params = c.req.valid("json");
+		const apiKey = c.var.apiKey;
+		const job = await createJob({
+			apiKeyId: apiKey.id,
+			userId: apiKey.userId,
+			kind: "evaluate",
+			params: params as unknown as Record<string, unknown>,
+		});
+		const final = await dispatch({
+			jobId: job.id,
+			run: (onStep, cancelCheck) =>
+				runEvaluatePipeline({
+					itemId: params.itemId,
+					lookbackDays: params.lookbackDays,
+					soldLimit: params.soldLimit,
+					apiKey,
+					opts: params.opts,
+					onStep: (event) => void onStep(event),
+					cancelCheck,
+				}),
+		});
+		if (!final) return c.json({ error: "internal", message: "job dispatch produced no row" }, 500);
+		if (final.status === "completed") return c.json(final.result as unknown);
+		if (final.status === "cancelled") {
+			return c.json({ error: "cancelled", message: "job was cancelled before completion" }, 409);
+		}
+		// failed
+		const code = final.errorCode ?? "internal";
+		const message = final.errorMessage ?? "evaluation failed";
+		return c.json({ error: code, message }, httpStatusForPipelineError(code));
 	},
 );
 
+/* ----------------------------- async create ----------------------------- */
+
 evaluateRoute.post(
-	"/signals",
+	"/jobs",
 	describeRoute({
 		tags: ["Evaluate"],
-		summary: "Run signal detectors over a listing (no evaluation)",
+		summary: "Create an evaluate job (async — returns immediately)",
 		description:
-			"Returns the hits from `under_median`, `ending_soon_low_watchers`, and `poor_title` detectors. `under_median` requires `comparables`; the others run unconditionally. Use this when the agent wants raw evidence to feed a custom scoring policy.",
+			'Creates a compute job, returns `{ id, status: "queued" }` immediately. Caller polls `GET /v1/evaluate/jobs/{id}` or subscribes to `GET /v1/evaluate/jobs/{id}/stream` for live trace events. Survives client disconnect — closing the tab mid-run does not abort the pipeline.',
 		responses: {
-			200: jsonResponse("Fired signal hits.", EvaluateSignalsResponse),
+			202: jsonResponse("Job queued.", ComputeJobAck),
 			400: errorResponse("Validation failed."),
 			401: errorResponse("Missing or invalid API key."),
-			429: errorResponse("Rate limit exceeded."),
 		},
 	}),
 	requireApiKey,
-	tbBody(EvaluateSignalsRequest),
+	tbBody(EvaluateRequest),
 	async (c) => {
-		const { item, comparables } = c.req.valid("json");
-		const signals = extractSignals(item, comparables ?? []);
-		return c.json({ signals });
+		const params = c.req.valid("json");
+		const apiKey = c.var.apiKey;
+		const job = await createJob({
+			apiKeyId: apiKey.id,
+			userId: apiKey.userId,
+			kind: "evaluate",
+			params: params as unknown as Record<string, unknown>,
+		});
+		// Fire-and-forget — the async route returns immediately. The
+		// dispatcher writes status transitions + trace events to the row,
+		// so a /stream subscriber (or /jobs/{id} poll) sees the same
+		// progress regardless of when it connects.
+		void dispatch({
+			jobId: job.id,
+			run: (onStep, cancelCheck) =>
+				runEvaluatePipeline({
+					itemId: params.itemId,
+					lookbackDays: params.lookbackDays,
+					soldLimit: params.soldLimit,
+					apiKey,
+					opts: params.opts,
+					onStep: (event) => void onStep(event),
+					cancelCheck,
+				}),
+		});
+		return c.json({ id: job.id, status: job.status }, 202);
 	},
 );
+
+/* ----------------------------- async poll ----------------------------- */
+
+evaluateRoute.get(
+	"/jobs/:id",
+	describeRoute({
+		tags: ["Evaluate"],
+		summary: "Get current state + result (when complete) for an evaluate job",
+		description:
+			'Returns the full job row — `status`, `params`, and `result` (set iff `status === "completed"`). 7-day retention; older rows return 404. Polling cadence at the caller\'s discretion (1-2s is fine; the worker writes intermediate trace events to the `trace` column visible via /stream, not here).',
+		responses: {
+			200: jsonResponse("Job state.", EvaluateJob),
+			401: errorResponse("Missing or invalid API key."),
+			404: errorResponse("Job not found or expired."),
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const id = c.req.param("id");
+		const job = await getJob(id, c.var.apiKey.id);
+		if (!job || job.kind !== "evaluate") {
+			return c.json({ error: "not_found", message: `No evaluate job ${id} for this api key.` }, 404);
+		}
+		return c.json(toEvaluateJobShape(job));
+	},
+);
+
+/* ----------------------------- async stream ----------------------------- */
+
+evaluateRoute.get(
+	"/jobs/:id/stream",
+	describeRoute({
+		tags: ["Evaluate"],
+		summary: "Live SSE stream of trace events for an evaluate job",
+		description:
+			"Replays accumulated step events from the job's `trace` column, then live-streams new events as the worker emits them, ending with a terminal `done` / `cancelled` / `error` event. Reconnect-safe: closing and reopening the stream replays the trace from the start and resumes live, so a tab that reloaded mid-run picks up exactly where it left off.",
+		responses: {
+			200: { description: "SSE stream of step events." },
+			401: errorResponse("Missing or invalid API key."),
+			404: errorResponse("Job not found or expired."),
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const id = c.req.param("id");
+		const job = await getJob(id, c.var.apiKey.id);
+		if (!job || job.kind !== "evaluate") {
+			return c.json({ error: "not_found", message: `No evaluate job ${id} for this api key.` }, 404);
+		}
+		return streamSSE(c, (stream) => streamComputeJobEvents(c, stream, job));
+	},
+);
+
+/* ----------------------------- async cancel ----------------------------- */
+
+evaluateRoute.post(
+	"/jobs/:id/cancel",
+	describeRoute({
+		tags: ["Evaluate"],
+		summary: "Request cooperative cancel for an evaluate job",
+		description:
+			'Sets `cancel_requested = true` on the row. The worker checks this between pipeline steps and tears down at the next boundary, transitioning to `status: "cancelled"`. Mid-step IO (eBay scrape, LLM call) cannot be aborted but step boundaries are tight (≤ a few seconds each). Idempotent — calling cancel on a terminal job returns the current state unchanged.',
+		responses: {
+			200: jsonResponse("Cancel acknowledged.", ComputeJobAck),
+			401: errorResponse("Missing or invalid API key."),
+			404: errorResponse("Job not found or expired."),
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const id = c.req.param("id");
+		const job = await cancelJob(id, c.var.apiKey.id);
+		if (!job || job.kind !== "evaluate") {
+			return c.json({ error: "not_found", message: `No evaluate job ${id} for this api key.` }, 404);
+		}
+		return c.json({ id: job.id, status: job.status });
+	},
+);
+
+/* ----------------------------- helpers ----------------------------- */
+
+function toEvaluateJobShape(job: ComputeJob): EvaluateJob {
+	return {
+		id: job.id,
+		kind: "evaluate",
+		status: job.status,
+		params: job.params as EvaluateJob["params"],
+		result: (job.result as EvaluateJob["result"]) ?? null,
+		errorCode: job.errorCode ?? null,
+		errorMessage: job.errorMessage ?? null,
+		cancelRequested: job.cancelRequested,
+		createdAt: job.createdAt.toISOString(),
+		startedAt: job.startedAt?.toISOString() ?? null,
+		completedAt: job.completedAt?.toISOString() ?? null,
+		expiresAt: job.expiresAt.toISOString(),
+	};
+}
+

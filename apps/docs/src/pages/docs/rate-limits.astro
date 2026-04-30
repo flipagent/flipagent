@@ -8,37 +8,60 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>Rate limits</h1>
-				<p class="lead">Per calendar month, UTC. Counted at every marketplace and value-add endpoint under <code>/v1/*</code>; management endpoints (<code>/v1/keys/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/healthz</code>) are uncounted.</p>
+				<p class="lead">One unit, credits, covers every metered endpoint. Each call charges a fixed cost (search 1, evaluate 50, discover 250). Cached responses and REST passthrough don't count. Free is a one-time grant; paid tiers refill monthly (UTC).</p>
 
 				<h2>Tier table</h2>
 				<table class="api">
-					<thead><tr><th>Tier</th><th>Calls / month</th><th>Notes</th></tr></thead>
+					<thead><tr><th>Tier</th><th>Credits</th><th>Refill</th><th>Burst (min / hour)</th></tr></thead>
 					<tbody>
-						<tr><td>Free</td><td>100</td><td>No card. <a href="/signup/">Sign up</a> for a key.</td></tr>
-						<tr><td>Hobby ($19/mo)</td><td>5,000</td><td>Side projects, weekend builds.</td></tr>
-						<tr><td>Pro ($99/mo)</td><td>50,000</td><td>Production integrations.</td></tr>
-						<tr><td>Business</td><td>Custom</td><td>SLA, white-label, dedicated quota.</td></tr>
+						<tr><td>Free</td><td>500</td><td>One-time (lifetime grant)</td><td>10 / 200</td></tr>
+						<tr><td>Hobby ($19/mo)</td><td>3,000</td><td>Monthly</td><td>30 / 1,200</td></tr>
+						<tr><td>Standard ($99/mo)</td><td>100,000</td><td>Monthly</td><td>120 / 6,000</td></tr>
+						<tr><td>Growth ($399/mo)</td><td>500,000</td><td>Monthly</td><td>600 / 25,000</td></tr>
 					</tbody>
 				</table>
 
-				<h2>What counts</h2>
-				<p>Every request to a marketplace or intelligence endpoint counts toward your monthly quota: <code>/v1/buy/browse/*</code>, <code>/v1/buy/marketplace_insights/item_sales/*</code>, <code>/v1/buy/order/*</code>, <code>/v1/sell/inventory/*</code>, <code>/v1/sell/fulfillment/*</code>, <code>/v1/sell/finances/*</code>, <code>/v1/sell/account/*</code>, <code>/v1/commerce/*</code>, <code>/v1/post-order/*</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>, <code>/v1/research</code>, <code>/v1/match</code>, <code>/v1/ship/*</code>. Cache hits still count: the cache reduces latency, not your bill, because the infrastructure cost is the same regardless.</p>
-				<p>Free routes (uncounted): <code>/v1/health/*</code>, <code>/v1/me/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>.</p>
+				<h2>Credits per call</h2>
+				<table class="api">
+					<thead><tr><th>Feature</th><th>Endpoint prefix</th><th>Credits</th></tr></thead>
+					<tbody>
+						<tr><td>Search</td><td><code>/v1/search</code>, <code>/v1/buy/*</code>, <code>/v1/sell/*</code>, <code>/v1/commerce/*</code>, <code>/v1/post-order/*</code>, <code>/v1/ship/*</code>, <code>/v1/messages</code>, <code>/v1/best-offer</code>, <code>/v1/feedback</code></td><td>1</td></tr>
+						<tr><td>Evaluate</td><td><code>/v1/evaluate</code></td><td>50</td></tr>
+						<tr><td>Discover</td><td><code>/v1/discover</code></td><td>250</td></tr>
+						<tr><td>Browser op</td><td><code>/v1/browser/*</code></td><td>5</td></tr>
+						<tr><td>Cache hit</td><td>any (response carries <code>X-Flipagent-From-Cache: true</code>)</td><td>0</td></tr>
+						<tr><td>REST passthrough</td><td>marketplace reads when eBay OAuth is bound to the key</td><td>0</td></tr>
+					</tbody>
+				</table>
+				<p>Free routes (uncounted): <code>/v1/health/*</code>, <code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/capabilities</code>.</p>
+
+				<h2>Connect eBay for free search</h2>
+				<p>If your API key is bound to a connected eBay account, marketplace reads route through eBay's REST API directly — they don't hit our scrape proxy and they don't decrement credits. Evaluate and discover still charge because the LLM matching, hazard model, and cluster fan-out happen on our side.</p>
 
 				<h2>Headers on every authed response</h2>
-				<div class="code"><pre><code>{`X-RateLimit-Limit:     100
-X-RateLimit-Remaining: 73
-X-RateLimit-Reset:     2026-05-01T00:00:00.000Z`}</code></pre></div>
+				<div class="code"><pre><code>{`X-RateLimit-Limit:              500       # tier credit budget
+X-RateLimit-Remaining:          427       # credits left this month
+X-RateLimit-Reset:              2026-05-01T00:00:00.000Z
+X-Flipagent-Credits-Charged:    1         # what this call cost
+X-Flipagent-From-Cache:         true      # only on cache hits; not charged`}</code></pre></div>
 
 				<h2>Hitting the limit</h2>
-				<p>Once your counter reaches the tier limit, you'll get a <code>429</code> with the same headers and a JSON body:</p>
+				<p>When you've spent your monthly budget, you'll get a <code>429</code>:</p>
 				<div class="code"><pre><code>{`{
-  "error": "rate_limited",
-  "message": "Tier \\"free\\" allows 100/mo; you've used 100.",
+  "error": "credits_exceeded",
+  "message": "Monthly credit budget for tier \\"hobby\\" is 3000; you've used 3000.",
+  "creditsUsed": 3000,
+  "creditsLimit": 3000,
   "resetAt": "2026-05-01T00:00:00.000Z",
   "upgrade": "https://flipagent.dev/pricing"
 }`}</code></pre></div>
-				<p>The counter resets at <code>00:00 UTC</code> on the first of the next month. To raise the ceiling sooner, hit <code>POST /v1/billing/checkout</code> with <code>tier: "hobby"</code> or <code>"pro"</code>.</p>
+				<p>If you spike too fast — e.g. 200 calls in one minute on a Hobby key — you'll get a separate <code>429</code> for the burst window:</p>
+				<div class="code"><pre><code>{`{
+  "error": "burst_rate_limited",
+  "window": "minute",
+  "message": "Burst rate limit hit (per-minute). Slow down or upgrade for higher limits."
+}`}</code></pre></div>
+				<p>Paid plan counters reset at <code>00:00 UTC</code> on the first of the next month. The Free tier's 500 credits are a one-time grant — once spent, a maxed-out Free key can only proceed by upgrading. <code>resetAt</code> is <code>null</code> for Free; an ISO timestamp for paid tiers. Hit <code>POST /v1/billing/checkout</code> with <code>tier: "hobby"</code>, <code>"standard"</code>, or <code>"growth"</code> to upgrade.</p>
 			</article>
 		</div>
 	</div>

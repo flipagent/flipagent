@@ -240,16 +240,6 @@ export interface ListPriceRecommendation {
 	annualizedRoi: number;
 }
 
-/** Output of `repriceAdvice` — what to do with a sitting listing. */
-export interface RepriceRecommendation {
-	action: "hold" | "drop" | "delist";
-	/** When `action === "drop"`: suggested new list price in cents. */
-	suggestedPriceCents?: number;
-	/** Days the listing has been live (echoed back from input). */
-	daysListed: number;
-	reason: string;
-}
-
 /* ─────────────────────────── Calibration (Phase 5) ─────────────────────────── */
 
 /** One predicted-vs-actual record. Fed in batches to `calibrate`. */

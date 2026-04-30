@@ -2,6 +2,7 @@ import {
 	endDateFromTimeLeft,
 	extractEbayDetail,
 	extractEbayItems,
+	hasBestOfferFormat,
 	normalizeBuyingFormat,
 	parseBidCount,
 	parseEbayPrice,
@@ -57,7 +58,7 @@ export interface EbayItemSummary {
 	currentBidPrice?: { value: string; currency: string };
 	lastSoldPrice?: { value: string; currency: string };
 	shippingOptions?: { shippingCost?: { value: string; currency: string } }[];
-	buyingOptions?: ("AUCTION" | "FIXED_PRICE")[];
+	buyingOptions?: ("AUCTION" | "FIXED_PRICE" | "BEST_OFFER")[];
 	bidCount?: number;
 	watchCount?: number;
 	itemEndDate?: string;
@@ -67,6 +68,13 @@ export interface EbayItemSummary {
 	thumbnailImages?: { imageUrl: string }[];
 	seller?: { username?: string; feedbackPercentage?: string; feedbackScore?: number };
 	topRatedBuyingExperience?: boolean;
+	/**
+	 * eBay product identifier — captured from the listing card's catalog
+	 * link (`/p/{epid}`) when present. Roughly 30–40% of cards on a
+	 * typical search are catalog-linked. Composite endpoints use this
+	 * to group same-product candidates without an LLM call.
+	 */
+	epid?: string;
 }
 
 /**
@@ -189,7 +197,18 @@ export function parseEbaySearchHtml(
 		// `buyingFormat` when no bid count was parsed (zero-bid auctions
 		// just out of the gate, fixed-price-with-best-offer rows, etc.).
 		const inferredBuying: "AUCTION" | "FIXED_PRICE" | undefined = bid != null ? "AUCTION" : (buying ?? undefined);
-		if (inferredBuying) item.buyingOptions = [inferredBuying];
+		// Best Offer stacks with the dominant format — `or Best Offer`
+		// next to a Buy It Now price is the common "Make Offer" surface a
+		// reseller wants to know about. Detail-page scrape already does
+		// this via `bestOfferEnabled`; mirror the shape here so search +
+		// detail produce the same `buyingOptions`.
+		const bestOffer = hasBestOfferFormat(r.buyingFormat);
+		if (inferredBuying || bestOffer) {
+			const options: ("AUCTION" | "FIXED_PRICE" | "BEST_OFFER")[] = [];
+			if (inferredBuying) options.push(inferredBuying);
+			if (bestOffer) options.push("BEST_OFFER");
+			item.buyingOptions = options;
+		}
 
 		if (price.cents != null) {
 			const money = { value: centsToValue(price.cents)!, currency: price.currency };
@@ -225,6 +244,7 @@ export function parseEbaySearchHtml(
 			item.image = { imageUrl: r.imageUrl };
 			item.thumbnailImages = [{ imageUrl: r.imageUrl }];
 		}
+		if (r.epid) item.epid = r.epid;
 
 		out.push(item);
 	}
@@ -266,7 +286,17 @@ export interface EbayItemDetail {
 	marketplaceListedOn: string | null;
 	soldOut: boolean | null;
 	itemLocationText: string | null;
+	/** True iff the listing has Best Offer enabled. */
+	bestOfferEnabled: boolean;
+	/**
+	 * Returns policy in eBay REST `returnTerms` shape (not schema.org's),
+	 * so consumers handle scrape and REST through the same extractor. Null
+	 * when the schema.org block was missing or the category was unknown.
+	 */
+	returnTerms: import("./ebay-extract.js").EbayReturnTerms | null;
 }
+
+export type { EbayReturnTerms } from "./ebay-extract.js";
 
 function parseFeedbackPercent(text: string | null): number | null {
 	if (!text) return null;
@@ -311,5 +341,7 @@ export function parseEbayDetailHtml(
 		marketplaceListedOn: raw.marketplaceListedOn,
 		soldOut: raw.soldOut,
 		itemLocationText: raw.itemLocationText,
+		bestOfferEnabled: raw.bestOfferEnabled,
+		returnTerms: raw.returnTerms,
 	};
 }

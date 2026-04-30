@@ -2,7 +2,6 @@ import type { TSchema } from "@sinclair/typebox";
 import type { Config } from "../config.js";
 import { browserQueryDescription, browserQueryExecute, browserQueryInput } from "./browser-primitives.js";
 import { discoverDealsDescription, discoverDealsExecute, discoverDealsInput } from "./discover-deals.js";
-import { draftListingDescription, draftListingExecute, draftListingInput } from "./draft-listing.js";
 import {
 	ebayBuyItemDescription,
 	ebayBuyItemExecute,
@@ -49,7 +48,6 @@ import {
 	ebayTaxonomySuggestInput,
 } from "./ebay-taxonomy.js";
 import { evaluateListingDescription, evaluateListingExecute, evaluateListingInput } from "./evaluate-listing.js";
-import { evaluateSignalsDescription, evaluateSignalsExecute, evaluateSignalsInput } from "./evaluate-signals.js";
 import { expensesRecordDescription, expensesRecordExecute, expensesRecordInput } from "./expenses-record.js";
 import { expensesSummaryDescription, expensesSummaryExecute, expensesSummaryInput } from "./expenses-summary.js";
 import {
@@ -63,14 +61,25 @@ import {
 	flipagentConnectStatusInput,
 } from "./flipagent-connect.js";
 import {
+	planetExpressInventoryDescription,
+	planetExpressInventoryExecute,
+	planetExpressInventoryInput,
+	planetExpressJobStatusDescription,
+	planetExpressJobStatusExecute,
+	planetExpressJobStatusInput,
+	planetExpressLinkDescription,
+	planetExpressLinkExecute,
+	planetExpressLinkInput,
+	planetExpressPackageDispatchDescription,
+	planetExpressPackageDispatchExecute,
+	planetExpressPackageDispatchInput,
+	planetExpressPackagePhotosDescription,
+	planetExpressPackagePhotosExecute,
+	planetExpressPackagePhotosInput,
 	planetExpressPackagesDescription,
 	planetExpressPackagesExecute,
 	planetExpressPackagesInput,
 } from "./forwarder-planetexpress.js";
-import { matchPoolDescription, matchPoolExecute, matchPoolInput } from "./match-pool.js";
-import { matchTraceDescription, matchTraceExecute, matchTraceInput } from "./match-trace.js";
-import { repriceListingDescription, repriceListingExecute, repriceListingInput } from "./reprice-listing.js";
-import { researchSummaryDescription, researchSummaryExecute, researchSummaryInput } from "./research-summary.js";
 import { shipProvidersDescription, shipProvidersExecute, shipProvidersInput } from "./ship-providers.js";
 import { shipQuoteDescription, shipQuoteExecute, shipQuoteInput } from "./ship-quote.js";
 
@@ -173,45 +182,12 @@ export const tools: Tool[] = [
 		execute: ebayListPayoutsExecute,
 	},
 
-	// Research — market summary + recovery probability (read-side feeder for every intelligence call)
-	{
-		name: "research_summary",
-		description: researchSummaryDescription,
-		inputSchema: researchSummaryInput,
-		execute: researchSummaryExecute,
-	},
-
-	// Match — comparable curation. Run BEFORE research_summary / evaluate_listing
-	// to drop similar-but-different SKUs (correct median). Two modes:
-	// hosted (server LLM, default) and delegate (host LLM, returns prompt).
-	{
-		name: "match_pool",
-		description: matchPoolDescription,
-		inputSchema: matchPoolInput,
-		execute: matchPoolExecute,
-	},
-	// Calibration trace from delegate-mode match_pool. Anonymous, opt-out
-	// via FLIPAGENT_TELEMETRY=0. Only meaningful after match_pool
-	// returned mode:"delegate" and the host's LLM produced decisions.
-	{
-		name: "flipagent_match_trace",
-		description: matchTraceDescription,
-		inputSchema: matchTraceInput,
-		execute: matchTraceExecute,
-	},
-
 	// Evaluate — single-listing judgment (Decisions pillar)
 	{
 		name: "evaluate_listing",
 		description: evaluateListingDescription,
 		inputSchema: evaluateListingInput,
 		execute: evaluateListingExecute,
-	},
-	{
-		name: "evaluate_signals",
-		description: evaluateSignalsDescription,
-		inputSchema: evaluateSignalsInput,
-		execute: evaluateSignalsExecute,
 	},
 
 	// Discover — rank deals across a search (Overnight pillar)
@@ -234,20 +210,6 @@ export const tools: Tool[] = [
 		description: shipProvidersDescription,
 		inputSchema: shipProvidersInput,
 		execute: shipProvidersExecute,
-	},
-
-	// Draft + Reprice — sell-side recommendations (Operations pillar)
-	{
-		name: "draft_listing",
-		description: draftListingDescription,
-		inputSchema: draftListingInput,
-		execute: draftListingExecute,
-	},
-	{
-		name: "reprice_listing",
-		description: repriceListingDescription,
-		inputSchema: repriceListingInput,
-		execute: repriceListingExecute,
 	},
 
 	// Expenses — append-only cost-side ledger (Finance phase, our half)
@@ -289,17 +251,51 @@ export const tools: Tool[] = [
 		execute: ebayOrderCancelExecute,
 	},
 
-	// Forwarders — Planet Express, MyUS, etc. Skeleton today; proves
-	// the multi-service dispatcher across SDK/MCP/extension.
+	// Forwarders — Planet Express full cycle. Inbox refresh + per-
+	// package photos for listing draft + outbound dispatch when an
+	// item sells. The dispatch endpoint is the sell-side ship-out the
+	// online-only reseller flow depends on. All four queue a bridge
+	// job and return a `jobId`; agents poll `planet_express_job_status`.
 	{
 		name: "planet_express_packages",
 		description: planetExpressPackagesDescription,
 		inputSchema: planetExpressPackagesInput,
 		execute: planetExpressPackagesExecute,
 	},
+	{
+		name: "planet_express_package_photos",
+		description: planetExpressPackagePhotosDescription,
+		inputSchema: planetExpressPackagePhotosInput,
+		execute: planetExpressPackagePhotosExecute,
+	},
+	{
+		name: "planet_express_package_dispatch",
+		description: planetExpressPackageDispatchDescription,
+		inputSchema: planetExpressPackageDispatchInput,
+		execute: planetExpressPackageDispatchExecute,
+	},
+	{
+		name: "planet_express_job_status",
+		description: planetExpressJobStatusDescription,
+		inputSchema: planetExpressJobStatusInput,
+		execute: planetExpressJobStatusExecute,
+	},
+	{
+		name: "planet_express_inventory",
+		description: planetExpressInventoryDescription,
+		inputSchema: planetExpressInventoryInput,
+		execute: planetExpressInventoryExecute,
+	},
+	{
+		name: "planet_express_link",
+		description: planetExpressLinkDescription,
+		inputSchema: planetExpressLinkInput,
+		execute: planetExpressLinkExecute,
+	},
 
-	// Generic browser primitives — fallback when high-level scrapers
-	// fail, or for live DOM inspection during selector tuning.
+	// Generic browser primitives — direct DOM queries through the bridge
+	// for cases the high-level tools don't cover (custom marketplaces, new
+	// fields, selector tuning). 1st-class surface, not a fallback path.
 	{
 		name: "browser_query",
 		description: browserQueryDescription,

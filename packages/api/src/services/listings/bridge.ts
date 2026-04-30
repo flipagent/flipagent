@@ -22,7 +22,7 @@
 import type { EbayItemDetail } from "@flipagent/ebay-scraper";
 import type { BrowseSearchQuery, BrowseSearchResponse, ItemDetail, SoldSearchQuery } from "@flipagent/types/ebay";
 import type { ApiKey } from "../../db/schema.js";
-import { createOrder, waitForTerminal } from "../orders/queue.js";
+import { createBridgeJob, waitForTerminal } from "../bridge-jobs/queue.js";
 import { ebayDetailToBrowse } from "./transform.js";
 
 const TIMEOUT_MS = 30_000;
@@ -33,7 +33,7 @@ type EbayQueryMetadata =
 	| { kind: "sold"; query: SoldSearchQuery };
 
 async function dispatch<T>(apiKey: ApiKey, metadata: EbayQueryMetadata, itemIdLabel: string): Promise<T> {
-	const order = await createOrder({
+	const job = await createBridgeJob({
 		apiKeyId: apiKey.id,
 		userId: apiKey.userId,
 		source: "ebay_data",
@@ -43,7 +43,7 @@ async function dispatch<T>(apiKey: ApiKey, metadata: EbayQueryMetadata, itemIdLa
 		idempotencyKey: null,
 		metadata,
 	});
-	const final = await waitForTerminal(order.id, apiKey.id, TIMEOUT_MS);
+	const final = await waitForTerminal(job.id, apiKey.id, TIMEOUT_MS);
 	if (!final) throw new BridgeError("bridge_timeout", `no terminal state after ${TIMEOUT_MS}ms`);
 	if (final.status !== "completed" || !final.result) {
 		throw new BridgeError("bridge_failed", `status=${final.status} reason=${final.failureReason ?? "?"}`);

@@ -1,0 +1,24 @@
+---
+/**
+ * Operator dashboard. Same chrome-less pattern as `/dashboard` — full-bleed
+ * React island, marketing header/footer omitted. Auth-gated client-side
+ * via /v1/me; non-admin users are redirected to /dashboard.
+ */
+import "../styles/global.css";
+import "../components/Admin.css";
+import Admin from "../components/Admin.tsx";
+---
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Admin · flipagent</title>
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	</head>
+	<body style="margin:0;">
+		<Admin client:only="react" />
+	</body>
+</html>

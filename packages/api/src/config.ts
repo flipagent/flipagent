@@ -58,6 +58,13 @@ const Schema = Type.Object({
 	// api.ebay.com/buy/marketplace_insights/v1_beta/... using the app
 	// token; without it, the route falls back to scraping.
 	EBAY_INSIGHTS_APPROVED: Type.Boolean({ default: false }),
+	// Commerce Catalog API program approval (canonical product master by
+	// EPID). Set to `1` only after eBay approves the tenant. With this
+	// flag, /v1/commerce/catalog/product/{epid} hits Catalog REST; without
+	// it (the default — eBay denies most apps) the route falls back to
+	// scraping /p/{epid} + a representative listing and emits the same
+	// `Product` shape.
+	EBAY_CATALOG_APPROVED: Type.Boolean({ default: false }),
 	// Better-Auth + GitHub OAuth. All three required to enable session auth
 	// (the /api/auth/* handler + /v1/me/* routes return 503 if not set).
 	//   APP_URL          dashboard origin (the docs site) — used for
@@ -97,16 +104,20 @@ const Schema = Type.Object({
 	SCRAPER_API_VENDOR: Type.Union([Type.Literal("oxylabs")], { default: "oxylabs" }),
 	SCRAPER_API_USERNAME: Type.Optional(Type.String()),
 	SCRAPER_API_PASSWORD: Type.Optional(Type.String()),
-	// Stripe billing — all four required to enable /v1/billing/*. When any
+	// Stripe billing — all five required to enable /v1/billing/*. When any
 	// are missing, those routes return 503 billing_not_configured.
+	// HOBBY → $19, STANDARD → $99, GROWTH → $399.
 	STRIPE_SECRET_KEY: Type.Optional(Type.String()),
 	STRIPE_WEBHOOK_SECRET: Type.Optional(Type.String()),
 	STRIPE_PRICE_HOBBY: Type.Optional(Type.String()),
-	STRIPE_PRICE_PRO: Type.Optional(Type.String()),
-	// LLM provider for /v1/match. Pick exactly one — `LLM_PROVIDER`
-	// explicitly selects, otherwise the first key set wins (anthropic →
-	// openai → google). Without any key, /v1/match returns 503; every
-	// other route works fine.
+	STRIPE_PRICE_STANDARD: Type.Optional(Type.String()),
+	STRIPE_PRICE_GROWTH: Type.Optional(Type.String()),
+	// LLM provider — gates same-product matcher used by composite
+	// intelligence endpoints (/v1/discover, /v1/evaluate).
+	// Pick one explicitly via `LLM_PROVIDER`, otherwise the first key
+	// set wins (anthropic → openai → google). Without any key the
+	// matcher returns a graceful fallback (raw search results, no
+	// curation) so endpoints stay up.
 	LLM_PROVIDER: Type.Optional(Type.Union([Type.Literal("anthropic"), Type.Literal("openai"), Type.Literal("google")])),
 	ANTHROPIC_API_KEY: Type.Optional(Type.String()),
 	ANTHROPIC_MODEL: Type.Optional(Type.String()),
@@ -114,19 +125,28 @@ const Schema = Type.Object({
 	OPENAI_MODEL: Type.Optional(Type.String()),
 	GOOGLE_API_KEY: Type.Optional(Type.String()),
 	GOOGLE_MODEL: Type.Optional(Type.String()),
+	// Per-process LLM concurrency cap. Each provider tier has its own
+	// rate-limit window (Anthropic tier-1: 4 concurrent; tier-4: 50+).
+	// matchPool fans out N×K verify chunks under multi-cluster discover —
+	// without a cap they all hit the provider at once and queue at the
+	// provider side, where stuck requests pin downstream steps. Set this
+	// to your provider tier's safe concurrency. Default 8 (covers most
+	// paid tiers without provoking rate-limit errors).
+	LLM_MAX_CONCURRENT: Type.Optional(Type.Integer({ minimum: 1, maximum: 64 })),
 	// Per-listing observation archive — hosted-only feature. Each search
 	// / detail response writes one row to `listing_observations` for
-	// long-tail historical comparable depth, matcher fingerprinting, and
+	// long-tail historical sold-listing depth, matcher fingerprinting, and
 	// cross-user seller reputation. Default off (self-host gets only the
 	// short-TTL proxy cache); set `OBSERVATION_ENABLED=1` on the hosted
 	// instance to start accumulating. ToS-safe: itemWebUrl + image CDN
 	// URL only (no binary mirroring), takedown channel honoured.
 	OBSERVATION_ENABLED: Type.Boolean({ default: false }),
-	// Overnight pillar — in-process scan worker that re-runs saved
-	// watchlists on cadence and snapshots qualifying deals into
-	// `deal_queue`. Default off (self-host opt-in via env). Hosted
-	// instances enable on the single replica that owns scheduling.
-	WATCHLIST_SCHEDULER_ENABLED: Type.Boolean({ default: false }),
+	// Comma-separated list of email addresses that auto-promote to
+	// `role=admin` on sign-up + on every session resolution. The
+	// `/v1/admin/*` surface and the `/admin` dashboard page are gated by
+	// `requireAdmin` (= requireSession + role==='admin'). Empty list =
+	// no admins (closed by default; safe for self-host).
+	ADMIN_EMAILS: Type.String({ default: "" }),
 });
 
 const raw = {
@@ -146,6 +166,7 @@ const raw = {
 	EBAY_SCOPES: process.env.EBAY_SCOPES,
 	EBAY_ORDER_API_APPROVED: process.env.EBAY_ORDER_API_APPROVED === "1",
 	EBAY_INSIGHTS_APPROVED: process.env.EBAY_INSIGHTS_APPROVED === "1",
+	EBAY_CATALOG_APPROVED: process.env.EBAY_CATALOG_APPROVED === "1",
 	BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
 	KEYS_ENCRYPTION_KEY: process.env.KEYS_ENCRYPTION_KEY,
 	APP_URL: process.env.APP_URL ?? "http://localhost:4321",
@@ -162,7 +183,8 @@ const raw = {
 	STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
 	STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
 	STRIPE_PRICE_HOBBY: process.env.STRIPE_PRICE_HOBBY,
-	STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO,
+	STRIPE_PRICE_STANDARD: process.env.STRIPE_PRICE_STANDARD,
+	STRIPE_PRICE_GROWTH: process.env.STRIPE_PRICE_GROWTH,
 	LLM_PROVIDER: process.env.LLM_PROVIDER,
 	ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
 	ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
@@ -170,8 +192,9 @@ const raw = {
 	OPENAI_MODEL: process.env.OPENAI_MODEL,
 	GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
 	GOOGLE_MODEL: process.env.GOOGLE_MODEL,
+	LLM_MAX_CONCURRENT: process.env.LLM_MAX_CONCURRENT ? Number.parseInt(process.env.LLM_MAX_CONCURRENT, 10) : undefined,
 	OBSERVATION_ENABLED: process.env.OBSERVATION_ENABLED === "1",
-	WATCHLIST_SCHEDULER_ENABLED: process.env.WATCHLIST_SCHEDULER_ENABLED === "1",
+	ADMIN_EMAILS: process.env.ADMIN_EMAILS ?? "",
 };
 
 const decoded = Value.Default(Schema, raw);
@@ -198,6 +221,7 @@ export const config = decoded as {
 	EBAY_SCOPES: string;
 	EBAY_ORDER_API_APPROVED: boolean;
 	EBAY_INSIGHTS_APPROVED: boolean;
+	EBAY_CATALOG_APPROVED: boolean;
 	BETTER_AUTH_SECRET?: string;
 	KEYS_ENCRYPTION_KEY?: string;
 	APP_URL: string;
@@ -214,7 +238,8 @@ export const config = decoded as {
 	STRIPE_SECRET_KEY?: string;
 	STRIPE_WEBHOOK_SECRET?: string;
 	STRIPE_PRICE_HOBBY?: string;
-	STRIPE_PRICE_PRO?: string;
+	STRIPE_PRICE_STANDARD?: string;
+	STRIPE_PRICE_GROWTH?: string;
 	LLM_PROVIDER?: "anthropic" | "openai" | "google";
 	ANTHROPIC_API_KEY?: string;
 	ANTHROPIC_MODEL?: string;
@@ -222,9 +247,26 @@ export const config = decoded as {
 	OPENAI_MODEL?: string;
 	GOOGLE_API_KEY?: string;
 	GOOGLE_MODEL?: string;
+	LLM_MAX_CONCURRENT?: number;
 	OBSERVATION_ENABLED: boolean;
-	WATCHLIST_SCHEDULER_ENABLED: boolean;
+	ADMIN_EMAILS: string;
 };
+
+/**
+ * True when `email` (case-insensitive) appears in the comma-separated
+ * `ADMIN_EMAILS` list. Whitespace tolerated. Used by Better-Auth's user
+ * create hook to auto-promote on sign-up and by `requireSession` to
+ * reconcile demotions/promotions on every request.
+ */
+export function isAdminEmail(email: string | null | undefined): boolean {
+	if (!email) return false;
+	const target = email.trim().toLowerCase();
+	if (!target) return false;
+	return config.ADMIN_EMAILS.split(",")
+		.map((s) => s.trim().toLowerCase())
+		.filter(Boolean)
+		.includes(target);
+}
 
 /** True when all OAuth-required env is present. Use to gate connect routes. */
 export function isEbayOAuthConfigured(): boolean {
@@ -272,14 +314,18 @@ export function isInsightsApproved(): boolean {
 	return config.EBAY_INSIGHTS_APPROVED;
 }
 
-/** True when all four Stripe env vars are present. */
+/** True when all five Stripe env vars are present. */
 export function isStripeConfigured(): boolean {
 	return Boolean(
-		config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET && config.STRIPE_PRICE_HOBBY && config.STRIPE_PRICE_PRO,
+		config.STRIPE_SECRET_KEY &&
+			config.STRIPE_WEBHOOK_SECRET &&
+			config.STRIPE_PRICE_HOBBY &&
+			config.STRIPE_PRICE_STANDARD &&
+			config.STRIPE_PRICE_GROWTH,
 	);
 }
 
-/** True when at least one LLM provider key is set — gates the LLM comparable matcher (/v1/match). */
+/** True when at least one LLM provider key is set. Gates the same-product matcher. */
 export function isLlmConfigured(): boolean {
 	return Boolean(config.ANTHROPIC_API_KEY || config.OPENAI_API_KEY || config.GOOGLE_API_KEY);
 }

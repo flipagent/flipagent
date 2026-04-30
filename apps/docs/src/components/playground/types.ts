@@ -13,6 +13,14 @@ export interface Step {
 	key: string;
 	label: string;
 	status: StepStatus;
+	/**
+	 * Logical parent for grouping. e.g. `search.sold` and `search.active`
+	 * both have `parent: "search"`. The Trace UI renders children of the
+	 * same parent side-by-side so parallel calls visibly run together.
+	 * Synthetic parents (no underlying request — just a header) carry
+	 * `parent: undefined` themselves.
+	 */
+	parent?: string;
 	/** HTTP method + path the step calls. Surfaced in the trace so users see exactly what cURL would. */
 	call?: { method: "GET" | "POST"; path: string };
 	/** Request body for POST calls. JSON-rendered in the Request section of the trace. */
@@ -31,6 +39,17 @@ export interface Money {
 	currency: string;
 }
 
+export interface Seller {
+	username?: string;
+	feedbackScore?: number;
+	feedbackPercentage?: string;
+}
+
+export interface ShippingOption {
+	shippingCost?: Money;
+	shippingCostType?: string;
+}
+
 export interface ItemSummary {
 	itemId: string;
 	legacyItemId?: string;
@@ -46,6 +65,10 @@ export interface ItemSummary {
 	currentBidPrice?: Money;
 	bidCount?: number;
 	image?: { imageUrl: string };
+	/** Eyebrow trust signal — feedback %, score. Server-populated on detail; sometimes on summary too. */
+	seller?: Seller;
+	/** Shipping cost block. First entry is the primary domestic option; cents collapsed for the all-in line. */
+	shippingOptions?: ReadonlyArray<ShippingOption>;
 }
 
 export interface LocalizedAspect {
@@ -63,18 +86,6 @@ export interface ItemDetail extends ItemSummary {
 	description?: string;
 	topRatedBuyingExperience?: boolean;
 	localizedAspects?: LocalizedAspect[];
-}
-
-export interface MatchedItem {
-	item: ItemSummary;
-	bucket: "match" | "reject";
-	reason: string;
-}
-
-export interface MatchResponse {
-	match: MatchedItem[];
-	reject: MatchedItem[];
-	totals: { match: number; reject: number };
 }
 
 export interface MarketStats {
@@ -134,7 +145,6 @@ export interface Evaluation {
 		shippingCents: number;
 		targetNetCents: number;
 	} | null;
-	winProbability?: number;
 	confidence?: number;
 	reason?: string;
 	signals?: Array<{ name: string; reason: string }>;
@@ -151,14 +161,85 @@ export interface Evaluation {
 	} | null;
 }
 
-export interface RankedDeal {
-	itemId: string;
-	evaluation: Evaluation;
-}
-
 export interface BrowseSearchResponse {
 	itemSummaries?: ItemSummary[];
 	itemSales?: ItemSummary[];
 	total?: number;
+	/** Page offset / size the server actually applied. Drives the pager's "1–N of M" eyebrow. */
+	offset?: number;
+	limit?: number;
+	/** Transport that produced this body — `"rest" | "scrape" | "bridge"`. */
+	source?: string;
+}
+
+export type TransportSource = "rest" | "scrape" | "bridge";
+
+export interface DiscoverMeta {
+	activeCount: number;
+	activeSource: TransportSource;
+	soldCount: number;
+	soldSource: TransportSource;
+	clusterCount: number;
+}
+
+/**
+ * One variant cluster — the unit Evaluate operates on. Carries the full
+ * Evaluate-shape payload (item, soldPool, activePool, market,
+ * evaluation, returns, meta) plus group metadata (canonical, source,
+ * count). UIs render one row per cluster.
+ */
+export interface DealCluster {
+	canonical: string;
+	source: "epid" | "gtin" | "singleton";
+	count: number;
+	item: ItemDetail;
+	soldPool: ItemSummary[];
+	activePool: ItemSummary[];
+	rejectedSoldPool: ItemSummary[];
+	rejectedActivePool: ItemSummary[];
+	market: MarketStats;
+	evaluation: Evaluation;
+	returns: Returns | null;
+	meta: EvaluateMeta;
+}
+
+export interface DiscoverResponse {
+	clusters: DealCluster[];
+	meta: DiscoverMeta;
+}
+
+export interface EvaluateMeta {
+	itemSource: TransportSource;
+	soldCount: number;
+	soldSource: TransportSource | null;
+	activeCount: number;
+	activeSource: TransportSource | null;
+	soldKept: number;
+	soldRejected: number;
+	activeKept: number;
+	activeRejected: number;
+}
+
+/**
+ * flipagent-derived returns summary, surfaced on the wrapper response so the
+ * eBay-mirror `ItemDetail` stays a verbatim mirror. `null` when the chosen
+ * transport didn't expose returns terms (e.g. some scrape paths).
+ */
+export interface Returns {
+	accepted: boolean;
+	periodDays?: number;
+	shippingCostPaidBy?: "BUYER" | "SELLER";
+}
+
+export interface EvaluateResponse {
+	item: ItemDetail;
+	soldPool: ItemSummary[];
+	activePool: ItemSummary[];
+	rejectedSoldPool: ItemSummary[];
+	rejectedActivePool: ItemSummary[];
+	market: MarketStats;
+	evaluation: Evaluation;
+	returns: Returns | null;
+	meta: EvaluateMeta;
 }
 

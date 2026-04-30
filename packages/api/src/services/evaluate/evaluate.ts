@@ -10,7 +10,7 @@ import {
 	percentile,
 } from "../quant/index.js";
 import { landedCost } from "../ship/landed-cost.js";
-import { marketFromComparables, toCents, toQuantListing } from "./adapter.js";
+import { marketFromSold, toCents, toQuantListing } from "./adapter.js";
 import type { EvaluableItem, EvaluateOptions, Evaluation, FiredSignal, NetRangeCents } from "./types.js";
 
 const EMPTY_MARKET: MarketStats = {
@@ -28,7 +28,7 @@ const EMPTY_MARKET: MarketStats = {
 };
 
 // Below this, percentile estimates are noise — IQR cleaning needs ≥4 anyway.
-const MIN_COMPARABLES_FOR_DISTRIBUTION = 4;
+const MIN_SOLD_FOR_DISTRIBUTION = 4;
 
 /**
  * Default outbound shipping when no forwarder leg supplied. $10 reflects
@@ -40,23 +40,25 @@ const MIN_COMPARABLES_FOR_DISTRIBUTION = 4;
 const DEFAULT_OUTBOUND_SHIPPING_CENTS = 1000;
 
 /**
- * Evaluate one listing against sold comparables and an optional forwarder leg.
+ * Evaluate one listing against a sold pool and an optional forwarder leg.
  * Wraps `services/quant`'s `computeScore`, then attaches a landed-cost breakdown
  * when `opts.forwarder` is supplied.
  *
- * Without `comparables` no margin signal is possible — the evaluation will be `skip`
- * with `netCents: 0`. Pass at least a handful of sold listings.
+ * Without sold listings no margin signal is possible — the evaluation will be
+ * `skip` with `netCents: 0`. Pass at least a handful.
  *
- * `bidCeilingCents`, `winProbability`, and `netRangeCents` are derived from the
- * same IQR-cleaned cohort the mean uses, so an agent that filters by
- * `winProbability > 0.75 && netCents > X` sees a consistent view.
+ * `bidCeilingCents` is derived from `recommendedExit.listPriceCents` —
+ * the same competition-aware price the UI surfaces in "resell at $X in
+ * ~Yd" — so the ceiling stays in lockstep with the realistic exit, not
+ * a stale historical mean. Falls back to `market.meanCents` when the
+ * hazard model can't run (no duration data, σ=0). `netRangeCents` still
+ * uses the IQR-cleaned sold cohort directly — it's a descriptive p10/p90
+ * band over historical net-per-sale, not a recommendation.
  */
 export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evaluation {
 	const listing = toQuantListing(item);
 	const market =
-		opts.comparables && opts.comparables.length > 0
-			? marketFromComparables(opts.comparables, undefined, undefined, opts.asks)
-			: EMPTY_MARKET;
+		opts.sold && opts.sold.length > 0 ? marketFromSold(opts.sold, undefined, undefined, opts.asks) : EMPTY_MARKET;
 
 	let outboundShippingCents: number;
 	let landedCostCents: number | null = null;
@@ -90,11 +92,10 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 	const outbound = outboundShippingCents;
 
 	let netRangeCents: NetRangeCents | null = null;
-	let winProbability: number | null = null;
-	if (opts.comparables && opts.comparables.length >= MIN_COMPARABLES_FOR_DISTRIBUTION) {
-		const comparablePrices = opts.comparables.map((c) => toCents(c.price?.value)).filter((p) => p > 0);
-		const cleaned = filterIqrOutliers(comparablePrices);
-		if (cleaned.length >= MIN_COMPARABLES_FOR_DISTRIBUTION) {
+	if (opts.sold && opts.sold.length >= MIN_SOLD_FOR_DISTRIBUTION) {
+		const soldPrices = opts.sold.map((s) => toCents(s.price?.value)).filter((p) => p > 0);
+		const cleaned = filterIqrOutliers(soldPrices);
+		if (cleaned.length >= MIN_SOLD_FOR_DISTRIBUTION) {
 			const nets = cleaned.map((salePrice) => {
 				const f = feeBreakdown(salePrice, DEFAULT_FEES);
 				return salePrice - f.totalCents - buyPriceCents - outbound;
@@ -104,35 +105,8 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 			if (p10 !== null && p90 !== null) {
 				netRangeCents = { p10Cents: p10, p90Cents: p90 };
 			}
-			winProbability = nets.filter((n) => n > 0).length / nets.length;
 		}
 	}
-
-	// `opts.minNetCents ?? 0` — true break-even by default. The Safe bid
-	// row's "max to break even" copy is now literal: this is the highest
-	// price you can pay before fees + shipping eat the entire margin.
-	// Callers wanting a profit floor pass `opts.minNetCents` explicitly
-	// (e.g. /v1/discover passes 30 to filter for $30+ deals).
-	const bidCeilingCents =
-		market.meanCents > 0
-			? bidCeiling(market.meanCents, opts.minNetCents ?? 0, {
-					fees: DEFAULT_FEES,
-					outboundShippingCents: outbound,
-				})
-			: null;
-
-	// Surface the cost components so the UI can render `$X = $sale −
-	// $fees − $ship` without re-deriving constants. Only meaningful when
-	// the bidCeiling itself is computable.
-	const safeBidBreakdown =
-		bidCeilingCents != null
-			? {
-					estimatedSaleCents: market.meanCents,
-					feesCents: feeBreakdown(market.meanCents, DEFAULT_FEES).totalCents,
-					shippingCents: outbound,
-					targetNetCents: opts.minNetCents ?? 0,
-				}
-			: null;
 
 	// Recommended exit — runs the full hazard model + competition factor
 	// + active-blend search to pick the price that maximises $/day. Then
@@ -191,6 +165,39 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		};
 	}
 
+	// Bid ceiling derives from the SAME exit price the recommendation row
+	// shows ("resell at $X in ~Yd"), not the naive sold mean. That price
+	// already accounts for current competition (`blendedCenter`,
+	// `competitionFactor`) and active-ask drift, so the buy ceiling stays
+	// in lockstep with the realistic exit. Falls back to `market.meanCents`
+	// when the hazard model can't run (no duration data, σ=0, no asks) so
+	// callers without time-to-sell data still get a number.
+	//
+	// `opts.minNetCents ?? 0` — true break-even by default. Callers wanting
+	// a profit floor pass `opts.minNetCents` explicitly (e.g. /v1/discover
+	// passes 30 to filter for $30+ deals).
+	const exitBasisCents = advice?.listPriceCents ?? market.meanCents;
+	const bidCeilingCents =
+		exitBasisCents > 0
+			? bidCeiling(exitBasisCents, opts.minNetCents ?? 0, {
+					fees: DEFAULT_FEES,
+					outboundShippingCents: outbound,
+				})
+			: null;
+
+	// Surface the cost components so the UI can render `$X = $sale −
+	// $fees − $ship` without re-deriving constants. Only meaningful when
+	// the bidCeiling itself is computable.
+	const safeBidBreakdown =
+		bidCeilingCents != null
+			? {
+					estimatedSaleCents: exitBasisCents,
+					feesCents: feeBreakdown(exitBasisCents, DEFAULT_FEES).totalCents,
+					shippingCents: outbound,
+					targetNetCents: opts.minNetCents ?? 0,
+				}
+			: null;
+
 	return {
 		expectedNetCents: s.netCents,
 		confidence: s.confidence,
@@ -200,7 +207,6 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		reason: s.reason,
 		bidCeilingCents,
 		safeBidBreakdown,
-		winProbability,
 		netRangeCents,
 		recommendedExit,
 	};

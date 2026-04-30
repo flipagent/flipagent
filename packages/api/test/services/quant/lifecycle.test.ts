@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { optimalListPrice, repriceAdvice } from "../../../src/services/quant/lifecycle.js";
+import { optimalListPrice } from "../../../src/services/quant/lifecycle.js";
 import type { MarketStats } from "../../../src/services/quant/types.js";
 
 const baseMarket: MarketStats = {
@@ -45,58 +45,5 @@ describe("optimalListPrice", () => {
 		// When beta is large, listing higher costs you a lot of time → optimum
 		// price moves down; when beta is small, the optimum walks up.
 		expect(a.listPriceCents).toBeGreaterThanOrEqual(b.listPriceCents);
-	});
-});
-
-describe("repriceAdvice", () => {
-	const now = new Date("2026-04-25T00:00:00Z");
-	const market: MarketStats = { ...baseMarket, meanDaysToSell: 14 };
-
-	it("holds when daysListed is within 1.5× expected", () => {
-		const r = repriceAdvice(market, {
-			currentPriceCents: 10_000,
-			listedAt: new Date("2026-04-15T00:00:00Z"),
-			now,
-		});
-		expect(r.action).toBe("hold");
-	});
-
-	it("drops 5% between 1.5× and 2.5× expected", () => {
-		const r = repriceAdvice(market, {
-			currentPriceCents: 10_000,
-			listedAt: new Date("2026-04-01T00:00:00Z"), // 24d listed → 1.71× of 14
-			now,
-		});
-		expect(r.action).toBe("drop");
-		expect(r.suggestedPriceCents).toBe(9_500);
-	});
-
-	it("drops 10% between 2.5× and 4×", () => {
-		const r = repriceAdvice(market, {
-			currentPriceCents: 10_000,
-			listedAt: new Date("2026-03-15T00:00:00Z"), // 41d → ~2.93×
-			now,
-		});
-		expect(r.action).toBe("drop");
-		expect(r.suggestedPriceCents).toBe(9_000);
-	});
-
-	it("delists at 4× expected", () => {
-		const r = repriceAdvice(market, {
-			currentPriceCents: 10_000,
-			listedAt: new Date("2026-02-01T00:00:00Z"), // 83d → ~5.93×
-			now,
-		});
-		expect(r.action).toBe("delist");
-	});
-
-	it("falls back to hold when meanDaysToSell missing", () => {
-		const r = repriceAdvice(baseMarket, {
-			currentPriceCents: 10_000,
-			listedAt: new Date("2026-02-01T00:00:00Z"),
-			now,
-		});
-		expect(r.action).toBe("hold");
-		expect(r.reason).toMatch(/no time-to-sell/);
 	});
 });

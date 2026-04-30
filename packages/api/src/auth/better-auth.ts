@@ -10,7 +10,8 @@
 
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { config, isAuthConfigured, isEmailConfigured } from "../config.js";
+import { eq } from "drizzle-orm";
+import { config, isAdminEmail, isAuthConfigured, isEmailConfigured } from "../config.js";
 import { db } from "../db/client.js";
 import { account, session, user, verification } from "../db/schema.js";
 
@@ -73,6 +74,7 @@ function createAuth() {
 		user: {
 			additionalFields: {
 				tier: { type: "string", defaultValue: "free", input: false },
+				role: { type: "string", defaultValue: "user", input: false },
 				stripeCustomerId: { type: "string", required: false, input: false },
 				stripeSubscriptionId: { type: "string", required: false, input: false },
 				subscriptionStatus: { type: "string", required: false, input: false },
@@ -88,17 +90,27 @@ function createAuth() {
 			user: {
 				create: {
 					after: async (newUser) => {
+						const userId = (newUser as { id?: string }).id;
 						try {
 							const { issueKey } = await import("./keys.js");
 							await issueKey({
 								tier: "free",
 								name: "default",
 								ownerEmail: newUser.email,
-								userId: (newUser as { id?: string }).id,
+								userId,
 							});
 						} catch (err) {
 							// Best-effort — never break sign-up on this.
 							console.error("[default-key] failed for", newUser.email, err);
+						}
+						// Auto-promote ADMIN_EMAILS members on first sign-up so the
+						// first admin doesn't need a SQL UPDATE to bootstrap.
+						if (userId && isAdminEmail(newUser.email)) {
+							try {
+								await db.update(user).set({ role: "admin" }).where(eq(user.id, userId));
+							} catch (err) {
+								console.error("[admin-promote] failed for", newUser.email, err);
+							}
 						}
 					},
 				},

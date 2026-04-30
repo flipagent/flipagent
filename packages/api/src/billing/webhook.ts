@@ -52,9 +52,23 @@ export async function handleEvent(cfg: StripeConfig, event: Stripe.Event): Promi
 }
 
 async function applyTier(userId: string, tier: Tier, fields: Partial<typeof userTable.$inferInsert>): Promise<void> {
+	const [current] = await db
+		.select({ tier: userTable.tier })
+		.from(userTable)
+		.where(eq(userTable.id, userId))
+		.limit(1);
+	const tierChanged = current?.tier !== tier;
+	// Bump `creditsResetAt` only when the tier actually transitions —
+	// status-only updates (e.g. `active` → `past_due`) shouldn't reset
+	// the credit-counting window. The reset gives the user a fresh
+	// budget on entry to the new tier so prior-tier usage doesn't carry
+	// over (the Standard→Free downgrade lockout would otherwise fire,
+	// since Free is one-time and aggregates lifetime events).
+	const now = new Date();
+	const tierFields = tierChanged ? { creditsResetAt: now } : {};
 	await db
 		.update(userTable)
-		.set({ tier, ...fields, updatedAt: new Date() })
+		.set({ tier, ...tierFields, ...fields, updatedAt: now })
 		.where(eq(userTable.id, userId));
 	await db.update(apiKeys).set({ tier }).where(eq(apiKeys.userId, userId));
 }

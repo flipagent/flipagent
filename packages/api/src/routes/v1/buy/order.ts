@@ -33,6 +33,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { config } from "../../../config.js";
 import { requireApiKey } from "../../../middleware/auth.js";
+import { cancelJob } from "../../../services/bridge-jobs/queue.js";
 import {
 	BridgeCheckoutError,
 	getCheckoutSession,
@@ -41,7 +42,6 @@ import {
 	placeOrder,
 } from "../../../services/buy/checkout-session.js";
 import { ebayPassthroughUser } from "../../../services/ebay/rest/client.js";
-import { cancel as cancelOrder } from "../../../services/orders/queue.js";
 import { selectTransport, type Transport, TransportUnavailableError } from "../../../services/shared/transport.js";
 import { errorResponse, jsonResponse, tbBody } from "../../../utils/openapi.js";
 
@@ -213,7 +213,7 @@ ebayOrderRoute.post(
 			);
 		}
 		const id = c.req.param("purchaseOrderId");
-		const cancelled = await cancelOrder(id, c.var.apiKey.id);
+		const cancelled = await cancelJob(id, c.var.apiKey.id);
 		const order = await getPurchaseOrder(id, c.var.apiKey.id);
 		if (!order) return c.json(bridgeErrorBody("purchase_order_not_found", `No purchase order ${id}`), 404);
 		void cancelled;

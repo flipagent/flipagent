@@ -3,12 +3,14 @@
  * notification into a row (or two): always logs to
  * marketplace_notifications, and for sale events also writes to
  * expense_events with kind="sold" so it shows up in the P&L ledger
- * alongside the buy-side `purchased` row written by orders/queue.ts.
+ * alongside the buy-side `purchased` row written by bridge-jobs/queue.ts.
  */
 
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { type ExpenseEvent, expenseEvents, marketplaceNotifications, userEbayOauth } from "../../db/schema.js";
+import { type AutoDispatchOutcome, maybeAutoDispatch } from "../forwarder/auto-dispatch.js";
+import { dispatchCycleEvent } from "../webhooks/dispatch.js";
 
 export interface DispatchInput {
 	eventType: string;
@@ -70,6 +72,41 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
 			input.amountCents > 0
 		) {
 			expense = await writeSaleLedger(apiKeyId, input);
+
+			// Auto-orchestration: if the sku is linked to a forwarder
+			// package AND the user has eBay OAuth bound, fetch the
+			// buyer address from /sell/fulfillment and queue the
+			// outbound dispatch automatically. Best-effort — failures
+			// fall back to "agent reads the webhook + dispatches
+			// manually." The outcome is included in the webhook
+			// payload so the agent sees what happened.
+			let autoDispatch: AutoDispatchOutcome | null = null;
+			if (input.itemId) {
+				autoDispatch = await maybeAutoDispatch({
+					apiKeyId,
+					sku: input.itemId,
+					ebayOrderId: extractOrderId(input.rawPayload),
+					transactionId: input.transactionId,
+				}).catch((err) => {
+					console.error("[notifications.dispatch] auto-dispatch failed:", err);
+					return null;
+				});
+			}
+
+			// Fire `item.sold` to webhook subscribers — even when
+			// auto-dispatch succeeded, the agent still wants the
+			// notification (analytics, downstream automations,
+			// observability). Payload includes `autoDispatch` so the
+			// agent knows whether server already queued the ship-out.
+			await dispatchCycleEvent(apiKeyId, "item.sold", {
+				itemId: input.itemId,
+				transactionId: input.transactionId,
+				amountCents: input.amountCents ?? 0,
+				currency: input.currency ?? "USD",
+				eventType: input.eventType,
+				occurredAt: input.timestamp,
+				autoDispatch,
+			}).catch((err) => console.error("[notifications.dispatch] item.sold webhook failed:", err));
 		}
 	} catch (err) {
 		processError = err instanceof Error ? err.message : String(err);
@@ -137,4 +174,30 @@ async function writeSaleLedger(apiKeyId: string, input: DispatchInput): Promise<
 function parseTimestamp(ts: string): Date {
 	const d = new Date(ts);
 	return Number.isFinite(d.getTime()) ? d : new Date();
+}
+
+/**
+ * Pull the eBay order id out of the raw Trading-API SOAP envelope.
+ * Different event types stash it in different paths — search broadly
+ * but conservatively (string typeguards) since the payload is
+ * untyped JSON.
+ */
+function extractOrderId(payload: unknown): string | null {
+	if (!payload || typeof payload !== "object") return null;
+	const seen = new Set<unknown>();
+	const queue: unknown[] = [payload];
+	while (queue.length > 0) {
+		const node = queue.shift();
+		if (!node || typeof node !== "object" || seen.has(node)) continue;
+		seen.add(node);
+		const obj = node as Record<string, unknown>;
+		// eBay's Trading API uses `OrderID` and `OrderLineItemID`.
+		// REST notifications use `orderId`. Cover all common shapes.
+		for (const key of ["orderId", "OrderID", "orderID", "order_id"]) {
+			const v = obj[key];
+			if (typeof v === "string" && v.length > 0) return v;
+		}
+		for (const v of Object.values(obj)) if (v && typeof v === "object") queue.push(v);
+	}
+	return null;
 }

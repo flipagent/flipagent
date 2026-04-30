@@ -21,7 +21,7 @@ const GROUPS: Group[] = [
 				a: (
 					<>
 						flipagent is an eBay reseller API for AI agents and apps. One unified surface covers
-						the full flipping cycle: sourcing deals, evaluating margins against sold comparables,
+						the full flipping cycle: sourcing deals, evaluating margins against sold listings,
 						drafting listings, tracking orders, and routing fulfillment through a US package
 						forwarder. Today it ships eBay coverage. Amazon, Mercari, and Poshmark are next.
 					</>
@@ -88,36 +88,42 @@ const GROUPS: Group[] = [
 				q: "Is the free tier really free?",
 				a: (
 					<>
-						Yes. 100 API calls per month, indefinitely. No credit card required, no trial
-						timer. Upgrade only when you outgrow it. See <a href="/pricing/">/pricing</a> for
-						the full breakdown.
+						Yes. 500 credits as a one-time grant — they don't refill, but they don't
+						expire either. Each marketplace call is 1 credit; an AI evaluation is 50;
+						a deal discovery is 250. Cached responses cost nothing. No credit card,
+						no trial timer. Upgrade to a paid plan for monthly credits. See
+						<a href="/pricing/">/pricing</a> for the full breakdown.
 					</>
 				),
 			},
 			{
-				q: "What counts as a billable call?",
+				q: "How are credits charged?",
 				a: (
 					<>
-						Any call to a marketplace or intelligence endpoint counts toward your monthly
-						quota: <code>/v1/buy/*</code>, <code>/v1/sell/*</code>, <code>/v1/commerce/*</code>,{" "}
-						<code>/v1/post-order/*</code>, <code>/v1/forwarder/*</code>,{" "}
-						<code>/v1/messages</code>, <code>/v1/best-offer</code>, <code>/v1/feedback</code>,{" "}
-						<code>/v1/match</code>, <code>/v1/evaluate</code>, <code>/v1/discover</code>,{" "}
-						<code>/v1/research</code>, <code>/v1/draft</code>, <code>/v1/reprice</code>,{" "}
-						<code>/v1/ship</code>. Cache hits still count, because
-						you're paying for the latency, the parser, and the takedown layer. Free routes:{" "}
-						<code>/v1/health</code>, <code>/v1/me/keys</code>, <code>/v1/takedown</code>, and
-						the billing routes themselves.
+						Each call to a metered endpoint deducts a fixed number of credits:
+						<code>/v1/search</code>, <code>/v1/buy/*</code>, <code>/v1/sell/*</code>,{" "}
+						<code>/v1/commerce/*</code>, <code>/v1/post-order/*</code>,{" "}
+						<code>/v1/forwarder/*</code>, <code>/v1/ship/*</code>,{" "}
+						<code>/v1/messages</code>, <code>/v1/best-offer</code>, <code>/v1/feedback</code>{" "}
+						are 1 credit each. <code>/v1/evaluate</code> is 50, <code>/v1/discover</code> is
+						250, <code>/v1/browser/*</code> is 5. Cached responses are <strong>free</strong>
+						(0 credits). Marketplace reads via REST passthrough — when your key is bound to
+						a connected eBay account — are also free. Account routes (<code>/v1/health</code>,{" "}
+						<code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/takedown</code>,
+						billing) never count.
 					</>
 				),
 			},
 			{
-				q: "What happens when I hit my monthly limit?",
+				q: "What happens when I run out of credits?",
 				a: (
 					<>
-						You get <code>429 Too Many Requests</code> with a header pointing at the next
-						reset. Limits roll over on the 1st of each month (UTC). Upgrade from the dashboard
-						and the new ceiling kicks in immediately.
+						You get <code>429 Too Many Requests</code> with{" "}
+						<code>error: "credits_exceeded"</code> and your usage in the body. Paid plans
+						refill on the 1st of each month (UTC) — the response carries{" "}
+						<code>resetAt</code>. The Free tier is a one-time 500-credit grant and doesn't
+						refill, so a maxed-out Free key has to upgrade to keep going. Upgrades from the
+						dashboard kick in immediately.
 					</>
 				),
 			},
@@ -152,9 +158,9 @@ const GROUPS: Group[] = [
 					<>
 						The full reseller cycle under <code>/v1/*</code>. The sourcing side runs without an
 						eBay account: <code>/v1/buy/browse/item_summary/search</code> for active listings,{" "}
-						<code>/v1/buy/marketplace_insights/item_sales/search</code> for completed sales, <code>/v1/evaluate</code> and{" "}
-						<code>/v1/discover</code> for server-side scoring, and{" "}
-						<code>/v1/research/summary</code> for market price calculations. The selling side
+						<code>/v1/buy/marketplace_insights/item_sales/search</code> for completed sales, and{" "}
+						<code>/v1/evaluate</code> / <code>/v1/discover</code> for server-side scoring (composite —
+						the server searches sold + active and ranks). The selling side
 						passes through to eBay over OAuth once you connect your account:{" "}
 						<code>/v1/sell/inventory</code>, <code>/v1/sell/fulfillment</code>, <code>/v1/sell/finances</code>,
 						and <code>/v1/commerce/taxonomy</code>. Shipping intelligence sits at{" "}
@@ -214,40 +220,13 @@ const GROUPS: Group[] = [
 				),
 			},
 			{
-				q: "Inside Claude Code / Cursor I'm already paying for Claude. Why should I pay flipagent for an LLM call too?",
+				q: "What does flipagent collect?",
 				a: (
 					<>
-						You shouldn't, and you don't have to. Pass{" "}
-						<code>options.mode: "delegate"</code> to <code>match_pool</code> (or its{" "}
-						<code>POST /v1/match</code> endpoint). The server skips its own LLM entirely
-						and returns a ready-to-run prompt + JSON schema. Your host LLM (Claude Opus,
-						GPT-5, whatever) does the matching reasoning in-band, you parse{" "}
-						<code>[&#123;i, bucket, reason&#125;]</code> back into a{" "}
-						<code>MatchResponse</code> locally, and the rest of the pipeline (
-						<code>research_summary</code>, <code>evaluate_listing</code>,{" "}
-						<code>discover_deals</code>) runs as normal because none of them hit an LLM.
-						The default is <code>hosted</code> — we run it for you — because that path is
-						what cron jobs, scripts, and weak-host agents need. See{" "}
-						<a href="/docs/mcp/#hosted-vs-delegate">/docs/mcp#hosted-vs-delegate</a>.
-					</>
-				),
-			},
-			{
-				q: "What does flipagent collect, and how do I opt out?",
-				a: (
-					<>
-						The only telemetry path is <code>flipagent_match_trace</code> (
-						<code>POST /v1/traces/match</code>). It runs only after a delegate-mode{" "}
-						<code>match_pool</code> call and uploads the host LLM's per-item decisions so
-						our scoring math stays calibrated as host models drift. We store the trace id
-						we issued, the decisions, and a SHA-256 prefix of your API key for rate-limit
-						accounting — no account link, no host-LLM prompts beyond the ones we already
-						handed you. Hosted-mode runs and read-only tools never produce traces. To opt
-						out entirely, set <code>FLIPAGENT_TELEMETRY=0</code> in your MCP client's{" "}
-						<code>env</code>; the tool short-circuits without making any network call.
-						<code>off</code>, <code>false</code>, <code>no</code>, <code>disabled</code>{" "}
-						are also accepted. See{" "}
-						<a href="/docs/mcp/#telemetry">/docs/mcp#telemetry</a>.
+						No host-LLM prompts, no opaque telemetry. We log the API call (path,
+						status, latency, SHA-256 prefix of your API key for rate-limit accounting)
+						and the marketplace data we cache for the takedown channel. Nothing else.
+						See <a href="/docs/legal/privacy/">/docs/legal/privacy</a>.
 					</>
 				),
 			},

@@ -14,9 +14,10 @@
  * We model that with two tables:
  *
  *   buy_checkout_sessions          → the pre-place_order session
- *   purchase_orders                → the bridge-queue row created on
- *                                    place_order; bridge claims it,
- *                                    drives BIN, reports outcome
+ *   bridge_jobs                    → the bridge-queue row created on
+ *                                    place_order with `source='ebay'`;
+ *                                    bridge claims it, drives BIN,
+ *                                    reports outcome
  *
  * Multi-stage update endpoints (shipping_address / payment_instrument
  * / coupon) return 412 in bridge mode — the extension drives the
@@ -33,8 +34,8 @@
 import type { CheckoutSession, EbayPurchaseOrder, EbayPurchaseOrderStatus, LineItem } from "@flipagent/types/ebay/buy";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { type BuyCheckoutSession, buyCheckoutSessions, purchaseOrders } from "../../db/schema.js";
-import { createOrder } from "../orders/queue.js";
+import { type BuyCheckoutSession, bridgeJobs, buyCheckoutSessions } from "../../db/schema.js";
+import { createBridgeJob } from "../bridge-jobs/queue.js";
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24h, matches eBay's session ttl
 
@@ -116,7 +117,7 @@ export async function placeOrder(
 	const first = items[0];
 	if (!first) throw new BridgeCheckoutError("missing_line_items", 400, "session has no lineItems");
 
-	const order = await createOrder({
+	const order = await createBridgeJob({
 		apiKeyId,
 		userId,
 		source: "ebay",
@@ -165,11 +166,11 @@ async function loadSession(sessionId: string, apiKeyId: string): Promise<BuyChec
 	return rows[0] ?? null;
 }
 
-async function loadOrder(orderId: string, apiKeyId: string): Promise<typeof purchaseOrders.$inferSelect | null> {
+async function loadOrder(orderId: string, apiKeyId: string): Promise<typeof bridgeJobs.$inferSelect | null> {
 	const rows = await db
 		.select()
-		.from(purchaseOrders)
-		.where(and(eq(purchaseOrders.id, orderId), eq(purchaseOrders.apiKeyId, apiKeyId)))
+		.from(bridgeJobs)
+		.where(and(eq(bridgeJobs.id, orderId), eq(bridgeJobs.apiKeyId, apiKeyId)))
 		.limit(1);
 	return rows[0] ?? null;
 }
@@ -186,7 +187,7 @@ function toEbayCheckoutSession(row: BuyCheckoutSession): CheckoutSession {
 }
 
 function toEbayPurchaseOrder(
-	order: typeof purchaseOrders.$inferSelect,
+	order: typeof bridgeJobs.$inferSelect,
 	lineItems: ReadonlyArray<LineItem>,
 ): EbayPurchaseOrder {
 	const out: EbayPurchaseOrder = {
@@ -201,7 +202,7 @@ function toEbayPurchaseOrder(
 	return out;
 }
 
-function mapInternalStatus(s: typeof purchaseOrders.$inferSelect.status): EbayPurchaseOrderStatus {
+function mapInternalStatus(s: typeof bridgeJobs.$inferSelect.status): EbayPurchaseOrderStatus {
 	switch (s) {
 		case "queued":
 		case "claimed":

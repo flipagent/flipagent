@@ -21,7 +21,7 @@ any other vendor-side concern.
 | `packages/types` | `@flipagent/types` | MIT | TypeBox schemas for flipagent's own `/v1/*` — `evaluate`, `discover`, `ship` (intelligence layer) plus errors, tier, billing, keys, takedown, health |
 | `packages/types/ebay` | `@flipagent/types/ebay` | MIT | TypeBox schemas mirroring eBay REST shapes — `/buy` (Browse + Marketplace Insights) and `/sell` (Inventory, Fulfillment) subpaths |
 | `packages/ebay-scraper` | `@flipagent/ebay-scraper` | MIT | eBay HTML parsers + plain-HTTP fetcher (BYO proxy) |
-| `packages/sdk` | `@flipagent/sdk` | MIT | Typed client. Marketplace passthrough namespaces (`listings`, `sold`, `orders`, `inventory`, `fulfillment`, `finance`, `markets`) plus flipagent intelligence (`research`, `match`, `evaluate`, `discover`, `ship`, `draft`, `reprice`, `expenses`) and ops (`webhooks`, `capabilities`). |
+| `packages/sdk` | `@flipagent/sdk` | MIT | Typed client. Marketplace passthrough namespaces (`listings`, `sold`, `orders`, `inventory`, `fulfillment`, `finance`, `markets`) plus flipagent intelligence (`evaluate`, `discover`, `ship`, `expenses`) and ops (`webhooks`, `capabilities`). |
 | `packages/mcp` | `flipagent-mcp` | MIT | MCP server — exposes eBay tools + deal-finding tools to Claude Desktop / Cursor / Cline. |
 | `packages/cli` | `flipagent-cli` | MIT | One-command MCP setup. Detects Claude Desktop / Cursor and writes the `flipagent` server entry. `npx -y flipagent-cli init --mcp --keys`. |
 | `packages/api` | `@flipagent/api` | FSL-1.1-ALv2 (private — not published, source on GitHub; converts to Apache 2.0 two years after each release) | Hono backend: unified API surface (eBay-compat + `/v1/*`), scraping, scoring, auth, billing. |
@@ -62,8 +62,8 @@ get the same scoring without re-implementing it.
     `/v1/buy/browse/item/{itemId}`,
     `/v1/buy/browse/item/get_items`,
     `/v1/buy/browse/item/get_items_by_item_group`),
-    sold comparables (`/v1/buy/marketplace_insights/item_sales/search`),
-    buy queue (`/v1/buy/order/*` — single surface, REST + bridge transports),
+    sold listings (`/v1/buy/marketplace_insights/item_sales/search`),
+    buy ordering (`/v1/buy/order/*` — single surface, REST + bridge transports),
     bulk ops (`/v1/buy/feed/*`, `/v1/buy/deal/*`),
     buyer-side bidding (`/v1/buy/offer/*`).
   - Marketplace mirror — Sell:
@@ -89,16 +89,24 @@ get the same scoring without re-implementing it.
   - Trading API XML wrappers exposed as JSON (no REST equivalent on
     eBay): `/v1/messages`, `/v1/best-offer` (inbound Best Offer
     respond), `/v1/feedback`.
-  - flipagent intelligence — `/v1/research`, `/v1/match`,
-    `/v1/evaluate`, `/v1/discover`, `/v1/ship`, `/v1/draft`,
-    `/v1/reprice`, `/v1/expenses`, `/v1/traces`, `/v1/trends`.
+  - flipagent intelligence — `/v1/evaluate`, `/v1/discover`,
+    `/v1/ship`, `/v1/expenses`, `/v1/trends`.
   - Forwarder ops (provider-namespaced; used in both buy + sell flows):
     `/v1/forwarder/{provider}/*`.
   - Account/ops — `/v1/{keys,billing,connect,me,takedown,capabilities,health}`.
+  - Operator (`requireAdmin` = session + `user.role==='admin'`):
+    `/v1/admin/{users,grants,keys,stats}`. Bootstrap by adding emails
+    to `ADMIN_EMAILS` env — Better-Auth's user-create hook +
+    `requireSession` reconcile `user.role` on next visit. Admin tier /
+    role / credit overrides never touch Stripe — they're operator
+    actions independent of subscription state. Credit overrides go
+    through the append-only `credit_grants` ledger (positive = bonus,
+    negative = clawback, with optional `expiresAt`); `snapshotUsage`
+    folds active grants into `creditsLimit`.
   - Agent plumbing — `/v1/bridge` (extension wire protocol),
     `/v1/browser` (browser-agent integration), `/v1/notifications`
     (eBay Trading inbound webhook), `/v1/webhooks` (outbound dispatch
-    to user-registered endpoints), `/v1/queue`, `/v1/watchlists`.
+    to user-registered endpoints).
   `/v1/buy/order/*` is the single Buy Order surface with two
   first-class transports — `rest` and `bridge` — selected by
   `selectTransport` per the capability matrix + `?transport=`
@@ -144,8 +152,8 @@ get the same scoring without re-implementing it.
   verbose `/v1/*` paths. Three groups:
   marketplace passthrough (`listings`, `sold`, `buy.order`, `inventory`,
   `fulfillment`, `finance`, `markets`, `forwarder`), flipagent
-  intelligence (`research`, `match`, `evaluate`, `discover`, `ship`,
-  `draft`, `reprice`, `expenses`), and ops (`webhooks`, `capabilities`).
+  intelligence (`evaluate`, `discover`, `ship`, `expenses`), and
+  ops (`webhooks`, `capabilities`).
   Namespace names don't map 1:1 to URL segments — e.g. `client.listings`
   hits `/v1/buy/browse/*`, `client.sold` hits
   `/v1/buy/marketplace_insights/item_sales/search`, `client.markets`
@@ -157,8 +165,10 @@ get the same scoring without re-implementing it.
   hatch.
 - **Cents in code, dollar strings on the wire.** Internal Listing /
   margin / scoring use cents-denominated integers. eBay's API uses
-  string dollars on the wire; convert at the API boundary
-  (`packages/api/src/proxy/scrape.ts`).
+  string dollars on the wire; convert at the resource-service boundary
+  (e.g. `services/evaluate/adapter.ts`,
+  `services/observations/index.ts`,
+  `services/notifications/ebay-trading.ts`).
 - **TypeBox for schemas.** Hono routes validate request bodies via
   `Value.Errors(Schema, body)`. Zod is banned in agent/tool surfaces.
 - **Auth is X-API-Key or Authorization: Bearer.** Plaintext shown once
@@ -174,8 +184,9 @@ get the same scoring without re-implementing it.
 small-volume use but datacenter HTTP responses degrade quickly under
 sustained load. Stripe billing is
 opt-in: set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`STRIPE_PRICE_HOBBY`, `STRIPE_PRICE_PRO` together or not at all —
-`/v1/billing/*` returns 503 when any are missing.
+`STRIPE_PRICE_HOBBY`, `STRIPE_PRICE_STANDARD`, `STRIPE_PRICE_GROWTH`
+together or not at all — `/v1/billing/*` returns 503 when any are
+missing.
 
 eBay OAuth passthrough is opt-in too: set `EBAY_CLIENT_ID`,
 `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` together or not at all —
@@ -322,18 +333,19 @@ rename to `services/bridge-jobs/` is queued as a separate cleanup.
   middleware from `middleware/cache-first.ts`, which itself
   delegates to `withCache` so internals stay aligned.
 - New flipagent-specific endpoint → put it under `/v1/`. Schema in
-  `packages/types/src/` — `research.ts` / `evaluate.ts` / `discover.ts`
-  / `ship.ts` / `draft.ts` / `reprice.ts` / `expenses.ts` for the
-  intelligence layer, `flipagent.ts` for account/ops, or a new file
-  matching the route namespace.
+  `packages/types/src/` — `evaluate.ts` / `discover.ts` / `ship.ts` /
+  `expenses.ts` for the intelligence layer, `flipagent.ts` for
+  account/ops, or a new file matching the route namespace.
 - New scoring algorithm → goes to `packages/api/src/services/scoring/`
   (or `quant/` for low-level stats, `forwarder/` for shipping rates).
   Pure functions, no I/O, cents-denominated. Add a vitest in
   `packages/api/test/services/`.
 - New scraper helper → goes to `@flipagent/ebay-scraper` only if it's
-  pure parsing. Anything that talks to a proxy or DB belongs in
-  `packages/api/src/proxy/`.
-- New marketplace adapter (Amazon, Mercari, etc.) → goes in
-  `packages/api/src/adapters/<marketplace>/`. Register routes under
-  the unified `/listings/*`, `/orders/*` etc. surface (not
-  marketplace-specific paths).
+  pure parsing. Anything that talks to a vendor scraper or DB belongs
+  in `packages/api/src/services/ebay/scrape/`.
+- New marketplace adapter (Amazon, Mercari, etc.) → *future*; siblings
+  of `services/ebay/`, e.g. `services/amazon/`, `services/mercari/`,
+  with their own provider folders + capability matrix entries in
+  `services/shared/transport.ts`. Register routes under the existing
+  marketplace-mirror surface (`/v1/buy/*`, `/v1/sell/*`, etc.) with a
+  `marketplace` parameter, not new path prefixes.

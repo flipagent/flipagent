@@ -15,9 +15,7 @@ import "./setup.js";
 
 const { app } = await import("../src/app.js");
 const { closeDb, db } = await import("../src/db/client.js");
-const { apiKeys, bridgeTokens, purchaseOrders, usageEvents, webhookDeliveries, webhookEndpoints } = await import(
-	"../src/db/schema.js"
-);
+const { apiKeys, bridgeJobs, webhookDeliveries } = await import("../src/db/schema.js");
 const { issueKey } = await import("../src/auth/keys.js");
 const { dispatchOrderEvent, signPayload, verifySignature } = await import("../src/services/webhooks/dispatch.js");
 const { sql, eq } = await import("drizzle-orm");
@@ -35,19 +33,19 @@ async function readJson<T>(res: Response): Promise<T> {
 	return (await res.json()) as T;
 }
 
+// Scope cleanup to this file's owner pattern only. webhook_endpoints,
+// webhook_deliveries, bridge_tokens, and purchase_orders all cascade-delete
+// via the api_keys FK, so a single api_keys delete is enough. Avoids racing
+// against forwarder-cycle.test.ts (also writes webhook tables) when vitest
+// runs test files in parallel forks against the same Postgres.
+const OWNER_PATTERN = "integration-bridge+%";
+
 beforeAll(async () => {
-	// Some prior test suites leave bare api_keys around. Make sure the
-	// orphans don't poison foreign-key paths used here.
-	await db.execute(
-		sql`truncate ${webhookDeliveries}, ${webhookEndpoints}, ${bridgeTokens}, ${purchaseOrders} restart identity cascade`,
-	);
+	await db.execute(sql`delete from ${apiKeys} where owner_email like ${OWNER_PATTERN}`);
 });
 
 afterAll(async () => {
-	await db.execute(
-		sql`truncate ${webhookDeliveries}, ${webhookEndpoints}, ${bridgeTokens}, ${purchaseOrders}, ${usageEvents} restart identity cascade`,
-	);
-	await db.execute(sql`delete from ${apiKeys} where owner_email like 'integration-bridge+%'`);
+	await db.execute(sql`delete from ${apiKeys} where owner_email like ${OWNER_PATTERN}`);
 	await closeDb();
 });
 
@@ -295,9 +293,9 @@ describe("webhook delivery signing", () => {
 			return new Response("ok", { status: 200 });
 		}) as unknown as typeof globalThis.fetch;
 
-		// Build a synthetic order row matching what the queue service writes.
+		// Build a synthetic bridge-job row matching what the queue service writes.
 		const [row] = await db
-			.insert(purchaseOrders)
+			.insert(bridgeJobs)
 			.values({
 				apiKeyId: keyId,
 				userId: null,

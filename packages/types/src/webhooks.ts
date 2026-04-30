@@ -9,10 +9,11 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { PurchaseOrder } from "./orders.js";
+import { BridgeJob } from "./bridge-jobs.js";
 
 export const WebhookEventType = Type.Union(
 	[
+		// Buy-side purchase order lifecycle.
 		Type.Literal("order.queued"),
 		Type.Literal("order.claimed"),
 		Type.Literal("order.awaiting_user_confirm"),
@@ -21,6 +22,18 @@ export const WebhookEventType = Type.Union(
 		Type.Literal("order.failed"),
 		Type.Literal("order.cancelled"),
 		Type.Literal("order.expired"),
+		// Cycle events for online-only reseller automation. Subscribe
+		// to drive the connective tissue between stages without wiring
+		// orchestration server-side. `data` shape varies per event:
+		//
+		//   item.sold           { itemId, transactionId, amountCents,
+		//                         currency, eventType, occurredAt }
+		//   forwarder.received  { provider, packages: [...] }
+		//   forwarder.shipped   { provider, packageId, ebayOrderId,
+		//                         shipment: { carrier, tracking, … } }
+		Type.Literal("item.sold"),
+		Type.Literal("forwarder.received"),
+		Type.Literal("forwarder.shipped"),
 	],
 	{ $id: "WebhookEventType" },
 );
@@ -71,13 +84,21 @@ export type ListWebhooksResponse = Static<typeof ListWebhooksResponse>;
  * Body shape that we POST to subscribers. The signature header covers the
  * raw body, so the order of keys here is stable (we serialize via
  * `JSON.stringify` once and reuse).
+ *
+ * `data` is event-shape-specific. Order events (`order.{status}`) carry
+ * the full `BridgeJob` row under `data.order` — the field stays named
+ * `order` because these events are documented as buy-side purchase-order
+ * lifecycle. Cycle events (item.sold / forwarder.*) carry their own
+ * minimal payloads — kept untyped here as a free-form record so adding
+ * a new cycle event doesn't require a types-package bump on existing
+ * receivers. Receivers should branch on `type` and parse accordingly.
  */
 export const WebhookEventEnvelope = Type.Object(
 	{
 		id: Type.String({ format: "uuid", description: "Unique delivery id. Use to idempotently process." }),
 		type: WebhookEventType,
 		createdAt: Type.String({ format: "date-time" }),
-		data: Type.Object({ order: PurchaseOrder }),
+		data: Type.Union([Type.Object({ order: BridgeJob }), Type.Record(Type.String(), Type.Unknown())]),
 	},
 	{ $id: "WebhookEventEnvelope" },
 );

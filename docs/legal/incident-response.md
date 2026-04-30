@@ -49,9 +49,11 @@ in order:
      -d '{"itemId":"<id>","kind":"seller_optout","contactEmail":"legal-incidents@flipagent.dev","reason":"<trigger ref>"}'
    ```
 
-   For platform-wide triggers (eBay legal C&D), pause search-path scraping
-   entirely while §3 runs. The flag lives in `packages/api/src/proxy/scrape.ts`
-   — set `SCRAPE_PAUSE=1` in the Container App env.
+   Platform-wide pauses (e.g., a broad C&D demanding all eBay scraping
+   cease) have no precise toggle today — the strategic decision lives in
+   §3 step 5, and the operator-of-last-resort move is to scale the
+   Container App revision to 0 (kills all `/v1/*` traffic, not just
+   scrape) until counsel + engineering decide on a narrower remedy.
 4. **Notify.** Page the founder + outside counsel. Outside counsel contact
    is at the bottom of this document (§10). A 5-minute call beats a
    2-hour Slack thread.

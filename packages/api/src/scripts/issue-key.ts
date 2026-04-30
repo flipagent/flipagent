@@ -4,7 +4,7 @@
  * Better-Auth); self-hosters who don't want to wire up GitHub OAuth just
  * for one bootstrap key can run:
  *
- *   npm run --workspace @flipagent/api db:issue-key -- you@example.com [pro]
+ *   npm run --workspace @flipagent/api db:issue-key -- you@example.com [standard]
  *
  * Tier defaults to "free". The plaintext is printed once and gone.
  */
@@ -15,11 +15,11 @@ import { closeDb } from "../db/client.js";
 async function main(): Promise<void> {
 	const [, , email, tierArg] = process.argv;
 	if (!email) {
-		console.error("usage: db:issue-key <email> [free|hobby|pro|business]");
+		console.error("usage: db:issue-key <email> [free|hobby|standard|growth]");
 		process.exit(1);
 	}
 	const tier: Tier = (tierArg as Tier) ?? "free";
-	const valid: Tier[] = ["free", "hobby", "pro", "business"];
+	const valid: Tier[] = ["free", "hobby", "standard", "growth"];
 	if (!valid.includes(tier)) {
 		console.error(`tier must be one of: ${valid.join(", ")}`);
 		process.exit(1);

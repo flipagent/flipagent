@@ -14,7 +14,7 @@ import { BrowserQueryRequest, BrowserQueryResponse } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { createOrder, waitForTerminal } from "../../services/orders/queue.js";
+import { createBridgeJob, waitForTerminal } from "../../services/bridge-jobs/queue.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const browserRoute = new Hono();
@@ -25,7 +25,7 @@ browserRoute.post(
 		tags: ["Browser"],
 		summary: "DOM querySelectorAll on the active tab via the bridge client",
 		description:
-			"Synchronous: queues a `browser_op` job, waits up to 25 s for the extension to execute the query in the active tab, returns matched elements (text + outerHTML, capped). Returns 504 if the extension didn't respond in time. Useful for LLM fallback when high-level scrapers fail, or for interactive selector tuning during dev.",
+			"Synchronous: queues a `browser_op` job, waits up to 25 s for the extension to execute the query in the active tab, returns matched elements (text + outerHTML, capped). Returns 504 if the extension didn't respond in time. 1st-class surface for direct DOM access — useful when the high-level tools don't cover the read (custom marketplace, new field) or for interactive selector tuning during dev.",
 		responses: {
 			200: jsonResponse("Query result.", BrowserQueryResponse),
 			401: errorResponse("Missing or invalid API key."),
@@ -37,7 +37,7 @@ browserRoute.post(
 	async (c) => {
 		const body = c.req.valid("json");
 		const key = c.var.apiKey;
-		const order = await createOrder({
+		const job = await createBridgeJob({
 			apiKeyId: key.id,
 			userId: key.userId,
 			source: "browser",
@@ -55,7 +55,7 @@ browserRoute.post(
 				tabUrlPattern: body.tabUrlPattern ?? null,
 			},
 		});
-		const final = await waitForTerminal(order.id, key.id, 25_000);
+		const final = await waitForTerminal(job.id, key.id, 25_000);
 		if (!final || final.status !== "completed" || !final.result) {
 			return c.json(
 				{

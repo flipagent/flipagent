@@ -11,14 +11,16 @@ import { createFlipagentClient } from "@flipagent/sdk";
 
 const client = createFlipagentClient({ apiKey: process.env.FLIPAGENT_API_KEY! });
 
-// Search active listings, then rank the top deals by expected net profit.
-const results = await client.listings.search({ q: "canon ef 50mm 1.8", limit: 50 });
-const { deals } = await client.discover.deals({ results, opts: { minNetCents: 2000 } });
+// Rank deals matching a query — server runs the full pipeline.
+const { deals } = await client.discover.deals({
+  q: "canon ef 50mm 1.8",
+  opts: { minNetCents: 2000 },
+});
 
-deals.forEach((d) => console.log(d.netCents, d.score, d.item.title));
+deals.forEach((d) => console.log(d.evaluation.expectedNetCents, d.evaluation.rating, d.item.title));
 ```
 
-> **Get a free key** (100 calls/month, no card) at [flipagent.dev/signup](https://flipagent.dev/signup).
+> **Get a free key** (500 credits one-time, no card) at [flipagent.dev/signup](https://flipagent.dev/signup).
 
 ---
 
@@ -44,9 +46,9 @@ Or one-command setup that detects your installed clients:
 npx -y flipagent-cli init --mcp
 ```
 
-Your agent gets 30+ tools: search, sold-comps, match, evaluate, discover, buy, list, ship.
+Your agent gets 30 tools: search, sold, evaluate, discover, buy, list, ship, expenses.
 
-`match_pool` ships in two modes: **hosted** (we run the LLM, default) and **delegate** (we hand back a prompt + JSON schema for *your* host LLM to run — saves the inference cost when you're already in Claude Code / Cursor and the host is strong). Same applies anywhere we'd run inference; everything else (search, scoring math, scraper fan-out, OAuth, webhooks, billing) stays hosted because there's no LLM in the loop. See [Hosted vs delegate](https://flipagent.dev/docs/mcp#hosted-vs-delegate) and [telemetry & opt-out](https://flipagent.dev/docs/mcp#telemetry).
+`evaluate_listing` and `discover_deals` are **composite** — server-side they fetch the item, search sold + active in parallel, run an LLM same-product filter (Anthropic / OpenAI / Google), and score in a single call. Set one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` on the API server to enable; without a key the composite endpoints fall back to the unfiltered sold + active pools (looser, evaluations still run).
 
 ### As a typed SDK
 
@@ -60,10 +62,10 @@ One client, every namespace under `/v1/*`. Auth is one header.
 import { createFlipagentClient } from "@flipagent/sdk";
 const client = createFlipagentClient({ apiKey: process.env.FLIPAGENT_API_KEY! });
 
-await client.listings.search({ q: "...", limit: 50 });          // discovery
-await client.sold.search({ q: "...", limit: 50 });              // 90-day comps
-await client.evaluate.listing({ item, opts: { comps } });       // single-listing verdict
-await client.discover.deals({ results, opts });                 // rank a search
+await client.listings.search({ q: "...", limit: 50 });          // active listings
+await client.sold.search({ q: "...", limit: 50 });              // sold listings (last 90d)
+await client.evaluate.listing({ itemId });                      // score one listing (composite)
+await client.discover.deals({ q, opts });                       // rank deals for a query (composite)
 await client.ship.quote({ item, forwarder: { destState, weightG } });
 ```
 

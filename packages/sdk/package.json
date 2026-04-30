@@ -1,7 +1,7 @@
 {
 	"name": "@flipagent/sdk",
 	"version": "0.0.1",
-	"description": "Official SDK for api.flipagent.dev — the eBay-compatible reseller API. Typed namespaces for marketplace passthrough (listings, sold, orders, inventory, fulfillment, finance, markets) plus flipagent intelligence (market, match, evaluate, discover, ship, draft, reprice, expenses) and ops (webhooks, capabilities). One client, one API key.",
+	"description": "Official SDK for api.flipagent.dev — the unified reseller API. Typed namespaces for marketplace passthrough (listings, sold, buy.order, inventory, fulfillment, finance, markets, forwarder) plus flipagent intelligence (evaluate, discover, ship, expenses) and ops (webhooks, capabilities). One client, one API key.",
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",

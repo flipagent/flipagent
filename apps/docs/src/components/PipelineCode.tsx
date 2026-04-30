@@ -32,8 +32,9 @@ const ICON = {
 	),
 	gauge: (
 		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-			<path d="M12 14a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-			<path d="M12 4v2M4 12h2M12 20v-2M20 12h-2M5.6 5.6l1.4 1.4M16.9 7l1.5-1.4M5.6 18.4 7 17M16.9 17l1.5 1.4" />
+			<path d="M4 14a8 8 0 0 1 16 0" />
+			<path d="M12 14l3-4" />
+			<circle cx="12" cy="14" r="0.9" fill="currentColor" />
 		</svg>
 	),
 	box: (
@@ -121,45 +122,44 @@ const STEPS: Step[] = [
 		id: "score",
 		num: "02",
 		label: "Score",
-		desc: "Sold-price comparable + expected margin",
+		desc: "Sold + active pools, margin, expected days to sell",
 		icon: ICON.gauge,
 		code: {
 			python: [
 				<>r = requests.{FN("post")}(</>,
 				<>{"  "}{STR('"https://api.flipagent.dev/v1/evaluate"')},</>,
-				<>{"  "}json={"{"}{STR('"item"')}: listing, {STR('"opts"')}: {"{"}{STR('"comparables"')}: comparables{"}"}{"}"},</>,
+				<>{"  "}json={"{"}{STR('"itemId"')}: itemId{"}"},</>,
 				<>{"  "}headers={"{"}{STR('"X-API-Key"')}: {STR('"fa_…"')}{"}"},</>,
 				")",
 			],
 			node: [
 				<>{KEY("const")} evaluation = {KEY("await")} client.evaluate.{FN("listing")}({"{"}</>,
-				<>{"  "}item: listing,</>,
-				<>{"  "}opts: {"{"} comparables, forwarder: {"{"} destState: {STR('"NY"')}, weightG: {NUM("500")} {"}"} {"}"}</>,
+				<>{"  "}itemId,</>,
+				<>{"  "}opts: {"{"} forwarder: {"{"} destState: {STR('"NY"')}, weightG: {NUM("500")} {"}"} {"}"}</>,
 				"});",
 			],
 			curl: [
 				<>{FN("curl")} -X POST https://api.flipagent.dev/v1/evaluate \</>,
 				<>{"  "}-H {STR('"X-API-Key: fa_…"')} \</>,
-				<>{"  "}-d {STR(`'{"item": {...}, "opts": {"comparables": [...]}}'`)}</>,
+				<>{"  "}-d {STR(`'{"itemId": "v1|123456789|0"}'`)}</>,
 			],
 			cli: [
-				<>{FN("evaluate_listing")}({"{"} item: listing, opts: {"{"} comparables {"}"} {"}"})</>,
+				<>{FN("evaluate_listing")}({"{"} itemId {"}"})</>,
 			],
 		},
 		plain: {
 			python:
-				'r = requests.post(\n  "https://api.flipagent.dev/v1/evaluate",\n  json={"item": listing, "opts": {"comparables": comparables}},\n  headers={"X-API-Key": "fa_…"},\n)',
-			node: 'const evaluation = await client.evaluate.listing({\n  item: listing,\n  opts: { comparables, forwarder: { destState: "NY", weightG: 500 } },\n});',
-			curl: 'curl -X POST https://api.flipagent.dev/v1/evaluate \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"item": {...}, "opts": {"comparables": [...]}}\'',
-			cli: 'evaluate_listing({ item: listing, opts: { comparables } })',
+				'r = requests.post(\n  "https://api.flipagent.dev/v1/evaluate",\n  json={"itemId": itemId},\n  headers={"X-API-Key": "fa_…"},\n)',
+			node: 'const evaluation = await client.evaluate.listing({\n  itemId,\n  opts: { forwarder: { destState: "NY", weightG: 500 } },\n});',
+			curl: 'curl -X POST https://api.flipagent.dev/v1/evaluate \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"itemId": "v1|123456789|0"}\'',
+			cli: 'evaluate_listing({ itemId })',
 		},
 		result: [
 			<>{"{"}</>,
-			<>{"  "}{STR('"roi"')}: {NUM("0.74")},</>,
-			<>{"  "}{STR('"netCents"')}: {NUM("3120")},</>,
+			<>{"  "}{STR('"expectedNetCents"')}: {NUM("3120")},</>,
 			<>{"  "}{STR('"confidence"')}: {NUM("0.92")},</>,
 			<>{"  "}{STR('"landedCostCents"')}: {NUM("4920")},</>,
-			<>{"  "}{STR('"signals"')}: [{STR('"under_median"')}, {STR('"good_seller"')}],</>,
+			<>{"  "}{STR('"signals"')}: [{STR('"under_median"')}],</>,
 			<>{"  "}{STR('"rating"')}: {STR('"buy"')}</>,
 			"}",
 		],

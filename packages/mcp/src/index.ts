@@ -4,8 +4,9 @@
  *
  * Speaks the Model Context Protocol over stdio. Drop into Claude Desktop,
  * Cursor, Cline, Zed, Continue, Windsurf, etc. via the standard MCP config
- * (see README). All tools mirror eBay path/method/body verbatim — set
- * EBAY_BASE_URL to api.flipagent.dev (default) or api.ebay.com.
+ * (see README). All tools mirror eBay path/method/body verbatim through
+ * flipagent's unified `/v1/*` surface — point `FLIPAGENT_BASE_URL` at a
+ * non-default host for self-host / staging.
  *
  * Tools split into three groups:
  *   - **Read** (anonymous app token): ebay_search, ebay_item_detail,
@@ -60,7 +61,7 @@ async function main() {
 	const transport = new StdioServerTransport();
 	await server.connect(transport);
 	process.stderr.write(
-		`[flipagent-mcp] connected. base=${config.ebayBaseUrl} mock=${config.mock} auth=${config.authToken ? "set" : "unset"}\n`,
+		`[flipagent-mcp] connected. base=${config.flipagentBaseUrl} mock=${config.mock} auth=${config.authToken ? "set" : "unset"}\n`,
 	);
 }
 

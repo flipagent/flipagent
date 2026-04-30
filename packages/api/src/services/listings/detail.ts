@@ -18,7 +18,7 @@ import { recordDetailObservation } from "../observations/index.js";
 import { hashQuery } from "../shared/cache.js";
 import type { FlipagentResult } from "../shared/result.js";
 import { selectTransport, TransportUnavailableError } from "../shared/transport.js";
-import { withCache } from "../shared/with-cache.js";
+import { timeoutMsForSource, withCache } from "../shared/with-cache.js";
 import { bridgeItemDetail } from "./bridge.js";
 import { rethrowAsListingsError } from "./bridge-status.js";
 import { ListingsError } from "./errors.js";
@@ -65,7 +65,13 @@ export async function getItemDetail(legacyId: string, ctx: DetailContext = {}): 
 	// the listing 404s upstream so we surface that as a missing item.
 	let missing = false;
 	const result = await withCache(
-		{ scope: `listings:detail:${source}`, ttlSec: DETAIL_TTL_SEC, path: DETAIL_PATH, queryHash },
+		{
+			scope: `listings:detail:${source}`,
+			ttlSec: DETAIL_TTL_SEC,
+			path: DETAIL_PATH,
+			queryHash,
+			timeoutMs: timeoutMsForSource(source),
+		},
 		async () => {
 			const body = await dispatch(legacyId, { ...ctx, source });
 			if (!body) {
@@ -103,6 +109,26 @@ export async function getItemDetailFromSummary(
 	const legacyId = toLegacyId(item);
 	if (!legacyId) return null;
 	return getItemDetail(legacyId, ctx);
+}
+
+/**
+ * Build a closure that fetches an `ItemSummary`'s full detail — bound
+ * to one `apiKey` (so per-tier auth + quota are honoured) and stripped
+ * of the `FlipagentResult` envelope the consumer doesn't need.
+ * Structurally matches the matcher's `DetailFetcher` port so callers
+ * pass it straight through without a type import:
+ *
+ *   const fetchDetail = detailFetcherFor(apiKey);
+ *   await matchPool(seed, pool, opts, fetchDetail);
+ *
+ * Each fetch goes through the standard withCache 4h → Oxylabs
+ * semaphore → retry path.
+ */
+export function detailFetcherFor(apiKey?: ApiKey) {
+	return async (item: { legacyItemId?: string | null; itemId?: string | null }): Promise<ItemDetail | null> => {
+		const r = await getItemDetailFromSummary(item, { apiKey });
+		return r?.body ?? null;
+	};
 }
 
 async function dispatch(

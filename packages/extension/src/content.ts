@@ -28,7 +28,7 @@ import {
 	parseEbaySearchHtml,
 	parseResultCount,
 } from "@flipagent/ebay-scraper";
-import type { PurchaseOrderStatus } from "@flipagent/types";
+import type { BridgeJobStatus } from "@flipagent/types";
 
 interface InFlightSnapshot {
 	id: string;
@@ -41,7 +41,7 @@ interface InFlightSnapshot {
 
 interface ReportBody {
 	jobId: string;
-	outcome: PurchaseOrderStatus;
+	outcome: BridgeJobStatus;
 	totalCents?: number;
 	ebayOrderId?: string;
 	receiptUrl?: string;
@@ -198,7 +198,7 @@ function handlePlanetExpressJob(job: InFlightSnapshot): void {
 		});
 		void report({
 			jobId: job.id,
-			outcome: "failed" as PurchaseOrderStatus,
+			outcome: "failed" as BridgeJobStatus,
 			failureReason: "planetexpress_signed_out",
 		});
 		return;
@@ -231,7 +231,7 @@ async function scrapeAndReport(job: InFlightSnapshot): Promise<void> {
 		});
 		await report({
 			jobId: job.id,
-			outcome: "completed" as PurchaseOrderStatus,
+			outcome: "completed" as BridgeJobStatus,
 			result: {
 				packages: [],
 				diagnostic: { reason: "selectors_unmatched", ...diagnostics },
@@ -249,7 +249,7 @@ async function scrapeAndReport(job: InFlightSnapshot): Promise<void> {
 	});
 	await report({
 		jobId: job.id,
-		outcome: "completed" as PurchaseOrderStatus,
+		outcome: "completed" as BridgeJobStatus,
 		result: { packages, diagnostic: diagnostics },
 	});
 }
@@ -400,7 +400,7 @@ function handleItemPage(job: InFlightSnapshot): void {
 		});
 		void report({
 			jobId: job.id,
-			outcome: "failed" as PurchaseOrderStatus,
+			outcome: "failed" as BridgeJobStatus,
 			totalCents: priceCents,
 			failureReason: `price_above_cap: page=${priceCents}c cap=${job.maxPriceCents}c`,
 		});
@@ -426,7 +426,7 @@ function handleCheckoutPage(job: InFlightSnapshot): void {
 		});
 		void report({
 			jobId: job.id,
-			outcome: "failed" as PurchaseOrderStatus,
+			outcome: "failed" as BridgeJobStatus,
 			totalCents,
 			failureReason: `total_above_cap: review=${totalCents}c cap=${job.maxPriceCents}c`,
 		});
@@ -444,7 +444,7 @@ function handleCheckoutPage(job: InFlightSnapshot): void {
 	// almost certain to click confirm (or cancel).
 	void report({
 		jobId: job.id,
-		outcome: "placing" as PurchaseOrderStatus,
+		outcome: "placing" as BridgeJobStatus,
 		totalCents: totalCents ?? undefined,
 	});
 }
@@ -459,7 +459,7 @@ async function handlePostPurchase(job: InFlightSnapshot): Promise<void> {
 	});
 	await report({
 		jobId: job.id,
-		outcome: "completed" as PurchaseOrderStatus,
+		outcome: "completed" as BridgeJobStatus,
 		totalCents: totalCents ?? undefined,
 		ebayOrderId: orderId ?? undefined,
 		receiptUrl: location.href,

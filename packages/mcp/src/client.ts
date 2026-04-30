@@ -1,7 +1,8 @@
 /**
  * Builds the flipagent client used by every tool. Thin wrapper around
- * `@flipagent/sdk`, which talks to `api.flipagent.dev` (or `EBAY_BASE_URL`
- * override) under the unified `/v1/*` surface.
+ * `@flipagent/sdk`, which talks to `api.flipagent.dev` (or
+ * `FLIPAGENT_BASE_URL` override for self-host / dev) under the unified
+ * `/v1/*` surface.
  */
 
 import { createFlipagentClient, FlipagentApiError, type FlipagentClient } from "@flipagent/sdk";
@@ -21,9 +22,9 @@ export class ApiCallError extends Error {
 export function getClient(config: Config): FlipagentClient {
 	return createFlipagentClient({
 		apiKey: config.authToken ?? "",
-		// Hits api.flipagent.dev (or override via FLIPAGENT_BASE_URL for self-host /
-		// dev). The legacy `ebayBaseUrl` ran here before the unified surface; keep
-		// the env name but the URL it points at IS the flipagent backend now.
+		// Hits api.flipagent.dev (or override via FLIPAGENT_BASE_URL for
+		// self-host / dev). eBay's own base URL (sandbox vs prod) is
+		// resolved server-side, not here.
 		baseUrl: config.flipagentBaseUrl,
 	});
 }

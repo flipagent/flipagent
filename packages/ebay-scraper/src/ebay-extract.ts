@@ -38,6 +38,13 @@ export interface RawEbayItem {
 	soldQuantityText: string | null;
 	/** True when the card carries a Top Rated Plus badge. */
 	topRatedBuyingExperience: boolean;
+	/**
+	 * eBay product identifier — present when the card links to a catalog
+	 * product page (`/p/{epid}`). Roughly 30–40% of cards on a typical
+	 * search are catalog-linked. Used by composite endpoints to group
+	 * candidates by product without an LLM call.
+	 */
+	epid: string | null;
 }
 
 function extractItemIdFromUrl(url: string): string | null {
@@ -194,6 +201,18 @@ export function extractEbayItems(root: ParentNode): RawEbayItem[] {
 		const dataId = li.getAttribute("data-listingid");
 		const itemId = dataId && /^\d{9,}$/.test(dataId) ? dataId : extractItemIdFromUrl(url);
 
+		// eBay links the card to its catalog product page via /p/{epid}
+		// when the listing is catalog-linked, OR encodes the epid as a
+		// URL parameter on the listing's own /itm/ link (`?...&epid=NNN`).
+		// The second form covers more cards: `/p/` only renders when there's
+		// a separate "View product page" link, but `?epid=` shows up on any
+		// card the seller bound to a catalog product. Try both — first
+		// match wins, /p/ takes precedence since it's the primary signal.
+		const liHtml = li.outerHTML;
+		const epidPathMatch = liHtml.match(/\/p\/(\d{6,})/);
+		const epidParamMatch = epidPathMatch ? null : liHtml.match(/[?&]epid=(\d{6,})/);
+		const epid = epidPathMatch?.[1] ?? epidParamMatch?.[1] ?? null;
+
 		const priceText = firstText(li, [".s-card__price", ".s-item__price"]);
 		const subtitleText = pickConditionSubtitle(li);
 		const captionText = firstText(li, [".s-card__caption", ".s-item__caption .s-item__caption--signal"]);
@@ -226,6 +245,7 @@ export function extractEbayItems(root: ParentNode): RawEbayItem[] {
 			imageUrl: imageUrl && !/blank|placeholder|fxxj3ttftm5ltcqnto1o4baovyl/.test(imageUrl) ? imageUrl : null,
 			soldQuantityText: classified.soldQuantityText,
 			topRatedBuyingExperience: hasTopRatedPlus(li),
+			epid,
 		});
 	}
 	return out;
@@ -272,6 +292,33 @@ export interface RawEbayDetail {
 	soldOut: boolean | null;
 	/** Display string e.g. "Tulsa, Oklahoma, United States". Best-effort regex extraction. */
 	itemLocationText: string | null;
+	/**
+	 * True iff the listing accepts Best Offer alongside its BIN price.
+	 * Detected from the "or Best Offer" SECONDARY textspan eBay renders
+	 * next to the price block when offers are enabled.
+	 */
+	bestOfferEnabled: boolean;
+	/**
+	 * Returns policy in eBay REST `returnTerms` shape — parsed from the
+	 * schema.org `hasMerchantReturnPolicy` JSON-LD block embedded in the
+	 * detail page. Emitted in the eBay-REST shape (not schema.org's) so
+	 * downstream code reads scrape and REST through one extractor. Null
+	 * when the block is absent or the policy category is unrecognised.
+	 */
+	returnTerms: EbayReturnTerms | null;
+}
+
+/**
+ * Subset of eBay Browse REST `returnTerms` we surface from scrape. Same
+ * field names + shapes eBay REST uses, so a single `extractReturns()` on
+ * the API side handles both transports without branching.
+ *
+ * @see https://developer.ebay.com/api-docs/buy/browse/resources/item/methods/getItem (returnTerms block)
+ */
+export interface EbayReturnTerms {
+	returnsAccepted: boolean;
+	returnPeriod?: { value: number; unit: "DAY" };
+	returnShippingCostPayer?: "BUYER" | "SELLER";
 }
 
 /**
@@ -391,7 +438,20 @@ const DETAIL_SELECTORS = {
 		".ux-seller-section__item--seller + .ux-seller-section__content",
 	],
 	description: ["#viTabs_0_is", ".x-item-description", ".item-description"],
-	images: [".ux-image-carousel-item img", "#icImg", ".ux-image-magnify__image img"],
+	// Modern eBay listings render images via lazy-loaded carousel items;
+	// the visible `src` is a 1x1 placeholder until the user scrolls,
+	// while the real URL hides in `data-src` / `data-zoom-src` / srcset.
+	// Selector list covers 2024+ layouts (`.ux-image-carousel*`,
+	// `[data-testid='ux-image-carousel-item']`) plus older fixtures.
+	// Attribute precedence is handled in `extractEbayDetail`.
+	images: [
+		".ux-image-carousel-item img",
+		".ux-image-carousel-container img",
+		".ux-image-magnify__image img",
+		"[data-testid='ux-image-carousel-item'] img",
+		"img[data-zoom-src]",
+		"#icImg",
+	],
 };
 
 function firstMatchText(root: ParentNode, selectors: string[]): string | null {
@@ -567,17 +627,93 @@ function aspectText(el: Element): string {
 	return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Detect Best Offer: eBay renders a literal "or Best Offer" SECONDARY
+ * textspan next to the BIN price when the seller has Best Offer enabled.
+ * The phrase is specific enough that exact text-match across all
+ * `.ux-textspans--SECONDARY` spans avoids false positives without us
+ * hard-coding the buy-box's surrounding container (which has churned
+ * across layout revisions).
+ */
+function hasBestOffer(root: ParentNode): boolean {
+	const spans = root.querySelectorAll<HTMLElement>("span.ux-textspans--SECONDARY");
+	for (const s of Array.from(spans)) {
+		const text = s.textContent?.trim();
+		if (text === "or Best Offer") return true;
+	}
+	return false;
+}
+
+/**
+ * Parse the schema.org `hasMerchantReturnPolicy` JSON-LD block embedded
+ * in eBay's detail page and emit eBay-REST-shape `returnTerms`. eBay
+ * publishes this block on every listing (duplicated for product/offer);
+ * we read the first occurrence with substring regex (avoids needing to
+ * locate + JSON.parse a full surrounding `<script type="application/ld+json">`
+ * which itself is sometimes embedded inside a larger inline blob).
+ *
+ * Mapping (schema.org → eBay REST):
+ *   returnPolicyCategory=MerchantReturnFiniteReturnWindow → returnsAccepted=true
+ *   returnPolicyCategory=MerchantReturnNotPermitted        → returnsAccepted=false
+ *   merchantReturnDays=N                                   → returnPeriod={value:N,unit:"DAY"}
+ *   returnFees=FreeReturn                                  → returnShippingCostPayer="SELLER"
+ *   returnFees=ReturnFeesCustomerResponsibility            → returnShippingCostPayer="BUYER"
+ */
+function extractReturnTerms(html: string | undefined): EbayReturnTerms | null {
+	if (!html) return null;
+	const m = html.match(/"hasMerchantReturnPolicy":\[\{([^}]+)\}/);
+	if (!m) return null;
+	const body = m[1] ?? "";
+	const cat = body.match(/"returnPolicyCategory":"([^"]+)"/)?.[1] ?? "";
+	if (cat.endsWith("MerchantReturnNotPermitted")) {
+		return { returnsAccepted: false };
+	}
+	if (!cat.endsWith("MerchantReturnFiniteReturnWindow")) {
+		return null;
+	}
+	const out: EbayReturnTerms = { returnsAccepted: true };
+	const daysStr = body.match(/"merchantReturnDays":(\d+)/)?.[1];
+	if (daysStr) {
+		const days = Number(daysStr);
+		if (Number.isFinite(days) && days >= 0) out.returnPeriod = { value: days, unit: "DAY" };
+	}
+	const fees = body.match(/"returnFees":"([^"]+)"/)?.[1] ?? "";
+	if (fees.endsWith("FreeReturn")) out.returnShippingCostPayer = "SELLER";
+	else if (fees.endsWith("ReturnFeesCustomerResponsibility")) out.returnShippingCostPayer = "BUYER";
+	return out;
+}
+
 export function extractEbayDetail(root: ParentNode, sourceUrl: string, html?: string): RawEbayDetail {
 	const breadcrumb = extractBreadcrumb(root);
 
+	// eBay's image carousel lazy-loads — `src` is often a 1x1 GIF
+	// placeholder until the user scrolls, while the real URL lives in
+	// `data-zoom-src` (full-res) or `data-src`. `srcset` carries
+	// resolution variants ("url 64w, url 500w") — we take the last
+	// entry (highest density). Skip data: URIs and known placeholder
+	// shapes so the parsed `imageUrls[0]` is the actual hero image.
 	const imageNodes = Array.from(root.querySelectorAll<HTMLImageElement>(DETAIL_SELECTORS.images.join(", ")));
 	const seen = new Set<string>();
 	const imageUrls: string[] = [];
 	for (const img of imageNodes) {
-		const src = img.getAttribute("src") ?? img.getAttribute("data-src") ?? "";
-		if (src && !seen.has(src)) {
-			seen.add(src);
-			imageUrls.push(src);
+		const candidates: Array<string | null> = [
+			img.getAttribute("data-zoom-src"),
+			img.getAttribute("data-src"),
+			img.getAttribute("src"),
+		];
+		const srcset = img.getAttribute("srcset");
+		if (srcset) {
+			const last = srcset.split(",").pop()?.trim().split(/\s+/)[0];
+			if (last) candidates.push(last);
+		}
+		for (const url of candidates) {
+			if (!url) continue;
+			if (url.startsWith("data:")) continue;
+			if (/(?:^|\/)blank|placeholder|spacer\.gif|fxxj3ttftm5ltcqnto1o4baovyl/i.test(url)) continue;
+			if (seen.has(url)) continue;
+			seen.add(url);
+			imageUrls.push(url);
+			break; // one canonical URL per <img>
 		}
 	}
 
@@ -612,6 +748,8 @@ export function extractEbayDetail(root: ParentNode, sourceUrl: string, html?: st
 		marketplaceListedOn: getString(semantic, "marketplaceListedOn"),
 		soldOut: typeof soldOutValue === "boolean" ? soldOutValue : null,
 		itemLocationText,
+		bestOfferEnabled: hasBestOffer(root),
+		returnTerms: extractReturnTerms(html),
 	};
 }
 
@@ -731,6 +869,20 @@ export function normalizeBuyingFormat(text: string | string[] | null | undefined
 	if (/auction|gebot|bid/i.test(joined)) return "AUCTION";
 	if (/buy.?it.?now|sofort.?kauf|fixed|best offer/i.test(joined)) return "FIXED_PRICE";
 	return null;
+}
+
+/**
+ * Detect a "Best Offer" signal in an SRP card's buying-format text. Stacks
+ * with the dominant format from `normalizeBuyingFormat` (a card showing
+ * "Buy It Now or Best Offer" yields FIXED_PRICE + BEST_OFFER) — eBay's
+ * model treats Best Offer as an option layered on top of a base price,
+ * never a standalone format. Mirrors the detail-page `bestOfferEnabled`
+ * signal so search and detail produce the same buyingOptions shape.
+ */
+export function hasBestOfferFormat(text: string | string[] | null | undefined): boolean {
+	if (text == null) return false;
+	const joined = Array.isArray(text) ? text.join(" ") : text;
+	return /best offer/i.test(joined);
 }
 
 /**

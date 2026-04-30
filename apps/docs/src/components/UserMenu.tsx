@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { apiBase } from "../lib/authClient";
 import "./UserMenu.css";
 
-type Profile = { id: string; name: string; image: string | null };
+type Profile = { id: string; name: string; image: string | null; role?: "user" | "admin" };
 
 export default function UserMenu() {
 	const [profile, setProfile] = useState<Profile | null>(null);
@@ -29,14 +29,22 @@ export default function UserMenu() {
 			</a>
 		);
 	}
+	const isAdmin = profile.role === "admin";
 	return (
-		<a href="/dashboard/" className="user-menu" aria-label="Open dashboard">
-			{profile.image ? (
-				<img src={profile.image} alt="" className="user-menu-avatar" />
-			) : (
-				<span className="user-menu-fallback">{profile.name?.[0]?.toUpperCase() ?? "?"}</span>
+		<>
+			{isAdmin && (
+				<a href="/admin/" className="user-menu-admin" aria-label="Open admin">
+					Admin
+				</a>
 			)}
-			<span className="user-menu-label">Dashboard</span>
-		</a>
+			<a href="/dashboard/" className="user-menu" aria-label="Open dashboard">
+				{profile.image ? (
+					<img src={profile.image} alt="" className="user-menu-avatar" />
+				) : (
+					<span className="user-menu-fallback">{profile.name?.[0]?.toUpperCase() ?? "?"}</span>
+				)}
+				<span className="user-menu-label">Dashboard</span>
+			</a>
+		</>
 	);
 }

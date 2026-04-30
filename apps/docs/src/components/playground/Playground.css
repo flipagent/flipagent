@@ -110,13 +110,50 @@
 	white-space: nowrap;
 }
 
-.pg-recent-summary {
-	font-family: var(--mono);
-	font-size: 11px;
-	padding: 2px 8px;
+.pg-recent-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--text-2);
+}
+
+.pg-recent-status-dot {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
 	border-radius: 999px;
-	background: var(--brand-soft);
-	color: var(--brand);
+	flex: 0 0 14px;
+	color: #fff;
+}
+
+.pg-recent-status-dot svg { display: block; }
+
+.pg-recent-status--success .pg-recent-status-dot { background: var(--brand); }
+.pg-recent-status--failure .pg-recent-status-dot { background: var(--danger); }
+
+.pg-recent-status--cancelled .pg-recent-status-dot {
+	background: transparent;
+	border: 1.5px solid var(--text-3);
+	color: var(--text-3);
+}
+
+.pg-recent-status--in_progress .pg-recent-status-dot {
+	background: transparent;
+	border: 1.5px solid var(--brand);
+	border-top-color: transparent;
+	animation: pg-recent-spin 0.7s linear infinite;
+}
+.pg-recent-status--in_progress .pg-recent-status-label { color: var(--brand); }
+
+@keyframes pg-recent-spin {
+	to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pg-recent-status--in_progress .pg-recent-status-dot { animation: none; }
 }
 
 .pg-recent-time { font-size: 11px; color: var(--text-3); }
@@ -144,10 +181,14 @@
 	gap: 14px;
 	padding: 0 0 18px;
 	color: var(--text);
-	text-decoration: none;
 }
 
-.pg-result-hero:hover .pg-result-hero-title { text-decoration: underline; text-underline-offset: 3px; }
+.pg-result-hero-title-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	min-width: 0;
+}
 
 .pg-result-hero-thumb {
 	width: 56px;
@@ -186,17 +227,82 @@
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
+	flex: 1;
+	min-width: 0;
 }
 
 .pg-result-hero-meta {
 	display: flex;
-	gap: 10px;
+	align-items: baseline;
+	gap: 8px;
 	font-size: 12px;
 	color: var(--text-3);
 	flex-wrap: wrap;
 }
 
-.pg-result-hero-link { color: var(--text-3); flex-shrink: 0; }
+/* Inline `·` between meta items (condition · brand · price). Pseudo-element
+   instead of inserting separator spans in JSX so the data-bearing children
+   stay clean. */
+.pg-result-hero-meta > *:not(:first-child)::before {
+	content: "·";
+	color: var(--text-4);
+	margin-right: 8px;
+}
+
+.pg-result-hero-link {
+	color: var(--text-3);
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border-radius: 4px;
+	text-decoration: none;
+	transition: background 120ms ease, color 120ms ease;
+}
+
+.pg-result-hero-link:hover {
+	background: var(--surface-2);
+	color: var(--text);
+}
+
+/* Hover-revealed clipboard button next to a title. Lives inside hero
+   (.pg-result-hero) and inside match rows (.pg-result-matches-row). */
+.pg-copy-title {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	margin: 0;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-3);
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 120ms ease, background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.pg-result-hero:hover .pg-copy-title,
+.pg-result-matches-row:hover .pg-copy-title,
+.pg-copy-title:focus-visible,
+.pg-copy-title[data-copied="true"] {
+	opacity: 1;
+}
+
+.pg-copy-title:hover {
+	background: var(--surface-2);
+	border-color: var(--border-faint);
+	color: var(--text);
+}
+
+.pg-copy-title[data-copied="true"] {
+	color: var(--accent, #2da44e);
+}
 
 /* ---------- price histogram (Recharts) ---------- */
 
@@ -266,11 +372,14 @@
 	padding: 5px 0;
 }
 
-/* Conclusion row — single horizontal rule + breathing room separates the
-   answer ("Net at exit") from the market context above it. No section
-   header, no card chrome — just one quiet divider so the eye lands on
-   the verdict last. */
-.pg-result-facts > .pg-result-facts-final {
+/* Decision-block lead-in — divider that separates the market-context
+   rows (sold / velocity / asks / bids) from the buyer-decision arc
+   below (Max buy → Buy at → Resells at). Sits on the FIRST row of the
+   decision block, not the last, so the three action rows visually
+   group together as one section. Default `padding-bottom: 5px` from
+   `.pg-result-facts > div` is fine — this row isn't at the wrapper's
+   edge, so there's no need to zero it out. */
+.pg-result-facts > .pg-result-facts-decision-start {
 	margin-top: 10px;
 	padding-top: 12px;
 	border-top: 1px solid var(--border-faint);
@@ -287,6 +396,14 @@
 	align-items: baseline;
 	gap: 10px;
 	flex-wrap: wrap;
+	/* Pin the line-box to the val text's natural height so every row
+	   reserves the same vertical space — including ones that fall back
+	   to a small "none matched" aside. Without this, aside-only rows
+	   collapse to ~14px and the surrounding rows visibly shift. The
+	   line-height (rather than min-height) also keeps the small text's
+	   baseline at the same position as the val text in neighbouring
+	   rows, so the column reads as a clean ladder. */
+	line-height: 22px;
 }
 
 .pg-result-facts-val {
@@ -309,12 +426,6 @@
 
 .pg-result-facts-aside--good { color: var(--success); }
 .pg-result-facts-aside--warn { color: var(--danger); }
-
-/* Final row carries the answer — bump the value so the eye lands here last. */
-.pg-result-facts > .pg-result-facts-final .pg-result-facts-val {
-	font-size: 19px;
-	letter-spacing: -0.015em;
-}
 
 .pg-result-facts-warn {
 	font-size: 11.5px;
@@ -422,16 +533,6 @@
 
 .pg-result-matches-head:hover { color: var(--text); }
 
-.pg-result-matches-caret {
-	transition: transform 0.12s ease;
-	color: var(--text-4);
-	flex-shrink: 0;
-}
-.pg-result-matches-caret[data-open="true"] { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) {
-	.pg-result-matches-caret { transition: none; }
-}
-
 .pg-result-matches-head--reject {
 	margin-top: 6px;
 	border-top: 1px solid var(--border-faint);
@@ -455,19 +556,62 @@
 	white-space: nowrap;
 }
 
+/* Row spans the full width of the matches list (no border-radius)
+   so it reads as a tabular list item rather than a card. Bottom
+   border between rows gives a clean separator that carries the eye
+   down the column. `width: 100%` forces the grid to stretch to its
+   flex parent's cross-axis even when intrinsic 1fr-track sizing
+   would otherwise leave it narrower than the container; without it
+   short titles produce variable-width rows whose bottom borders end
+   at different x positions. Inner padding (8px L/R) keeps content
+   from kissing the divider edges; a matching outer negative margin
+   on the LIST keeps the perceived left edge flush with the rest of
+   the facts column. */
 .pg-result-matches-row {
 	display: grid;
-	grid-template-columns: 36px 1fr;
-	gap: 10px;
+	grid-template-columns: 36px 1fr auto;
+	gap: 12px;
 	align-items: center;
-	padding: 6px 8px;
-	border-radius: 4px;
+	width: 100%;
+	padding: 8px;
 	color: var(--text);
-	text-decoration: none;
+	border-bottom: 1px solid var(--border-faint);
 }
 
+.pg-result-matches-row:last-child {
+	border-bottom: 0;
+}
+
+/* Hover state changes only the background — no margin/padding shift
+   so the row holds its position. Previous version used a negative
+   margin trick that caused a 1-frame jitter on every hover-in. */
 .pg-result-matches-row:hover {
 	background: var(--surface-2);
+}
+
+.pg-result-matches-title-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.pg-result-matches-link {
+	color: var(--text-3);
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 4px;
+	text-decoration: none;
+	transition: background 120ms ease, color 120ms ease;
+}
+
+.pg-result-matches-link:hover {
+	background: var(--surface);
+	color: var(--text);
 }
 
 .pg-result-matches-thumb {
@@ -502,6 +646,8 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	flex: 1;
+	min-width: 0;
 }
 
 .pg-result-matches-meta {
@@ -509,6 +655,17 @@
 	gap: 8px;
 	font-size: 11px;
 	color: var(--text-3);
+}
+
+.pg-result-matches-tag {
+	font-size: 10px;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-2);
+	border: 1px solid var(--border-faint);
+	border-radius: 3px;
+	padding: 0 5px;
+	line-height: 14px;
 }
 
 /* ---------- comparison (usually vs this listing) ---------- */
@@ -609,62 +766,70 @@
 	font-style: italic;
 }
 
-/* ---------- recommendation (one-line action + plain sentences) ---------- */
+/* ---------- recommendation (verdict line: prefix + rating + reason) ---------- */
 
+/* Used by HeroPipeline's Buy / List / Ship scripted demos to render the
+   one-line decision (e.g. "Status DELIVERED") followed by a couple of
+   secondary explanation lines. Matches the recovery row's vertical
+   rhythm so the verdict sits at the same cadence as other result rows. */
 .pg-result-rec {
+	margin: 0;
+	padding: 14px 0 0;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 16px 0 0;
+	gap: 6px;
 }
 
 .pg-result-rec-line-prim {
-	display: grid;
-	grid-template-columns: 160px 1fr;
+	display: flex;
 	align-items: baseline;
-	gap: 16px;
+	gap: 10px;
+	flex-wrap: wrap;
 }
 
 .pg-result-rec-prefix {
-	font-size: 12px;
+	font-size: 11.5px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
 	color: var(--text-3);
 }
 
 .pg-result-rec-rating {
 	font-family: var(--mono);
-	font-size: 13.5px;
+	font-size: 14px;
 	font-weight: 600;
-	letter-spacing: 0.04em;
+	letter-spacing: 0.02em;
 	color: var(--text);
-	line-height: 1.2;
 }
 
 .pg-result-rec-rating--good { color: var(--brand); }
 .pg-result-rec-rating--warn { color: var(--brand); }
+.pg-result-rec-rating--neutral { color: var(--text-3); }
 
 .pg-result-rec-line {
 	margin: 0;
-	font-size: 13px;
+	font-size: 12.5px;
 	line-height: 1.55;
-	color: var(--text-2);
-}
-
-.pg-result-rec-warn {
-	color: var(--brand);
+	color: var(--text-3);
 }
 
 /* ---------- footer (copy + trace expander) ---------- */
 
+/* `margin-top: 12px` keeps the facts → footer transition matching the
+   12px decision-block divider rhythm above — same gap above each border.
+   Rating sits the same distance from the divider above (facts wrapper
+   border) and the divider below (footer border) — same 12/12 rhythm
+   the Resells at row uses. */
 .pg-result-foot {
 	margin-top: 18px;
-	padding-top: 12px;
+	padding-top: 18px;
 	border-top: 1px solid var(--border-faint);
 }
 
 /* While the chain is still streaming, the trace is shown inline (not
    tucked behind the "Show trace" toggle) so the user can watch each
    step tick over. Same wrapper, no toggle row. */
-.pg-result-foot--running { padding-top: 14px; }
+.pg-result-foot--running { padding-top: 18px; }
 
 .pg-result-foot-row {
 	display: flex;
@@ -673,26 +838,25 @@
 	gap: 12px;
 }
 
+/* Plain-text affordance, paired with `.pg-result-trace-toggle` on the
+   right of the same row. Same shape (no border, no background), same
+   typographic weight, only the icon differs. Avoids the asymmetric
+   "bordered button next to plain text" feel that crowded the divider. */
 .pg-result-copy {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: 8px;
 	font: inherit;
-	font-size: 11px;
-	padding: 4px 9px;
-	background: transparent;
-	border: 1px solid var(--border-faint);
+	font-size: 12px;
+	padding: 4px 0;
+	background: none;
+	border: 0;
 	color: var(--text-3);
-	border-radius: 4px;
 	cursor: pointer;
-	transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+	transition: color 120ms ease;
 }
 
-.pg-result-copy:hover {
-	color: var(--text);
-	border-color: var(--border);
-	background: var(--surface-2);
-}
+.pg-result-copy:hover { color: var(--text); }
 
 /* ---------- raw trace expander (lives inside .pg-result-foot) ---------- */
 
@@ -729,6 +893,33 @@
 
 .pg-step + .pg-step { border-top: 1px solid var(--border-faint); }
 
+/* Parallel children of a parent step. Stack vertically; the
+   parent-child relationship is conveyed by a vertical guide line
+   (left border on the children container) instead of per-row "└"
+   text prefixes. Each child indents from that line so the tree
+   structure reads at a glance without floating glyphs. */
+.pg-trace-children {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+.pg-step--child {
+	background: var(--bg-soft);
+}
+.pg-step--child + .pg-step--child { border-top: 1px solid var(--border-faint); }
+.pg-step--child .pg-step-head {
+	/* Children skip the parent's "01"/"02" num column but keep the same
+	   text x-position by reserving the same indent via padding-left:
+	   parent's row padding (14) + num column (28) + gap (12) = 54. The
+	   numbered glyph (`└` etc.) is hidden — hierarchy is implicit from
+	   the indent + bg-soft tint. */
+	padding: 8px 14px 8px 54px;
+	grid-template-columns: max-content minmax(0, 1fr) auto auto auto;
+}
+.pg-step--child .pg-step-num { display: none; }
+
 .pg-step-head {
 	display: grid;
 	/* Label sits on `max-content` so it always renders one line; URL takes
@@ -752,8 +943,7 @@
 
 .pg-step-label { white-space: nowrap; }
 
-.pg-step-head:disabled { cursor: default; opacity: 0.7; }
-.pg-step-head:hover:not(:disabled) { background: var(--surface-2); }
+.pg-step-head:hover { background: var(--surface-2); }
 
 .pg-step-num { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
 
@@ -805,6 +995,7 @@
 }
 
 .pg-step-error { margin: 12px 0 4px; font-size: 12px; color: #c0392b; }
+.pg-step-empty { margin: 12px 0 4px; font-size: 12px; color: var(--text-3); font-style: italic; }
 
 .pg-step-section + .pg-step-section { margin-top: 12px; }
 .pg-step-section-h {
@@ -863,3 +1054,366 @@
 	white-space: pre-wrap;
 	word-break: break-word;
 }
+
+/* ====================================================================
+   Discover deals — master-detail.
+
+   1. Cluster chip strip on top (filter the table).
+   2. Flat table sorted by $/day across all clusters; cluster column
+      shows a tiny chip per row so the SKU grouping is visible inline.
+   3. Click a row → grid switches to 2 columns; right column hosts an
+      Evaluate-style detail pane (hero · histogram · facts grid).
+      Parent ComposeCard widens via the `width="wide"` prop so the
+      table doesn't squish.
+   4. Trace footer (always at the bottom).
+
+   Pre-deal scaffolding renders skeleton table rows immediately on Run.
+   ==================================================================== */
+
+/* One-line dedup signal above the table — shows count, group count,
+   and sort key in a single mono-toned line. No chip strip / filter UI;
+   cluster identity surfaces in the side detail when a row opens. */
+.pg-discover-summary {
+	margin: 0 0 10px;
+	font-size: 12px;
+	color: var(--text-3);
+}
+
+.pg-discover-summary-loading {
+	color: var(--brand);
+	font-style: italic;
+}
+
+.pg-discover-empty {
+	font-size: 13px;
+	color: var(--text-3);
+	margin: 12px 0;
+}
+
+/* ---------- table ---------- */
+
+.pg-discover-table-wrap {
+	min-width: 0;
+	overflow-x: auto;
+}
+
+/* `table-layout: fixed` forces columns to obey explicit `<th>` widths
+   (without it, auto layout sizes columns to content and a long title
+   stretches the cell wider than the column header, defeating the
+   `text-overflow: ellipsis` on the inner span). The Listing column has
+   no explicit width so it absorbs the leftover space. */
+.pg-discover-table {
+	width: 100%;
+	table-layout: fixed;
+	border-collapse: collapse;
+	font-size: 12.5px;
+	color: var(--text);
+}
+
+.pg-discover-th {
+	text-align: left;
+	padding: 4px 6px 6px;
+	font-weight: 500;
+	font-size: 10.5px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--text-3);
+	border-bottom: 1px solid var(--border-faint);
+	background: transparent;
+}
+
+.pg-discover-th--num,
+.pg-discover-td--num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	width: 76px;
+}
+
+.pg-discover-th--img,
+.pg-discover-td--img {
+	width: 40px;
+	padding: 4px 0 4px 6px;
+}
+
+.pg-discover-tr {
+	border-bottom: 1px solid var(--border-faint);
+	cursor: pointer;
+	transition: background 100ms ease;
+}
+
+.pg-discover-tr:hover {
+	background: var(--surface-2);
+}
+
+.pg-discover-tr:focus-visible {
+	outline: none;
+	background: var(--surface-2);
+	box-shadow: inset 2px 0 0 var(--brand);
+}
+
+.pg-discover-tr[data-selected="true"] {
+	background: var(--brand-soft);
+	box-shadow: inset 2px 0 0 var(--brand);
+}
+
+.pg-discover-tr--skel {
+	cursor: default;
+}
+
+.pg-discover-tr--skel:hover {
+	background: transparent;
+}
+
+/* Tighter than the prior 8px — denser scan rhythm, closer to the
+   Evaluate facts grid (5px). Vertical alignment on `middle` so single-
+   line title + mono numbers + rating pill all sit on one line. */
+.pg-discover-td {
+	padding: 5px 6px;
+	vertical-align: middle;
+}
+
+.pg-discover-thumb {
+	width: 32px;
+	height: 32px;
+	border: 1px solid var(--border-faint);
+	border-radius: 4px;
+	overflow: hidden;
+	background: var(--surface);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-4);
+}
+
+.pg-discover-thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+/* Single-line title with ellipsis. Trades long-title legibility for
+   row-height stability — every row is one line, so the table reads
+   as a clean ladder of opportunities. The full title is in the side
+   detail's hero. */
+.pg-discover-title-text {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+	color: var(--text);
+}
+
+/* Sub-line under the title — condition + active-count. Muted so the
+   title stays the focal point of the row. Reuses the global `·`
+   separator pseudo from the playground meta utilities. */
+.pg-discover-title-meta {
+	display: block;
+	margin-top: 2px;
+	font-size: 11.5px;
+	color: var(--text-4);
+	letter-spacing: -0.005em;
+}
+.pg-discover-title-meta > span + span::before {
+	content: "·";
+	margin: 0 6px;
+	color: var(--text-4);
+}
+
+.pg-discover-good { color: var(--success); }
+.pg-discover-warn { color: var(--danger); }
+
+/* ---------- detail drawer (right-side viewport overlay) ----------
+   Card stays at narrow width (Evaluate parity); drawer slides in from
+   the viewport's right edge so the table behind doesn't shift. Inside
+   the drawer body, content matches Evaluate's content width (~720px)
+   so the facts grid column ratio reads identically.
+
+   Closes on backdrop click, X button, or ESC. */
+
+.pg-discover-drawer-backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.18);
+	z-index: 50;
+	cursor: pointer;
+}
+
+.pg-discover-drawer {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: min(760px, 92vw);
+	background: var(--surface);
+	border-left: 1px solid var(--border-faint);
+	box-shadow: -12px 0 36px rgba(0, 0, 0, 0.10);
+	z-index: 51;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+}
+
+.pg-discover-drawer-body {
+	padding: 28px 32px 40px;
+	min-width: 0;
+}
+
+@media (max-width: 640px) {
+	.pg-discover-drawer-body {
+		padding: 20px 16px 32px;
+	}
+}
+
+.pg-discover-drawer-close {
+	position: absolute;
+	top: 14px;
+	right: 14px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 4px;
+	color: var(--text-3);
+	cursor: pointer;
+	z-index: 1;
+	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.pg-discover-drawer-close:hover {
+	background: var(--surface-2);
+	color: var(--text);
+	border-color: var(--border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pg-discover-drawer,
+	.pg-discover-drawer-backdrop {
+		transition: none !important;
+	}
+}
+
+/* ---------- search panel result ---------- */
+
+.pg-result-search {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+}
+
+/* Eyebrow row above the item list. Mode label on the left
+   (Active / Sold) for the active toggle context, count in the
+   middle, source pill on the right (rest / scrape / bridge).
+   Keeps the visual cue compact — same height + density as the
+   matched-pool list header in EvaluateResult. */
+.pg-result-search-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 4px 8px 10px;
+	font-family: var(--mono);
+	font-size: 11px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-3);
+}
+
+.pg-result-search-mode {
+	color: var(--text);
+	letter-spacing: 0.08em;
+}
+
+.pg-result-search-count {
+	color: var(--text-3);
+	flex: 1;
+}
+
+.pg-result-search-source {
+	color: var(--text-3);
+	border: 1px solid var(--border-faint);
+	border-radius: 3px;
+	padding: 1px 6px;
+	font-size: 10px;
+	letter-spacing: 0.04em;
+	text-transform: lowercase;
+}
+
+.pg-result-search-empty {
+	font-size: 13px;
+	color: var(--text-3);
+	padding: 24px 8px;
+	text-align: center;
+}
+
+/* Skeleton rows hold the row anatomy stable while the call is in
+   flight — same 36px / 1fr / auto grid as the live row. Thumb slot
+   wraps a Skel so its rounded corners + 1px border match the real
+   thumbnail. Disable hover affordances since there's nothing to
+   interact with yet. */
+.pg-result-matches-row--skel {
+	pointer-events: none;
+}
+
+.pg-result-matches-row--skel .pg-result-matches-thumb {
+	border: 1px solid var(--border-faint);
+	background: var(--surface);
+	overflow: hidden;
+}
+
+.pg-result-matches-row--skel .pg-result-matches-thumb .pg-result-skel {
+	border-radius: 0;
+	width: 100% !important;
+	height: 100% !important;
+}
+
+/* ---------- search pager ---------- */
+
+.pg-result-search-pager {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 18px;
+	padding: 14px 8px 4px;
+	border-top: 1px solid var(--border-faint);
+	margin-top: 6px;
+}
+
+.pg-result-search-pager-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 10px;
+	font-size: 12px;
+	color: var(--text-2);
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.pg-result-search-pager-btn:hover:not(:disabled) {
+	background: var(--surface-2);
+	color: var(--text);
+	border-color: var(--border);
+}
+
+.pg-result-search-pager-btn:disabled {
+	color: var(--text-4);
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.pg-result-search-pager-meta {
+	font-size: 11px;
+	letter-spacing: 0.06em;
+	color: var(--text-3);
+	text-transform: uppercase;
+}
+

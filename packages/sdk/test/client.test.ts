@@ -24,6 +24,21 @@ const STUB_EVALUATION = {
 	reason: "stubbed",
 };
 
+const STUB_META = {
+	itemSource: "scrape" as const,
+	compsQuery: "test query",
+	compsCount: 12,
+	compsSource: "scrape" as const,
+};
+
+const STUB_DISCOVER_META = {
+	activeCount: 1,
+	activeSource: "scrape" as const,
+	soldCount: 12,
+	soldSource: "scrape" as const,
+	clusterCount: 1,
+};
+
 const STUB_ITEM = {
 	itemId: "v1|123|0",
 	title: "test",
@@ -66,33 +81,29 @@ describe("createFlipagentClient", () => {
 	});
 
 	it("evaluate.listing posts /v1/evaluate", async () => {
-		const { calls, fetch } = fakeFetchOk(STUB_EVALUATION);
+		const { calls, fetch } = fakeFetchOk({ evaluation: STUB_EVALUATION, meta: STUB_META });
 		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
 
-		const evaluation = await client.evaluate.listing({ item: STUB_ITEM });
+		const res = await client.evaluate.listing({ itemId: "v1|123|0" });
 
-		expect(evaluation).toEqual(STUB_EVALUATION);
+		expect(res.evaluation).toEqual(STUB_EVALUATION);
+		expect(res.meta).toEqual(STUB_META);
 		expect(new URL(calls[0].url).pathname).toBe("/v1/evaluate");
 		expect(calls[0].init.method).toBe("POST");
 		expect((calls[0].init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
 	});
 
-	it("evaluate.signals posts /v1/evaluate/signals", async () => {
-		const { calls, fetch } = fakeFetchOk({ signals: [] });
-		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
-
-		await client.evaluate.signals({ item: STUB_ITEM, comparables: [] });
-
-		expect(new URL(calls[0].url).pathname).toBe("/v1/evaluate/signals");
-	});
-
 	it("discover.deals posts /v1/discover", async () => {
-		const { calls, fetch } = fakeFetchOk({ deals: [{ itemId: "v1|123|0", evaluation: STUB_EVALUATION }] });
+		const { calls, fetch } = fakeFetchOk({
+			clusters: [{ canonical: "charizard 1st", evaluation: STUB_EVALUATION }],
+			meta: STUB_DISCOVER_META,
+		});
 		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
 
-		const res = await client.discover.deals({ results: { itemSummaries: [STUB_ITEM] } });
+		const res = await client.discover.deals({ q: "charizard 1st edition" });
 
-		expect(res.deals).toHaveLength(1);
+		expect(res.clusters).toHaveLength(1);
+		expect(res.meta).toEqual(STUB_DISCOVER_META);
 		expect(new URL(calls[0].url).pathname).toBe("/v1/discover");
 	});
 
@@ -141,16 +152,16 @@ describe("createFlipagentClient", () => {
 
 	it("throws FlipagentApiError on non-2xx with upstream payload", async () => {
 		const fetch: typeof globalThis.fetch = async () =>
-			new Response(JSON.stringify({ error: "rate_limited", message: "no" }), {
+			new Response(JSON.stringify({ error: "credits_exceeded", message: "no" }), {
 				status: 429,
 				headers: { "Content-Type": "application/json" },
 			});
 		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
 
-		await expect(client.evaluate.listing({ item: STUB_ITEM })).rejects.toMatchObject({
+		await expect(client.evaluate.listing({ itemId: "v1|123|0" })).rejects.toMatchObject({
 			name: "FlipagentApiError",
 			status: 429,
-			detail: { error: "rate_limited", message: "no" },
+			detail: { error: "credits_exceeded", message: "no" },
 		});
 	});
 
