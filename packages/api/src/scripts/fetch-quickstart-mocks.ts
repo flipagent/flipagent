@@ -135,19 +135,38 @@ async function fetchDiscoverPreset(preset: DiscoverPreset): Promise<unknown> {
 }
 
 async function fetchEvaluatePreset(preset: EvaluatePreset): Promise<unknown> {
-	console.log(`\n[evaluate/${preset.key}] itemId=${preset.itemId} keyword=${JSON.stringify(preset.keyword)}`);
+	console.log(`\n[evaluate/${preset.key}] keyword=${JSON.stringify(preset.keyword)}`);
 
-	const detail = await scrapeItemDetail(preset.itemId);
-	if (!detail) {
-		console.log("  ! detail fetch failed");
+	// The hard-coded itemId in PlaygroundEvaluate's QUICKSTART_EXAMPLES is
+	// frequently stale (eBay listings expire ~30d). Resolve by searching
+	// the keyword and taking the cheapest live listing with an image — same
+	// strategy a logged-in user would get on first click.
+	const search = await scrapeSearch({
+		q: preset.keyword,
+		binOnly: true,
+		conditionIds: ["3000"],
+		sort: "pricePlusShippingLowest",
+		limit: 12,
+	});
+	const candidates = ("itemSummaries" in search ? search.itemSummaries : []) ?? [];
+	const live = candidates.find((s) => s.image?.imageUrl && Number.parseFloat(s.price?.value ?? "0") > 0);
+	if (!live) {
+		console.log("  ! no live listing found for keyword");
 		return { preset, detail: null };
 	}
-	console.log(`  ✓ "${detail.title}" $${detail.price?.value}`);
+	console.log(`  resolved → ${live.itemId} "${live.title}" $${live.price?.value}`);
+
+	const detail = await scrapeItemDetail(live.itemId);
+	if (!detail) {
+		console.log("  ! detail fetch failed for resolved itemId");
+		return { preset, detail: null };
+	}
+	console.log(`  ✓ detail "${detail.title}" $${detail.price?.value}`);
 
 	let detailWithLocalImage: typeof detail = detail;
-	const detailImage = detail.image?.imageUrl;
+	const detailImage = detail.image?.imageUrl ?? live.image?.imageUrl;
 	if (detailImage) {
-		const localUrl = await downloadImage(preset.itemId, detailImage);
+		const localUrl = await downloadImage(live.itemId, detailImage);
 		if (localUrl) {
 			detailWithLocalImage = { ...detail, image: { imageUrl: localUrl } };
 			console.log(`    ✓ image → ${localUrl}`);

@@ -91,7 +91,11 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 }
 
 export async function scrapeItemDetail(itemId: string): Promise<ItemDetail | null> {
-	const url = `https://www.ebay.com/itm/${encodeURIComponent(itemId)}`;
+	// eBay's web /itm/ path uses the legacy numeric id, not the v1 envelope.
+	// Strip `v1|<legacy>|<version>` → `<legacy>` so callers can pass either form.
+	const legacyMatch = /^v1\|(\d+)\|\d+$/.exec(itemId);
+	const legacyId = legacyMatch ? legacyMatch[1]! : itemId;
+	const url = `https://www.ebay.com/itm/${encodeURIComponent(legacyId)}`;
 	try {
 		const html = await fetchHtmlViaScraperApi(url);
 		const raw = parseEbayDetailHtml(html, url, domFactory);

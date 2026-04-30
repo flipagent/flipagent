@@ -1,6 +1,6 @@
 {
 	"name": "@flipagent/sdk",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "Official SDK for api.flipagent.dev — the unified reseller API. Typed namespaces for marketplace passthrough (listings, sold, buy.order, inventory, fulfillment, finance, markets, forwarder) plus flipagent intelligence (evaluate, discover, ship, expenses) and ops (webhooks, capabilities). One client, one API key.",
 	"type": "module",
 	"main": "./dist/index.js",

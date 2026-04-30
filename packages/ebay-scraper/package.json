@@ -1,6 +1,6 @@
 {
 	"name": "@flipagent/ebay-scraper",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "Plain-HTTP fetch + DOM-based parsers for eBay public pages. Standalone — bring your own HTTP client / proxy / OAuth.",
 	"type": "module",
 	"main": "./dist/index.js",

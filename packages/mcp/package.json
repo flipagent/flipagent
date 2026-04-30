@@ -1,6 +1,6 @@
 {
 	"name": "flipagent-mcp",
-	"version": "0.0.1",
+	"version": "0.0.3",
 	"description": "MCP server exposing flipagent's reseller toolchain (eBay search, sold-listing search, evaluate, discover, buy, list, ship, expenses) to Claude Desktop, Cursor, Cline, Zed, Continue, Windsurf, and any MCP-compatible AI client. Talks to api.flipagent.dev by default; point FLIPAGENT_BASE_URL elsewhere for self-host / staging.",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -20,7 +20,7 @@
 	},
 	"dependencies": {
 		"@flipagent/types": "^0.0.1",
-		"@flipagent/sdk": "^0.0.1",
+		"@flipagent/sdk": "^0.0.2",
 		"@modelcontextprotocol/sdk": "^1.0.0",
 		"@sinclair/typebox": "^0.34.41"
 	},
