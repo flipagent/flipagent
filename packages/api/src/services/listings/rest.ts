@@ -75,6 +75,16 @@ export async function fetchActiveSearchRest(
 	if (query.limit != null) params.set("limit", String(query.limit));
 	if (query.offset != null) params.set("offset", String(query.offset));
 	if (query.category_ids) params.set("category_ids", query.category_ids);
+	// eBay-spec optional params, forwarded verbatim. Names stay snake_case
+	// to match eBay's URL contract — agents reading eBay's docs find each
+	// query string identical between docs and our mirror.
+	if (query.aspect_filter) params.set("aspect_filter", query.aspect_filter);
+	if (query.gtin) params.set("gtin", query.gtin);
+	if (query.epid) params.set("epid", query.epid);
+	if (query.fieldgroups) params.set("fieldgroups", query.fieldgroups);
+	if (query.auto_correct) params.set("auto_correct", query.auto_correct);
+	if (query.compatibility_filter) params.set("compatibility_filter", query.compatibility_filter);
+	if (query.charity_ids) params.set("charity_ids", query.charity_ids);
 	return (await callBrowseRest("/buy/browse/v1/item_summary/search", params, opts)) as BrowseSearchResponse;
 }
 
@@ -88,6 +98,12 @@ export async function fetchSoldSearchRest(
 	if (query.offset != null && query.offset > 0) params.set("offset", String(query.offset));
 	if (query.filter) params.set("filter", query.filter);
 	if (query.category_ids) params.set("category_ids", query.category_ids);
+	// Marketplace Insights' subset of optional params — matches eBay's spec
+	// (no sort / auto_correct / compatibility_filter / charity_ids on sold).
+	if (query.aspect_filter) params.set("aspect_filter", query.aspect_filter);
+	if (query.gtin) params.set("gtin", query.gtin);
+	if (query.epid) params.set("epid", query.epid);
+	if (query.fieldgroups) params.set("fieldgroups", query.fieldgroups);
 	return (await callBrowseRest(
 		"/buy/marketplace_insights/v1_beta/item_sales/search",
 		params,

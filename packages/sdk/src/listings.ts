@@ -15,6 +15,19 @@ export interface ListingSearchParams {
 	offset?: number;
 	category_ids?: string;
 	marketplace?: string;
+	/**
+	 * eBay-spec optional params, forwarded as-is to the mirror URL.
+	 * Names stay snake_case to match eBay's docs verbatim. Only `gtin`,
+	 * `epid`, and `aspect_filter` are widely useful for resellers — the
+	 * rest mirror eBay's surface for callers who need exact parity.
+	 */
+	aspect_filter?: string;
+	gtin?: string;
+	epid?: string;
+	fieldgroups?: string;
+	auto_correct?: string;
+	compatibility_filter?: string;
+	charity_ids?: string;
 }
 
 export interface ListingsClient {

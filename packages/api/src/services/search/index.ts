@@ -31,6 +31,19 @@ export interface SearchInput {
 	/** Honoured only when `mode === "active"`; sold ignores it (Marketplace Insights has no sort axis). */
 	sort?: string;
 	categoryIds?: string;
+	/**
+	 * eBay-spec optional params. Both modes honour `aspect_filter` /
+	 * `gtin` / `epid` / `fieldgroups`; the rest (`auto_correct`,
+	 * `compatibility_filter`, `charity_ids`) are active-only per eBay's
+	 * Marketplace Insights spec — sold mode silently drops them.
+	 */
+	aspectFilter?: string;
+	gtin?: string;
+	epid?: string;
+	fieldgroups?: string;
+	autoCorrect?: string;
+	compatibilityFilter?: string;
+	charityIds?: string;
 }
 
 export interface SearchContext {
@@ -53,6 +66,10 @@ export async function search(
 				offset: input.offset,
 				filter: input.filter,
 				categoryIds: input.categoryIds,
+				aspectFilter: input.aspectFilter,
+				gtin: input.gtin,
+				epid: input.epid,
+				fieldgroups: input.fieldgroups,
 			},
 			ctx,
 		);
@@ -65,6 +82,13 @@ export async function search(
 			filter: input.filter,
 			sort: input.sort,
 			categoryIds: input.categoryIds,
+			aspectFilter: input.aspectFilter,
+			gtin: input.gtin,
+			epid: input.epid,
+			fieldgroups: input.fieldgroups,
+			autoCorrect: input.autoCorrect,
+			compatibilityFilter: input.compatibilityFilter,
+			charityIds: input.charityIds,
 		},
 		ctx,
 	);

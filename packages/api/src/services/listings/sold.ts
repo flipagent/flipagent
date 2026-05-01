@@ -34,6 +34,16 @@ export interface SoldSearchInput {
 	filter?: string;
 	categoryIds?: string;
 	conditionIds?: string[];
+	/**
+	 * eBay-spec optional params that Marketplace Insights supports
+	 * (subset of Browse — no sort, auto_correct, compatibility_filter,
+	 * or charity_ids on sold). REST + bridge forward verbatim; scrape
+	 * silently ignores.
+	 */
+	aspectFilter?: string;
+	gtin?: string;
+	epid?: string;
+	fieldgroups?: string;
 }
 
 export interface SoldSearchContext {
@@ -84,6 +94,10 @@ export async function searchSoldListings(
 		offset,
 		soldOnly: true,
 		categoryIds: input.categoryIds,
+		aspectFilter: input.aspectFilter,
+		gtin: input.gtin,
+		epid: input.epid,
+		fieldgroups: input.fieldgroups,
 	});
 
 	void recordQueryPulse({ keyword: input.q, categoryId: input.categoryIds });

@@ -54,6 +54,10 @@ ebaySoldSearchRoute.get(
 					offset: query.offset,
 					filter: query.filter,
 					categoryIds: query.category_ids,
+					aspectFilter: query.aspect_filter,
+					gtin: query.gtin,
+					epid: query.epid,
+					fieldgroups: query.fieldgroups,
 				},
 				{
 					apiKey: c.var.apiKey,

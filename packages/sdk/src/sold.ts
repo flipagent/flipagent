@@ -10,11 +10,21 @@ import type { FlipagentHttp } from "./http.js";
 export interface SoldSearchParams {
 	q: string;
 	filter?: string;
+	/** Marketplace Insights ignores `sort` — kept for parity, dropped at the route. */
 	sort?: string;
 	limit?: number;
 	offset?: number;
 	category_ids?: string;
 	marketplace?: string;
+	/**
+	 * eBay-spec optional params Marketplace Insights supports. eBay's
+	 * spec excludes `sort`, `auto_correct`, `compatibility_filter`, and
+	 * `charity_ids` for sold; we mirror that.
+	 */
+	aspect_filter?: string;
+	gtin?: string;
+	epid?: string;
+	fieldgroups?: string;
 }
 
 export interface SoldClient {

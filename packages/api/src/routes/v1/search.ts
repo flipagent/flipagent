@@ -63,6 +63,13 @@ searchRoute.get(
 					filter: query.filter,
 					sort: query.sort,
 					categoryIds: query.category_ids,
+					aspectFilter: query.aspect_filter,
+					gtin: query.gtin,
+					epid: query.epid,
+					fieldgroups: query.fieldgroups,
+					autoCorrect: query.auto_correct,
+					compatibilityFilter: query.compatibility_filter,
+					charityIds: query.charity_ids,
 				},
 				{
 					apiKey: c.var.apiKey,

@@ -24,6 +24,18 @@ export interface SearchParams {
 	offset?: number;
 	category_ids?: string;
 	marketplace?: string;
+	/**
+	 * eBay-spec optional params. `aspect_filter` / `gtin` / `epid` /
+	 * `fieldgroups` apply to both modes; the rest are active-only
+	 * (sold ignores them per Marketplace Insights spec).
+	 */
+	aspect_filter?: string;
+	gtin?: string;
+	epid?: string;
+	fieldgroups?: string;
+	auto_correct?: string;
+	compatibility_filter?: string;
+	charity_ids?: string;
 }
 
 export type SearchClient = (params: SearchParams) => Promise<BrowseSearchResponse>;

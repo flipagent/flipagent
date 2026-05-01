@@ -288,12 +288,60 @@ export const BrowseSearchQuery = Type.Object(
 		),
 		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 25 })),
 		offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+		/**
+		 * eBay aspect-based refinement, format
+		 * `categoryId:<id>,Aspect1:{Value1|Value2},Aspect2:{Value}`. The
+		 * categoryId prefix is required by eBay. Most useful for SKU-tier
+		 * narrowing (Color/Size/Brand) — pairs with the per-variation
+		 * aspects we surface on item detail.
+		 */
+		aspect_filter: Type.Optional(Type.String()),
+		/**
+		 * UPC / EAN / ISBN. Searches by the listing's GTIN aspect — useful
+		 * for catalog-driven flows where you already have the product's
+		 * universal identifier.
+		 */
+		gtin: Type.Optional(Type.String()),
+		/**
+		 * eBay catalog product id (ePID). Returns every listing tied to that
+		 * catalog entry — the cleanest way to gather "all listings of this
+		 * exact product" for cross-seller comparison.
+		 */
+		epid: Type.Optional(Type.String()),
+		/**
+		 * Comma-joined response field-group selector. eBay supports
+		 * `MATCHING_ITEMS` (default), `EXTENDED`, `ASPECT_REFINEMENTS`,
+		 * `BUYING_OPTIONS_REFINEMENTS`, `CATEGORY_REFINEMENTS`,
+		 * `CONDITION_REFINEMENTS`, `LISTING_TYPE_REFINEMENTS`, `FULL`.
+		 * Lets callers fetch the refinement aggregations alongside results.
+		 */
+		fieldgroups: Type.Optional(Type.String()),
+		/**
+		 * Toggle eBay's keyword autocorrect. Single legal value: `KEYWORD`.
+		 */
+		auto_correct: Type.Optional(Type.String()),
+		/**
+		 * Auto-parts vehicle compatibility filter, format
+		 * `name1:value1;name2:value2` (e.g. `Year:2010;Make:Honda;Model:Civic`).
+		 * REST-only; ignored by scrape/bridge.
+		 */
+		compatibility_filter: Type.Optional(Type.String()),
+		/**
+		 * Pipe-joined eBay charity ids — restricts results to charity
+		 * listings registered to those organizations.
+		 */
+		charity_ids: Type.Optional(Type.String()),
 	},
 	{ $id: "BrowseSearchQuery" },
 );
 export type BrowseSearchQuery = Static<typeof BrowseSearchQuery>;
 
-/** Query parameters for /buy/marketplace_insights/v1_beta/item_sales/search. */
+/**
+ * Query parameters for /buy/marketplace_insights/v1_beta/item_sales/search.
+ * Marketplace Insights mirrors most Browse search params but does NOT
+ * support `sort`, `auto_correct`, `compatibility_filter`, or `charity_ids`
+ * (eBay's spec). aspect_filter / gtin / epid / fieldgroups all apply.
+ */
 export const SoldSearchQuery = Type.Object(
 	{
 		q: Type.String({ description: "Keyword for sold listings." }),
@@ -305,6 +353,14 @@ export const SoldSearchQuery = Type.Object(
 		filter: Type.Optional(Type.String()),
 		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
 		offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+		/** Same `categoryId:<id>,Axis:{Value}` shape as BrowseSearchQuery.aspect_filter. */
+		aspect_filter: Type.Optional(Type.String()),
+		/** Restrict sold lookups to a UPC / EAN / ISBN. */
+		gtin: Type.Optional(Type.String()),
+		/** Restrict sold lookups to one eBay catalog product id (ePID). */
+		epid: Type.Optional(Type.String()),
+		/** Comma-joined response field-group selector. Same enum as Browse. */
+		fieldgroups: Type.Optional(Type.String()),
 	},
 	{ $id: "SoldSearchQuery" },
 );

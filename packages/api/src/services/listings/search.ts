@@ -60,6 +60,19 @@ export interface ActiveSearchInput {
 	 * `conditionIds:{1000|3000}`); pass them via `filter` for those.
 	 */
 	conditionIds?: string[];
+	/**
+	 * eBay-spec optional params. Forwarded verbatim to REST and bridge.
+	 * Scrape silently ignores them — eBay's web SRP doesn't expose
+	 * equivalents for most (aspect_filter, fieldgroups, etc.); agents
+	 * needing exact mirror semantics must use REST.
+	 */
+	aspectFilter?: string;
+	gtin?: string;
+	epid?: string;
+	fieldgroups?: string;
+	autoCorrect?: string;
+	compatibilityFilter?: string;
+	charityIds?: string;
 }
 
 export interface ActiveSearchContext {
@@ -109,6 +122,9 @@ export async function searchActiveListings(
 	const resolved: Required<Pick<ActiveSearchContext, "source">> & ActiveSearchContext = { ...ctx, source };
 	const limit = input.limit ?? 25;
 	const offset = input.offset ?? 0;
+	// All inputs that vary the upstream URL go into the queryHash so
+	// distinct param sets get distinct cache entries. Otherwise an
+	// aspect-filtered search would alias against the unfiltered one.
 	const queryHash = hashQuery({
 		q: input.q,
 		filter: input.filter,
@@ -117,6 +133,13 @@ export async function searchActiveListings(
 		offset,
 		soldOnly: false,
 		categoryIds: input.categoryIds,
+		aspectFilter: input.aspectFilter,
+		gtin: input.gtin,
+		epid: input.epid,
+		fieldgroups: input.fieldgroups,
+		autoCorrect: input.autoCorrect,
+		compatibilityFilter: input.compatibilityFilter,
+		charityIds: input.charityIds,
 	});
 
 	// Pulse fires every call (warm cache hits included) so the demand
@@ -155,6 +178,13 @@ async function dispatch(
 			...(input.filter ? { filter: input.filter } : {}),
 			...(input.sort ? { sort: input.sort } : {}),
 			...(input.categoryIds ? { category_ids: input.categoryIds } : {}),
+			...(input.aspectFilter ? { aspect_filter: input.aspectFilter } : {}),
+			...(input.gtin ? { gtin: input.gtin } : {}),
+			...(input.epid ? { epid: input.epid } : {}),
+			...(input.fieldgroups ? { fieldgroups: input.fieldgroups } : {}),
+			...(input.autoCorrect ? { auto_correct: input.autoCorrect } : {}),
+			...(input.compatibilityFilter ? { compatibility_filter: input.compatibilityFilter } : {}),
+			...(input.charityIds ? { charity_ids: input.charityIds } : {}),
 		};
 		return fetchActiveSearchRest(query, { marketplace: ctx.marketplace, acceptLanguage: ctx.acceptLanguage });
 	}
@@ -185,6 +215,13 @@ async function dispatch(
 		...(input.filter ? { filter: input.filter } : {}),
 		...(input.sort ? { sort: input.sort } : {}),
 		...(input.categoryIds ? { category_ids: input.categoryIds } : {}),
+		...(input.aspectFilter ? { aspect_filter: input.aspectFilter } : {}),
+		...(input.gtin ? { gtin: input.gtin } : {}),
+		...(input.epid ? { epid: input.epid } : {}),
+		...(input.fieldgroups ? { fieldgroups: input.fieldgroups } : {}),
+		...(input.autoCorrect ? { auto_correct: input.autoCorrect } : {}),
+		...(input.compatibilityFilter ? { compatibility_filter: input.compatibilityFilter } : {}),
+		...(input.charityIds ? { charity_ids: input.charityIds } : {}),
 	};
 	try {
 		return await bridgeListingsSearch(ctx.apiKey, bridgeQuery);
