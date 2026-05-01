@@ -249,8 +249,19 @@
 .admin-row--active:hover { background: var(--brand-soft); }
 
 .admin-table--compact { font-size: 12.5px; }
-.admin-table--compact thead th { padding: 8px 10px; font-size: 10.5px; }
+.admin-table--compact thead th {
+	padding: 8px 10px;
+	font-size: 10.5px;
+	background: transparent;
+}
 .admin-table--compact tbody td { padding: 8px 10px; }
+/* Inside a section card, drop the bottom border on the last row so the
+   table doesn't paint a hairline on top of the card border. */
+.admin-section .admin-table--compact tbody tr:last-child td { border-bottom: 0; }
+.admin-section .admin-list-empty {
+	padding: 20px 12px;
+	font-size: 12.5px;
+}
 
 .admin-user-cell { display: flex; align-items: center; gap: 10px; }
 .admin-avatar {
@@ -379,7 +390,11 @@
 .admin-section {
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 12px;
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 8px;
+	padding: 16px 18px;
 }
 .admin-section-head {
 	display: flex;
@@ -388,20 +403,32 @@
 	gap: 12px;
 }
 .admin-section-title {
-	font-size: 13px;
+	font-size: 12px;
 	font-weight: 500;
-	letter-spacing: 0.02em;
+	letter-spacing: 0.05em;
 	text-transform: uppercase;
 	color: var(--text-3);
 	margin: 0;
 }
+/* Divider that separates the form (e.g. grant credits) from the list
+   that follows (history / keys) inside the same section card. */
 .admin-subhead {
 	display: flex;
-	align-items: center;
+	align-items: baseline;
 	justify-content: space-between;
-	margin-top: 8px;
-	font-size: 12px;
+	margin-top: 6px;
+	padding-top: 12px;
+	border-top: 1px solid var(--border-faint);
+	font-size: 11px;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
 	color: var(--text-3);
+}
+.admin-subhead .admin-muted {
+	text-transform: none;
+	letter-spacing: 0;
+	font-size: 11.5px;
+	font-variant-numeric: tabular-nums;
 }
 .admin-hint {
 	font-size: 12px;
@@ -428,13 +455,22 @@
 }
 .admin-field--grow { flex: 1; min-width: 200px; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--text-3); }
 
+/* Reason gets its own row so it has room to actually read the placeholder /
+   typed value. Amount + Expires + Grant share the top row. */
 .admin-grant-form {
 	display: grid;
-	grid-template-columns: 130px 1fr 180px auto;
-	gap: 10px;
+	grid-template-columns: 140px 1fr auto;
+	grid-template-areas:
+		"amount  expires  grant"
+		"reason  reason   reason";
+	gap: 10px 12px;
 	align-items: end;
 }
-.admin-grant-form .admin-field { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.admin-grant-form .admin-field { text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--text-3); }
+.admin-grant-form .admin-field--amount  { grid-area: amount; }
+.admin-grant-form .admin-field--reason  { grid-area: reason; min-width: 0; }
+.admin-grant-form .admin-field--expires { grid-area: expires; }
+.admin-grant-form .admin-grant-submit   { grid-area: grant; }
 
 .admin-issued {
 	display: flex;
@@ -477,5 +513,14 @@
 	.admin-list-pane { border-right: 0; border-bottom: 1px solid var(--border-faint); }
 	.admin-stats { grid-template-columns: repeat(3, 1fr); }
 	.admin-detail-summary { grid-template-columns: repeat(2, 1fr); }
-	.admin-grant-form { grid-template-columns: 1fr 1fr; }
+}
+
+/* Narrow detail panes (right rail under ~640px): stack the grant form
+   into one column so the Grant button doesn't squeeze the inputs. */
+@media (max-width: 640px) {
+	.admin-grant-form {
+		grid-template-columns: 1fr;
+		grid-template-areas: "amount" "expires" "reason" "grant";
+	}
+	.admin-grant-form .admin-grant-submit { justify-self: start; }
 }

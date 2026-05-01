@@ -626,7 +626,7 @@ function UserDetailPanel({
 			<section className="admin-section">
 				<h3 className="admin-section-title">Grant credits</h3>
 				<form className="admin-grant-form" onSubmit={grantCredits}>
-					<label className="admin-field">
+					<label className="admin-field admin-field--amount">
 						<span>Amount</span>
 						<input
 							className="admin-input"
@@ -637,17 +637,7 @@ function UserDetailPanel({
 							placeholder="1000 (or -500 to claw back)"
 						/>
 					</label>
-					<label className="admin-field admin-field--grow">
-						<span>Reason</span>
-						<input
-							className="admin-input"
-							value={grantReason}
-							onChange={(e) => setGrantReason(e.target.value)}
-							placeholder="e.g. design partner, conf credit, refund"
-							maxLength={280}
-						/>
-					</label>
-					<label className="admin-field">
+					<label className="admin-field admin-field--expires">
 						<span>Expires</span>
 						<select
 							className="admin-select"
@@ -660,9 +650,23 @@ function UserDetailPanel({
 							<option value="90d">in 90 days</option>
 						</select>
 					</label>
-					<button className="admin-btn admin-btn--primary" type="submit" disabled={grantSubmitting}>
+					<button
+						className="admin-btn admin-btn--primary admin-grant-submit"
+						type="submit"
+						disabled={grantSubmitting}
+					>
 						{grantSubmitting ? "Granting…" : "Grant"}
 					</button>
+					<label className="admin-field admin-field--reason">
+						<span>Reason</span>
+						<input
+							className="admin-input"
+							value={grantReason}
+							onChange={(e) => setGrantReason(e.target.value)}
+							placeholder="e.g. design partner, conf credit, refund"
+							maxLength={280}
+						/>
+					</label>
 				</form>
 
 				<div className="admin-subhead">
