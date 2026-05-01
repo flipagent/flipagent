@@ -73,8 +73,8 @@ const IconStack = (
 );
 
 const QUICKSTART_EXAMPLES: ReadonlyArray<{ label: string; itemId: string }> = [
-	{ label: "Gucci YA1264153 watch", itemId: "406338886641" },
-	{ label: "Travis Scott AJ1 Mocha (sz 11)", itemId: "358471670268" },
+	{ label: "Gucci YA1264153 watch", itemId: "388236252829" },
+	{ label: "Travis Scott AJ1 Mocha (sz 4)", itemId: "127595526397" },
 ];
 
 // Min profit / Sell within / Shipping option arrays + the More-panel

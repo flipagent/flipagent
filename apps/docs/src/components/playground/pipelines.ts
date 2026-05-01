@@ -13,7 +13,7 @@
 
 import { apiBase } from "../../lib/authClient";
 import { playgroundApi, type ApiPlan, type ApiResponse } from "./api";
-import { MOCK_DISCOVER, mockEvaluateFixture } from "./mockData";
+import { mockDiscoverFixture, mockEvaluateFixture } from "./mockData";
 import type {
 	BrowseSearchResponse,
 	DealCluster,
@@ -901,7 +901,8 @@ export async function runDiscoverMock(
 	signal?: AbortSignal,
 ): Promise<StreamOutcome<DiscoverOutcome>> {
 	const { onStep, onPartial } = callbacks;
-	const search = MOCK_DISCOVER.search;
+	const fixture = mockDiscoverFixture({ q: inputs.q, categoryId: inputs.categoryId });
+	const search = fixture.search;
 	const findStep = (key: string): { key: string; label: string; parent?: string } => {
 		const s = DISCOVER_STEPS.find((step) => step.key === key);
 		if (!s) throw new Error(`unknown mock discover step ${key}`);
@@ -935,7 +936,7 @@ export async function runDiscoverMock(
 		await delay(MOCK_STEP_DELAY_MS, signal);
 		onStep(clusterStep.key, {
 			status: "ok",
-			result: { count: MOCK_DISCOVER.clusters.length },
+			result: { count: fixture.clusters.length },
 			durationMs: MOCK_STEP_DELAY_MS,
 		});
 
@@ -945,12 +946,12 @@ export async function runDiscoverMock(
 		await delay(MOCK_STEP_DELAY_MS, signal);
 		onStep(partitionStep.key, {
 			status: "ok",
-			result: { variantCount: MOCK_DISCOVER.clusters.length },
+			result: { variantCount: fixture.clusters.length },
 			durationMs: MOCK_STEP_DELAY_MS,
 		});
 
 		// emit cluster.identified placeholders so the UI fills in skeleton rows
-		const placeholders = MOCK_DISCOVER.clusters.map((c, idx) => ({
+		const placeholders = fixture.clusters.map((c, idx) => ({
 			idx,
 			canonical: c.canonical,
 			source: c.source,
@@ -1002,9 +1003,9 @@ export async function runDiscoverMock(
 
 		// 4. fill in clusters one by one — synthetic timing
 		const ready: DealCluster[] = [];
-		for (let idx = 0; idx < MOCK_DISCOVER.clusters.length; idx++) {
+		for (let idx = 0; idx < fixture.clusters.length; idx++) {
 			await delay(MOCK_STEP_DELAY_MS, signal);
-			ready.push(MOCK_DISCOVER.clusters[idx]!);
+			ready.push(fixture.clusters[idx]!);
 			onPartial?.({ clusters: [...ready] });
 		}
 
