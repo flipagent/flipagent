@@ -750,16 +750,21 @@ resource "azurerm_container_app" "worker" {
       }
     }
 
-    # KEDA Postgres scaler — count claimable rows (queued + expired lease)
-    # and target one row per replica. With min_replicas=0,
-    # `activationTargetQueryValue=0` means: scale from 0 the moment a row
-    # appears. The query mirrors `claimNextJob`'s WHERE clause so KEDA
-    # exactly matches what the worker actually claims.
+    # KEDA Postgres scaler — count rows the worker either has or could pick
+    # up. Earlier this excluded `running` rows with a valid lease, on the
+    # theory that a healthy in-flight job needed no extra replica. That
+    # opened a fatal scale-down race: when the queue drained, KEDA started
+    # its 5min cooldown timer, then sent SIGTERM mid-pipeline; the worker's
+    # 30s shutdown grace was shorter than the filter step (~50s typical)
+    # so the job got orphaned and the user waited 5+min for lease recovery
+    # to spin a new replica. Counting active running jobs too keeps the
+    # current replica alive while it's busy. With `min_replicas=0` we
+    # still scale to 0 once everything is terminal.
     custom_scale_rule {
       name             = "compute-jobs-depth"
       custom_rule_type = "postgresql"
       metadata = {
-        query                      = "SELECT count(*)::int FROM compute_jobs WHERE cancel_requested = false AND (status = 'queued' OR (status = 'running' AND lease_until < now()))"
+        query                      = "SELECT count(*)::int FROM compute_jobs WHERE cancel_requested = false AND status IN ('queued', 'running')"
         targetQueryValue           = tostring(var.worker_keda_target)
         activationTargetQueryValue = "0"
       }
