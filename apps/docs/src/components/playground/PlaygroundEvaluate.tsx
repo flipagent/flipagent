@@ -28,6 +28,7 @@ import {
 	reopenEvaluate,
 	runEvaluate,
 	runEvaluateMock,
+	toBannerError,
 	type EvaluateOutcome,
 } from "./pipelines";
 import { useResumeSweep } from "./useResumeSweep";
@@ -113,7 +114,7 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 	// in pieces (item hero first, then market summary, then evaluation)
 	// instead of staying blank until the whole pipeline finishes.
 	const [outcome, setOutcome] = useState<Partial<EvaluateOutcome>>({});
-	const [err, setErr] = useState<string | null>(null);
+	const [err, setErr] = useState<{ message: string; upgradeUrl?: string } | null>(null);
 	const [hasRun, setHasRun] = useState(false);
 	const recent = useRecentRuns<EvaluateQuery>("evaluate");
 	// Active job + abort controller. Track in refs (not state) since the
@@ -153,9 +154,10 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 	) {
 		const itemId = parseItemId(rawInput);
 		if (!itemId) {
-			setErr(
-				"That doesn't look like a valid eBay listing. Paste an item id (e.g. 406338886641) or any eBay listing URL.",
-			);
+			setErr({
+				message:
+					"That doesn't look like a valid eBay listing. Paste an item id (e.g. 406338886641) or any eBay listing URL.",
+			});
 			return;
 		}
 		// Logged-out + custom listing → redirect to sign-in. The mock
@@ -255,7 +257,7 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 				// top-level error in sync; otherwise "Search market"
 				// stays spinning while only "Evaluate" shows red.
 				const friendly = friendlyErrorMessage(result.message, result.code);
-				setErr(friendly);
+				setErr({ message: friendly });
 				setSteps((prev) =>
 					prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: friendly } : s)),
 				);
@@ -277,13 +279,14 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 				jobId: jobIdRef.current ?? undefined,
 			});
 		} catch (err) {
-			// Last-resort catch — runner now returns a discriminated outcome
-			// instead of throwing for stream errors, but a bug above (e.g.
-			// `createEvaluateJob` rejecting) could still land here.
-			const message = err instanceof Error ? err.message : String(err);
-			setErr(`Something went wrong: ${message}`);
+			// Pre-stream failures — `createEvaluateJob` rejecting (e.g. 429
+			// credits_exceeded from middleware before a job row is created).
+			// `toBannerError` rewrites the JSON envelope into a friendly
+			// banner + optional upgrade URL.
+			const banner = toBannerError(err);
+			setErr(banner);
 			setSteps((prev) =>
-				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: message } : s)),
+				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: banner.message } : s)),
 			);
 			recent.add({
 				...recentBase,
@@ -339,7 +342,7 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 		// stay marked successful even if the data is gone).
 		const exists = await fetchJobStatus("evaluate", id);
 		if (!exists) {
-			setErr("This run is no longer available — hit Run to re-execute with the same query.");
+			setErr({ message: "This run is no longer available — hit Run to re-execute with the same query." });
 			setHasRun(false);
 			return;
 		}
@@ -382,7 +385,7 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 			if (result.kind === "success") setOutcome(result.value);
 			else if (result.kind === "failed") {
 				const friendly = friendlyErrorMessage(result.message, result.code);
-				setErr(friendly);
+				setErr({ message: friendly });
 				setSteps((prev) =>
 					prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: friendly } : s)),
 				);
@@ -393,10 +396,10 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 			}
 			if (rec.status !== finalStatus) recent.update(rec.id, { status: finalStatus });
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			setErr(`Something went wrong: ${message}`);
+			const banner = toBannerError(err);
+			setErr(banner);
 			setSteps((prev) =>
-				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: message } : s)),
+				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: banner.message } : s)),
 			);
 		} finally {
 			setPending(false);
@@ -493,7 +496,22 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 
 				{(hasRun || err) && (
 					<ComposeOutput>
-						{err && <p className="text-[13px] text-[#c0392b] mb-3">{err}</p>}
+						{err && (
+							<p className="text-[13px] text-[#c0392b] mb-3">
+								{err.message}
+								{err.upgradeUrl && (
+									<>
+										{" "}
+										<a
+											href={err.upgradeUrl}
+											className="underline underline-offset-2 font-medium hover:opacity-80"
+										>
+											Upgrade →
+										</a>
+									</>
+								)}
+							</p>
+						)}
 						{hasRun && !err && (
 							<EvaluateResult
 								outcome={outcome}

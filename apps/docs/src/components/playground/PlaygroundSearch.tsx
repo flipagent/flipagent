@@ -24,6 +24,7 @@ import { FilterPill, type SelectOption } from "../compose/FilterPill";
 import { Chips, type ChipOption } from "../ui/Chips";
 import { Field } from "../ui/Field";
 import { playgroundApi } from "./api";
+import { friendlyErrorMessage, toBannerError } from "./pipelines";
 import { QuickStarts, type QuickStart } from "./QuickStarts";
 import { useRecentRuns, type RecentRun } from "./recent";
 import { RecentRuns } from "./RecentRuns";
@@ -192,7 +193,7 @@ export function PlaygroundSearch<TabId extends string = "search" | "discover" | 
 		offset: 0,
 	});
 	const [hasRun, setHasRun] = useState(false);
-	const [err, setErr] = useState<string | null>(null);
+	const [err, setErr] = useState<{ message: string; upgradeUrl?: string } | null>(null);
 	const recent = useRecentRuns<SearchQuery>("search");
 	const abortRef = useRef<AbortController | null>(null);
 
@@ -274,12 +275,21 @@ export function PlaygroundSearch<TabId extends string = "search" | "discover" | 
 		try {
 			const res = await plan.exec();
 			if (!res.ok) {
-				const body = res.body as { error?: string; message?: string } | undefined;
+				const body = (res.body ?? null) as Record<string, unknown> | null;
+				const code = typeof body?.error === "string" ? (body.error as string) : undefined;
+				const rawMessage =
+					typeof body?.message === "string"
+						? (body.message as string)
+						: res.status === 0
+							? "network error"
+							: `HTTP ${res.status}`;
 				const friendly =
 					res.status === 0
-						? `Couldn't reach the API — ${body?.message || "network error"}`
-						: [body?.error, body?.message].filter(Boolean).join(": ") || `HTTP ${res.status}`;
-				setErr(friendly);
+						? `Couldn't reach the API — ${rawMessage}`
+						: friendlyErrorMessage(rawMessage, code, body);
+				const upgradeUrl =
+					typeof body?.upgrade === "string" ? (body.upgrade as string) : undefined;
+				setErr({ message: friendly, ...(upgradeUrl ? { upgradeUrl } : {}) });
 				setSteps((prev) =>
 					prev.map((s) =>
 						s.key === stepKey
@@ -322,10 +332,10 @@ export function PlaygroundSearch<TabId extends string = "search" | "discover" | 
 				);
 				return;
 			}
-			const message = caught instanceof Error ? caught.message : String(caught);
-			setErr(`Something went wrong: ${message}`);
+			const banner = toBannerError(caught);
+			setErr(banner);
 			setSteps((prev) =>
-				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: message } : s)),
+				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: banner.message } : s)),
 			);
 			recent.add({ ...recentBase, timestamp: Date.now(), status: "failure" });
 		} finally {
@@ -485,7 +495,22 @@ export function PlaygroundSearch<TabId extends string = "search" | "discover" | 
 
 				{(hasRun || err) && (
 					<ComposeOutput>
-						{err && <p className="text-[13px] text-[#c0392b] mb-3">{err}</p>}
+						{err && (
+							<p className="text-[13px] text-[#c0392b] mb-3">
+								{err.message}
+								{err.upgradeUrl && (
+									<>
+										{" "}
+										<a
+											href={err.upgradeUrl}
+											className="underline underline-offset-2 font-medium hover:opacity-80"
+										>
+											Upgrade →
+										</a>
+									</>
+								)}
+							</p>
+						)}
 						{hasRun && !err && (
 						<SearchResult
 							outcome={outcome}

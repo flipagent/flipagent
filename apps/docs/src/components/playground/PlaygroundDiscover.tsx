@@ -30,6 +30,7 @@ import {
 	reopenDiscover,
 	runDiscover,
 	runDiscoverMock,
+	toBannerError,
 	type DiscoverInputs,
 	type DiscoverOutcome,
 } from "./pipelines";
@@ -185,7 +186,7 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 	// cluster finishes.
 	const [outcome, setOutcome] = useState<Partial<DiscoverOutcome>>({});
 	const [hasRun, setHasRun] = useState(false);
-	const [err, setErr] = useState<string | null>(null);
+	const [err, setErr] = useState<{ message: string; upgradeUrl?: string } | null>(null);
 	// True iff the current `query` came verbatim from a QUICKSTART preset
 	// (no user edits). When false in mockMode, Run redirects to /signup
 	// instead of showing canned mock data — the canned response doesn't
@@ -318,7 +319,7 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 				// one place so we don't leave Search market spinning while
 				// only Evaluate shows red.
 				const friendly = friendlyErrorMessage(result.message, result.code);
-				setErr(friendly);
+				setErr({ message: friendly });
 				setSteps((prev) =>
 					prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: friendly } : s)),
 				);
@@ -339,10 +340,13 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 				jobId: jobIdRef.current ?? undefined,
 			});
 		} catch (caught) {
-			const message = caught instanceof Error ? caught.message : String(caught);
-			setErr(`Something went wrong: ${message}`);
+			// Pre-stream failures — `createDiscoverJob` rejecting (e.g. 429
+			// credits_exceeded). `toBannerError` rewrites the JSON envelope
+			// into a friendly banner + optional upgrade URL.
+			const banner = toBannerError(caught);
+			setErr(banner);
 			setSteps((prev) =>
-				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: message } : s)),
+				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: banner.message } : s)),
 			);
 			recent.add({ ...recentBase, timestamp: Date.now(), status: "failure", jobId: jobIdRef.current ?? undefined });
 		} finally {
@@ -373,7 +377,7 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 		// status; the historical run was still real.
 		const exists = await fetchJobStatus("discover", id);
 		if (!exists) {
-			setErr("This run is no longer available — hit Run to re-execute with the same query.");
+			setErr({ message: "This run is no longer available — hit Run to re-execute with the same query." });
 			setHasRun(false);
 			return;
 		}
@@ -404,7 +408,7 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 			if (result.kind === "success") setOutcome(result.value);
 			else if (result.kind === "failed") {
 				const friendly = friendlyErrorMessage(result.message, result.code);
-				setErr(friendly);
+				setErr({ message: friendly });
 				setSteps((prev) =>
 					prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: friendly } : s)),
 				);
@@ -417,10 +421,10 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 				result.kind === "success" ? "success" : result.kind === "cancelled" ? "cancelled" : "failure";
 			if (rec.status !== finalStatus) recent.update(rec.id, { status: finalStatus });
 		} catch (caught) {
-			const message = caught instanceof Error ? caught.message : String(caught);
-			setErr(`Something went wrong: ${message}`);
+			const banner = toBannerError(caught);
+			setErr(banner);
 			setSteps((prev) =>
-				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: message } : s)),
+				prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: banner.message } : s)),
 			);
 		} finally {
 			setPending(false);
@@ -566,7 +570,22 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 
 			{(hasRun || err) && (
 				<ComposeOutput>
-					{err && <p className="text-[13px] text-[#c0392b] mb-3">{err}</p>}
+					{err && (
+						<p className="text-[13px] text-[#c0392b] mb-3">
+							{err.message}
+							{err.upgradeUrl && (
+								<>
+									{" "}
+									<a
+										href={err.upgradeUrl}
+										className="underline underline-offset-2 font-medium hover:opacity-80"
+									>
+										Upgrade →
+									</a>
+								</>
+							)}
+						</p>
+					)}
 					{hasRun && !err && (
 						<DiscoverResult
 							outcome={outcome}

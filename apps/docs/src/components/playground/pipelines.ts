@@ -211,6 +211,45 @@ export interface ComputeJobAck {
 	status: "queued" | "running" | "completed" | "failed" | "cancelled";
 }
 
+/**
+ * Typed error thrown by the playground's POST/stream helpers when the
+ * server returns a non-2xx with a JSON envelope (`{ error, message, ... }`).
+ * Carries the parsed body so the panel can surface specific affordances
+ * (e.g. an Upgrade link for `credits_exceeded`) instead of dumping the
+ * raw JSON into the banner.
+ */
+export class ApiJobError extends Error {
+	readonly code: string;
+	readonly status: number;
+	readonly body: Record<string, unknown> | null;
+	constructor(code: string, message: string, status: number, body: Record<string, unknown> | null) {
+		super(message);
+		this.name = "ApiJobError";
+		this.code = code;
+		this.status = status;
+		this.body = body;
+	}
+}
+
+async function readErrorEnvelope(res: Response, path: string): Promise<ApiJobError> {
+	const text = await res.text().catch(() => "");
+	let parsed: Record<string, unknown> | null = null;
+	try {
+		const v = JSON.parse(text);
+		if (v && typeof v === "object") parsed = v as Record<string, unknown>;
+	} catch {
+		// non-JSON body — fall through to text-shaped fallback
+	}
+	const code = typeof parsed?.error === "string" ? (parsed.error as string) : `http_${res.status}`;
+	const message =
+		typeof parsed?.message === "string"
+			? (parsed.message as string)
+			: text
+				? `${path} failed: HTTP ${res.status} — ${text.slice(0, 200)}`
+				: `${path} failed: HTTP ${res.status}`;
+	return new ApiJobError(code, message, res.status, parsed);
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
 	const res = await fetch(`${apiBase}${path}`, {
 		method: "POST",
@@ -219,8 +258,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 		body: JSON.stringify(body),
 	});
 	if (!res.ok) {
-		const text = await res.text().catch(() => "");
-		throw new Error(`POST ${path} failed: HTTP ${res.status}${text ? ` — ${text.slice(0, 200)}` : ""}`);
+		throw await readErrorEnvelope(res, `POST ${path}`);
 	}
 	return (await res.json()) as T;
 }
@@ -274,8 +312,7 @@ async function* subscribeJobStream(
 		signal,
 	});
 	if (!res.ok || !res.body) {
-		const text = await res.text().catch(() => "");
-		throw new Error(`stream open failed: HTTP ${res.status}${text ? ` — ${text.slice(0, 200)}` : ""}`);
+		throw await readErrorEnvelope(res, `GET /v1/${kind}/jobs/${jobId}/stream`);
 	}
 	const reader = res.body.getReader();
 	const decoder = new TextDecoder();
@@ -352,7 +389,7 @@ export type StreamOutcome<T> =
  * friendly recovery hint; everything else falls back to the raw
  * server message.
  */
-export function friendlyErrorMessage(message: string, code?: string): string {
+export function friendlyErrorMessage(message: string, code?: string, body?: Record<string, unknown> | null): string {
 	if (code === "worker_crashed") {
 		return "This run was interrupted by a server restart. Hit Run to try again.";
 	}
@@ -368,6 +405,20 @@ export function friendlyErrorMessage(message: string, code?: string): string {
 	if (code === "no_title") {
 		return "Listing has no title — can't search comparable sales.";
 	}
+	if (code === "credits_exceeded") {
+		const used = typeof body?.creditsUsed === "number" ? (body.creditsUsed as number) : null;
+		const limit = typeof body?.creditsLimit === "number" ? (body.creditsLimit as number) : null;
+		const resetAt = typeof body?.resetAt === "string" ? (body.resetAt as string) : null;
+		const usage = used != null && limit != null ? ` (${used} / ${limit} used)` : "";
+		// Free tier is a one-time grant — no reset; paid tiers refill monthly.
+		return resetAt
+			? `Monthly credits exhausted${usage}. They refill on ${formatResetDate(resetAt)}, or upgrade for higher limits.`
+			: `You've used your free credits${usage}. Upgrade to keep running this pipeline.`;
+	}
+	if (code === "burst_rate_limited") {
+		const window = typeof body?.window === "string" ? (body.window as string) : "minute";
+		return `Too many requests in the last ${window}. Wait a bit and try again — or upgrade for a higher burst limit.`;
+	}
 	// Stream truncated mid-run (network glitch, server restart, dropped
 	// connection). The job often did complete server-side — clicking
 	// the Recent row will hydrate from the saved result.
@@ -375,6 +426,27 @@ export function friendlyErrorMessage(message: string, code?: string): string {
 		return "Connection to the server was interrupted. The run may have finished — check the Recent strip below.";
 	}
 	return message || "Something went wrong.";
+}
+
+function formatResetDate(iso: string): string {
+	const t = Date.parse(iso);
+	if (!Number.isFinite(t)) return iso;
+	return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/**
+ * Build a banner-shape error from a thrown value: the friendly message
+ * + an optional upgrade URL when the server returned one (today only
+ * `credits_exceeded` carries `upgrade`). Keeps panels free of
+ * ApiJobError-specific branching at every catch site.
+ */
+export function toBannerError(err: unknown): { message: string; upgradeUrl?: string } {
+	if (err instanceof ApiJobError) {
+		const upgradeUrl = typeof err.body?.upgrade === "string" ? (err.body.upgrade as string) : undefined;
+		return { message: friendlyErrorMessage(err.message, err.code, err.body), ...(upgradeUrl ? { upgradeUrl } : {}) };
+	}
+	const message = err instanceof Error ? err.message : String(err);
+	return { message: friendlyErrorMessage(message) };
 }
 
 export async function runEvaluate(
