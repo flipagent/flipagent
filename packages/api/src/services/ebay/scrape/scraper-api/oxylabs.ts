@@ -30,14 +30,15 @@ const ENDPOINT = "https://realtime.oxylabs.io/v1/queries";
 const TIMEOUT_MS = 90_000;
 /**
  * Per-account parallel-request cap Oxylabs enforces on the Realtime
- * endpoint. Empirically measured on the test/dev account: 15 in-flight
- * succeed, 16th returns 429 ("Total Dynamic") within ~700ms. Cap at 14
- * (1 slot headroom under the hard ceiling) so the in-process queue is
- * the sole gate — never trip Oxylabs's own 429. Discover fans many
- * detail/sold/active calls in parallel per request; this maximises
- * throughput regardless of which user fired them. Bump with the plan.
+ * endpoint. Re-measured 2026-04-30 on the prod `deeptrue_*` account
+ * via `scripts/scraper-concurrency-probe.ts`: 48 in-flight succeed
+ * with zero 429s; p95 latency at 48 is 84s and crowds the 90s timeout.
+ * Set to 40 — full throughput with a comfortable timeout margin.
+ * Discover fans many detail/sold/active calls in parallel per request;
+ * this is the sole gate for the whole process, regardless of which
+ * user fired them. Re-probe and bump if the plan tier changes.
  */
-const MAX_CONCURRENT = 14;
+const MAX_CONCURRENT = 40;
 
 const semaphore = new Semaphore(MAX_CONCURRENT);
 
