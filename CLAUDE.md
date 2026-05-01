@@ -21,9 +21,10 @@ any other vendor-side concern.
 | `packages/types` | `@flipagent/types` | MIT | TypeBox schemas for flipagent's own `/v1/*` — `evaluate`, `discover`, `ship` (intelligence layer) plus errors, tier, billing, keys, takedown, health |
 | `packages/types/ebay` | `@flipagent/types/ebay` | MIT | TypeBox schemas mirroring eBay REST shapes — `/buy` (Browse + Marketplace Insights) and `/sell` (Inventory, Fulfillment) subpaths |
 | `packages/ebay-scraper` | `@flipagent/ebay-scraper` | MIT | eBay HTML parsers + plain-HTTP fetcher (BYO proxy) |
-| `packages/sdk` | `@flipagent/sdk` | MIT | Typed client. Marketplace passthrough namespaces (`listings`, `sold`, `orders`, `inventory`, `fulfillment`, `finance`, `markets`) plus flipagent intelligence (`evaluate`, `discover`, `ship`, `expenses`) and ops (`webhooks`, `capabilities`). |
+| `packages/sdk` | `@flipagent/sdk` | MIT | Typed client. Marketplace passthrough namespaces (`listings`, `sold`, `buy.order`, `inventory`, `fulfillment`, `finance`, `markets`, `forwarder`) plus flipagent intelligence (`evaluate`, `discover`, `ship`, `expenses`) and ops (`webhooks`, `capabilities`). |
 | `packages/mcp` | `flipagent-mcp` | MIT | MCP server — exposes eBay tools + deal-finding tools to Claude Desktop / Cursor / Cline. |
 | `packages/cli` | `flipagent-cli` | MIT | One-command MCP setup. Detects Claude Desktop / Cursor and writes the `flipagent` server entry. `npx -y flipagent-cli init --mcp --keys`. |
+| `packages/extension` | `@flipagent/extension` | MIT | Chrome extension — local executor for the bridge surfaces (`/v1/buy/order/*`, `/v1/forwarder/*`, `/v1/browser/*`). Runs jobs inside the user's existing Chrome (their cookies, their marketplace logins). |
 | `packages/api` | `@flipagent/api` | FSL-1.1-ALv2 (private — not published, source on GitHub; converts to Apache 2.0 two years after each release) | Hono backend: unified API surface (eBay-compat + `/v1/*`), scraping, scoring, auth, billing. |
 | `apps/docs` | `@flipagent/docs` | proprietary (All Rights Reserved) | flipagent.dev marketing + dashboard site (Astro static). Source visible for transparency; redistribution / rebrand not permitted. |
 
@@ -42,12 +43,12 @@ any other vendor-side concern.
                       │     (Hono backend)       Oxylabs Web Scraper API
    @flipagent/ebay-scraper ─────►  │              eBay / Amazon / Mercari (future)
                                    │
-                                   └──►  services/{scoring,quant,forwarder} (server-side math)
+                                   └──►  services/{quant,forwarder} (server-side math)
 ```
 
 `flipagent-mcp` calls flipagent's hosted API through `@flipagent/sdk`.
 Math (median, margin, scoring, recipes) runs **server-side** in
-`packages/api/src/services/scoring/` so all SDK clients in any language
+`packages/api/src/services/quant/` so all SDK clients in any language
 get the same scoring without re-implementing it.
 
 ## Structural rules
@@ -229,11 +230,10 @@ layers serving different audiences:
     user-facing surfaces that internally queue work via the bridge.
     Audience: agents / SDK callers.
 
-The shared bridge queue infra lives in `services/orders/queue.ts`
-(name predates the split). Each public surface calls `createOrder`
-with its own `source` value; the bridge route maps source → task name
-via `services/ebay/bridge/tasks.ts`. Future `services/orders/queue.ts`
-rename to `services/bridge-jobs/` is queued as a separate cleanup.
+The shared bridge queue infra lives in `services/bridge-jobs/queue.ts`.
+Each public surface calls `createBridgeJob` with its own `source` value;
+the bridge route maps source → task name via
+`services/ebay/bridge/tasks.ts`.
 
 ## Code conventions
 
@@ -316,7 +316,7 @@ rename to `services/bridge-jobs/` is queued as a separate cleanup.
 - **eBay bridge task.** Add a constant to `BRIDGE_TASKS` in
   `services/ebay/bridge/tasks.ts`, declare bridge capability in
   `RESOURCE_TRANSPORTS`, and have the resource service queue the
-  task through the existing bridge queue (`services/orders/queue`).
+  task through the existing bridge queue (`services/bridge-jobs/queue`).
   The Chrome extension picks it up via `/v1/bridge/poll`.
 - **Service-result envelope.** Every resource service returns
   `FlipagentResult<T> = { body, source, fromCache, cachedAt? }` from
@@ -336,8 +336,8 @@ rename to `services/bridge-jobs/` is queued as a separate cleanup.
   `packages/types/src/` — `evaluate.ts` / `discover.ts` / `ship.ts` /
   `expenses.ts` for the intelligence layer, `flipagent.ts` for
   account/ops, or a new file matching the route namespace.
-- New scoring algorithm → goes to `packages/api/src/services/scoring/`
-  (or `quant/` for low-level stats, `forwarder/` for shipping rates).
+- New scoring algorithm → goes to `packages/api/src/services/quant/`
+  (low-level stats, scoring, margin) or `forwarder/` (shipping rates).
   Pure functions, no I/O, cents-denominated. Add a vitest in
   `packages/api/test/services/`.
 - New scraper helper → goes to `@flipagent/ebay-scraper` only if it's

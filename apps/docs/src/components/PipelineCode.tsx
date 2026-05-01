@@ -282,7 +282,7 @@ const STEPS: Step[] = [
 				")",
 			],
 			node: [
-				<>{KEY("const")} {"{"} orders {"}"} = {KEY("await")} client.orders.{FN("list")}({"{"}</>,
+				<>{KEY("const")} {"{"} orders {"}"} = {KEY("await")} client.fulfillment.{FN("listOrders")}({"{"}</>,
 				<>{"  "}status: {STR('"awaiting_shipment"')}, limit: {NUM("50")},</>,
 				"});",
 			],
@@ -291,15 +291,15 @@ const STEPS: Step[] = [
 				<>{"  "}-H {STR('"X-API-Key: fa_…"')}</>,
 			],
 			cli: [
-				<>{FN("flipagent_list_orders")}({"{"} status: {STR('"awaiting_shipment"')} {"}"})</>,
+				<>{FN("ebay_list_orders")}({"{"} status: {STR('"awaiting_shipment"')} {"}"})</>,
 			],
 		},
 		plain: {
 			python:
 				'r = requests.get(\n  "https://api.flipagent.dev/v1/sell/fulfillment/order",\n  params={"status": "awaiting_shipment", "limit": 50},\n  headers={"X-API-Key": "fa_…"},\n)',
-			node: 'const { orders } = await client.orders.list({\n  status: "awaiting_shipment", limit: 50,\n});',
+			node: 'const { orders } = await client.fulfillment.listOrders({\n  status: "awaiting_shipment", limit: 50,\n});',
 			curl: 'curl "https://api.flipagent.dev/v1/sell/fulfillment/order?status=awaiting_shipment&limit=50" \\\n  -H "X-API-Key: fa_…"',
-			cli: 'flipagent_list_orders({ status: "awaiting_shipment" })',
+			cli: 'ebay_list_orders({ status: "awaiting_shipment" })',
 		},
 		result: [
 			<>{"{"}</>,

@@ -98,7 +98,7 @@ apps/docs/         @flipagent/docs         — flipagent.dev marketing + dashboa
                                          api.flipagent.dev
                                                   │
                                                   ├── Postgres  (cache + auth + usage)
-                                                  ├── services/scoring  (deal-finding math)
+                                                  ├── services/quant    (deal-finding math)
                                                   └── adapters/ebay → managed scraper → ebay.com
 ```
 
@@ -145,7 +145,7 @@ flipagent is an **experimental research project**. **Not affiliated with, endors
 
 **eBay restrictions, effective 2026-02-20.** eBay's [updated User Agreement](https://www.ebay.com/help/policies/member-behaviour-policies/user-agreement?id=4259) prohibits robots, scrapers, LLM-driven bots, and end-to-end automated ordering against eBay's services without express permission from eBay. The eBay [API License Agreement](https://developer.ebay.com/join/api-license-agreement) further restricts using eBay data to train AI/LLM models and transferring it to third parties.
 
-The MCP server, the `/buy/browse/*` + `/buy/marketplace_insights/*` scrape paths, and `/buy/order/*` flows are likely subject to these restrictions when run against production eBay without permission. Sandbox use, local research, and the pure-function math under `packages/api/src/services/{scoring,quant,forwarder}/` are not affected.
+The MCP server, the `/buy/browse/*` + `/buy/marketplace_insights/*` scrape paths, and `/buy/order/*` flows are likely subject to these restrictions when run against production eBay without permission. Sandbox use, local research, and the pure-function math under `packages/api/src/services/{quant,forwarder}/` are not affected.
 
 **Your responsibility.** If you use this code or the hosted API, you bear sole responsibility for whether your use case is permitted, for securing your credentials, for the behavior of any agent built on top, and for any account action or legal consequence. The authors accept no liability.
 

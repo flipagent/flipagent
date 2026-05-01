@@ -121,7 +121,7 @@ Available namespaces (every endpoint at `api.flipagent.dev/v1/*`):
 | `client.evaluate.*` | score one listing → buy/hold/skip + signals (Decisions pillar) |
 | `client.discover.*` | rank deals across a search (Overnight pillar) |
 | `client.ship.*` | forwarder quote + provider catalog (Operations pillar) |
-| `client.orders.*` | buy flow (Limited Release; needs `/v1/connect/ebay`) |
+| `client.buy.order.*` | buy flow (Limited Release; needs `/v1/connect/ebay`) |
 | `client.inventory.*` | seller-side write (needs `/v1/connect/ebay`) |
 | `client.fulfillment.*` | shipping + tracking |
 | `client.finance.*` | payouts + transactions |

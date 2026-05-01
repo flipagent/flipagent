@@ -6,7 +6,8 @@
  *   Marketplace passthrough (eBay-shape data, future Amazon/Mercari):
  *     - `search` — unified active+sold search (mode-discriminated)
  *     - `listings`, `sold` — direct mirror routes (eBay 1:1 paths)
- *     - `orders`, `inventory`, `fulfillment`, `finance`, `markets`
+ *     - `buy.order` — buy-side checkout (REST + bridge transports)
+ *     - `inventory`, `fulfillment`, `finance`, `markets`, `forwarder`
  *
  *   flipagent value-add (server-side, marketplace-agnostic):
  *     - `evaluate` — single-listing judgment   (Decisions pillar)
@@ -51,7 +52,7 @@ export interface FlipagentClient {
 	search: SearchClient;
 	listings: ListingsClient;
 	sold: SoldClient;
-	/** eBay Buy Order API — REST when approved, bridge fallback otherwise. */
+	/** eBay Buy Order API — REST and bridge are both first-class transports; selected per `selectTransport` + `?transport=` override. */
 	buy: { order: BuyOrderClient };
 	forwarder: ForwarderClient;
 	inventory: InventoryClient;
