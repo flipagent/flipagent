@@ -630,7 +630,10 @@ resource "azurerm_container_app" "worker" {
       image   = var.api_image
       cpu     = var.worker_cpu
       memory  = var.worker_memory
-      command = ["node", "dist/worker.js"]
+      # Dockerfile WORKDIR is /app; the api workspace builds to
+      # packages/api/dist/. Match the api container's CMD path so the
+      # worker entrypoint resolves correctly.
+      command = ["node", "packages/api/dist/worker.js"]
 
       env {
         name  = "NODE_ENV"
