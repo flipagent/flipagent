@@ -292,16 +292,19 @@ export async function runDiscoverPipeline(input: RunDiscoverInput): Promise<RunD
 	const evaluateDuration = Math.round(performance.now() - evaluateStart);
 
 	if (successful.length === 0) {
-		const err = "every variant cluster's sub-flow failed";
+		// Per-variant 0 sold is no longer a failure (variants flow through
+		// with `nObservations: 0`), so reaching here means every variant's
+		// sub-flow hit a real error: scrape upstream, missing detail, etc.
+		// The first rejection's message is the most informative one.
+		const firstReason = settled.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+		const err = firstReason
+			? String((firstReason.reason as Error)?.message ?? firstReason.reason)
+			: "every variant cluster's sub-flow failed";
 		onStep?.({ kind: "failed", key: "detail", error: err, durationMs: detailDuration });
 		onStep?.({ kind: "failed", key: "search.sold", error: err, durationMs: searchSoldDuration });
 		onStep?.({ kind: "failed", key: "filter", error: err, durationMs: filterDuration });
 		onStep?.({ kind: "failed", key: "evaluate", error: err, durationMs: evaluateDuration });
-		throw new EvaluateError(
-			"not_enough_sold",
-			422,
-			`Every variant cluster's per-product search returned 0 same-product sold listings, or all sub-flows failed. Try a broader query or longer lookback.`,
-		);
+		throw new EvaluateError("search_failed", 502, err);
 	}
 
 	successful.sort((a, b) => {
@@ -455,9 +458,9 @@ async function runVariantSubFlow(
 		},
 	);
 
-	if (filtered.matchedSold.length < 1) {
-		throw new EvaluateError("not_enough_sold", 422, `Variant "${canonical}" yielded 0 same-product sold listings.`);
-	}
+	// 0 matched-sold is a normal variant outcome, not a failure — it
+	// produces a `nObservations: 0` cluster the UI can label "no recent
+	// sales". Mirrors the same decision in `run.ts` for /v1/evaluate.
 
 	// 07. evaluate — same primitive `/v1/evaluate` uses. Score the rep
 	// against the matched sold pool + the variant cluster's active pool.

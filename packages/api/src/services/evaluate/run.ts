@@ -161,31 +161,25 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 		),
 	]);
 	const searchDurationMs = Math.round(performance.now() - searchStart);
+	// Real upstream failure on either leg short-circuits the pipeline.
+	// Silently degrading to `[]` masked vendor breakage (e.g. scraper 401,
+	// eBay 5xx) as a downstream `not_enough_sold`, which sent users
+	// hunting for their item instead of for the outage. A genuinely empty
+	// result set still flows through with `[]` and surfaces as
+	// `nObservations: 0` from `evaluate()`.
+	for (const settled of [soldSettled, activeSettled] as const) {
+		if (settled.status === "rejected") {
+			const message = String((settled.reason as Error)?.message ?? settled.reason);
+			onStep?.({ kind: "failed", key: "search", error: message, durationMs: searchDurationMs });
+			const aborted = new EvaluateError("search_failed", 502, message);
+			(aborted as { __stepEmitted?: true }).__stepEmitted = true;
+			throw aborted;
+		}
+	}
 	const soldPool = soldSettled.status === "fulfilled" ? soldSettled.value.items : [];
 	const soldSource = soldSettled.status === "fulfilled" ? soldSettled.value.source : null;
 	const activePool = activeSettled.status === "fulfilled" ? activeSettled.value.items : [];
 	const activeSource = activeSettled.status === "fulfilled" ? activeSettled.value.source : null;
-	// Both legs failed → abort the pipeline (running filter / evaluate
-	// on empty pools is just noise). Each leg already surfaced its own
-	// `failed` event via `withStep`; we just need to short-circuit here.
-	const bothFailed = soldSettled.status === "rejected" && activeSettled.status === "rejected";
-	if (bothFailed) {
-		onStep?.({
-			kind: "failed",
-			key: "search",
-			error: "both sold and active searches failed",
-			durationMs: searchDurationMs,
-		});
-		const aborted = new EvaluateError(
-			"search_failed",
-			502,
-			soldSettled.status === "rejected"
-				? String((soldSettled.reason as Error)?.message ?? soldSettled.reason)
-				: "search failed",
-		);
-		(aborted as { __stepEmitted?: true }).__stepEmitted = true;
-		throw aborted;
-	}
 	onStep?.({
 		kind: "succeeded",
 		key: "search",
@@ -208,18 +202,13 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 		};
 	});
 
-	// Only error when the pool is genuinely empty — distribution-derived
-	// signals (p25/p75/IQR/hazard) gate themselves inside `evaluate()`
-	// via `MIN_SOLD_FOR_DISTRIBUTION`, so n=1..3 still surfaces a usable
-	// median + nObservations and the UI can label confidence from
-	// `market.nObservations`. Erroring out earlier just hid useful data.
-	if (filtered.matchedSold.length < 1) {
-		throw new EvaluateError(
-			"not_enough_sold",
-			422,
-			`Found 0 same-product sold listings in the lookback window. Try a longer lookback or a more popular item.`,
-		);
-	}
+	// Genuine 0-match is a normal evaluate result, not an error: the
+	// downstream `evaluate()` already gates distribution math on
+	// `MIN_SOLD_FOR_DISTRIBUTION` and emits `nObservations: 0` with a
+	// shaped result the UI can label as "no recent sales". Throwing
+	// here used to throw the rest of the work away (item detail, active
+	// competition, asks distribution) for what is just a confidence
+	// signal.
 
 	// 4. evaluate -------------------------------------------------------
 	// `marketFromSold` reads `itemCreationDate` / `itemEndDate` directly
