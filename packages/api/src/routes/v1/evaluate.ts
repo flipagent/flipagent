@@ -76,8 +76,13 @@ evaluateRoute.post(
 			params: params as unknown as Record<string, unknown>,
 		});
 		// Worker container claims and runs the pipeline; this route waits
-		// for the row to reach terminal status.
-		const final = await awaitTerminal(job.id, apiKey.id, { timeoutMs: SYNC_EVALUATE_TIMEOUT_MS });
+		// for the row to reach terminal status. Abort signal stops the
+		// poll loop early when the client disconnects (no point holding
+		// a DB connection open for a vanished caller).
+		const final = await awaitTerminal(job.id, apiKey.id, {
+			timeoutMs: SYNC_EVALUATE_TIMEOUT_MS,
+			signal: c.req.raw.signal,
+		});
 		if (!final) {
 			return c.json(
 				{

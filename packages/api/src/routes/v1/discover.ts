@@ -60,7 +60,10 @@ discoverRoute.post(
 			kind: "discover",
 			params: params as unknown as Record<string, unknown>,
 		});
-		const final = await awaitTerminal(job.id, apiKey.id, { timeoutMs: SYNC_DISCOVER_TIMEOUT_MS });
+		const final = await awaitTerminal(job.id, apiKey.id, {
+			timeoutMs: SYNC_DISCOVER_TIMEOUT_MS,
+			signal: c.req.raw.signal,
+		});
 		if (!final) {
 			return c.json(
 				{

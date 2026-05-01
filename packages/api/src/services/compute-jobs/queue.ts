@@ -261,32 +261,66 @@ export async function isCancelRequested(id: string): Promise<boolean> {
 }
 
 export interface AwaitTerminalOpts {
-	/** Hard deadline in ms; throws if not terminal by then. */
+	/** Hard deadline in ms; resolves null if not terminal by then. */
 	timeoutMs: number;
 	/** Poll interval in ms. */
 	intervalMs?: number;
+	/**
+	 * Abort signal — when the caller (HTTP request) goes away, stop
+	 * polling immediately instead of running the full deadline. Resolves
+	 * null when aborted. Routes pass `c.req.raw.signal` here.
+	 */
+	signal?: AbortSignal;
+}
+
+/** Sleep that resolves early on abort. */
+function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+	if (signal?.aborted) return Promise.resolve();
+	return new Promise<void>((resolve) => {
+		const timer = setTimeout(resolve, ms);
+		if (!signal) return;
+		const onAbort = () => {
+			clearTimeout(timer);
+			resolve();
+		};
+		signal.addEventListener("abort", onAbort, { once: true });
+	});
 }
 
 /**
  * Poll `getJob` until status is terminal or `timeoutMs` elapses. Used
  * by the sync `POST /v1/evaluate` and `POST /v1/discover` routes after
  * enqueueing — the API container doesn't run pipelines, so it observes
- * the worker's outcome through this helper. Returns the terminal row
- * or null on timeout.
+ * the worker's outcome through this helper. Returns the terminal row,
+ * or null on timeout / abort / row vanished.
+ *
+ * `getJob` throws (DB blip) are absorbed: log, briefly back off, then
+ * resume polling. The job state lives in the row, not in this loop —
+ * a dropped poll cycle just delays the response, never loses progress.
  */
 export async function awaitTerminal(
 	id: string,
 	apiKeyId: string,
-	{ timeoutMs, intervalMs = 500 }: AwaitTerminalOpts,
+	{ timeoutMs, intervalMs = 500, signal }: AwaitTerminalOpts,
 ): Promise<ComputeJob | null> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		const row = await getJob(id, apiKeyId);
+		if (signal?.aborted) return null;
+		let row: ComputeJob | null = null;
+		try {
+			row = await getJob(id, apiKeyId);
+		} catch (err) {
+			console.error(`[awaitTerminal] getJob ${id} failed:`, err);
+			// Back off 2× the normal interval on a DB blip — gives the
+			// pool a chance to recover before we hammer it again.
+			await sleepWithAbort(intervalMs * 2, signal);
+			continue;
+		}
 		if (!row) return null;
 		if (COMPUTE_JOB_TERMINAL.has(row.status)) return row;
 		const remaining = deadline - Date.now();
 		if (remaining <= 0) return null;
-		await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
+		await sleepWithAbort(Math.min(intervalMs, remaining), signal);
 	}
 	return null;
 }

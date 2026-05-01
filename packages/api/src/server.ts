@@ -17,3 +17,15 @@ async function shutdown(signal: string) {
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+// Surface stray async failures with context. Default Node behavior on
+// unhandledRejection (Node 15+) is to terminate; we let that happen
+// after logging so Container Apps restarts a fresh replica with a
+// clean state rather than silently absorbing a corrupt one.
+process.on("unhandledRejection", (reason) => {
+	console.error("[api] unhandledRejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+	console.error("[api] uncaughtException:", err);
+	process.exit(1);
+});

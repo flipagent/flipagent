@@ -215,6 +215,18 @@ async function shutdown(signal: string): Promise<void> {
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
+// Log + crash on stray async failures. With lease-based recovery, a
+// crashing worker is safe — the lease expires, the recovery sweep
+// requeues, KEDA brings up a replacement. Better to fail fast with a
+// telemetry trail than mask a corrupt state.
+process.on("unhandledRejection", (reason) => {
+	console.error("[worker] unhandledRejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+	console.error("[worker] uncaughtException:", err);
+	process.exit(1);
+});
+
 console.log(
 	`[worker] starting ${workerId}` +
 		` lease=${WORKER_LEASE_MS}ms heartbeat=${WORKER_HEARTBEAT_MS}ms` +
