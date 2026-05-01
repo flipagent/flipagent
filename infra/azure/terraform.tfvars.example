@@ -7,6 +7,13 @@ postgres_sku = "B_Standard_B1ms"
 # Custom domain. Leave empty to skip; bind later.
 # custom_domain = "api.flipagent.dev"
 
+# First-creation image for the api + worker container apps. Both
+# resources have `lifecycle ignore_changes = [image]`, so after the
+# first revision the CI workflow rolls them to a specific git-sha tag
+# on every push — this value only matters at provision time. Use
+# `:latest` so a fresh apply always pulls the most recent CI build.
+# api_image = "<acr-name>.azurecr.io/api:latest"
+
 # Managed scraper vendor for eBay HTML fetches. Today only `oxylabs` is wired
 # (Web Scraper API). Leaving username/password empty disables managed scraping
 # — fine for low-volume but expect to hit eBay's bot wall fast.
@@ -48,6 +55,12 @@ postgres_sku = "B_Standard_B1ms"
 # plaintext at rest. REQUIRED in production for the dashboard's
 # "reveal key" feature; sha256 hash auth still works without it.
 # Generate once with `openssl rand -base64 32`. Stored in Key Vault.
+# AES-256-GCM symmetric key for encrypting issued API key plaintext at
+# rest. Required in production for the dashboard's "reveal key" flow;
+# without it the column stays null on new keys and reveal returns 503
+# (sha256 hash auth still works). Generate with `openssl rand -base64 32`.
+# Migrate to a Key Vault reference when rotation cadence becomes
+# operational.
 # keys_encryption_key = "..."
 
 # Better-Auth + dashboard sign-in. Leave empty to ship with /v1/me/* + /api/auth/*
