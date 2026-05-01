@@ -413,6 +413,22 @@ function Facts({
 		: null;
 	const lowSample = outcome.meta != null && outcome.meta.soldCount > 0 && outcome.meta.soldCount < 5;
 
+	// Recommendation-driven derived stats — surfaced both in Market pace
+	// (which uses the active count for sell-through) and Resells at (rank +
+	// vs-avg-sold delta). Computed once here so the rendering paths stay
+	// thin and a future tweak (different denominator, different reference)
+	// is one place to edit.
+	const exitCents =
+		evaluation?.recommendedExit?.listPriceCents ?? evaluation?.safeBidBreakdown?.estimatedSaleCents ?? null;
+	const myRankAmongAsks =
+		exitCents != null && askCents.length > 0
+			? askCents.filter((c) => c < exitCents).length + 1
+			: null;
+	const vsAvgPct =
+		exitCents != null && referenceSaleCents != null && referenceSaleCents > 0
+			? Math.round(((exitCents - referenceSaleCents) / referenceSaleCents) * 100)
+			: null;
+
 	return (
 		<dl className="pg-result-facts">
 			{/* Sold — what people actually paid. The strongest market signal.
@@ -456,26 +472,35 @@ function Facts({
 				/>
 			)}
 
-			{/* Days to sell — mean days from list to sale. Pairs with
-			    "Avg. sold" above; together they answer "what does the
-			    market do with this SKU?" in price + time. Sales/day stays
-			    as a supporting aside (same pace, different lens — useful
-			    for buyers thinking in flow rate). Label echoes the
-			    "~Yd to sell" wording in the Resells-at row so the time
-			    vocab is consistent down the column. When duration data
-			    is missing (no `meanDaysToSell`) the row morphs into
-			    "Sells per day" with sales/day as the primary value, so
-			    we never hide market pace. */}
-			<Row label={market?.meanDaysToSell != null ? "Days to sell" : "Sells per day"}>
+			{/* Market pace — sell-through (% of recent listings that sold)
+			    primary, sales/day + raw sold/active counts as supporting
+			    aside. Replaces the older "Days to sell" tile, which read
+			    out the mean list→sale duration of comparables; that number
+			    mixes "popular SKU" with "patient sellers" and required the
+			    same caveats every time. STR cleanly separates the two and
+			    is the metric reseller communities already speak. The
+			    user-facing "how long would MY listing take" answer lives
+			    on the Resells at row below, where it's tied to a price. */}
+			<Row label="Market pace">
 				{market && market.nObservations > 0 ? (
-					market.meanDaysToSell != null ? (
-						<>
-							<span className="pg-result-facts-val">~{Math.round(market.meanDaysToSell)}d</span>
-							<span className="pg-result-facts-aside">{market.salesPerDay.toFixed(2)}/day</span>
-						</>
-					) : (
-						<span className="pg-result-facts-val">{market.salesPerDay.toFixed(2)}</span>
-					)
+					(() => {
+						const sold = market.nObservations;
+						const active = market.asks?.nActive ?? askCents.length;
+						const total = sold + active;
+						if (total === 0) {
+							return <span className="pg-result-facts-val">{market.salesPerDay.toFixed(2)}/day</span>;
+						}
+						const strPct = Math.round((sold / total) * 100);
+						return (
+							<>
+								<span className="pg-result-facts-val">{strPct}% sell-through</span>
+								<span className="pg-result-facts-aside">
+									{market.salesPerDay.toFixed(2)}/day · {sold} sold · {active} active
+								</span>
+								<SellingPaceTag market={market} />
+							</>
+						);
+					})()
 				) : pending ? (
 					<Skel w={120} />
 				) : (
@@ -641,60 +666,52 @@ function Facts({
 				)}
 			</Row>
 
-			{/* Sell at — directive recommendation: this is the price our
+			{/* Resells at — directive recommendation: the price our
 			    `optimalListPrice` model picked given current competition +
-			    hazard model (same number Profit's arithmetic uses).
-			    Imperative verb makes the recommendation status explicit
-			    (vs descriptive "You'd sell"). Aside frames position
-			    against the active-asks floor in action terms ("new
-			    lowest ask") rather than gap math ("−$X vs lowest ask")
-			    — the user already sees the absolute lowest in the
-			    Active-asks row above, so they can triangulate the gap
-			    themselves; what matters here is *what your listing does
-			    to the marketplace floor* if you list at this price.
-			    When the model picks a price above current floor (rare —
-			    typically means active asks are anchored low vs sold
-			    market), the position aside is hidden so days carry the
-			    aside alone rather than showing a confusing premium
-			    framing. Skipped when neither recommendedExit nor
-			    safeBidBreakdown is computable — keeps the deal block
-			    tight rather than showing a placeholder. */}
+			    hazard model (same number Profit's arithmetic uses). Three
+			    asides answer the three questions a reseller asks the
+			    moment they see a price: where would I rank against the
+			    active competition (#N of M+1), how does it compare to
+			    what the market actually paid (−X% vs avg sold), and how
+			    long would the listing sit (~Yd to sell). The rank +
+			    vs-avg-sold combo replaces the older "new lowest ask /
+			    matches lowest ask" prose framing — the rank carries the
+			    same lowest-vs-not signal in a quantified form, and the
+			    delta to avg sold tells the user whether they're pricing
+			    aggressively below market or sitting near it. Skipped when
+			    neither recommendedExit nor safeBidBreakdown is computable
+			    — keeps the deal block tight rather than showing a
+			    placeholder. */}
 			<Row
 				label="Resells at"
 				info="Our recommended list price. Balances sale speed (vs current asks) with per-sale margin (vs sold history)."
 			>
-				{(() => {
-					const exitCents =
-						evaluation?.recommendedExit?.listPriceCents ??
-						evaluation?.safeBidBreakdown?.estimatedSaleCents ??
-						null;
-					if (exitCents == null) {
-						return pending ? (
-							<Skel w={140} />
-						) : (
-							<span className="pg-result-facts-aside">insufficient data</span>
-						);
-					}
-					const days = evaluation?.recommendedExit?.expectedDaysToSell;
-					const askDelta = lowestAskCents != null ? exitCents - lowestAskCents : null;
-					let position: string | null = null;
-					if (askDelta != null) {
-						if (askDelta < -100) position = "new lowest ask";
-						else if (askDelta <= 100) position = "matches lowest ask";
-						// askDelta > 100 → above current floor; hide aside.
-					}
-					return (
-						<>
-							<span className="pg-result-facts-val">{fmtUsdRound(exitCents)}</span>
-							{position && <span className="pg-result-facts-aside">{position}</span>}
-							{days != null && (
-								<span className="pg-result-facts-aside">
-									{position ? "· " : ""}~{Math.round(days)}d to sell
-								</span>
-							)}
-						</>
-					);
-				})()}
+				{exitCents == null ? (
+					pending ? (
+						<Skel w={140} />
+					) : (
+						<span className="pg-result-facts-aside">insufficient data</span>
+					)
+				) : (
+					<>
+						<span className="pg-result-facts-val">{fmtUsdRound(exitCents)}</span>
+						{myRankAmongAsks != null && (
+							<span className="pg-result-facts-aside">
+								#{myRankAmongAsks} of {askCents.length + 1} active
+							</span>
+						)}
+						{vsAvgPct != null && (
+							<span className="pg-result-facts-aside">
+								· {vsAvgPct >= 0 ? "+" : ""}{vsAvgPct}% vs avg sold
+							</span>
+						)}
+						{evaluation?.recommendedExit?.expectedDaysToSell != null && (
+							<span className="pg-result-facts-aside">
+								· ~{Math.round(evaluation.recommendedExit.expectedDaysToSell)}d to sell
+							</span>
+						)}
+					</>
+				)}
 			</Row>
 
 			{/* Costs — fees + outbound ship, surfaced as a discrete row so
