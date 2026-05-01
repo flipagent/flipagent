@@ -434,8 +434,8 @@ export function PlaygroundDiscover<TabId extends string = "discover" | "evaluate
 	// Each preset MUST set `q` — backend rejects category-only queries
 	// today (see BrowseSearchQuery TODO).
 	const QUICKSTARTS: ReadonlyArray<QuickStart> = [
-		{ label: "Watches under $300", apply: () => applyPreset({ q: "watch", categoryId: "31387", priceMax: "300" }) },
-		{ label: "Pokémon Charizard", apply: () => applyPreset({ q: "charizard 1st edition", categoryId: "183454" }) },
+		{ label: "Canon", apply: () => applyPreset({ q: "canon", categoryId: "3323", priceMax: "1500" }) },
+		{ label: "Pokémon Base Set 1st Ed.", apply: () => applyPreset({ q: "pokemon base set 1st edition", categoryId: "183454" }) },
 	];
 
 	return (

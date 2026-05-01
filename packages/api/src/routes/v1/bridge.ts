@@ -175,11 +175,14 @@ bridgeRoute.post(
 		if (updated.status === "completed") {
 			const meta = (updated.metadata as Record<string, unknown> | null) ?? null;
 			const result = (updated.result as Record<string, unknown> | null) ?? null;
-			// Reconcile first so the webhook receiver can immediately
-			// query /v1/forwarder/{provider}/inventory and see fresh
-			// state. Errors are logged + swallowed — webhook delivery
-			// must not block on reconcile failure.
-			reconcileBridgeResult({
+			// Await reconcile so the route doesn't return — and the
+			// webhook doesn't fire — until the local forwarder_inventory
+			// row reflects the new state. Receivers that immediately query
+			// /v1/forwarder/{provider}/inventory then see fresh state, and
+			// CI tests that assert the post-result row no longer race the
+			// fire-and-forget. Errors are still logged + swallowed so the
+			// webhook delivery downstream isn't blocked on reconcile failure.
+			await reconcileBridgeResult({
 				apiKeyId,
 				source: updated.source,
 				kind: typeof meta?.kind === "string" ? (meta.kind as string) : null,

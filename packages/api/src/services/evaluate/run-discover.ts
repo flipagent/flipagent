@@ -15,9 +15,15 @@
  *                           inside the bucket.
  *   04 detail             — parent; per-cluster children fetch the
  *                           representative's full ItemDetail
- *   05 search.sold        — parent; per-cluster sold search
- *   06 filter             — parent; per-cluster same-product matcher
- *   07 evaluate           — parent; per-cluster scoring
+ *   05 search.sold        — parent; per-cluster sold search by canonical
+ *   06 search.active      — parent; per-cluster active search by canonical
+ *                           (parallel with 05), merged with the variant's
+ *                           step-01 slice and deduped by itemId so step 07
+ *                           sees the full asks distribution for this SKU,
+ *                           not just whatever fell out of the broad query
+ *   07 filter             — parent; per-cluster same-product matcher
+ *                           (sold + merged active in one matchPool call)
+ *   08 evaluate           — parent; per-cluster scoring
  *
  * Each variant cluster's sub-flow IS a per-product Evaluate run. The
  * representative is the cheapest active listing in the cluster (the
@@ -63,6 +69,7 @@ const LABELS = {
 	partition: "Split by variant",
 	detail: "Look up representatives",
 	"search.sold": "Find recent sales",
+	"search.active": "Find active competition",
 	filter: "Filter same product",
 	evaluate: "Score variants",
 } as const;
@@ -256,13 +263,15 @@ export async function runDiscoverPipeline(input: RunDiscoverInput): Promise<RunD
 		})),
 	});
 
-	// 04 + 05 + 06 + 07. per-variant Evaluate sub-flow (parallel) --------
+	// 04 + 05 + 06 + 07 + 08. per-variant Evaluate sub-flow (parallel) ---
 	onStep?.({ kind: "started", key: "detail", label: LABELS.detail });
 	onStep?.({ kind: "started", key: "search.sold", label: LABELS["search.sold"] });
+	onStep?.({ kind: "started", key: "search.active", label: LABELS["search.active"] });
 	onStep?.({ kind: "started", key: "filter", label: LABELS.filter });
 	onStep?.({ kind: "started", key: "evaluate", label: LABELS.evaluate });
 	const detailStart = performance.now();
 	const searchSoldStart = performance.now();
+	const searchActiveStart = performance.now();
 	const filterStart = performance.now();
 	const evaluateStart = performance.now();
 
@@ -288,6 +297,7 @@ export async function runDiscoverPipeline(input: RunDiscoverInput): Promise<RunD
 
 	const detailDuration = Math.round(performance.now() - detailStart);
 	const searchSoldDuration = Math.round(performance.now() - searchSoldStart);
+	const searchActiveDuration = Math.round(performance.now() - searchActiveStart);
 	const filterDuration = Math.round(performance.now() - filterStart);
 	const evaluateDuration = Math.round(performance.now() - evaluateStart);
 
@@ -302,6 +312,7 @@ export async function runDiscoverPipeline(input: RunDiscoverInput): Promise<RunD
 			: "every variant cluster's sub-flow failed";
 		onStep?.({ kind: "failed", key: "detail", error: err, durationMs: detailDuration });
 		onStep?.({ kind: "failed", key: "search.sold", error: err, durationMs: searchSoldDuration });
+		onStep?.({ kind: "failed", key: "search.active", error: err, durationMs: searchActiveDuration });
 		onStep?.({ kind: "failed", key: "filter", error: err, durationMs: filterDuration });
 		onStep?.({ kind: "failed", key: "evaluate", error: err, durationMs: evaluateDuration });
 		throw new EvaluateError("search_failed", 502, err);
@@ -327,11 +338,19 @@ export async function runDiscoverPipeline(input: RunDiscoverInput): Promise<RunD
 	});
 	onStep?.({
 		kind: "succeeded",
+		key: "search.active",
+		result: { clusters: successful.length, totalActive: successful.reduce((s, c) => s + c.activePool.length, 0) },
+		durationMs: searchActiveDuration,
+	});
+	onStep?.({
+		kind: "succeeded",
 		key: "filter",
 		result: {
 			clusters: successful.length,
 			soldKept: successful.reduce((s, c) => s + c.soldPool.length, 0),
 			soldRejected: successful.reduce((s, c) => s + c.rejectedSoldPool.length, 0),
+			activeKept: successful.reduce((s, c) => s + c.activePool.length, 0),
+			activeRejected: successful.reduce((s, c) => s + c.rejectedActivePool.length, 0),
 		},
 		durationMs: filterDuration,
 	});
@@ -409,50 +428,95 @@ async function runVariantSubFlow(
 	);
 	const repDetail: ItemDetail = detail.detail;
 
-	// 05. sold search using the rep's title.
-	const sold = await withStep(
-		{
-			key: `search.sold.${idx}`,
-			parent: "search.sold",
-			label: canonical,
-			request: {
-				method: "GET",
-				path: buildPath("/v1/buy/marketplace_insights/item_sales/search", {
-					q: repDetail.title,
-					limit: soldLimit,
-					filter: lookbackFilter,
-				}),
+	// 05 + 06. parallel sold + active search by canonical. Active uses
+	// limit=50 to match /v1/evaluate's per-listing fan-out so the asks
+	// distribution feeding step 08 is the same size /v1/evaluate would
+	// see — not just whatever fell into this cluster from step 01.
+	const [sold, freshActive] = await Promise.all([
+		withStep(
+			{
+				key: `search.sold.${idx}`,
+				parent: "search.sold",
+				label: canonical,
+				request: {
+					method: "GET",
+					path: buildPath("/v1/buy/marketplace_insights/item_sales/search", {
+						q: canonical,
+						limit: soldLimit,
+						filter: lookbackFilter,
+					}),
+				},
+				onStep,
+				cancelCheck,
 			},
-			onStep,
-			cancelCheck,
-		},
-		async () => {
-			const r = await searchSoldListings(
-				{ q: repDetail.title, limit: soldLimit, filter: lookbackFilter },
-				{ apiKey },
-			);
-			const items = r.body.itemSales ?? r.body.itemSummaries ?? [];
-			return {
-				value: { items, source: r.source as TransportSource },
-				result: { count: items.length, items },
-				source: r.source as TransportSource,
-			};
-		},
-	);
+			async () => {
+				const r = await searchSoldListings({ q: canonical, limit: soldLimit, filter: lookbackFilter }, { apiKey });
+				const items = r.body.itemSales ?? r.body.itemSummaries ?? [];
+				return {
+					value: { items, source: r.source as TransportSource },
+					result: { count: items.length, items },
+					source: r.source as TransportSource,
+				};
+			},
+		),
+		withStep(
+			{
+				key: `search.active.${idx}`,
+				parent: "search.active",
+				label: canonical,
+				request: {
+					method: "GET",
+					path: buildPath("/v1/buy/browse/item_summary/search", { q: canonical, limit: 50 }),
+				},
+				onStep,
+				cancelCheck,
+			},
+			async () => {
+				const r = await searchActiveListings({ q: canonical, limit: 50 }, { apiKey });
+				const items = r.body.itemSummaries ?? [];
+				return {
+					value: { items, source: r.source as TransportSource },
+					result: { count: items.length, items },
+					source: r.source as TransportSource,
+				};
+			},
+		),
+	]);
 
-	// 06. matchFilter — sold pool against rep. The active pool is the
-	// variant cluster's items, already pre-curated by partitionByVariant
-	// at step 03 so we don't run the matcher on it again.
+	// Merge step-01 slice (already partition-validated) with the fresh
+	// per-cluster active pull, dedupe by itemId. Slice goes first so it
+	// stays even if the fresh search misses it under a different query.
+	const seenIds = new Set<string>();
+	const mergedActive: ItemSummary[] = [];
+	for (const it of variant.items) {
+		if (it.itemId && !seenIds.has(it.itemId)) {
+			seenIds.add(it.itemId);
+			mergedActive.push(it);
+		}
+	}
+	for (const it of freshActive.items) {
+		if (it.itemId && !seenIds.has(it.itemId)) {
+			seenIds.add(it.itemId);
+			mergedActive.push(it);
+		}
+	}
+
+	// 07. matchFilter — sold + merged active culled against rep in one
+	// matchPool call. Slice items re-validate against rep (partition
+	// seeded with whatever was first in the bucket, not the cheapest);
+	// the (seed, cand) decision cache absorbs warm pairs.
 	const filtered: MatchFilterResult = await withStep(
 		{ key: `filter.${idx}`, parent: "filter", label: canonical, onStep, cancelCheck },
 		async () => {
-			const result = await runMatchFilter(repDetail, sold.items, [], apiKey);
+			const result = await runMatchFilter(repDetail, sold.items, mergedActive, apiKey);
 			return {
 				value: result,
 				result: {
 					llmRan: result.llmRan,
 					soldKept: result.matchedSold.length,
 					soldRejected: result.rejectedSold.length,
+					activeKept: result.matchedActive.length,
+					activeRejected: result.rejectedActive.length,
 				},
 			};
 		},
@@ -462,10 +526,10 @@ async function runVariantSubFlow(
 	// produces a `nObservations: 0` cluster the UI can label "no recent
 	// sales". Mirrors the same decision in `run.ts` for /v1/evaluate.
 
-	// 07. evaluate — same primitive `/v1/evaluate` uses. Score the rep
-	// against the matched sold pool + the variant cluster's active pool.
+	// 08. evaluate — same primitive `/v1/evaluate` uses. Score the rep
+	// against the matched sold pool + matched active pool.
 	const enrichedSold = await enrichWithDuration(filtered.matchedSold);
-	const enrichedAsks = await enrichWithDuration(variant.items);
+	const enrichedAsks = await enrichWithDuration(filtered.matchedActive);
 	const { evaluation, market } = await withStep(
 		{ key: `evaluate.${idx}`, parent: "evaluate", label: canonical, onStep, cancelCheck },
 		async () => {
@@ -489,22 +553,22 @@ async function runVariantSubFlow(
 		soldCount: enrichedSold.length,
 		soldSource: sold.source,
 		activeCount: enrichedAsks.length,
-		activeSource: null,
+		activeSource: freshActive.source,
 		soldKept: enrichedSold.length,
 		soldRejected: filtered.rejectedSold.length,
 		activeKept: enrichedAsks.length,
-		activeRejected: 0,
+		activeRejected: filtered.rejectedActive.length,
 	};
 
 	const cluster: DealCluster = {
 		canonical,
 		source: variant.source,
-		count: variant.items.length,
+		count: enrichedAsks.length,
 		item: repDetail,
 		soldPool: enrichedSold,
 		activePool: enrichedAsks,
 		rejectedSoldPool: filtered.rejectedSold,
-		rejectedActivePool: [],
+		rejectedActivePool: filtered.rejectedActive,
 		market,
 		evaluation,
 		returns: extractReturns(repDetail),
