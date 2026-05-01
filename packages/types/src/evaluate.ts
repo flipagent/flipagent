@@ -156,6 +156,17 @@ export const Evaluation = Type.Object(
 			Type.Object({
 				listPriceCents: Type.Integer(),
 				expectedDaysToSell: Type.Number(),
+				/**
+				 * Probability of sale within 7 / 14 / 30 days under the
+				 * MNL hazard model. Together with `expectedDaysToSell`
+				 * they describe the predicted distribution rather than a
+				 * single point — useful for callers that want to surface
+				 * "70% in 7d, 95% in 30d" alongside the mean. Values
+				 * are in [0, 1]; rounded for display by clients.
+				 */
+				sellProb7d: Type.Number(),
+				sellProb14d: Type.Number(),
+				sellProb30d: Type.Number(),
 				netCents: Type.Integer(),
 				dollarsPerDay: Type.Integer(),
 			}),

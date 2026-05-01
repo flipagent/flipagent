@@ -160,6 +160,9 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		recommendedExit = {
 			listPriceCents: advice.listPriceCents,
 			expectedDaysToSell: advice.expectedDaysToSell,
+			sellProb7d: advice.sellProb7d,
+			sellProb14d: advice.sellProb14d,
+			sellProb30d: advice.sellProb30d,
 			netCents: flippingNetCents,
 			dollarsPerDay: Math.round(flippingNetCents / Math.max(advice.expectedDaysToSell, 1)),
 		};
