@@ -708,16 +708,6 @@ function Facts({
 								· ~{Math.round(evaluation.recommendedExit.expectedDaysToSell)}d to sell
 							</span>
 						)}
-						{evaluation?.recommendedExit?.sellProb7d != null &&
-							evaluation?.recommendedExit?.sellProb30d != null && (
-							<span
-								className="pg-result-facts-aside"
-								title="Probability the listing sells within the given window. Two horizons together describe the spread around the ~Yd point estimate — useful when capital recovery timing matters more than the average."
-							>
-								· {Math.round(evaluation.recommendedExit.sellProb7d * 100)}/
-								{Math.round(evaluation.recommendedExit.sellProb30d * 100)}% in 7d/30d
-							</span>
-						)}
 					</>
 				)}
 			</Row>
