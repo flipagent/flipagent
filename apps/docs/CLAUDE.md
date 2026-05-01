@@ -36,9 +36,6 @@ Headline framing is `<black framing> <accent phrase> <black framing>`.
 Pick one phrase per headline as the orange accent — never two, never
 the whole sentence.
 
-The footer must always carry `NOT AFFILIATED WITH EBAY INC.` on
-every page.
-
 ## When you change CSS
 
 - Reference design tokens (`var(--text-2)`, `var(--border-faint)`),

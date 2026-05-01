@@ -44,7 +44,7 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput): Pr
     <p style="font-size:12.5px;color:#525252;word-break:break-all;margin:0 0 24px;font-family:'Geist Mono',ui-monospace,Menlo,monospace;">${input.resetUrl}</p>
     <p style="font-size:12px;color:#737373;margin:0;">If you didn't ask for this, ignore this email — your password stays the same.</p>
   </div>
-  <p style="text-align:center;font-size:11px;color:#a3a3a3;margin:24px 0 0;">flipagent · hello@flipagent.dev · NOT AFFILIATED WITH EBAY INC.</p>
+  <p style="text-align:center;font-size:11px;color:#a3a3a3;margin:24px 0 0;">flipagent · hello@flipagent.dev</p>
 </body></html>
 	`.trim();
 
@@ -92,7 +92,7 @@ export async function sendVerificationEmail(input: VerificationEmailInput): Prom
     <p style="font-size:12.5px;color:#525252;word-break:break-all;margin:0 0 24px;font-family:'Geist Mono',ui-monospace,Menlo,monospace;">${input.verifyUrl}</p>
     <p style="font-size:12px;color:#737373;margin:0;">If you didn't sign up, ignore this email — no account will be created.</p>
   </div>
-  <p style="text-align:center;font-size:11px;color:#a3a3a3;margin:24px 0 0;">flipagent · hello@flipagent.dev · NOT AFFILIATED WITH EBAY INC.</p>
+  <p style="text-align:center;font-size:11px;color:#a3a3a3;margin:24px 0 0;">flipagent · hello@flipagent.dev</p>
 </body></html>
 	`.trim();
 

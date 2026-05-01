@@ -8,10 +8,10 @@ component / section stays consistent.
 
 Two layers, no third:
 
-| Layer | What lives here |
-|---|---|
-| `src/styles/global.css` | Design tokens, base reset, typography, layout shell, shared chrome, primitives, utilities |
-| `src/components/Foo.css` (sibling of `Foo.tsx`) | Anything used in exactly one component |
+| Layer                                           | What lives here                                                                           |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `src/styles/global.css`                         | Design tokens, base reset, typography, layout shell, shared chrome, primitives, utilities |
+| `src/components/Foo.css` (sibling of `Foo.tsx`) | Anything used in exactly one component                                                    |
 
 Decision rule: **if a class name is used in 2+ places, it belongs in
 `global.css`. If only one component uses it, it lives in that component's
@@ -19,7 +19,7 @@ sibling `.css` file**, imported at the top of the component.
 
 ```tsx
 // Foo.tsx
-import "./Foo.css";
+import './Foo.css';
 ```
 
 For Astro markup blocks that haven't been extracted to a component yet,
@@ -60,41 +60,41 @@ All colors, fonts, radii, and the cmw container width come from
 `@theme {}` (Tailwind v4) and `:root {}`. Never hardcode hex values
 inside component CSS — reference the variable.
 
-| Token | Value | Use |
-|---|---|---|
-| `--bg` / `--surface` | `#ffffff` | Page bg, card bg |
-| `--bg-soft` / `--surface-2` | `#fafafa` | Soft backgrounds, hover bg |
-| `--surface-3` | `#f5f5f5` | Inline `code` bg |
-| `--text` | `#0a0a0a` | Body text, headlines |
-| `--text-2` | `#525252` | Secondary text, lead p |
-| `--text-3` | `#737373` | Tertiary, captions |
-| `--text-4` | `#a3a3a3` | Disabled, deepest gray |
-| `--border` / `--border-faint` / `--border-strong` | `#e5e5e5` / `#ececec` / `#d4d4d4` | Most lines use `--border-faint` |
-| `--brand` | `#ff4c00` | Single brand color, used sparingly |
-| `--brand-soft` | `#fff1e8` | Brand-tinted hover bg |
-| `--code-bg` | `#f7f7f6` | Code panel outer background |
-| `--syntax-key` | `#5b3da7` | Syntax token color (keywords, function names) |
-| `--success` / `--danger` | `#15803d` / `#b91c1c` | Status colors |
-| `--cmw` | `1144px` | Page-frame max width |
-| `--sans` | Geist | Body sans |
-| `--mono` | Geist Mono | Mono (numbers, eyebrows, code) |
+| Token                                             | Value                             | Use                                           |
+| ------------------------------------------------- | --------------------------------- | --------------------------------------------- |
+| `--bg` / `--surface`                              | `#ffffff`                         | Page bg, card bg                              |
+| `--bg-soft` / `--surface-2`                       | `#fafafa`                         | Soft backgrounds, hover bg                    |
+| `--surface-3`                                     | `#f5f5f5`                         | Inline `code` bg                              |
+| `--text`                                          | `#0a0a0a`                         | Body text, headlines                          |
+| `--text-2`                                        | `#525252`                         | Secondary text, lead p                        |
+| `--text-3`                                        | `#737373`                         | Tertiary, captions                            |
+| `--text-4`                                        | `#a3a3a3`                         | Disabled, deepest gray                        |
+| `--border` / `--border-faint` / `--border-strong` | `#e5e5e5` / `#ececec` / `#d4d4d4` | Most lines use `--border-faint`               |
+| `--brand`                                         | `#ff4c00`                         | Single brand color, used sparingly            |
+| `--brand-soft`                                    | `#fff1e8`                         | Brand-tinted hover bg                         |
+| `--code-bg`                                       | `#f7f7f6`                         | Code panel outer background                   |
+| `--syntax-key`                                    | `#5b3da7`                         | Syntax token color (keywords, function names) |
+| `--success` / `--danger`                          | `#15803d` / `#b91c1c`             | Status colors                                 |
+| `--cmw`                                           | `1144px`                          | Page-frame max width                          |
+| `--sans`                                          | Geist                             | Body sans                                     |
+| `--mono`                                          | Geist Mono                        | Mono (numbers, eyebrows, code)                |
 
 ## 4. Typography scale
 
 Reference from observed Firecrawl-equivalent pages, applied in
 `global.css`:
 
-| Element | Size | Weight | Line-height | Letter-spacing |
-|---|---|---|---|---|
-| `.hero h1` | clamp 40–60px | 500 | 1.067 | -0.005em |
-| `.hero p.lead` | 16px | 400 | 1.5 | normal |
-| `.section-head h2` | clamp 32–46px | 500 | 1.1 | -0.01em |
-| `.section-head p` | 16px | 400 | 1.55 | normal |
-| `.head-chip` (kicker) | 12px | 400 | n/a | -0.005em title-case |
-| `.main-feature h3` | 20px | 500 | 1.4 | -0.005em |
-| eyebrow / mono labels | 10.5–11px | 500 | n/a | 0.06–0.18em uppercase |
-| `.btn` | 13.5px | 500 | n/a | -0.005em |
-| Inline `code` | 13px | normal | 1.65 | mono |
+| Element               | Size          | Weight | Line-height | Letter-spacing        |
+| --------------------- | ------------- | ------ | ----------- | --------------------- |
+| `.hero h1`            | clamp 40–60px | 500    | 1.067       | -0.005em              |
+| `.hero p.lead`        | 16px          | 400    | 1.5         | normal                |
+| `.section-head h2`    | clamp 32–46px | 500    | 1.1         | -0.01em               |
+| `.section-head p`     | 16px          | 400    | 1.55        | normal                |
+| `.head-chip` (kicker) | 12px          | 400    | n/a         | -0.005em title-case   |
+| `.main-feature h3`    | 20px          | 500    | 1.4         | -0.005em              |
+| eyebrow / mono labels | 10.5–11px     | 500    | n/a         | 0.06–0.18em uppercase |
+| `.btn`                | 13.5px        | 500    | n/a         | -0.005em              |
+| Inline `code`         | 13px          | normal | 1.65        | mono                  |
 
 Don't deviate from this scale without a reason. If you need a new size,
 add it to a section here with the rationale.
@@ -122,6 +122,7 @@ Every numbered section on the landing follows the same skeleton:
 ```
 
 Rules:
+
 - Section number annotation is a minimal mono mark at the left
   gutter: `[NN]  LABEL`. Number is brand-orange (with bracket
   delimiters added via CSS `::before/::after` pseudo-elements on
@@ -155,7 +156,9 @@ Only top + bottom borders for visual separation.
 }
 
 @media (max-width: 720px) {
-  .foo { margin: 0 -16px; }
+  .foo {
+    margin: 0 -16px;
+  }
 }
 ```
 
@@ -207,7 +210,9 @@ its own sake.
 
 ```css
 @media (prefers-reduced-motion: reduce) {
-  .my-marquee-track { animation: none; }
+  .my-marquee-track {
+    animation: none;
+  }
 }
 ```
 
@@ -225,8 +230,8 @@ its own sake.
 - **Two-color headline pattern**: `<text in normal color> <span class="accent">key phrase</span> <rest in normal color>`. Pick one phrase
   per headline as the accent — never two, never the whole thing.
 - **eBay ToS hygiene**: never strip listings of `itemWebUrl`, never
-  imply affiliation. Footer carries `NOT AFFILIATED WITH EBAY INC.`
-  on every page.
+  imply affiliation. The non-affiliation disclaimer lives in
+  `/legal/terms` .
 
 ## 10. Adding a new section
 
