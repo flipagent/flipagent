@@ -19,7 +19,7 @@
 
 import type { EvaluateMeta, EvaluateResponse, MarketStats, TransportSource } from "@flipagent/types";
 import type { ApiKey } from "../../db/schema.js";
-import { legacyFromV1 } from "../../utils/item-id.js";
+import { parseItemId } from "../../utils/item-id.js";
 import { getItemDetail } from "../listings/detail.js";
 import { searchActiveListings } from "../listings/search.js";
 import { searchSoldListings } from "../listings/sold.js";
@@ -65,14 +65,15 @@ const LABELS = {
 export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunEvaluateResult> {
 	const { itemId, lookbackDays = 90, soldLimit = 50, apiKey, opts, onStep, cancelCheck } = input;
 
-	const legacyId = legacyFromV1(itemId);
-	if (!legacyId) {
+	const parsed = parseItemId(itemId);
+	if (!parsed) {
 		throw new EvaluateError(
 			"validation_failed",
 			400,
-			`Invalid itemId "${itemId}". Pass v1|<legacy>|0 or the legacy numeric id.`,
+			`Invalid itemId "${itemId}". Pass v1|<legacy>|<variationId>, the legacy numeric id, or a full eBay /itm/ URL.`,
 		);
 	}
+	const { legacyId, variationId } = parsed;
 
 	// 1. detail ----------------------------------------------------------
 	const detail = await withStep(
@@ -84,7 +85,7 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 			cancelCheck,
 		},
 		async () => {
-			const detailResult = await getItemDetail(legacyId, { apiKey });
+			const detailResult = await getItemDetail(legacyId, { apiKey, variationId });
 			if (!detailResult) throw new EvaluateError("item_not_found", 404, `No detail found for "${itemId}".`);
 			if (!detailResult.body.title?.trim()) {
 				throw new EvaluateError("no_title", 422, `Item "${itemId}" has no title.`);

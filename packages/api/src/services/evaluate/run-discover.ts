@@ -38,7 +38,7 @@
 import type { DealCluster, DiscoverMeta, EvaluateMeta, MarketStats, TransportSource } from "@flipagent/types";
 import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import type { ApiKey } from "../../db/schema.js";
-import { legacyFromV1, toLegacyId } from "../../utils/item-id.js";
+import { legacyFromV1, parseItemId, toLegacyId } from "../../utils/item-id.js";
 import { Semaphore } from "../../utils/semaphore.js";
 import { getItemDetail } from "../listings/detail.js";
 import { searchActiveListings } from "../listings/search.js";
@@ -419,7 +419,12 @@ async function runVariantSubFlow(
 			cancelCheck,
 		},
 		async () => {
-			const legacyId = toLegacyId(rep) ?? legacyFromV1(rep.itemId);
+			// `parseItemId` is strict (requires \d{6,}); `legacyFromV1` is the
+			// looser fallback for non-conforming ids (test fixtures, weird
+			// upstream payloads). Variation id only carries through when the
+			// strict path matched.
+			const parsed = parseItemId(rep.itemId);
+			const legacyId = toLegacyId(rep) ?? parsed?.legacyId ?? legacyFromV1(rep.itemId);
 			if (!legacyId) {
 				throw new EvaluateError(
 					"item_not_found",
@@ -427,7 +432,7 @@ async function runVariantSubFlow(
 					`Representative for "${canonical}" has no resolvable legacy id.`,
 				);
 			}
-			const r = await getItemDetail(legacyId, { apiKey });
+			const r = await getItemDetail(legacyId, { apiKey, variationId: parsed?.variationId });
 			if (!r) {
 				throw new EvaluateError("item_not_found", 404, `No detail for representative of "${canonical}".`);
 			}

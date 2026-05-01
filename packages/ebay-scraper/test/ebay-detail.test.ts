@@ -69,6 +69,35 @@ describe("eBay detail extractor", () => {
 		expect(detail.imageUrls).toEqual(["https://i.ebayimg.com/x/s-l500.jpg"]);
 	});
 
+	it("parses MSKU multi-variation block: ids, prices, per-axis aspects, selected", async () => {
+		const html = await readFile(join(here, "fixtures", "ebay-detail-msku.html"), "utf8");
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/357966166544?var=626382683495", jsdomFactory);
+		expect(detail.variations).not.toBeNull();
+		expect(detail.variations).toHaveLength(2);
+		const us8 = detail.variations?.find((v) => v.variationId === "626382683495");
+		const ps3y = detail.variations?.find((v) => v.variationId === "626578342371");
+		expect(us8).toEqual({
+			variationId: "626382683495",
+			priceCents: 35990,
+			currency: "USD",
+			aspects: [{ name: "Size", value: "US M8 / W9.5 ( FV5029-010)" }],
+		});
+		expect(ps3y).toEqual({
+			variationId: "626578342371",
+			priceCents: 13500,
+			currency: "USD",
+			aspects: [{ name: "Size", value: "PS 3Y / W4.5 (IB4388-010)" }],
+		});
+		expect(detail.selectedVariationId).toBe("626382683495");
+	});
+
+	it("returns null variations on a single-SKU listing (no MSKU block)", async () => {
+		const html = await readFile(join(here, "fixtures", "ebay-detail.html"), "utf8");
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/Canon-EF-50mm/123456789012", jsdomFactory);
+		expect(detail.variations).toBeNull();
+		expect(detail.selectedVariationId).toBeNull();
+	});
+
 	it("skips data: URIs and known placeholder paths", () => {
 		const html = `<!doctype html><html><body>
 			<div class="ux-image-carousel-container">

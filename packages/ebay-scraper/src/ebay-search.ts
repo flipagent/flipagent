@@ -294,9 +294,20 @@ export interface EbayItemDetail {
 	 * when the schema.org block was missing or the category was unknown.
 	 */
 	returnTerms: import("./ebay-extract.js").EbayReturnTerms | null;
+	/**
+	 * All SKUs of a multi-variation listing, joined from the page's MSKU
+	 * model. Null on single-SKU listings (no MSKU block to parse).
+	 */
+	variations: import("./ebay-extract.js").EbayVariation[] | null;
+	/**
+	 * Variation id eBay rendered the page for. When the URL carries
+	 * `?var=<id>` this echoes that; otherwise it's eBay's server-side
+	 * default. Null on single-SKU listings.
+	 */
+	selectedVariationId: string | null;
 }
 
-export type { EbayReturnTerms } from "./ebay-extract.js";
+export type { EbayReturnTerms, EbayVariation } from "./ebay-extract.js";
 
 function parseFeedbackPercent(text: string | null): number | null {
 	if (!text) return null;
@@ -343,5 +354,7 @@ export function parseEbayDetailHtml(
 		itemLocationText: raw.itemLocationText,
 		bestOfferEnabled: raw.bestOfferEnabled,
 		returnTerms: raw.returnTerms,
+		variations: raw.variations,
+		selectedVariationId: raw.selectedVariationId,
 	};
 }

@@ -23,7 +23,7 @@ import { requireApiKey } from "../../../middleware/auth.js";
 import { getItemDetail } from "../../../services/listings/detail.js";
 import { ListingsError } from "../../../services/listings/errors.js";
 import { renderResultHeaders } from "../../../services/shared/headers.js";
-import { legacyFromV1 } from "../../../utils/item-id.js";
+import { parseItemId } from "../../../utils/item-id.js";
 import { errorResponse, jsonResponse, paramsFor, tbCoerce } from "../../../utils/openapi.js";
 
 export const ebayItemDetailRoute = new Hono();
@@ -48,15 +48,16 @@ ebayItemDetailRoute.get(
 	tbCoerce("param", ItemDetailParams),
 	async (c) => {
 		const { itemId } = c.req.valid("param");
-		const legacyId = legacyFromV1(itemId);
-		if (!legacyId || !/^\d{6,}$/.test(legacyId)) {
+		const parsed = parseItemId(itemId);
+		if (!parsed) {
 			return c.json({ error: "invalid_item_id" as const, message: `itemId ${itemId} is malformed.` }, 400);
 		}
 		try {
-			const result = await getItemDetail(legacyId, {
+			const result = await getItemDetail(parsed.legacyId, {
 				apiKey: c.var.apiKey,
 				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
 				acceptLanguage: c.req.header("Accept-Language"),
+				variationId: parsed.variationId,
 			});
 			if (!result) {
 				return c.json({ error: "not_found" as const, message: `itemId ${itemId} not found.` }, 404);

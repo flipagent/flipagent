@@ -27,23 +27,50 @@ function findGtin(aspects: ReadonlyArray<{ name: string; value: string }>): stri
 	return undefined;
 }
 
-export function ebayDetailToBrowse(raw: EbayItemDetail): ItemDetail | null {
+export function ebayDetailToBrowse(raw: EbayItemDetail, variationId?: string): ItemDetail | null {
 	if (!raw.itemId) return null;
 	const conditionId = resolveConditionId(raw.condition);
-	const aspects = raw.aspects ?? [];
+	const baseAspects = raw.aspects ?? [];
+
+	// Multi-SKU listings carry per-variation aspects (Size, Color, …) inside
+	// the page's MSKU model — distinct from the generic top-of-fold aspects
+	// that look the same regardless of which variation the page rendered
+	// for. When the caller asked about a specific variation, splice that
+	// variation's aspects on top so the matcher LLM sees the variation-tier
+	// signal it needs to filter mismatched-size sold listings out of the
+	// pool. Without this, "Size: PS 3Y" and "Size: US M8" both look like
+	// the same parent listing.
+	const matchedVariation =
+		variationId && raw.variations ? raw.variations.find((v) => v.variationId === variationId) : null;
+	const aspects =
+		matchedVariation && matchedVariation.aspects.length > 0
+			? mergeAspects(baseAspects, matchedVariation.aspects)
+			: baseAspects;
 	const localizedAspects: LocalizedAspect[] | undefined =
 		aspects.length > 0 ? aspects.map(({ name, value }) => ({ name, value, type: "STRING" })) : undefined;
+	// When the caller specified a variation, encode it in the v1 itemId
+	// (`v1|<legacy>|<variationId>` is eBay's native shape) so downstream
+	// services that re-parse the id naturally carry the variation. The
+	// `|0` sentinel stays the default for non-variation listings.
+	const v1Suffix = variationId && /^\d+$/.test(variationId) ? variationId : "0";
+	// Defensive: prefer the variation's own price from MSKU when we know
+	// which variation the caller wanted. The scraper already navigates to
+	// `?var=<id>`, so the rendered top-of-fold price *should* already match
+	// — but if eBay ever serves a stale render or a different default we'd
+	// rather use the JSON-encoded ground truth than the DOM scrape.
+	const priceCents = matchedVariation?.priceCents ?? raw.priceCents;
+	const currency = matchedVariation?.currency ?? raw.currency;
 	const item: ItemDetail = {
-		itemId: `v1|${raw.itemId}|0`,
+		itemId: `v1|${raw.itemId}|${v1Suffix}`,
 		legacyItemId: raw.itemId,
 		title: raw.title,
 		itemWebUrl: raw.url,
 		condition: raw.condition ?? undefined,
 		conditionId: conditionId ?? undefined,
-		price: raw.priceCents != null ? { value: (raw.priceCents / 100).toFixed(2), currency: raw.currency } : undefined,
+		price: priceCents != null ? { value: (priceCents / 100).toFixed(2), currency } : undefined,
 		shippingOptions:
 			raw.shippingCents != null
-				? [{ shippingCost: { value: (raw.shippingCents / 100).toFixed(2), currency: raw.currency } }]
+				? [{ shippingCost: { value: (raw.shippingCents / 100).toFixed(2), currency } }]
 				: undefined,
 		buyingOptions: deriveBuyingOptions(raw),
 		bidCount: raw.bidCount ?? undefined,
@@ -85,7 +112,33 @@ export function ebayDetailToBrowse(raw: EbayItemDetail): ItemDetail | null {
 	if (raw.returnTerms) {
 		(item as Record<string, unknown>).returnTerms = raw.returnTerms;
 	}
+	// Surface the full variation list as a runtime extension so callers
+	// (MCP, SDK, dashboard) can render "this listing has 6 sizes, here are
+	// the prices" without re-fetching. Mirror's ItemDetail intentionally
+	// stays narrow; we attach the field at runtime the same way returnTerms
+	// rides through. Callers that don't know about it just ignore it.
+	if (raw.variations && raw.variations.length > 0) {
+		(item as Record<string, unknown>).variations = raw.variations;
+		if (raw.selectedVariationId) {
+			(item as Record<string, unknown>).selectedVariationId = raw.selectedVariationId;
+		}
+	}
 	return item;
+}
+
+/**
+ * Merge per-variation aspects (Size, Color) on top of the page's
+ * generic aspects. Variation values win on collision — they're the
+ * SKU-specific truth for axes the listing varies on. Generic aspects
+ * (Brand, Department, Vintage) flow through unchanged.
+ */
+function mergeAspects(
+	base: ReadonlyArray<{ name: string; value: string }>,
+	overrides: ReadonlyArray<{ name: string; value: string }>,
+): Array<{ name: string; value: string }> {
+	const overrideNames = new Set(overrides.map((a) => a.name));
+	const filtered = base.filter((a) => !overrideNames.has(a.name));
+	return [...filtered, ...overrides];
 }
 
 /**

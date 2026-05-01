@@ -95,7 +95,15 @@ export async function fetchSoldSearchRest(
 	)) as BrowseSearchResponse;
 }
 
-export async function fetchItemDetailRest(legacyId: string, opts: RestRequestOptions = {}): Promise<ItemDetail> {
+export async function fetchItemDetailRest(
+	legacyId: string,
+	opts: RestRequestOptions & { variationId?: string } = {},
+): Promise<ItemDetail> {
 	const params = new URLSearchParams({ legacy_item_id: legacyId });
+	// `legacy_variation_id` selects one SKU from a multi-variation listing
+	// (sneakers / clothes / bags). Without it eBay's get_item_by_legacy_id
+	// 11001s on parents OR returns a server-picked default variation —
+	// neither matches the variation the caller actually asked about.
+	if (opts.variationId) params.set("legacy_variation_id", opts.variationId);
 	return (await callBrowseRest("/buy/browse/v1/item/get_item_by_legacy_id", params, opts)) as ItemDetail;
 }

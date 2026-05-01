@@ -29,7 +29,7 @@ const TIMEOUT_MS = 30_000;
 
 type EbayQueryMetadata =
 	| { kind: "search"; query: BrowseSearchQuery }
-	| { kind: "detail"; itemId: string }
+	| { kind: "detail"; itemId: string; variationId?: string }
 	| { kind: "sold"; query: SoldSearchQuery };
 
 async function dispatch<T>(apiKey: ApiKey, metadata: EbayQueryMetadata, itemIdLabel: string): Promise<T> {
@@ -57,11 +57,18 @@ export async function bridgeListingsSearch(apiKey: ApiKey, query: BrowseSearchQu
 	return dispatch<BrowseSearchResponse>(apiKey, { kind: "search", query }, `search:${query.q ?? ""}`);
 }
 
-export async function bridgeItemDetail(apiKey: ApiKey, itemId: string): Promise<ItemDetail | null> {
+export async function bridgeItemDetail(
+	apiKey: ApiKey,
+	itemId: string,
+	variationId?: string,
+): Promise<ItemDetail | null> {
 	// Extension returns the raw EbayItemDetail shape; we apply the same
 	// transform the Oxylabs path uses so the wire output matches Browse.
-	const raw = await dispatch<EbayItemDetail>(apiKey, { kind: "detail", itemId }, itemId);
-	return ebayDetailToBrowse(raw);
+	// `variationId` instructs the extension to navigate to the variation-
+	// specific URL (`?var=<id>`) so the rendered price/aspects reflect the
+	// requested SKU instead of eBay's default-rendered one.
+	const raw = await dispatch<EbayItemDetail>(apiKey, { kind: "detail", itemId, variationId }, itemId);
+	return ebayDetailToBrowse(raw, variationId);
 }
 
 export async function bridgeSoldSearch(apiKey: ApiKey, query: SoldSearchQuery): Promise<BrowseSearchResponse> {

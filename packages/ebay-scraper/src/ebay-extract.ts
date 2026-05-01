@@ -306,6 +306,21 @@ export interface RawEbayDetail {
 	 * when the block is absent or the policy category is unrecognised.
 	 */
 	returnTerms: EbayReturnTerms | null;
+	/**
+	 * Multi-SKU variations parsed from the page's `MSKU` model. Null when
+	 * the listing isn't multi-variation. Each entry has its own price and
+	 * the per-axis aspects (Size, Color, …) — letting callers pick the
+	 * right SKU's signal instead of reading the page's default-rendered
+	 * top-of-fold price + generic aspects.
+	 */
+	variations: EbayVariation[] | null;
+	/**
+	 * The variation id eBay rendered the page for. Driven by the URL's
+	 * `?var=<id>` if present, or eBay's server-side default pick when
+	 * absent. Lets callers correlate the rendered top-of-page price /
+	 * aspects with one entry in `variations`.
+	 */
+	selectedVariationId: string | null;
 }
 
 /**
@@ -322,6 +337,24 @@ export interface EbayReturnTerms {
 }
 
 /**
+ * One SKU of a multi-variation listing, joined from the page's `MSKU`
+ * model: price comes from `MSKU.variationsMap[<id>].binModel.price`,
+ * aspects are joined across `MSKU.selectMenus[].displayLabel` ↔
+ * `MSKU.menuItemMap[i].displayName` via `matchingVariationIds`.
+ *
+ * `variationId` is the legacy eBay-side id (the `?var=<id>` URL
+ * parameter, also what Browse REST encodes as the third segment of
+ * `v1|<legacy>|<variationId>`).
+ */
+export interface EbayVariation {
+	variationId: string;
+	priceCents: number | null;
+	currency: string;
+	/** Per-axis aspects (e.g. `Size: US M8`, `Color: Black`). */
+	aspects: Array<{ name: string; value: string }>;
+}
+
+/**
  * Bracket-balanced extractor for the SEMANTIC_DATA JSON block embedded in
  * eBay's modern listing detail pages. eBay bootstraps page state via inline
  * `<script>` tags containing `"SEMANTIC_DATA":{...}` — we walk balanced
@@ -329,13 +362,25 @@ export interface EbayReturnTerms {
  * found or parse fails.
  */
 function extractSemanticData(root: ParentNode): Record<string, unknown> | null {
+	return extractScriptObject(root, "SEMANTIC_DATA");
+}
+
+/**
+ * Brace-balanced extractor for a named JSON sub-object inside any
+ * `<script>` tag's text. Walks balanced braces (string + escape aware)
+ * starting from the first `{` after the marker key, then JSON.parses
+ * the slice. Used to pull both `SEMANTIC_DATA` and `MSKU` blocks out
+ * of eBay's bootstrap scripts. Returns null when the marker is absent
+ * or the parse fails.
+ */
+function extractScriptObject(root: ParentNode, markerKey: string): Record<string, unknown> | null {
 	const scripts = root.querySelectorAll("script");
+	const marker = `"${markerKey}":`;
 	for (const script of Array.from(scripts)) {
 		const text = script.textContent ?? "";
-		const key = '"SEMANTIC_DATA":';
-		const keyIdx = text.indexOf(key);
+		const keyIdx = text.indexOf(marker);
 		if (keyIdx === -1) continue;
-		const objStart = text.indexOf("{", keyIdx + key.length);
+		const objStart = text.indexOf("{", keyIdx + marker.length);
 		if (objStart === -1) continue;
 		let depth = 0;
 		let inString = false;
@@ -367,10 +412,81 @@ function extractSemanticData(root: ParentNode): Record<string, unknown> | null {
 		}
 		if (objEnd === -1) continue;
 		try {
-			return JSON.parse(text.slice(objStart, objEnd));
+			return JSON.parse(text.slice(objStart, objEnd)) as Record<string, unknown>;
 		} catch {}
 	}
 	return null;
+}
+
+/**
+ * Pull every variation's `{variationId, price, aspects}` out of the
+ * page's `MSKU` (multi-SKU) bootstrap model. eBay encodes:
+ *
+ *   - `selectMenus[]`        — one entry per axis (Size, Color, …) with
+ *                               `displayLabel` and the value-id list.
+ *   - `menuItemMap[<id>]`    — per-axis value: `displayName`/`valueName`
+ *                               + `matchingVariationIds`.
+ *   - `variationsMap[<id>]`  — per-variation: `binModel.price.value`.
+ *   - `selectedVariationId`  — which one the page rendered for.
+ *
+ * We join: for each `variationId` in `variationsMap`, walk every menu's
+ * `menuItemMap` entries; entries whose `matchingVariationIds` contains
+ * the variation contribute one `(displayLabel, displayName)` aspect.
+ * Multi-axis listings (Size + Color) get one aspect per axis.
+ *
+ * Returns null when the listing isn't multi-variation — callers fall
+ * back to the page's top-of-fold price + generic aspects.
+ */
+function extractMskuModel(root: ParentNode): {
+	variations: EbayVariation[];
+	selectedVariationId: string | null;
+} | null {
+	const msku = extractScriptObject(root, "MSKU");
+	if (!msku) return null;
+	const selectMenus = Array.isArray(msku.selectMenus) ? (msku.selectMenus as Array<Record<string, unknown>>) : [];
+	const menuItemMap =
+		msku.menuItemMap && typeof msku.menuItemMap === "object"
+			? (msku.menuItemMap as Record<string, Record<string, unknown>>)
+			: {};
+	const variationsMap =
+		msku.variationsMap && typeof msku.variationsMap === "object"
+			? (msku.variationsMap as Record<string, Record<string, unknown>>)
+			: {};
+	const selectedRaw = msku.selectedVariationId;
+	const selectedVariationId =
+		typeof selectedRaw === "number" || typeof selectedRaw === "string" ? String(selectedRaw) : null;
+
+	const variationIds = Object.keys(variationsMap);
+	if (variationIds.length === 0) return null;
+
+	const variations: EbayVariation[] = variationIds.map((variationId) => {
+		const aspects: Array<{ name: string; value: string }> = [];
+		for (const menu of selectMenus) {
+			const axisName = typeof menu.displayLabel === "string" ? menu.displayLabel : null;
+			if (!axisName) continue;
+			const valueIds = Array.isArray(menu.menuItemValueIds) ? menu.menuItemValueIds : [];
+			for (const valueId of valueIds) {
+				const entry = menuItemMap[String(valueId)];
+				if (!entry) continue;
+				const matching = entry.matchingVariationIds;
+				if (!Array.isArray(matching)) continue;
+				if (!matching.some((m) => String(m) === variationId)) continue;
+				const displayName = typeof entry.displayName === "string" ? entry.displayName : null;
+				const valueName = typeof entry.valueName === "string" ? entry.valueName : null;
+				const value = displayName || valueName;
+				if (value) aspects.push({ name: axisName, value });
+			}
+		}
+		const v = variationsMap[variationId] ?? {};
+		const bin = v.binModel as Record<string, unknown> | undefined;
+		const price = bin?.price as Record<string, unknown> | undefined;
+		const priceVal = price?.value as Record<string, unknown> | undefined;
+		const priceNum = typeof priceVal?.value === "number" ? priceVal.value : null;
+		const currencyRaw = typeof priceVal?.currency === "string" ? priceVal.currency : null;
+		const priceCents = priceNum != null ? Math.round(priceNum * 100) : null;
+		return { variationId, priceCents, currency: currencyRaw ?? "USD", aspects };
+	});
+	return { variations, selectedVariationId };
 }
 
 function getString(obj: Record<string, unknown> | null, key: string): string | null {
@@ -721,6 +837,7 @@ export function extractEbayDetail(root: ParentNode, sourceUrl: string, html?: st
 	const itemLocationText = html ? extractLocationText(html) : null;
 	const soldOutValue = semantic?.singleSkuOutOfStock;
 	const aspects = extractItemAspects(root);
+	const msku = extractMskuModel(root);
 
 	return {
 		itemId: extractItemIdFromUrl(sourceUrl),
@@ -750,6 +867,8 @@ export function extractEbayDetail(root: ParentNode, sourceUrl: string, html?: st
 		itemLocationText,
 		bestOfferEnabled: hasBestOffer(root),
 		returnTerms: extractReturnTerms(html),
+		variations: msku?.variations ?? null,
+		selectedVariationId: msku?.selectedVariationId ?? null,
 	};
 }
 

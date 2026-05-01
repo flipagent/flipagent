@@ -34,6 +34,15 @@ export interface DetailContext {
 	apiKey?: ApiKey;
 	marketplace?: string;
 	acceptLanguage?: string;
+	/**
+	 * eBay variation id for multi-SKU listings (sneakers / clothes / bags).
+	 * When present, REST passes `legacy_variation_id`, scrape appends
+	 * `?var=`, bridge navigates to the variation URL — so the resulting
+	 * detail's price + per-SKU aspects reflect that specific variation
+	 * instead of eBay's default-rendered one. Cache key includes the
+	 * variation so different SKUs get distinct entries.
+	 */
+	variationId?: string;
 }
 
 export type DetailResult = FlipagentResult<ItemDetail>;
@@ -59,7 +68,13 @@ export async function getItemDetail(legacyId: string, ctx: DetailContext = {}): 
 		}
 		throw err;
 	}
-	const queryHash = hashQuery({ itemId: legacyId });
+	// `variationId` factors into the cache key so different SKUs of the
+	// same parent listing get distinct entries — otherwise the first
+	// variation requested would poison the cache for every subsequent
+	// variation lookup of that legacy id.
+	const queryHash = hashQuery(
+		ctx.variationId ? { itemId: legacyId, variationId: ctx.variationId } : { itemId: legacyId },
+	);
 
 	// `withCache` wraps cache-or-fetch; the fetcher returns null when
 	// the listing 404s upstream so we surface that as a missing item.
@@ -133,13 +148,20 @@ export function detailFetcherFor(apiKey?: ApiKey) {
 
 async function dispatch(
 	legacyId: string,
-	ctx: { source: ListingsSource; apiKey?: ApiKey; marketplace?: string; acceptLanguage?: string },
+	ctx: {
+		source: ListingsSource;
+		apiKey?: ApiKey;
+		marketplace?: string;
+		acceptLanguage?: string;
+		variationId?: string;
+	},
 ): Promise<ItemDetail | null> {
 	if (ctx.source === "rest") {
 		try {
 			return await fetchItemDetailRest(legacyId, {
 				marketplace: ctx.marketplace,
 				acceptLanguage: ctx.acceptLanguage,
+				variationId: ctx.variationId,
 			});
 		} catch (err) {
 			if (err instanceof ListingsError && err.status === 404) return null;
@@ -148,7 +170,7 @@ async function dispatch(
 	}
 	if (ctx.source === "scrape") {
 		try {
-			return await scrapeItemDetail(legacyId);
+			return await scrapeItemDetail(legacyId, ctx.variationId);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			throw new ListingsError("upstream_failed", 502, msg);
@@ -159,7 +181,7 @@ async function dispatch(
 		throw new ListingsError("bridge_failed", 500, "bridge source requires apiKey in context");
 	}
 	try {
-		return await bridgeItemDetail(ctx.apiKey, legacyId);
+		return await bridgeItemDetail(ctx.apiKey, legacyId, ctx.variationId);
 	} catch (err) {
 		rethrowAsListingsError(err);
 	}

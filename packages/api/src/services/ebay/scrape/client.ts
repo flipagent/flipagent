@@ -90,16 +90,21 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 	return params.soldOnly ? { itemSales: sliced, ...envelope } : { itemSummaries: sliced, ...envelope };
 }
 
-export async function scrapeItemDetail(itemId: string): Promise<ItemDetail | null> {
+export async function scrapeItemDetail(itemId: string, variationId?: string): Promise<ItemDetail | null> {
 	// eBay's web /itm/ path uses the legacy numeric id, not the v1 envelope.
 	// Strip `v1|<legacy>|<version>` → `<legacy>` so callers can pass either form.
 	const legacyMatch = /^v1\|(\d+)\|\d+$/.exec(itemId);
 	const legacyId = legacyMatch ? legacyMatch[1]! : itemId;
-	const url = `https://www.ebay.com/itm/${encodeURIComponent(legacyId)}`;
+	// `?var=<n>` selects a specific variation on multi-SKU listings
+	// (sneakers, clothes, bags). Without it eBay default-renders one
+	// variation server-side — usually the cheapest — so the price + per-
+	// variation aspects we extract would belong to the wrong SKU.
+	const base = `https://www.ebay.com/itm/${encodeURIComponent(legacyId)}`;
+	const url = variationId ? `${base}?var=${encodeURIComponent(variationId)}` : base;
 	try {
 		const html = await fetchHtmlViaScraperApi(url);
 		const raw = parseEbayDetailHtml(html, url, domFactory);
-		return ebayDetailToBrowse(raw);
+		return ebayDetailToBrowse(raw, variationId);
 	} catch {
 		return null;
 	}

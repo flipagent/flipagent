@@ -218,7 +218,20 @@ export type EvaluateMeta = Static<typeof EvaluateMeta>;
 
 export const EvaluateRequest = Type.Object(
 	{
-		/** eBay item id — `v1|...|0` or legacy numeric. Detail fetch resolves either. */
+		/**
+		 * eBay item id. Accepts:
+		 *
+		 *   - `v1|<legacy>|0`           — parent (no variation)
+		 *   - `v1|<legacy>|<variationId>` — specific SKU of a multi-variation listing
+		 *   - bare legacy numeric         — same as `v1|<n>|0`
+		 *   - full eBay URL               — `https://www.ebay.com/itm/<n>?var=<v>`,
+		 *                                   variation honored when present
+		 *
+		 * For multi-SKU listings (sneakers, clothes, bags) pass the variation
+		 * form so the detail fetch pulls the right SKU's price + aspects.
+		 * Without it eBay default-renders one variation server-side, which
+		 * gives evaluate the wrong listing-side price.
+		 */
 		itemId: Type.String({ minLength: 1 }),
 		/**
 		 * Sold-search lookback window in days. Filters the sold pool to
