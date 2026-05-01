@@ -143,10 +143,16 @@ export function buildEbayUrl(params: EbaySearchParams, page: number): string {
 	if (params.sort) u.searchParams.set("_sop", SORT_MAP[params.sort]);
 	// Aspect facets — each entry becomes one URL-encoded query param.
 	// eBay's web SRP keys aspects by the visible aspect name (`Color`,
-	// `US Shoe Size`, `Brand`); URLSearchParams handles encoding. Note:
-	// eBay applies faceted filters through a different mechanism than
-	// the REST `aspect_filter` param; some categories honour the URL
-	// keys, some don't. Use the REST source for precise narrowing.
+	// `US Shoe Size`, `Brand`); URLSearchParams handles encoding.
+	//
+	// Important: as of 2026-05 eBay's web SRP does NOT narrow results
+	// by URL-based aspect params — facets are applied JS-side via the
+	// sidebar checkbox state (AJAX-replaced result list), and the URL
+	// `&AspectName=Value` keys eBay's UI emits are used only for chip
+	// rendering and click tracking. We still forward them: the work is
+	// harmless, keeps the URL audit-readable, and lets us auto-pick up
+	// a future eBay change that consolidates URL + JS filters. **For
+	// precise aspect narrowing today, use the REST source.**
 	if (params.aspectParams) {
 		for (const [name, value] of Object.entries(params.aspectParams)) {
 			if (value) u.searchParams.set(name, value);

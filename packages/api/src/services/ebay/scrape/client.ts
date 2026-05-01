@@ -124,14 +124,22 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 	const ebayPage = Math.floor(offset / EBAY_SRP_PAGE_SIZE) + 1;
 	const sliceStart = offset % EBAY_SRP_PAGE_SIZE;
 	// Translate eBay-spec mirror params to web-SRP equivalents.
-	// `_dcat` (category) and `LH_*` (canonical filters) are honoured by
-	// eBay's web SRP one-to-one. Aspect facets (`Color=Black`,
-	// `US Shoe Size=8`, …) are forwarded but eBay's web SRP applies
-	// faceted filters through a different mechanism than the REST
-	// `aspect_filter` param — we send the params canonical-named, which
-	// some categories accept and some ignore. For precise aspect
-	// narrowing use the REST source. `gtin` folds into the keyword
-	// query — best-effort, since eBay's web SRP has no GTIN axis.
+	//   - `_dcat` (category) + `LH_*` (sold / BIN / auction / condition)
+	//     are honoured by eBay's web SRP one-to-one.
+	//   - `aspect_filter` is parsed and forwarded as `&AspectName=Value`
+	//     URL params. Verified end-to-end against live eBay (May 2026):
+	//     **the web SRP does NOT narrow on URL-based aspect params** —
+	//     facets are applied JS-side via the sidebar checkbox state and
+	//     AJAX-replaced result list. The URL `&AspectName=Value` keys
+	//     eBay's UI emits are used only for chip rendering. We still
+	//     forward (cost-free, audit-readable, future-proof if eBay
+	//     consolidates URL+JS filtering) — but **for precise aspect
+	//     narrowing, callers must use the REST source**, where
+	//     `aspect_filter={Value}` narrows correctly.
+	//   - `gtin` folds into the keyword query — best-effort, since web
+	//     SRP has no dedicated GTIN axis.
+	//   - `epid` / `fieldgroups` / `auto_correct` / `compatibility_filter`
+	//     / `charity_ids` silently drop — no web-SRP equivalent.
 	const aspect = input.aspectFilter ? parseAspectFilter(input.aspectFilter) : null;
 	const categoryId = aspect?.categoryId ?? input.categoryIds?.split("|")[0] ?? undefined;
 	const params: EbaySearchParams = {
