@@ -494,9 +494,7 @@ function Facts({
 						return (
 							<>
 								<span className="pg-result-facts-val">{strPct}% sell-through</span>
-								<span className="pg-result-facts-aside">
-									{market.salesPerDay.toFixed(2)}/day · {sold} sold · {active} active
-								</span>
+								<span className="pg-result-facts-aside">{market.salesPerDay.toFixed(2)}/day</span>
 								<SellingPaceTag market={market} />
 							</>
 						);
