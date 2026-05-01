@@ -1,0 +1,128 @@
+/* PricingRow — 2-col split row used on /pricing.
+   Same edge-flush + side-label pattern as .faq, just with credit/CTA
+   rows on the right instead of question accordions. The value (e.g.
+   "1 / call") is one inline block, right-aligned, so the slash sits
+   right next to its digit instead of forming a perceived column. */
+
+.pricing-row {
+	margin: 0 -32px;
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	border-top: 1px solid var(--border-faint);
+}
+
+
+.pricing-row-head {
+	padding: 32px 32px;
+	border-right: 1px solid var(--border-faint);
+}
+
+.pricing-row-head h2 {
+	font-size: 20px;
+	font-weight: 500;
+	letter-spacing: -0.012em;
+	margin: 0 0 8px;
+	color: var(--text);
+}
+
+.pricing-row-head p {
+	font-size: 14px;
+	line-height: 1.55;
+	color: var(--text-2);
+	max-width: 320px;
+	margin: 0;
+}
+
+.pricing-row-body {
+	display: flex;
+	flex-direction: column;
+}
+
+.pricing-row-item {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	align-items: center;
+	gap: 16px;
+	padding: 14px 28px;
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.pricing-row-item:last-child {
+	border-bottom: none;
+}
+
+.pricing-row-item-text {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	min-width: 0;
+}
+
+.pricing-row-item-text > svg {
+	flex-shrink: 0;
+	width: 14px;
+	height: 14px;
+	color: var(--brand);
+	margin-top: 3px;
+}
+
+.pricing-row-item-text > div {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.pricing-row-item-text > div > span:first-child {
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--text);
+	letter-spacing: -0.005em;
+}
+
+.pricing-row-item-text > div > span:last-child {
+	font-size: 12.5px;
+	color: var(--text-3);
+	line-height: 1.5;
+}
+
+.pricing-row-item-value {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 4px;
+	font-family: var(--mono);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.pricing-row-item-value .num {
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--text);
+}
+
+.pricing-row-item-value .unit {
+	font-size: 12.5px;
+	color: var(--text-3);
+}
+
+/* When the FAQ component sits at the end of the pricing stack, give it
+   a top divider so it connects to the previous .pricing-row cleanly. */
+.pricing-stack .faq {
+	border-top: 1px solid var(--border-faint);
+}
+
+@media (max-width: 720px) {
+	.pricing-row {
+		margin: 0 -16px;
+		grid-template-columns: 1fr;
+	}
+	.pricing-row-head {
+		padding: 24px 16px;
+		border-right: none;
+		border-bottom: 1px solid var(--border-faint);
+	}
+	.pricing-row-item {
+		padding: 14px 16px;
+	}
+}

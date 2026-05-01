@@ -674,6 +674,24 @@ code {
 	background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 11 11' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5.5 0L5.5 5.5L11 5.5' stroke='%23ececec' fill='none'/%3E%3Cpath d='M5.5 11L5.5 5.5L0 5.5' stroke='%23ececec' fill='none'/%3E%3C/svg%3E");
 }
 
+/* Visual breather between stacked blocks inside a single .cmw-bordered.
+   Edge-flush empty band — the page-frame verticals continue through it,
+   single hairline at the top separates it from the previous block. Pure
+   whitespace, no content. Use inside cmw-bordered to keep verticals
+   continuous; for inter-section padding use .section padding instead. */
+.section-spacer {
+	margin: 0 -32px;
+	height: 80px;
+	border-top: 1px solid var(--border-faint);
+}
+
+@media (max-width: 720px) {
+	.section-spacer {
+		margin: 0 -16px;
+		height: 48px;
+	}
+}
+
 .section-head {
 	margin: var(--head-gap) -32px;
 	padding: var(--head-pad) 32px;
@@ -913,7 +931,6 @@ code {
 	grid-template-rows: auto auto 1fr;
 	background: var(--surface);
 	border-top: 1px solid var(--border-faint);
-	border-bottom: 1px solid var(--border-faint);
 	margin: 0 -32px;
 }
 

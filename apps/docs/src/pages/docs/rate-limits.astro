@@ -8,7 +8,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>Rate limits</h1>
-				<p class="lead">One unit, credits, covers every metered endpoint. Each call charges a fixed cost (search 1, evaluate 50, discover 250). Cached responses and REST passthrough don't count. Free is a one-time grant; paid tiers refill monthly (UTC).</p>
+				<p class="lead">One unit, credits, covers every metered endpoint. Each call charges a fixed cost (search 1, evaluate 50, discover 250). Cached responses don't count. Free is a one-time grant; paid tiers refill monthly (UTC).</p>
 
 				<h2>Tier table</h2>
 				<table class="api">
@@ -30,13 +30,9 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td>Discover</td><td><code>/v1/discover</code></td><td>250</td></tr>
 						<tr><td>Browser op</td><td><code>/v1/browser/*</code></td><td>5</td></tr>
 						<tr><td>Cache hit</td><td>any (response carries <code>X-Flipagent-From-Cache: true</code>)</td><td>0</td></tr>
-						<tr><td>REST passthrough</td><td>marketplace reads when eBay OAuth is bound to the key</td><td>0</td></tr>
 					</tbody>
 				</table>
 				<p>Free routes (uncounted): <code>/v1/health/*</code>, <code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/capabilities</code>.</p>
-
-				<h2>Connect eBay for free search</h2>
-				<p>If your API key is bound to a connected eBay account, marketplace reads route through eBay's REST API directly — they don't hit our scrape proxy and they don't decrement credits. Evaluate and discover still charge because the LLM matching, hazard model, and cluster fan-out happen on our side.</p>
 
 				<h2>Headers on every authed response</h2>
 				<div class="code"><pre><code>{`X-RateLimit-Limit:              500       # tier credit budget

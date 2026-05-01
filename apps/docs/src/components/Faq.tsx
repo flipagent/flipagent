@@ -107,8 +107,7 @@ const GROUPS: Group[] = [
 						<code>/v1/messages</code>, <code>/v1/best-offer</code>, <code>/v1/feedback</code>{" "}
 						are 1 credit each. <code>/v1/evaluate</code> is 50, <code>/v1/discover</code> is
 						250, <code>/v1/browser/*</code> is 5. Cached responses are <strong>free</strong>
-						(0 credits). Marketplace reads via REST passthrough — when your key is bound to
-						a connected eBay account — are also free. Account routes (<code>/v1/health</code>,{" "}
+						(0 credits). Account routes (<code>/v1/health</code>,{" "}
 						<code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/takedown</code>,
 						billing) never count.
 					</>
@@ -123,7 +122,20 @@ const GROUPS: Group[] = [
 						refill on the 1st of each month (UTC) — the response carries{" "}
 						<code>resetAt</code>. The Free tier is a one-time 500-credit grant and doesn't
 						refill, so a maxed-out Free key has to upgrade to keep going. Upgrades from the
-						dashboard kick in immediately.
+						dashboard kick in immediately. We surface the next-plan-up math in your
+						dashboard at 80% utilization.
+					</>
+				),
+			},
+			{
+				q: "Are there per-minute or per-hour rate limits too?",
+				a: (
+					<>
+						Yes — burst caps sit alongside the monthly credit budget and protect against
+						runaway scripts (Free 10/min, Hobby 30/min, Standard 120/min, Growth 600/min;
+						hourly caps scale proportionally). Normal automation never trips them. If you do
+						spike too fast you'll get a separate <code>429</code> with{" "}
+						<code>error: "burst_rate_limited"</code> — slow down or upgrade for a higher cap.
 					</>
 				),
 			},
@@ -234,12 +246,22 @@ const GROUPS: Group[] = [
 	},
 ];
 
-export default function Faq() {
+interface FaqProps {
+	/**
+	 * Optional filter — render only groups whose `label` is in this list.
+	 * Defaults to every group (homepage usage). Pricing/rate-limits pages
+	 * pass `["Billing"]` to surface only the billing Q&A in the same skin.
+	 */
+	labels?: string[];
+}
+
+export default function Faq({ labels }: FaqProps = {}) {
+	const groups = labels ? GROUPS.filter((g) => labels.includes(g.label)) : GROUPS;
 	const [open, setOpen] = useState<string | null>("0-0");
 
 	return (
 		<div className="faq">
-			{GROUPS.map((group, gi) => (
+			{groups.map((group, gi) => (
 				<div className="faq-group" key={group.label}>
 					<div className="faq-side">
 						<h3>{group.label}</h3>

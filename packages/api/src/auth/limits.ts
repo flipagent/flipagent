@@ -4,8 +4,8 @@
  * One unit, credits, covers every metered endpoint. Each call charges a
  * fixed number of credits depending on what it does — search/scrape reads
  * are 1 credit, evaluate is 50, discover is 250 (matching the COGS ratio
- * each implies). Cached responses and REST passthrough (eBay OAuth) cost
- * 0 credits — those incur no Oxylabs/LLM cost on our side.
+ * each implies). Cached responses cost 0 credits — those incur no
+ * Oxylabs/LLM cost on our side.
  *
  * The pricing page advertises in credits; the dashboard renders the
  * usage gauge in credits; agents budget in credits. Same unit end to end.

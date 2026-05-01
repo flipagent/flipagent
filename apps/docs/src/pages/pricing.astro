@@ -1,101 +1,128 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import PricingTiers from "../components/PricingTiers.astro";
+import Faq from "../components/Faq.tsx";
+import Reveal from "../components/Reveal.tsx";
+import "../components/PricingRow.css";
 ---
 <Layout title="Pricing · flipagent">
-	<section class="hero" style="padding:64px 0 32px;">
-		<div class="cmw cmw-bordered">
+	<section class="hero">
+		<div class="cmw cmw-bordered" style="padding-top:64px; padding-bottom:48px;">
 			<h1>Start free. Pay <span class="accent">when you scale</span>.</h1>
-			<p class="lead">Credits cover everything: marketplace search, AI evaluation, deal discovery. Free is a one-time 500-credit trial; paid plans refill monthly. One unit, predictable budget, transparent costs.</p>
+			<p class="lead">
+				Credits cover everything: marketplace search, AI evaluation, deal discovery. Free is a one-time 500-credit trial; paid plans refill monthly.
+			</p>
 		</div>
 	</section>
 
-	<section class="section" style="padding-top:24px;">
+	<section class="pricing-stack">
 		<div class="cmw cmw-bordered">
 			<PricingTiers />
-		</div>
-	</section>
 
-	<section class="section" style="padding-top:32px;">
-		<div class="cmw" style="max-width:760px;">
-			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">API <span class="accent">credits</span></h2>
-			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
-				Credits are consumed on every API request, varying by endpoint and feature. Free starts you with 500 credits — they're a one-time grant, not a monthly stipend. Paid plans refill on the 1st of each month (UTC). Cached responses cost 0 credits. If you connect your eBay account, marketplace reads route through eBay's REST API and don't decrement your balance either.
-			</p>
-			<table class="api" style="margin-top:16px;">
-				<thead>
-					<tr>
-						<th>Feature</th>
-						<th>Endpoint</th>
-						<th style="text-align:right;">Credits</th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr>
-						<td>Search</td>
-						<td><code>/v1/search</code>, <code>/v1/buy/*</code>, <code>/v1/sell/*</code>, <code>/v1/commerce/*</code>, <code>/v1/post-order/*</code></td>
-						<td style="text-align:right;">1 / call</td>
-					</tr>
-					<tr>
-						<td>Evaluate</td>
-						<td><code>/v1/evaluate</code></td>
-						<td style="text-align:right;">50 / call</td>
-					</tr>
-					<tr>
-						<td>Discover</td>
-						<td><code>/v1/discover</code></td>
-						<td style="text-align:right;">250 / call</td>
-					</tr>
-					<tr>
-						<td>Browser op</td>
-						<td><code>/v1/browser/*</code></td>
-						<td style="text-align:right;">5 / call</td>
-					</tr>
-					<tr>
-						<td>Cached response</td>
-						<td>any endpoint, when served from cache</td>
-						<td style="text-align:right;">0</td>
-					</tr>
-					<tr>
-						<td>REST passthrough</td>
-						<td>marketplace reads when eBay is connected</td>
-						<td style="text-align:right;">0</td>
-					</tr>
-				</tbody>
-			</table>
-			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65; margin-top:16px;">
-				Free routes (uncounted): <code>/v1/health</code>, <code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/takedown</code>, <code>/v1/billing/*</code>, <code>/v1/capabilities</code>.
-			</p>
-		</div>
-	</section>
+			<div class="section-spacer" aria-hidden="true"></div>
 
-	<section class="section" style="padding-top:32px;">
-		<div class="cmw" style="max-width:760px;">
-			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">Connect eBay for <span class="accent">free search</span></h2>
-			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
-				When you bind your API key to a connected eBay account, marketplace reads route through eBay's REST API directly — faster, more reliable, and they don't decrement your credit balance. Evaluate and discover still cost credits because the heavy lifting happens on our side (LLM matching, hazard model, cluster fan-out).
-			</p>
-		</div>
-	</section>
+			<Reveal client:visible>
+				<div class="pricing-row">
+					<div class="pricing-row-head">
+						<h2>API <span class="accent">credits</span></h2>
+						<p>Credits are consumed for each request, varying by endpoint and feature.</p>
+					</div>
+					<div class="pricing-row-body">
+						<div class="pricing-row-item">
+							<div class="pricing-row-item-text">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<circle cx="10.5" cy="10.5" r="6.5"></circle>
+									<path d="m20 20-4.5-4.5"></path>
+								</svg>
+								<div>
+									<span>Search</span>
+									<span>Active and sold listing search.</span>
+								</div>
+							</div>
+							<div class="pricing-row-item-value"><span class="num">1</span><span class="unit">/ call</span></div>
+						</div>
+						<div class="pricing-row-item">
+							<div class="pricing-row-item-text">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<path d="M4 14a8 8 0 0 1 16 0"></path>
+									<path d="M12 14l3-4"></path>
+									<circle cx="12" cy="14" r="0.9" fill="currentColor"></circle>
+								</svg>
+								<div>
+									<span>Evaluate</span>
+									<span>Net-profit estimate from live asks and sold comps.</span>
+								</div>
+							</div>
+							<div class="pricing-row-item-value"><span class="num">50</span><span class="unit">/ call</span></div>
+						</div>
+						<div class="pricing-row-item">
+							<div class="pricing-row-item-text">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<circle cx="12" cy="12" r="9"></circle>
+									<path d="M12 5l3 7-3 7-3-7z"></path>
+								</svg>
+								<div>
+									<span>Discover</span>
+									<span>Evaluate every listing in a search. Ranked by profit.</span>
+								</div>
+							</div>
+							<div class="pricing-row-item-value"><span class="num">250</span><span class="unit">/ call</span></div>
+						</div>
+						<div class="pricing-row-item">
+							<div class="pricing-row-item-text">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<rect x="3" y="4" width="18" height="16" rx="2"></rect>
+									<path d="M3 9h18"></path>
+									<circle cx="6.5" cy="6.5" r="0.4" fill="currentColor"></circle>
+									<circle cx="9" cy="6.5" r="0.4" fill="currentColor"></circle>
+								</svg>
+								<div>
+									<span>Browser op</span>
+									<span>Use your eBay account via the extension.</span>
+								</div>
+							</div>
+							<div class="pricing-row-item-value"><span class="num">5</span><span class="unit">/ call</span></div>
+						</div>
+					</div>
+				</div>
+			</Reveal>
 
-	<section class="section" style="padding-top:32px;">
-		<div class="cmw" style="max-width:760px;">
-			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">Going over</h2>
-			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
-				Once you exhaust your credits you'll get a <code>429</code>. Paid plans reset 00:00 UTC on the 1st of next month; Free is one-time, so a maxed-out Free key can only proceed by upgrading. Burst rate limits (per-minute, per-hour) sit alongside the credit budget and protect against runaway scripts; normal automation never trips them. We surface the next-plan-up math in your dashboard at 80% utilization.
-			</p>
-		</div>
-	</section>
+			<div class="section-spacer" aria-hidden="true"></div>
 
-	<section class="section" style="padding-top:32px; padding-bottom:96px;">
-		<div class="cmw" style="max-width:760px;">
-			<h2 style="font-size:28px; letter-spacing:-0.02em; font-weight:500; margin-bottom:14px;">Enterprise &amp; self-host</h2>
-			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
-				<strong style="color:var(--text-1);">Enterprise</strong> — custom credit volume, dedicated infra, SLA, white-label. <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>.
-			</p>
-			<p style="color:var(--text-2); font-size:15.5px; line-height:1.65;">
-				<strong style="color:var(--text-1);">Self-host</strong> — the API server is open source. Run it with your own scraper credentials and your own LLM key; pay nothing to flipagent. Source on <a href="https://github.com/jinhokim98/flipagent">GitHub</a>.
-			</p>
+			<Reveal client:visible>
+				<div class="pricing-row">
+					<div class="pricing-row-head">
+						<h2>Beyond <span class="accent">credits</span></h2>
+						<p>Two paths past the public tiers.</p>
+					</div>
+					<div class="pricing-row-body">
+						<div class="pricing-row-item">
+							<div class="pricing-row-item-text">
+								<div>
+									<span>Enterprise</span>
+									<span>Custom credit volume, dedicated infra, SLA, white-label.</span>
+								</div>
+							</div>
+							<a href="mailto:hello@flipagent.dev" class="btn">Contact us <span class="arrow">→</span></a>
+						</div>
+						<div class="pricing-row-item">
+							<div class="pricing-row-item-text">
+								<div>
+									<span>Self-host</span>
+									<span>Open source. Run it on your own infrastructure.</span>
+								</div>
+							</div>
+							<a href="https://github.com/jinhokim98/flipagent" class="btn">View on GitHub <span class="arrow">→</span></a>
+						</div>
+					</div>
+				</div>
+			</Reveal>
+
+			<div class="section-spacer" aria-hidden="true"></div>
+
+			<Reveal client:visible delay={0.05}>
+				<Faq labels={["Billing"]} client:visible />
+			</Reveal>
 		</div>
 	</section>
 </Layout>
