@@ -1510,7 +1510,13 @@ footer.site .page-frame {
 	font-size: 13.5px;
 	display: flex;
 	align-items: center;
+	gap: 8px;
 	transition: background 0.15s ease, color 0.15s ease;
+}
+
+.foot-cell svg {
+	flex-shrink: 0;
+	color: currentColor;
 }
 
 /* Last column of every row gets no right border — page-frame owns that line */

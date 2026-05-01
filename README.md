@@ -4,7 +4,7 @@
 
 It sources, lists, and ships every order while you sleep.
 
-[![License: MIT / FSL](https://img.shields.io/badge/license-MIT%20%2F%20FSL-blue.svg)](#license) [![Stars](https://img.shields.io/github/stars/flipagent/flipagent?style=social)](https://github.com/flipagent/flipagent) [![Docs](https://img.shields.io/badge/docs-flipagent.dev-black.svg)](https://flipagent.dev/docs)
+[![License: MIT / FSL](https://img.shields.io/badge/license-MIT%20%2F%20FSL-blue.svg)](#license) [![Stars](https://img.shields.io/github/stars/flipagent/flipagent?style=social)](https://github.com/flipagent/flipagent) [![Docs](https://img.shields.io/badge/docs-flipagent.dev-black.svg)](https://flipagent.dev/docs) [![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/PUyURdjMtv)
 
 ```ts
 import { createFlipagentClient } from "@flipagent/sdk";
@@ -20,7 +20,7 @@ const { deals } = await client.discover.deals({
 deals.forEach((d) => console.log(d.evaluation.expectedNetCents, d.evaluation.rating, d.item.title));
 ```
 
-> **Get a free key** (500 credits one-time, no card) at [flipagent.dev/signup](https://flipagent.dev/signup).
+> **Get a free key** (500 credits one-time, no card) at [flipagent.dev/signup](https://flipagent.dev/signup). Hop into [Discord](https://discord.gg/PUyURdjMtv) for questions, bugs, and build talk.
 
 ---
 
