@@ -78,6 +78,8 @@ REJECT (return "same: false") only when an objective product-defining attribute 
 - Different condition tier
 - Genuinely different model line
 
+MULTI-VARIATION LISTINGS (sneakers, clothes, bags): an item or candidate may carry a "variations (N SKUs in this listing)" block — one URL bundling several sizes/colours, each with its own price. When the CANDIDATE's variation is product-defining (its localizedAspects state Size: US M8, or its title implies Size 8), an ITEM that's a multi-variation listing is a match ONLY if one of its SKUs matches the candidate's variation at a comparable price tier. If none of the item's SKUs are the candidate's size (e.g. candidate is "Size: US M8" but the item lists only "PS 3Y" + "GS 5Y"), reject — even when title and brand match. When BOTH candidate and item are multi-variation parents that share the same SKU set, treat as same product (the buyer can pick the same variation on either listing). Use price as a tiebreaker only when the variation aspects are ambiguous: an item priced near one specific SKU is presumptively that SKU.
+
 If only aspects differ but title + reference + condition all match, return "true".
 Decide each item independently; one item's decision must not influence another.
 
@@ -238,6 +240,22 @@ interface DetailLike {
 	 */
 	itemCreationDate?: string;
 	itemEndDate?: string;
+	/**
+	 * Multi-SKU variations parsed from the page's MSKU model. Present on
+	 * any sneaker / clothes / bag listing where one URL covers multiple
+	 * sizes or colours. The matcher exposes the full list to the LLM so
+	 * it can decide whether the SEED's specific SKU is among the
+	 * candidate's SKUs at a comparable price tier — a multi-variation
+	 * candidate isn't automatically a match just because the title is
+	 * similar; it depends on whether the seed's variation actually
+	 * exists inside it.
+	 */
+	variations?: ReadonlyArray<{
+		variationId: string;
+		priceCents: number | null;
+		currency: string;
+		aspects: ReadonlyArray<{ name: string; value: string }>;
+	}>;
 }
 
 function summariseDetail(d: DetailLike): string {
@@ -251,6 +269,18 @@ function summariseDetail(d: DetailLike): string {
 	if (d.localizedAspects && d.localizedAspects.length > 0) {
 		lines.push("aspects:");
 		for (const a of d.localizedAspects) lines.push(`  - ${a.name}: ${a.value}`);
+	}
+	// Multi-SKU listings: list every variation as one line — `axis: value`
+	// for each axis, plus the variation's own price. Lets the LLM pick the
+	// SKU the seed actually matches (by price tier or stated variation
+	// aspects), and reject when the seed's variation isn't represented.
+	if (d.variations && d.variations.length > 0) {
+		lines.push(`variations (${d.variations.length} SKUs in this listing):`);
+		for (const v of d.variations) {
+			const aspectStr = v.aspects.map((a) => `${a.name}: ${a.value}`).join(", ");
+			const priceStr = v.priceCents != null ? `$${(v.priceCents / 100).toFixed(2)}` : "n/a";
+			lines.push(`  - ${aspectStr || "(no aspect)"} — ${priceStr}`);
+		}
 	}
 	return lines.join("\n");
 }
@@ -526,6 +556,7 @@ function spliceDateFields(item: ItemSummary, detail: DetailLike): ItemSummary {
  * returning empty and forcing a retry that often hits the same cap.
  */
 export { parseJsonArray as __parseJsonArrayForTest };
+export { summariseDetail as __summariseDetailForTest };
 function parseJsonArray<T>(text: string): T[] {
 	let body = text.trim();
 	const fence = body.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
