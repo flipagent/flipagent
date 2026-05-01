@@ -1,7 +1,18 @@
 /**
- * Phase 3 (LIST) — given duration data, recommend the price that
- * maximizes capital efficiency (yield per day). Returns null when
- * `market.meanDaysToSell` is absent.
+ * Phase 3 (LIST) — recommend the price that maximizes capital efficiency
+ * (yield per day). Returns null when the market has no observed flow
+ * (`salesPerDay <= 0`).
+ *
+ * Baseline rate: derived from the count of sold listings in the window
+ * (`market.salesPerDay = nObservations / windowDays`) rather than the
+ * mean of per-listing durations. Counts are robust to eBay's
+ * auto-renewal artifact (a listing that sat for 90d gets re-issued with
+ * a fresh creationDate and looks like it sold in 5d), and don't require
+ * the optional `itemCreationDate`/`itemEndDate` metadata to be present
+ * on every sold sample. In steady state the two formulations are
+ * equivalent (Little's Law: stock = flow × waitTime), but the
+ * count-based baseline degrades gracefully when duration data is
+ * sparse, biased, or absent.
  */
 
 import { feeBreakdown } from "./fees.js";
@@ -105,16 +116,26 @@ const COMPETITION_FLOOR = 0.15;
 /**
  * Recommend a list price by maximizing `netCents − hurdleRate·E[T_sell]`
  * over a grid of candidate prices around the sold mean. Returns null
- * when the market lacks `meanDaysToSell` (no time-to-sell data, no
- * model).
+ * when the market has no observed flow (`salesPerDay <= 0`) — without
+ * any sales we have no baseline.
  *
  * Math:
  *   z(P) = (ln P − ln meanCents) / (stdDev_log)
- *        ≈ (P − meanCents) / stdDevCents · 1/√1   (linear approx for log)
- *   λ(z) = (1 / meanDaysToSell) · exp(−β · z)     (rate at z=0 = 1/T̄)
- *   T(P) = 1 / λ(z)                                (expected days)
- *   N(P) = P · (1 − feeRate) − fixed − ship        (net per sale)
- *   yield(P) = N(P) / T(P)                          (cents per day)
+ *        ≈ (P − meanCents) / stdDevCents · 1/√1     (linear approx)
+ *   λ(z) = salesPerDay · cf · min(1, exp(−β · z))    (sales/day at price P)
+ *   T(P) = 1 / λ(z)                                  (expected days)
+ *   N(P) = P · (1 − feeRate) − fixed − ship          (net per sale)
+ *   yield(P) = N(P) / T(P)                            (cents per day)
+ *
+ * Asymmetric elasticity: priced above the sold mean takes the full
+ * `exp(−β · z)` decay (buyers wait when the live market is overpriced
+ * vs history). Below the mean we cap at 1 — the position-aware
+ * `cf` already credits cheaper listings with capturing more demand,
+ * so a second multiplicative boost would double-count. With β=1.5,
+ * a symmetric model said "30% under mean ⇒ 20× faster", which led
+ * to nonsense like "this niche SKU sells in 1.3 days" in markets
+ * that physically only mint 0.1 buyers/day. The cap pins the upside
+ * to what the market can actually clear.
  *
  * Pick P maximizing `yield − hurdleRate · capital_at_risk`. The
  * implementation uses a discrete grid; closed-form would buy little for
@@ -124,9 +145,9 @@ export function optimalListPrice(
 	market: MarketStats,
 	options: OptimalListPriceOptions = {},
 ): ListPriceRecommendation | null {
-	if (!market.meanDaysToSell || market.meanDaysToSell <= 0) return null;
+	if (market.salesPerDay <= 0) return null;
 	if (market.stdDevCents <= 0 || market.meanCents <= 0) return null;
-	const meanDays = market.meanDaysToSell;
+	const salesPerDay = market.salesPerDay;
 
 	const beta = options.beta ?? DEFAULT_ELASTICITY;
 	const fees = options.fees ?? DEFAULT_FEES;
@@ -152,7 +173,6 @@ export function optimalListPrice(
 	// etc), recenter the grid 50/50 between sold mean and active median
 	// so the recommendation isn't anchored to history that no longer holds.
 	const center = blendedCenter(market.meanCents, asks);
-	const lambda0 = 1 / meanDays; // sales/day at z=0
 
 	// Pre-sort active ask prices for the position-aware competition factor.
 	const askPrices = [...asks].sort((a, b) => a - b);
@@ -164,7 +184,10 @@ export function optimalListPrice(
 		const z = zMin + (i * (zMax - zMin)) / (steps - 1);
 		const priceCents = Math.max(1, Math.round(center + z * sigma));
 		const compFactor = competitionFactor(priceCents, askPrices);
-		const lambda = lambda0 * Math.exp(-beta * z) * compFactor;
+		// Asymmetric elasticity — see header comment. min(1, ...) caps the
+		// "going lower" boost at unity; cf already encodes capture share.
+		const elasticity = Math.min(1, Math.exp(-beta * z));
+		const lambda = salesPerDay * compFactor * elasticity;
 		if (lambda <= 0) continue;
 		const T = 1 / lambda;
 		// Floor T at `minT` for both ranking and the user-facing field —

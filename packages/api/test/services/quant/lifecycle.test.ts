@@ -17,18 +17,20 @@ const baseMarket: MarketStats = {
 };
 
 describe("optimalListPrice", () => {
-	it("returns null when meanDaysToSell is missing", () => {
-		expect(optimalListPrice(baseMarket)).toBeNull();
+	it("returns null when the market has no observed flow", () => {
+		const dead: MarketStats = { ...baseMarket, salesPerDay: 0 };
+		expect(optimalListPrice(dead)).toBeNull();
 	});
 
 	it("returns null when stdDev or mean is degenerate", () => {
-		const flat: MarketStats = { ...baseMarket, stdDevCents: 0, meanDaysToSell: 14 };
+		const flat: MarketStats = { ...baseMarket, stdDevCents: 0 };
 		expect(optimalListPrice(flat)).toBeNull();
 	});
 
-	it("picks an interior point given meanDaysToSell + stdDev", () => {
-		const m: MarketStats = { ...baseMarket, meanDaysToSell: 14 };
-		const advice = optimalListPrice(m);
+	it("picks an interior point from salesPerDay + stdDev alone", () => {
+		// No meanDaysToSell needed — the count-based baseline (salesPerDay)
+		// is sufficient on its own.
+		const advice = optimalListPrice(baseMarket);
 		expect(advice).not.toBeNull();
 		expect(advice!.listPriceCents).toBeGreaterThan(0);
 		expect(advice!.expectedDaysToSell).toBeGreaterThan(0);
@@ -39,11 +41,26 @@ describe("optimalListPrice", () => {
 	});
 
 	it("higher elasticity (beta) compresses the chosen price toward the mean", () => {
-		const m: MarketStats = { ...baseMarket, meanDaysToSell: 14 };
-		const a = optimalListPrice(m, { beta: 0.5 })!;
-		const b = optimalListPrice(m, { beta: 3 })!;
-		// When beta is large, listing higher costs you a lot of time → optimum
-		// price moves down; when beta is small, the optimum walks up.
+		const a = optimalListPrice(baseMarket, { beta: 0.5 })!;
+		const b = optimalListPrice(baseMarket, { beta: 3 })!;
+		// Above the mean (z>0) larger beta penalizes faster, so the optimum
+		// for high-beta walks down the grid relative to low-beta. Below mean
+		// elasticity is capped at 1 in both, so the asymmetric shape doesn't
+		// flip the inequality.
 		expect(a.listPriceCents).toBeGreaterThanOrEqual(b.listPriceCents);
+	});
+
+	it("elasticity does not over-reward listing below the sold mean", () => {
+		// Pre-cap behaviour: a deep undercut (z=-2) used to multiply lambda
+		// by exp(3) ≈ 20×, predicting hours-to-sell in markets that
+		// physically cleared 1 buyer/day. With the cap, lambda below mean
+		// is bounded by salesPerDay × cf, i.e. the market's own flow.
+		const advice = optimalListPrice(baseMarket, { zMin: -2, zMax: 0, steps: 11 })!;
+		// salesPerDay=3, cf=1 (no asks supplied) → lambda ≤ 3, so T ≥ 1/3.
+		// Floored at minDaysToSell=1, so the visible field is ≥ 1.
+		expect(advice.expectedDaysToSell).toBeGreaterThanOrEqual(1);
+		// Probability of selling within a week shouldn't be a near-tautology
+		// either; for a 3/day market it's high but bounded by the cap.
+		expect(advice.sellProb7d).toBeLessThan(1);
 	});
 });
