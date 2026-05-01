@@ -271,4 +271,3 @@ function blendedCenter(soldMeanCents: number, askPrices: ReadonlyArray<number>):
 	if (drift <= 0.1) return soldMeanCents;
 	return Math.round(0.5 * soldMeanCents + 0.5 * askMedian);
 }
-

@@ -162,10 +162,7 @@ export interface MarketContext {
  * is a no-op in steady markets and only kicks in when the temporal
  * distribution is non-flat.
  */
-function salesPerDayRecency(
-	observations: ReadonlyArray<PriceObservation>,
-	windowDays: number,
-): number {
+function salesPerDayRecency(observations: ReadonlyArray<PriceObservation>, windowDays: number): number {
 	if (windowDays <= 0 || observations.length === 0) return 0;
 	const tau = Math.max(7, windowDays / 3);
 	const now = Date.now();
