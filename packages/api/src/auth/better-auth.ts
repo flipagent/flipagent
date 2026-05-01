@@ -40,9 +40,14 @@ function createAuth() {
 		// `sendResetPassword` is wired through Resend (see `./email.ts`); when
 		// RESEND_API_KEY is unset the helper throws "email_not_configured" and
 		// the /forget-password endpoint returns a 500 the UI surfaces.
+		// `requireEmailVerification` gates sign-in: unverified accounts get a
+		// 403 EMAIL_NOT_VERIFIED with a fresh email re-sent (sendOnSignIn). On
+		// instances without Resend wired we fall back to the open flow so the
+		// system stays usable; the dashboard banner still nags.
 		emailAndPassword: {
 			enabled: true,
 			autoSignIn: true,
+			requireEmailVerification: isEmailConfigured(),
 			minPasswordLength: 8,
 			sendResetPassword: async ({ user, url }) => {
 				const { sendPasswordResetEmail } = await import("./email.js");
@@ -53,13 +58,14 @@ function createAuth() {
 				});
 			},
 		},
-		// Email verification — only auto-sent at sign-up when Resend is wired
-		// (so an unconfigured instance doesn't fail every sign-up on the throw
-		// from `sendVerificationEmail`). The callback itself is always present
-		// so a manual `/api/auth/send-verification-email` still surfaces the
-		// "email_not_configured" error for the UI to handle if it ever fires.
+		// Email verification — sent at sign-up and re-sent on any sign-in
+		// attempt that hits the verification gate. The callback is always
+		// present so a manual `/api/auth/send-verification-email` still
+		// surfaces the "email_not_configured" error for the UI to handle if
+		// it ever fires on an unconfigured instance.
 		emailVerification: {
 			sendOnSignUp: isEmailConfigured(),
+			sendOnSignIn: isEmailConfigured(),
 			autoSignInAfterVerification: true,
 			sendVerificationEmail: async ({ user, url }) => {
 				const { sendVerificationEmail } = await import("./email.js");

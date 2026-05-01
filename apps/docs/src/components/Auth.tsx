@@ -25,6 +25,11 @@ export default function Auth() {
 	const [name, setName] = useState("");
 	const [pending, setPending] = useState<Provider | null>(null);
 	const [lastUsed, setLastUsed] = useState<Provider | null>(null);
+	// When email + password sign-up succeeds with `requireEmailVerification`
+	// the API returns no session token; when sign-in is attempted on an
+	// unverified account we get a 403 EMAIL_NOT_VERIFIED. Both cases swap
+	// the form pane for a "check your inbox" panel keyed on this email.
+	const [awaitingVerify, setAwaitingVerify] = useState<string | null>(null);
 
 	useEffect(() => {
 		try {
@@ -83,21 +88,61 @@ export default function Auth() {
 		try {
 			const dest = postAuthDestination();
 			const callbackURL = `${window.location.origin}${dest}`;
+			let result: { data?: { token?: string | null } | null; error?: { code?: string; status?: number; message?: string } | null } | undefined;
 			if (tab === "login") {
-				await authClient.signIn.email({ email, password, callbackURL });
+				result = await authClient.signIn.email({ email, password, callbackURL });
 			} else {
-				await authClient.signUp.email({
+				result = await authClient.signUp.email({
 					email,
 					password,
 					name: name.trim() || email.split("@")[0],
 					callbackURL,
 				});
 			}
-			// Only on success — wrong password should not promote "email" to last-used.
+			// Better-Auth's react client returns `{data, error}` rather than throwing.
+			// EMAIL_NOT_VERIFIED on sign-in (403) and a null token on sign-up both
+			// mean "we sent a link, finish in your inbox".
+			if (isEmailNotVerified(result?.error)) {
+				rememberLastUsed("email");
+				setAwaitingVerify(email);
+				setPending(null);
+				return;
+			}
+			if (result?.error) {
+				throw new Error(result.error.message ?? "sign_in_failed");
+			}
+			if (tab === "signup" && !result?.data?.token) {
+				rememberLastUsed("email");
+				setAwaitingVerify(email);
+				setPending(null);
+				return;
+			}
 			rememberLastUsed("email");
 			window.location.href = dest;
 		} catch (err) {
+			if (isEmailNotVerified(err)) {
+				rememberLastUsed("email");
+				setAwaitingVerify(email);
+				setPending(null);
+				return;
+			}
 			toast.error(extractMessage(err));
+			setPending(null);
+		}
+	}
+
+	async function handleResend() {
+		if (!awaitingVerify) return;
+		setPending("email");
+		try {
+			await authClient.sendVerificationEmail({
+				email: awaitingVerify,
+				callbackURL: `${window.location.origin}${postAuthDestination()}`,
+			});
+			toast.success(`Link re-sent to ${awaitingVerify}.`);
+		} catch (err) {
+			toast.error(extractMessage(err));
+		} finally {
 			setPending(null);
 		}
 	}
@@ -159,6 +204,37 @@ export default function Auth() {
 
 			<section className="auth-section auth-section--form">
 				<div className="auth-rail">
+					{awaitingVerify ? (
+						<div className="auth-verify">
+							<div className="auth-reset-head">
+								<p className="auth-reset-title">Check your inbox</p>
+								<p className="auth-reset-sub">
+									We sent a confirmation link to <code>{awaitingVerify}</code>. Open it to finish signing in.
+								</p>
+							</div>
+							<button
+								type="button"
+								className="auth-cta"
+								onClick={handleResend}
+								disabled={pending !== null}
+							>
+								{pending === "email" ? "Sending…" : "Resend link"}
+							</button>
+							<div className="auth-pills">
+								<button
+									type="button"
+									className="auth-pill"
+									onClick={() => {
+										setAwaitingVerify(null);
+										setPassword("");
+									}}
+								>
+									Use a different email
+								</button>
+							</div>
+						</div>
+					) : (
+					<>
 					<div className="auth-tabs" role="tablist">
 						<button
 							type="button"
@@ -230,9 +306,12 @@ export default function Auth() {
 							</button>
 						</div>
 					)}
+					</>
+					)}
 				</div>
 			</section>
 
+			{!awaitingVerify && (
 			<section className="auth-section auth-section--socials">
 				<div className="auth-rail">
 					<div className="auth-socials">
@@ -295,6 +374,7 @@ export default function Auth() {
 					</div>
 				</div>
 			</section>
+			)}
 
 			<section className="auth-section auth-section--foot">
 				<div className="auth-rail">
@@ -309,6 +389,20 @@ export default function Auth() {
 			<Toaster position="top-right" richColors closeButton />
 		</>
 	);
+}
+
+/**
+ * `requireEmailVerification: true` makes Better-Auth reject sign-in with a
+ * 403 / `EMAIL_NOT_VERIFIED` and silently re-send the verification email.
+ * Both the returned `{error}` shape and any thrown variant flow through here.
+ */
+function isEmailNotVerified(err: unknown): boolean {
+	if (!err || typeof err !== "object") return false;
+	const e = err as { code?: unknown; status?: unknown; message?: unknown };
+	if (typeof e.code === "string" && e.code === "EMAIL_NOT_VERIFIED") return true;
+	if (typeof e.status === "number" && e.status === 403) return true;
+	if (typeof e.message === "string" && e.message.toLowerCase().includes("not verified")) return true;
+	return false;
 }
 
 function extractMessage(err: unknown): string {

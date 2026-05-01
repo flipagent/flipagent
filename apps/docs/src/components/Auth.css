@@ -297,6 +297,27 @@
 	margin: 0;
 }
 
+/* ─── Verify-email pane ───────────────────────────────────────────
+ * Replaces the form when sign-up succeeded but verification is pending,
+ * or when sign-in hit the verification gate. Reuses .auth-reset-head /
+ * .auth-cta / .auth-pills primitives so the surface looks identical to
+ * the reset-password "done" state — same rhythm, same widths.
+ */
+.auth-verify {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+.auth-verify .auth-reset-sub code {
+	font-family: var(--mono);
+	font-size: 12px;
+	background: var(--surface-3);
+	padding: 1px 6px;
+	border-radius: 4px;
+	color: var(--text);
+}
+.auth-verify .auth-pills { margin-top: 0; }
+
 /* ─── Terminal panels (missing / expired token) ───────────────────── */
 .auth-terminal {
 	display: flex;
