@@ -19,28 +19,32 @@ import { feeBreakdown } from "./fees.js";
 import { DEFAULT_FEES, type FeeModel, type ListPriceRecommendation, type MarketStats } from "./types.js";
 
 /**
- * Default elasticity of sale rate w.r.t. log-price z-score:
- *   λ(z) = λ₀ · exp(−β · z)
- * 1.5 is a reasonable starting value across resale collectibles +
- * electronics until SPRD-side per-listing duration data lets us fit
- * β empirically per category.
+ * Default elasticity of the score function:
+ *   score(z) = exp(−β · z)
+ * Fed into a multinomial-logit capture share over (current asks + my
+ * listing). 1.0 calibrated by simulation across hot/mid/slow/oversupplied
+ * markets (see /tmp/mnl-pick2.mjs in PR notes) — at this β the cheapest
+ * listing in a typical 5-active market clears in ~half the fair-share
+ * time, and worst-priced clears in ~3× fair share. Higher β
+ * (sneakers, cards) sharpens the rank discrimination further.
  */
-export const DEFAULT_ELASTICITY = 1.5;
+export const DEFAULT_ELASTICITY = 1.0;
 
 /**
- * Per-category elasticity defaults (eBay leaf categoryIds).
- * Calibrated by hand from observed price-vs-time-to-sell elasticity
- * in each market — sneakers / cards are very price-sensitive (a few %
- * over market and listings sit forever), antiques / collectibles less so.
- * Falls back to `DEFAULT_ELASTICITY` for unmapped categories.
+ * Per-category elasticity defaults (eBay leaf categoryIds). Calibrated
+ * for the MNL share function — values are roughly half of the previous
+ * proportional-hazards-with-elasticity ones since β now drives the
+ * full softmax-rank instead of being one of two multiplicative factors.
+ * Sneakers + cards remain the most price-sensitive (cheapest captures
+ * a clear majority of demand); antiques sit close to uniform.
  */
 const CATEGORY_BETA: Record<string, number> = {
-	"15709": 4.0, // Athletic Shoes
-	"183454": 3.0, // Pokémon Trading Cards
-	"31387": 2.0, // Wristwatches
-	"9355": 2.5, // Cell Phones & Smartphones
-	"139973": 2.0, // Video Games
-	"169271": 1.0, // Antiques
+	"15709": 2.0, // Athletic Shoes
+	"183454": 1.5, // Pokémon Trading Cards
+	"31387": 1.2, // Wristwatches
+	"9355": 1.3, // Cell Phones & Smartphones
+	"139973": 1.2, // Video Games
+	"169271": 0.7, // Antiques
 };
 
 export function categoryBeta(categoryId: string | undefined): number {
@@ -105,13 +109,45 @@ export interface OptimalListPriceOptions {
 }
 
 /**
- * Floor on the competition multiplier — even when every active ask is
- * cheaper than the candidate price, real markets aren't strictly
- * cheapest-first (different photos / sellers / BIN-vs-Best-Offer). A
- * 0.15 floor prevents the multiplier from collapsing predictions to
- * "infinite days" for items that might still sell.
+ * Per-listing capture share via multinomial-logit (MNL) over the
+ * competing listings.
+ *
+ *   score(z) = exp(−β · z)
+ *   competitive (N≥1 actives):   p = score_me / (Σ score_others + score_me)
+ *   alone:                        p = min(1, score_me)
+ *
+ * Properties this gives us — none of which the prior `cf × elasticity`
+ * heuristic delivered cleanly:
+ *
+ *   1. Flow conservation. When me + every existing active are scored
+ *      together, Σ p_i = 1 — total predicted sales rate equals
+ *      observed market flow `salesPerDay`. The earlier formulation
+ *      summed cf alone to (N+1)/2, leaving the model 2–3× over-
+ *      confident on absolute T predictions.
+ *   2. Single multiplicative price effect. β controls both rank
+ *      discrimination (cheaper score wins more share) and absolute
+ *      level penalty (big positive z drives score → 0 against
+ *      competitors at z≈0). No double-count between cf and exp.
+ *   3. No magic floor. The previous COMPETITION_FLOOR=0.15 existed
+ *      to keep "way overpriced" T finite; in MNL bad pricing
+ *      naturally yields a tiny but nonzero p without an arbitrary
+ *      hard floor.
+ *   4. Asymmetric alone-listing behaviour. With no competitors the
+ *      MNL share collapses to 1, so we keep the `min(1, score)`
+ *      cap on the lone-listing path: an alone listing priced above
+ *      the sold mean still gets penalized for being absolutely
+ *      overpriced, but a deeply-undercut alone listing doesn't sell
+ *      faster than the market itself can mint buyers (capped at the
+ *      historical `salesPerDay`). This matches user intuition:
+ *      "30개/30일, 경쟁자 0, 정상가 → 1일에 팔린다" out of the box.
  */
-const COMPETITION_FLOOR = 0.15;
+function captureShare(zMe: number, zOthers: ReadonlyArray<number>, beta: number): number {
+	const sMe = Math.exp(-beta * zMe);
+	if (zOthers.length === 0) return Math.min(1, sMe);
+	let sumOther = 0;
+	for (const z of zOthers) sumOther += Math.exp(-beta * z);
+	return sMe / (sumOther + sMe);
+}
 
 /**
  * Recommend a list price by maximizing `netCents − hurdleRate·E[T_sell]`
@@ -120,22 +156,11 @@ const COMPETITION_FLOOR = 0.15;
  * any sales we have no baseline.
  *
  * Math:
- *   z(P) = (ln P − ln meanCents) / (stdDev_log)
- *        ≈ (P − meanCents) / stdDevCents · 1/√1     (linear approx)
- *   λ(z) = salesPerDay · cf · min(1, exp(−β · z))    (sales/day at price P)
- *   T(P) = 1 / λ(z)                                  (expected days)
- *   N(P) = P · (1 − feeRate) − fixed − ship          (net per sale)
- *   yield(P) = N(P) / T(P)                            (cents per day)
- *
- * Asymmetric elasticity: priced above the sold mean takes the full
- * `exp(−β · z)` decay (buyers wait when the live market is overpriced
- * vs history). Below the mean we cap at 1 — the position-aware
- * `cf` already credits cheaper listings with capturing more demand,
- * so a second multiplicative boost would double-count. With β=1.5,
- * a symmetric model said "30% under mean ⇒ 20× faster", which led
- * to nonsense like "this niche SKU sells in 1.3 days" in markets
- * that physically only mint 0.1 buyers/day. The cap pins the upside
- * to what the market can actually clear.
+ *   z(P) = (P − meanCents) / stdDevCents       (linear approx of log-z)
+ *   λ(P) = salesPerDay · captureShare(z(P), z_others, β)
+ *   T(P) = 1 / λ(P)                            (expected days)
+ *   N(P) = P · (1 − feeRate) − fixed − ship    (net per sale)
+ *   yield(P) = N(P) / T(P)                      (cents per day)
  *
  * Pick P maximizing `yield − hurdleRate · capital_at_risk`. The
  * implementation uses a discrete grid; closed-form would buy little for
@@ -174,8 +199,12 @@ export function optimalListPrice(
 	// so the recommendation isn't anchored to history that no longer holds.
 	const center = blendedCenter(market.meanCents, asks);
 
-	// Pre-sort active ask prices for the position-aware competition factor.
-	const askPrices = [...asks].sort((a, b) => a - b);
+	// Pre-compute the existing actives' z-scores against the same center
+	// the candidate is evaluated against. Using `center` (the
+	// blended-mean) rather than `meanCents` keeps the softmax
+	// numerator/denominator on the same axis when the live market has
+	// drifted.
+	const otherZs = asks.map((a) => (a - center) / sigma);
 
 	let best: ListPriceRecommendation | null = null;
 	let bestYield = -Infinity;
@@ -183,11 +212,8 @@ export function optimalListPrice(
 	for (let i = 0; i < steps; i++) {
 		const z = zMin + (i * (zMax - zMin)) / (steps - 1);
 		const priceCents = Math.max(1, Math.round(center + z * sigma));
-		const compFactor = competitionFactor(priceCents, askPrices);
-		// Asymmetric elasticity — see header comment. min(1, ...) caps the
-		// "going lower" boost at unity; cf already encodes capture share.
-		const elasticity = Math.min(1, Math.exp(-beta * z));
-		const lambda = salesPerDay * compFactor * elasticity;
+		const share = captureShare(z, otherZs, beta);
+		const lambda = salesPerDay * share;
 		if (lambda <= 0) continue;
 		const T = 1 / lambda;
 		// Floor T at `minT` for both ranking and the user-facing field —
@@ -246,23 +272,3 @@ function blendedCenter(soldMeanCents: number, askPrices: ReadonlyArray<number>):
 	return Math.round(0.5 * soldMeanCents + 0.5 * askMedian);
 }
 
-/**
- * Position-aware competition multiplier on the hazard rate. Asks priced
- * strictly below the candidate take demand first; the candidate's
- * effective sale rate scales with the share of demand that survives them.
- *
- * Strict-less-than (not <=) so an exact price match doesn't penalise
- * the candidate — buyers split ties, they don't queue. Floor at
- * `COMPETITION_FLOOR` so the predicted days-to-sell never collapses to
- * "infinite" for an objectively-overpriced listing.
- */
-function competitionFactor(priceCents: number, sortedAskPrices: ReadonlyArray<number>): number {
-	if (sortedAskPrices.length === 0) return 1;
-	let cBelow = 0;
-	for (const ask of sortedAskPrices) {
-		if (ask < priceCents) cBelow++;
-		else break; // sorted: rest are ≥ priceCents
-	}
-	const share = (sortedAskPrices.length - cBelow) / sortedAskPrices.length;
-	return Math.max(COMPETITION_FLOOR, share);
-}
