@@ -5,7 +5,7 @@ import { scrapeSearch } from "../services/ebay/scrape/client.js";
 const q = process.argv[2]!;
 const saveAs = process.argv[3];
 const r = await scrapeSearch({ q, binOnly: true, conditionIds: ["3000"], sort: "pricePlusShippingLowest", limit: 8 });
-const items = "itemSummaries" in r ? r.itemSummaries ?? [] : [];
+const items = "itemSummaries" in r ? (r.itemSummaries ?? []) : [];
 
 for (const [i, it] of items.slice(0, 6).entries()) {
 	console.log(`[${i}] $${it.price?.value} ${it.title.slice(0, 70)}  | ${it.image?.imageUrl}`);

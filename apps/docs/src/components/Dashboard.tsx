@@ -1680,10 +1680,14 @@ type BreakdownRow = {
 // Used in the breakdown table to render `count × credits = total` for each
 // endpoint. Keep in sync with the server-side function.
 function creditsForEndpoint(endpoint: string): number {
-	if (endpoint.startsWith("/v1/evaluate")) return 50;
 	if (endpoint.startsWith("/v1/discover")) return 250;
-	if (endpoint.startsWith("/v1/browser")) return 5;
-	return 1;
+	if (endpoint.startsWith("/v1/evaluate")) return 50;
+	if (endpoint.startsWith("/v1/buy/browse/")) return 1;
+	if (endpoint.startsWith("/v1/buy/marketplace_insights/")) return 1;
+	if (endpoint.startsWith("/v1/commerce/catalog/")) return 1;
+	if (endpoint.startsWith("/v1/search")) return 1;
+	if (endpoint.startsWith("/v1/trends")) return 1;
+	return 0;
 }
 
 function UsagePanel({ profile }: { profile: Profile }) {

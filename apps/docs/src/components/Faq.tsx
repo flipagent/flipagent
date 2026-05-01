@@ -88,10 +88,9 @@ const GROUPS: Group[] = [
 				q: "Is the free tier really free?",
 				a: (
 					<>
-						Yes. 500 credits as a one-time grant — they don't refill, but they don't
-						expire either. Each marketplace call is 1 credit; an AI evaluation is 50;
-						a deal discovery is 250. Cached responses cost nothing. No credit card,
-						no trial timer. Upgrade to a paid plan for monthly credits. See
+						Yes. 500 credits as a one-time grant. Credits cover the work we run on our
+						infrastructure: scraping, comp pulls, and AI scoring. No credit card, no
+						trial timer. Upgrade to a paid plan for monthly credits. See{" "}
 						<a href="/pricing/">/pricing</a> for the full breakdown.
 					</>
 				),
@@ -100,16 +99,16 @@ const GROUPS: Group[] = [
 				q: "How are credits charged?",
 				a: (
 					<>
-						Each call to a metered endpoint deducts a fixed number of credits:
-						<code>/v1/search</code>, <code>/v1/buy/*</code>, <code>/v1/sell/*</code>,{" "}
-						<code>/v1/commerce/*</code>, <code>/v1/post-order/*</code>,{" "}
-						<code>/v1/forwarder/*</code>, <code>/v1/ship/*</code>,{" "}
-						<code>/v1/messages</code>, <code>/v1/best-offer</code>, <code>/v1/feedback</code>{" "}
-						are 1 credit each. <code>/v1/evaluate</code> is 50, <code>/v1/discover</code> is
-						250, <code>/v1/browser/*</code> is 5. Cached responses are <strong>free</strong>
-						(0 credits). Account routes (<code>/v1/health</code>,{" "}
-						<code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/takedown</code>,
-						billing) never count.
+						We charge for what runs on our infrastructure. Sourcing reads against
+						eBay's catalog (<code>/v1/buy/browse</code>,{" "}
+						<code>/v1/buy/marketplace_insights</code>, <code>/v1/commerce/catalog</code>,{" "}
+						<code>/v1/search</code>, <code>/v1/trends</code>) cost 1 credit each;{" "}
+						<code>/v1/evaluate</code> is 50 (scrape + AI scoring);{" "}
+						<code>/v1/discover</code> is 250 (multi-source scrape + AI). Everything
+						that runs on your own connected accounts — listing, fulfilling, messaging,
+						buying through your browser, taxonomy lookups, shipping math — is free.
+						Burst rate-limits still apply. See{" "}
+						<a href="/pricing/#api-credits">the pricing table</a> for the full breakdown.
 					</>
 				),
 			},
@@ -131,11 +130,10 @@ const GROUPS: Group[] = [
 				q: "Are there per-minute or per-hour rate limits too?",
 				a: (
 					<>
-						Yes — burst caps sit alongside the monthly credit budget and protect against
-						runaway scripts (Free 10/min, Hobby 30/min, Standard 120/min, Growth 600/min;
-						hourly caps scale proportionally). Normal automation never trips them. If you do
-						spike too fast you'll get a separate <code>429</code> with{" "}
-						<code>error: "burst_rate_limited"</code> — slow down or upgrade for a higher cap.
+						Yes. Burst caps sit alongside the monthly credit budget so a runaway script
+						can't drain your plan in seconds. Free 10/min, Hobby 30/min, Standard 120/min, Growth 600/min. Normal automation
+						never trips them. If you spike too fast you'll get a <code>429</code> with{" "}
+						<code>error: "burst_rate_limited"</code>; slow down or upgrade for a higher cap.
 					</>
 				),
 			},
@@ -143,9 +141,9 @@ const GROUPS: Group[] = [
 				q: "Can I cancel anytime?",
 				a: (
 					<>
-						Yes. Manage your subscription through the Stripe portal at{" "}
-						<code>/v1/billing/portal</code>. Cancellation drops you back to Free at the end of
-						the current billing period. No clawback.
+						Yes. Click <b>Manage billing</b> in your dashboard to cancel, change plan, or
+						update payment. Cancellation drops you back to Free at the end of the current
+						billing period. No clawback.
 					</>
 				),
 			},

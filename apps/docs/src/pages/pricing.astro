@@ -10,7 +10,7 @@ import "../components/PricingRow.css";
 		<div class="cmw cmw-bordered" style="padding-top:64px; padding-bottom:48px;">
 			<h1>Start free. Pay <span class="accent">when you scale</span>.</h1>
 			<p class="lead">
-				Credits cover everything: marketplace search, AI evaluation, deal discovery. Free is a one-time 500-credit trial; paid plans refill monthly.
+				Credits cover what runs on our infrastructure — sourcing scrape, AI evaluation, deal discovery. Operating your own eBay account is unmetered. Free is a one-time 500-credit trial; paid plans refill monthly.
 			</p>
 		</div>
 	</section>
@@ -22,10 +22,10 @@ import "../components/PricingRow.css";
 			<div class="section-spacer" aria-hidden="true"></div>
 
 			<Reveal client:visible>
-				<div class="pricing-row">
+				<div class="pricing-row" id="api-credits">
 					<div class="pricing-row-head">
 						<h2>API <span class="accent">credits</span></h2>
-						<p>Credits are consumed for each request, varying by endpoint and feature.</p>
+						<p>Three call types cost credits — the work we run on our infrastructure. Everything that runs on your own connected accounts is free.</p>
 					</div>
 					<div class="pricing-row-body">
 						<div class="pricing-row-item">
@@ -77,11 +77,11 @@ import "../components/PricingRow.css";
 									<circle cx="9" cy="6.5" r="0.4" fill="currentColor"></circle>
 								</svg>
 								<div>
-									<span>Browser op</span>
-									<span>Use your eBay account via the extension.</span>
+									<span>Account ops</span>
+									<span>Sell, fulfill, message, ship, buy through your own browser, taxonomy lookups.</span>
 								</div>
 							</div>
-							<div class="pricing-row-item-value"><span class="num">5</span><span class="unit">/ call</span></div>
+							<div class="pricing-row-item-value"><span class="num">Free</span></div>
 						</div>
 					</div>
 				</div>

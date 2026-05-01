@@ -96,9 +96,11 @@ describe("/v1/keys", () => {
 		};
 		expect(body.tier).toBe("free");
 		// Free tier: 500 credits one-time (auth/limits.ts TIER_LIMITS.free).
-		// The earlier /v1/keys/me call charged 1 credit, so creditsUsed >= 1.
+		// `/v1/keys/me` is unmetered (account-ops, 0 credits) under the
+		// scrape/AI-only pricing model — usage_events still records the call,
+		// but it contributes 0 to creditsUsed.
 		expect(body.usage.creditsLimit).toBe(500);
-		expect(body.usage.creditsUsed).toBeGreaterThanOrEqual(1);
+		expect(body.usage.creditsUsed).toBe(0);
 	});
 
 	it("POST /v1/keys/revoke disables the key", async () => {

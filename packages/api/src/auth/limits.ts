@@ -59,14 +59,32 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
  * to 0 (the middleware skips the usage_events insert in that case anyway,
  * so this is just a defensive lookup for any future code that calls this
  * directly).
+ *
+ * Pricing principle: charge for what runs on our infrastructure.
+ *   - `/v1/discover` and `/v1/evaluate` carry scrape + LLM cost.
+ *   - `/v1/buy/browse/*`, `/v1/buy/marketplace_insights/*`, and
+ *     `/v1/commerce/catalog/*` are scrape-capable; we price them as
+ *     scrape (1 credit) even when REST happens to satisfy the call,
+ *     because callers can't predict transport selection and most
+ *     volume falls back to scrape under load.
+ *   - `/v1/search` and `/v1/trends` are flipagent-side scrape primitives.
+ *   - Everything else (sell-side, post-order, taxonomy/identity/
+ *     translation, Trading XML wrappers, forwarder, ship, expenses,
+ *     bridge, browser, buy/order, buy/feed, buy/deal, buy/offer) is
+ *     pure passthrough or runs in the user's own browser/account.
+ *     Burst rate-limit handles abuse; the monthly credit budget does
+ *     not apply.
  */
 export function creditsForEndpoint(endpoint: string, fromCache = false): number {
 	if (fromCache) return 0;
-	if (endpoint.startsWith("/v1/evaluate")) return 50;
 	if (endpoint.startsWith("/v1/discover")) return 250;
-	if (endpoint.startsWith("/v1/browser")) return 5;
-	// Everything else metered (search, marketplace mirror, ship, expenses, …)
-	return 1;
+	if (endpoint.startsWith("/v1/evaluate")) return 50;
+	if (endpoint.startsWith("/v1/buy/browse/")) return 1;
+	if (endpoint.startsWith("/v1/buy/marketplace_insights/")) return 1;
+	if (endpoint.startsWith("/v1/commerce/catalog/")) return 1;
+	if (endpoint.startsWith("/v1/search")) return 1;
+	if (endpoint.startsWith("/v1/trends")) return 1;
+	return 0;
 }
 
 export interface UsageSnapshot {
@@ -116,10 +134,14 @@ function nextMonthBoundary(): Date {
  * if you change one, change the other.
  */
 const CREDITS_CASE = sql<number>`CASE
-	WHEN ${usageEvents.endpoint} LIKE '/v1/evaluate%' THEN 50
 	WHEN ${usageEvents.endpoint} LIKE '/v1/discover%' THEN 250
-	WHEN ${usageEvents.endpoint} LIKE '/v1/browser%' THEN 5
-	ELSE 1
+	WHEN ${usageEvents.endpoint} LIKE '/v1/evaluate%' THEN 50
+	WHEN ${usageEvents.endpoint} LIKE '/v1/buy/browse/%' THEN 1
+	WHEN ${usageEvents.endpoint} LIKE '/v1/buy/marketplace_insights/%' THEN 1
+	WHEN ${usageEvents.endpoint} LIKE '/v1/commerce/catalog/%' THEN 1
+	WHEN ${usageEvents.endpoint} LIKE '/v1/search%' THEN 1
+	WHEN ${usageEvents.endpoint} LIKE '/v1/trends%' THEN 1
+	ELSE 0
 END`;
 
 /**
