@@ -169,7 +169,7 @@ async function fetchEvaluatePreset(preset: EvaluatePreset): Promise<unknown> {
 
 	// Try up to the first 5 candidates — detail fetch is flaky for some
 	// listings (privacy-mode sellers, blocked variants, etc).
-	let live: typeof candidates[number] | null = null;
+	let live: (typeof candidates)[number] | null = null;
 	let detail: Awaited<ReturnType<typeof scrapeItemDetail>> | null = null;
 	for (const cand of candidates.slice(0, 5)) {
 		console.log(`  try → ${cand.itemId} "${cand.title}" $${cand.price?.value}`);
@@ -214,7 +214,7 @@ async function fetchEvaluatePreset(preset: EvaluatePreset): Promise<unknown> {
 		? allSales.filter((s) => {
 				const c = Math.round((Number.parseFloat(s.lastSoldPrice?.value ?? "0") || 0) * 100);
 				return c > 0 && c <= askCents * 3;
-		  })
+			})
 		: allSales;
 	console.log(`  sold: ${allSales.length} → ${sales.length} after outlier trim`);
 
