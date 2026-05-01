@@ -18,10 +18,12 @@
 	],
 	"scripts": {
 		"clean": "shx rm -rf dist *.tsbuildinfo",
-		"build": "tsc -p tsconfig.build.json && shx chmod +x dist/server.js",
+		"build": "tsc -p tsconfig.build.json && shx chmod +x dist/server.js dist/worker.js",
 		"dev": "tsx watch src/server.ts",
+		"dev:worker": "tsx watch src/worker.ts",
 		"dev:tunnel": "concurrently -n api,tunnel -c green,blue --hide '' \"tsx watch src/server.ts\" \"bash scripts/dev-tunnel.sh\"",
 		"start": "node dist/server.js",
+		"start:worker": "node dist/worker.js",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "tsx src/db/migrate.ts",
 		"issue-key": "tsx src/scripts/issue-key.ts",

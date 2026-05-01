@@ -31,14 +31,18 @@ import { streamSSE } from "hono/streaming";
 import { describeRoute } from "hono-openapi";
 import type { ComputeJob } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
-import { dispatch } from "../../services/compute-jobs/dispatcher.js";
 import { httpStatusForPipelineError } from "../../services/compute-jobs/error-mapping.js";
-import { cancelJob, createJob, getJob } from "../../services/compute-jobs/queue.js";
+import { awaitTerminal, cancelJob, createJob, getJob } from "../../services/compute-jobs/queue.js";
 import { streamComputeJobEvents } from "../../services/compute-jobs/sse-stream.js";
-import { runEvaluatePipeline } from "../../services/evaluate/run.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const evaluateRoute = new Hono();
+
+/** Hard deadline for sync evaluate. Container Apps default ingress
+ * idle timeout is ~240s; staying under that surfaces a clean
+ * `evaluation_timeout` instead of a TCP reset. Discover's deadline
+ * lives in its own route. */
+const SYNC_EVALUATE_TIMEOUT_MS = 4 * 60_000;
 
 /* ----------------------------- sync POST ----------------------------- */
 
@@ -71,20 +75,19 @@ evaluateRoute.post(
 			kind: "evaluate",
 			params: params as unknown as Record<string, unknown>,
 		});
-		const final = await dispatch({
-			jobId: job.id,
-			run: (onStep, cancelCheck) =>
-				runEvaluatePipeline({
-					itemId: params.itemId,
-					lookbackDays: params.lookbackDays,
-					soldLimit: params.soldLimit,
-					apiKey,
-					opts: params.opts,
-					onStep: (event) => void onStep(event),
-					cancelCheck,
-				}),
-		});
-		if (!final) return c.json({ error: "internal", message: "job dispatch produced no row" }, 500);
+		// Worker container claims and runs the pipeline; this route waits
+		// for the row to reach terminal status.
+		const final = await awaitTerminal(job.id, apiKey.id, { timeoutMs: SYNC_EVALUATE_TIMEOUT_MS });
+		if (!final) {
+			return c.json(
+				{
+					error: "evaluation_timeout",
+					message: `Job did not reach a terminal state within ${SYNC_EVALUATE_TIMEOUT_MS}ms. Use POST /v1/evaluate/jobs + /v1/evaluate/jobs/{id}/stream for long-running runs.`,
+					jobId: job.id,
+				},
+				504,
+			);
+		}
 		if (final.status === "completed") return c.json(final.result as unknown);
 		if (final.status === "cancelled") {
 			return c.json({ error: "cancelled", message: "job was cancelled before completion" }, 409);
@@ -122,23 +125,9 @@ evaluateRoute.post(
 			kind: "evaluate",
 			params: params as unknown as Record<string, unknown>,
 		});
-		// Fire-and-forget — the async route returns immediately. The
-		// dispatcher writes status transitions + trace events to the row,
-		// so a /stream subscriber (or /jobs/{id} poll) sees the same
-		// progress regardless of when it connects.
-		void dispatch({
-			jobId: job.id,
-			run: (onStep, cancelCheck) =>
-				runEvaluatePipeline({
-					itemId: params.itemId,
-					lookbackDays: params.lookbackDays,
-					soldLimit: params.soldLimit,
-					apiKey,
-					opts: params.opts,
-					onStep: (event) => void onStep(event),
-					cancelCheck,
-				}),
-		});
+		// The worker container picks the row up via `claimNextJob`. A
+		// /stream subscriber (or /jobs/{id} poll) sees the same progress
+		// regardless of when it connects.
 		return c.json({ id: job.id, status: job.status }, 202);
 	},
 );

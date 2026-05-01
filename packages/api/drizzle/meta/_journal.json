@@ -190,6 +190,13 @@
       "when": 1778713463891,
       "tag": "0026_user_credits_reset_at",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1777608083058,
+      "tag": "0027_compute_jobs_lease",
+      "breakpoints": true
     }
   ]
 }

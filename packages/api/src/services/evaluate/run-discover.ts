@@ -39,6 +39,7 @@ import type { DealCluster, DiscoverMeta, EvaluateMeta, MarketStats, TransportSou
 import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import type { ApiKey } from "../../db/schema.js";
 import { legacyFromV1, toLegacyId } from "../../utils/item-id.js";
+import { Semaphore } from "../../utils/semaphore.js";
 import { getItemDetail } from "../listings/detail.js";
 import { searchActiveListings } from "../listings/search.js";
 import { searchSoldListings } from "../listings/sold.js";
@@ -278,17 +279,28 @@ export async function runDiscoverPipeline(input: RunDiscoverInput): Promise<RunD
 	const since = new Date(Date.now() - lookbackDays * 86_400_000).toISOString();
 	const lookbackFilter = `lastSoldDate:[${since}..]`;
 
+	// Cap variant fan-out — without this, a 50-variant cluster set
+	// queues 50 concurrent sub-flows, each fanning ~3 scrapes and a few
+	// LLM calls. The Oxylabs semaphore (40) backstops the scrape side,
+	// but holding 50 in-flight promises with their captured memory
+	// drives the worker's peak set up unnecessarily. 6 keeps memory
+	// predictable while giving each sub-flow enough parallel scrape
+	// slots to make progress. Tunable via env without a code change.
+	const variantConcurrency = Number.parseInt(process.env.DISCOVER_VARIANT_CONCURRENCY ?? "6", 10);
+	const variantSlot = new Semaphore(variantConcurrency);
 	const settled = await Promise.allSettled(
 		variantClusters.map((vc, idx) =>
-			runVariantSubFlow(vc, idx, {
-				soldLimit,
-				lookbackFilter,
-				lookbackDays,
-				apiKey,
-				opts,
-				onStep,
-				cancelCheck,
-			}),
+			variantSlot.run(() =>
+				runVariantSubFlow(vc, idx, {
+					soldLimit,
+					lookbackFilter,
+					lookbackDays,
+					apiKey,
+					opts,
+					onStep,
+					cancelCheck,
+				}),
+			),
 		),
 	);
 

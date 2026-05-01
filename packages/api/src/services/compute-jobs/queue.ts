@@ -1,20 +1,28 @@
 /**
- * Compute-job queue. Pure DB ops + status transitions for the job rows
- * that back `/v1/evaluate/jobs/*` and `/v1/discover/jobs/*`. The actual
- * pipeline runner lives in `dispatcher.ts`; this file only writes state.
+ * Compute-job queue. Pure DB ops + lease-based claim/heartbeat for the
+ * job rows that back `/v1/evaluate/jobs/*` and `/v1/discover/jobs/*`.
+ * The actual pipeline runner lives in `dispatcher.ts`; this file only
+ * writes state.
  *
- * Status machine (enforced in `transitionTo*`):
+ * Status machine:
  *   queued ─► running ─► completed | failed | cancelled
  *   queued ─► cancelled  (cancel arrived before claim)
+ *   running (lease expired) ─► queued | failed  (recovery sweep)
+ *
+ * Concurrency model: the API container `INSERT`s jobs and never runs
+ * them; a separate worker container `claimNextJob` atomically and runs
+ * the dispatcher. Each claim sets `lease_until = now() + leaseMs`; the
+ * worker heartbeats `renewLease` every WORKER_HEARTBEAT_MS so lease
+ * never expires under normal operation. On crash / OOM / SIGKILL the
+ * lease falls in the past and `recoverExpiredLeases` either requeues
+ * (if `attempts < max`) or fails the row with `worker_lease_expired`.
  *
  * Trace events are appended to a JSONB array as the worker emits them.
- * Late SSE subscribers replay the array, then receive live events via
- * the in-memory pub/sub below — no external broker needed since the
- * api runs as a single replica.
+ * SSE subscribers in the API container poll `compute_jobs.trace` +
+ * `status` to forward live progress — see `sse-stream.ts`.
  */
 
-import { EventEmitter } from "node:events";
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { type ComputeJob, computeJobs, type NewComputeJob } from "../../db/schema.js";
 
@@ -70,7 +78,13 @@ export async function cancelJob(id: string, apiKeyId: string): Promise<ComputeJo
 	if (row.status === "queued") {
 		const [done] = await db
 			.update(computeJobs)
-			.set({ status: "cancelled", updatedAt: now, completedAt: now })
+			.set({
+				status: "cancelled",
+				completedAt: now,
+				updatedAt: now,
+				leaseUntil: null,
+				claimedBy: null,
+			})
 			.where(eq(computeJobs.id, id))
 			.returning();
 		return done ?? row;
@@ -78,28 +92,114 @@ export async function cancelJob(id: string, apiKeyId: string): Promise<ComputeJo
 	return row;
 }
 
-export async function transitionToRunning(id: string): Promise<ComputeJob | null> {
+export interface ClaimInput {
+	/** Stable identifier for this worker process (e.g. `worker-<host>-<pid>`). */
+	workerId: string;
+	/** Lease duration in ms. Worker must `renewLease` before this elapses. */
+	leaseMs: number;
+}
+
+/**
+ * Atomically claim the oldest claimable job. A row is claimable when
+ * `cancel_requested = false` AND (`status='queued'` OR an expired
+ * lease — the previous worker died). Sets `status='running'`,
+ * `lease_until=now()+leaseMs`, increments `attempts`, and stamps
+ * `claimed_by` so subsequent transitions can verify ownership.
+ *
+ * `FOR UPDATE SKIP LOCKED` means concurrent workers polling the same
+ * table never collide on the same row — at most one worker observes
+ * each candidate. Returns null when nothing's claimable.
+ */
+export async function claimNextJob({ workerId, leaseMs }: ClaimInput): Promise<ComputeJob | null> {
 	const now = new Date();
+	const leaseUntil = new Date(Date.now() + leaseMs);
+	return await db.transaction(async (tx) => {
+		const candidates = await tx
+			.select({ id: computeJobs.id })
+			.from(computeJobs)
+			.where(
+				and(
+					eq(computeJobs.cancelRequested, false),
+					or(
+						eq(computeJobs.status, "queued"),
+						and(eq(computeJobs.status, "running"), lt(computeJobs.leaseUntil, now)),
+					),
+				),
+			)
+			.orderBy(asc(computeJobs.createdAt))
+			.limit(1)
+			.for("update", { skipLocked: true });
+		const id = candidates[0]?.id;
+		if (!id) return null;
+		const [row] = await tx
+			.update(computeJobs)
+			.set({
+				status: "running",
+				leaseUntil,
+				claimedBy: workerId,
+				attempts: sql`${computeJobs.attempts} + 1`,
+				startedAt: sql`coalesce(${computeJobs.startedAt}, now())`,
+				updatedAt: now,
+			})
+			.where(eq(computeJobs.id, id))
+			.returning();
+		return row ?? null;
+	});
+}
+
+/**
+ * Heartbeat from the worker — extends the lease deadline. Only the
+ * current `claimed_by` may renew; if the row was already taken over by
+ * another worker (lease had expired and the recovery sweep handed it
+ * off), this returns null and the caller should abort the run to avoid
+ * double-execution.
+ */
+export async function renewLease(id: string, workerId: string, leaseMs: number): Promise<ComputeJob | null> {
+	const leaseUntil = new Date(Date.now() + leaseMs);
 	const [row] = await db
 		.update(computeJobs)
-		.set({ status: "running", startedAt: now, updatedAt: now })
-		.where(and(eq(computeJobs.id, id), eq(computeJobs.status, "queued")))
+		.set({ leaseUntil, updatedAt: new Date() })
+		.where(and(eq(computeJobs.id, id), eq(computeJobs.claimedBy, workerId), eq(computeJobs.status, "running")))
 		.returning();
 	return row ?? null;
 }
 
-export async function transitionToCompleted(id: string, result: unknown): Promise<ComputeJob | null> {
+/**
+ * Voluntarily release a claim — used on graceful shutdown so another
+ * worker (or this one after restart) can re-claim immediately instead
+ * of waiting for `lease_until` to elapse. Drops the row back to
+ * `queued`. Only the current `claimed_by` may release.
+ */
+export async function releaseLease(id: string, workerId: string): Promise<ComputeJob | null> {
 	const now = new Date();
 	const [row] = await db
 		.update(computeJobs)
-		.set({ status: "completed", result: result as object, completedAt: now, updatedAt: now })
-		.where(and(eq(computeJobs.id, id), eq(computeJobs.status, "running")))
+		.set({ status: "queued", leaseUntil: null, claimedBy: null, updatedAt: now })
+		.where(and(eq(computeJobs.id, id), eq(computeJobs.claimedBy, workerId), eq(computeJobs.status, "running")))
+		.returning();
+	return row ?? null;
+}
+
+export async function transitionToCompleted(id: string, workerId: string, result: unknown): Promise<ComputeJob | null> {
+	const now = new Date();
+	const [row] = await db
+		.update(computeJobs)
+		.set({
+			status: "completed",
+			result: result as object,
+			completedAt: now,
+			updatedAt: now,
+			leaseUntil: null,
+			claimedBy: null,
+		})
+		.where(and(eq(computeJobs.id, id), eq(computeJobs.claimedBy, workerId), eq(computeJobs.status, "running")))
 		.returning();
 	return row ?? null;
 }
 
 export async function transitionToFailed(
 	id: string,
+	workerId: string,
 	errorCode: string,
 	errorMessage: string,
 ): Promise<ComputeJob | null> {
@@ -112,18 +212,26 @@ export async function transitionToFailed(
 			errorMessage,
 			completedAt: now,
 			updatedAt: now,
+			leaseUntil: null,
+			claimedBy: null,
 		})
-		.where(and(eq(computeJobs.id, id), eq(computeJobs.status, "running")))
+		.where(and(eq(computeJobs.id, id), eq(computeJobs.claimedBy, workerId), eq(computeJobs.status, "running")))
 		.returning();
 	return row ?? null;
 }
 
-export async function transitionToCancelled(id: string): Promise<ComputeJob | null> {
+export async function transitionToCancelled(id: string, workerId: string): Promise<ComputeJob | null> {
 	const now = new Date();
 	const [row] = await db
 		.update(computeJobs)
-		.set({ status: "cancelled", completedAt: now, updatedAt: now })
-		.where(eq(computeJobs.id, id))
+		.set({
+			status: "cancelled",
+			completedAt: now,
+			updatedAt: now,
+			leaseUntil: null,
+			claimedBy: null,
+		})
+		.where(and(eq(computeJobs.id, id), eq(computeJobs.claimedBy, workerId), eq(computeJobs.status, "running")))
 		.returning();
 	return row ?? null;
 }
@@ -152,56 +260,89 @@ export async function isCancelRequested(id: string): Promise<boolean> {
 	return rows[0]?.cancelRequested ?? false;
 }
 
+export interface AwaitTerminalOpts {
+	/** Hard deadline in ms; throws if not terminal by then. */
+	timeoutMs: number;
+	/** Poll interval in ms. */
+	intervalMs?: number;
+}
+
 /**
- * Boot-time crash recovery — single api replica means any `running` rows
- * are stale (the worker that owned them is gone). Mark them failed so
- * the user sees a clear outcome instead of a row stuck on "Running"
- * forever.
+ * Poll `getJob` until status is terminal or `timeoutMs` elapses. Used
+ * by the sync `POST /v1/evaluate` and `POST /v1/discover` routes after
+ * enqueueing — the API container doesn't run pipelines, so it observes
+ * the worker's outcome through this helper. Returns the terminal row
+ * or null on timeout.
  */
-export async function failOrphans(): Promise<number> {
+export async function awaitTerminal(
+	id: string,
+	apiKeyId: string,
+	{ timeoutMs, intervalMs = 500 }: AwaitTerminalOpts,
+): Promise<ComputeJob | null> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		const row = await getJob(id, apiKeyId);
+		if (!row) return null;
+		if (COMPUTE_JOB_TERMINAL.has(row.status)) return row;
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) return null;
+		await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
+	}
+	return null;
+}
+
+export interface RecoveryResult {
+	requeued: number;
+	failed: number;
+}
+
+/**
+ * Recovery sweep — find rows whose lease has fallen in the past while
+ * still `running` (worker died without releasing). If the job has more
+ * attempts left, drop it back to `queued` so the next `claimNextJob`
+ * picks it up. Otherwise mark it `failed` with code
+ * `worker_lease_expired` so the user sees a clear outcome instead of
+ * a row stuck on "Running" forever.
+ *
+ * Idempotent and safe to run on every worker boot AND on a periodic
+ * tick. SKIP LOCKED protects against two workers sweeping the same
+ * row in parallel.
+ */
+export async function recoverExpiredLeases({ maxAttempts }: { maxAttempts: number }): Promise<RecoveryResult> {
 	const now = new Date();
-	const result = await db
-		.update(computeJobs)
-		.set({
-			status: "failed",
-			errorCode: "worker_crashed",
-			errorMessage: "api restarted while this job was running",
-			completedAt: now,
-			updatedAt: now,
-		})
-		.where(eq(computeJobs.status, "running"))
-		.returning({ id: computeJobs.id });
-	return result.length;
-}
-
-/* ---------------------- live in-memory pub/sub ---------------------- */
-/**
- * Workers emit step events here so any active SSE subscribers can
- * forward them to clients in real time. Pure in-memory — single api
- * replica means there's no need for a Redis pub/sub. Subscribers that
- * arrive after a step has fired catch up by reading `trace` from the DB
- * before subscribing.
- */
-const liveBus = new EventEmitter();
-liveBus.setMaxListeners(0);
-
-export type LiveEvent =
-	| { kind: "step"; event: unknown }
-	| {
-			kind: "terminal";
-			status: "completed" | "failed" | "cancelled";
-			result?: unknown;
-			errorCode?: string;
-			errorMessage?: string;
-	  };
-
-export function publishLive(jobId: string, event: LiveEvent): void {
-	liveBus.emit(jobId, event);
-}
-
-export function subscribeLive(jobId: string, listener: (event: LiveEvent) => void): () => void {
-	liveBus.on(jobId, listener);
-	return () => {
-		liveBus.off(jobId, listener);
-	};
+	return await db.transaction(async (tx) => {
+		const expired = await tx
+			.select({ id: computeJobs.id, attempts: computeJobs.attempts })
+			.from(computeJobs)
+			.where(
+				and(eq(computeJobs.status, "running"), isNotNull(computeJobs.leaseUntil), lt(computeJobs.leaseUntil, now)),
+			)
+			.for("update", { skipLocked: true });
+		let requeued = 0;
+		let failed = 0;
+		for (const row of expired) {
+			if (row.attempts < maxAttempts) {
+				await tx
+					.update(computeJobs)
+					.set({ status: "queued", leaseUntil: null, claimedBy: null, updatedAt: now })
+					.where(eq(computeJobs.id, row.id));
+				requeued++;
+			} else {
+				await tx
+					.update(computeJobs)
+					.set({
+						status: "failed",
+						errorCode: "worker_lease_expired",
+						errorMessage: `lease expired ${row.attempts}× without progress; max attempts reached`,
+						completedAt: now,
+						updatedAt: now,
+						leaseUntil: null,
+						claimedBy: null,
+					})
+					.where(eq(computeJobs.id, row.id));
+				failed++;
+			}
+		}
+		return { requeued, failed };
+	});
 }

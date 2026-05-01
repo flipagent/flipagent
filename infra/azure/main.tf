@@ -544,6 +544,238 @@ resource "azurerm_container_app" "api" {
   }
 }
 
+# --- Worker container app -----------------------------------------------------
+#
+# Runs `compute_jobs` (evaluate, discover) so CPU-bound pipelines never starve
+# the API event loop. Same image as the api; entrypoint is `node dist/worker.js`
+# instead of `dist/server.js`. KEDA's Postgres scaler reads queue depth
+# (`compute_jobs WHERE status='queued' OR expired-lease`) and scales the
+# replica count 0..N. With min_replicas=0 an idle deploy costs nothing — the
+# first enqueue triggers a cold start (~10s) which is invisible against
+# multi-minute pipelines.
+#
+# Migrations are owned by the api (MIGRATE_ON_BOOT=1 there); the worker
+# explicitly skips that to avoid two migrators racing on a shared DB.
+
+resource "azurerm_container_app" "worker" {
+  name                         = "${local.prefix}-worker"
+  container_app_environment_id = azurerm_container_app_environment.env.id
+  resource_group_name          = azurerm_resource_group.rg.name
+  revision_mode                = "Single"
+  tags                         = local.tags
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.api.id]
+  }
+
+  registry {
+    server   = azurerm_container_registry.acr.login_server
+    identity = azurerm_user_assigned_identity.api.id
+  }
+
+  depends_on = [azurerm_role_assignment.api_acr_pull]
+
+  secret {
+    name  = "database-url"
+    value = local.database_url
+  }
+  secret {
+    name  = "scraper-api-username"
+    value = var.scraper_api_username
+  }
+  secret {
+    name  = "scraper-api-password"
+    value = var.scraper_api_password
+  }
+  # eBay OAuth — needed for token refresh during pipeline runs that hit
+  # user-scoped REST endpoints. Empty values are fine for app-only flows.
+  secret {
+    name  = "ebay-client-id"
+    value = var.ebay_client_id
+  }
+  secret {
+    name  = "ebay-client-secret"
+    value = var.ebay_client_secret
+  }
+
+  dynamic "secret" {
+    for_each = var.anthropic_api_key == "" ? [] : [1]
+    content {
+      name  = "anthropic-api-key"
+      value = var.anthropic_api_key
+    }
+  }
+  dynamic "secret" {
+    for_each = var.openai_api_key == "" ? [] : [1]
+    content {
+      name  = "openai-api-key"
+      value = var.openai_api_key
+    }
+  }
+  dynamic "secret" {
+    for_each = var.google_api_key == "" ? [] : [1]
+    content {
+      name  = "google-api-key"
+      value = var.google_api_key
+    }
+  }
+
+  template {
+    min_replicas = var.worker_min_replicas
+    max_replicas = var.worker_max_replicas
+
+    container {
+      name    = "worker"
+      image   = var.api_image
+      cpu     = var.worker_cpu
+      memory  = var.worker_memory
+      command = ["node", "dist/worker.js"]
+
+      env {
+        name  = "NODE_ENV"
+        value = "production"
+      }
+      env {
+        name        = "DATABASE_URL"
+        secret_name = "database-url"
+      }
+      # Worker never migrates — api owns that step. Two migrators on one DB is
+      # a footgun; declare the off state explicitly so a misread later doesn't
+      # introduce one.
+      env {
+        name  = "MIGRATE_ON_BOOT"
+        value = "0"
+      }
+      env {
+        name  = "SCRAPER_API_VENDOR"
+        value = var.scraper_api_vendor
+      }
+      env {
+        name        = "SCRAPER_API_USERNAME"
+        secret_name = "scraper-api-username"
+      }
+      env {
+        name        = "SCRAPER_API_PASSWORD"
+        secret_name = "scraper-api-password"
+      }
+      env {
+        name        = "EBAY_CLIENT_ID"
+        secret_name = "ebay-client-id"
+      }
+      env {
+        name        = "EBAY_CLIENT_SECRET"
+        secret_name = "ebay-client-secret"
+      }
+      env {
+        name  = "EBAY_BASE_URL"
+        value = var.ebay_base_url
+      }
+      env {
+        name  = "EBAY_AUTH_URL"
+        value = var.ebay_auth_url
+      }
+      env {
+        name  = "EBAY_SCOPES"
+        value = var.ebay_scopes
+      }
+      env {
+        name  = "EBAY_LISTINGS_SOURCE"
+        value = var.ebay_listings_source
+      }
+      env {
+        name  = "EBAY_DETAIL_SOURCE"
+        value = var.ebay_detail_source
+      }
+      env {
+        name  = "EBAY_SOLD_SOURCE"
+        value = var.ebay_sold_source
+      }
+      env {
+        name  = "EBAY_INSIGHTS_APPROVED"
+        value = var.ebay_insights_approved ? "1" : "0"
+      }
+      env {
+        name  = "EBAY_CATALOG_APPROVED"
+        value = var.ebay_catalog_approved ? "1" : "0"
+      }
+      env {
+        name  = "OBSERVATION_ENABLED"
+        value = var.observation_enabled ? "1" : "0"
+      }
+      # LLM provider — pipelines call the matcher, which requires one configured.
+      env {
+        name  = "LLM_PROVIDER"
+        value = var.llm_provider
+      }
+      dynamic "env" {
+        for_each = var.anthropic_api_key == "" ? [] : [1]
+        content {
+          name        = "ANTHROPIC_API_KEY"
+          secret_name = "anthropic-api-key"
+        }
+      }
+      env {
+        name  = "ANTHROPIC_MODEL"
+        value = var.anthropic_model
+      }
+      dynamic "env" {
+        for_each = var.openai_api_key == "" ? [] : [1]
+        content {
+          name        = "OPENAI_API_KEY"
+          secret_name = "openai-api-key"
+        }
+      }
+      env {
+        name  = "OPENAI_MODEL"
+        value = var.openai_model
+      }
+      dynamic "env" {
+        for_each = var.google_api_key == "" ? [] : [1]
+        content {
+          name        = "GOOGLE_API_KEY"
+          secret_name = "google-api-key"
+        }
+      }
+      env {
+        name  = "GOOGLE_MODEL"
+        value = var.google_model
+      }
+      env {
+        name  = "LLM_MAX_CONCURRENT"
+        value = tostring(var.llm_max_concurrent)
+      }
+    }
+
+    # KEDA Postgres scaler — count claimable rows (queued + expired lease)
+    # and target one row per replica. With min_replicas=0,
+    # `activationTargetQueryValue=0` means: scale from 0 the moment a row
+    # appears. The query mirrors `claimNextJob`'s WHERE clause so KEDA
+    # exactly matches what the worker actually claims.
+    custom_scale_rule {
+      name             = "compute-jobs-depth"
+      custom_rule_type = "postgresql"
+      metadata = {
+        query                      = "SELECT count(*)::int FROM compute_jobs WHERE cancel_requested = false AND (status = 'queued' OR (status = 'running' AND lease_until < now()))"
+        targetQueryValue           = tostring(var.worker_keda_target)
+        activationTargetQueryValue = "0"
+      }
+      authentication {
+        secret_name       = "database-url"
+        trigger_parameter = "connection"
+      }
+    }
+  }
+
+  # No ingress — worker is internal-only.
+
+  lifecycle {
+    ignore_changes = [
+      template[0].container[0].image,
+    ]
+  }
+}
+
 # --- Custom domain (optional) -------------------------------------------------
 
 resource "azurerm_container_app_custom_domain" "api_domain" {

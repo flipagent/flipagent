@@ -6,18 +6,17 @@
  *      late subscriber sees the full progress.
  *   2. Emit a synthesised terminal event when the row was already
  *      done at subscribe time.
- *   3. Pump live worker events through a serialised queue with each
- *      `writeSSE` awaited — earlier versions used fire-and-forget
- *      writes, which let hono close the response before the terminal
- *      `done` event flushed (clients saw "stream ended without a
- *      result" even though the worker had completed cleanly).
- *   4. Race recovery: a fresh `getJob` after subscribe catches the
- *      window where the worker emitted `publishLive("terminal")`
- *      between our snapshot and the listener attaching — newly-landed
- *      trace events get synthesised back into the queue.
- *   5. Drop the listener cleanly on client disconnect (tab close /
- *      fetch abort) so dispatcher pub/sub doesn't accumulate dead
- *      subscribers.
+ *   3. Cross-process polling — the API container forwards trace
+ *      events written by the worker container. Re-reads
+ *      `compute_jobs.trace + status` every POLL_INTERVAL_MS, emits
+ *      any new entries since last snapshot, closes when the row
+ *      reaches a terminal status.
+ *   4. Drop the polling loop cleanly on client disconnect (tab close /
+ *      fetch abort).
+ *
+ * 500ms polling is invisible against multi-minute pipelines and
+ * sidesteps the connection-per-subscriber footprint of LISTEN/NOTIFY
+ * (each NOTIFY subscriber on postgres.js holds a dedicated client).
  *
  * Callers pre-fetch the snapshot so they can return 404 via `c.json`
  * before opening the SSE response (HTTP error codes can't be sent
@@ -28,29 +27,13 @@
 import type { Context } from "hono";
 import type { SSEStreamingApi } from "hono/streaming";
 import type { ComputeJob } from "../../db/schema.js";
-import { getJob, type LiveEvent, subscribeLive } from "./queue.js";
+import { getJob } from "./queue.js";
 
-interface QueueItem {
-	terminal: boolean;
-	payload: { event: string; data: string };
-}
+const POLL_INTERVAL_MS = 500;
 
 function stepPayload(event: unknown): { event: string; data: string } {
 	const kind = (event as { kind?: string }).kind ?? "message";
 	return { event: kind, data: JSON.stringify(event) };
-}
-
-function terminalPayload(live: LiveEvent & { kind: "terminal" }): { event: string; data: string } {
-	if (live.status === "completed") {
-		return { event: "done", data: JSON.stringify(live.result ?? null) };
-	}
-	if (live.status === "cancelled") {
-		return { event: "cancelled", data: JSON.stringify({}) };
-	}
-	return {
-		event: "error",
-		data: JSON.stringify({ error: live.errorCode, message: live.errorMessage }),
-	};
 }
 
 function terminalPayloadFromRow(row: ComputeJob): { event: string; data: string } | null {
@@ -69,10 +52,23 @@ function terminalPayloadFromRow(row: ComputeJob): { event: string; data: string 
 	return null;
 }
 
+/** Sleep that resolves early when the request is aborted. */
+function sleepOrAbort(ms: number, signal: AbortSignal): Promise<void> {
+	if (signal.aborted) return Promise.resolve();
+	return new Promise<void>((resolve) => {
+		const timer = setTimeout(resolve, ms);
+		const onAbort = () => {
+			clearTimeout(timer);
+			resolve();
+		};
+		signal.addEventListener("abort", onAbort, { once: true });
+	});
+}
+
 export async function streamComputeJobEvents(c: Context, stream: SSEStreamingApi, job: ComputeJob): Promise<void> {
 	// 1. Replay accumulated trace.
-	const traceEvents = (job.trace as unknown[]) ?? [];
-	for (const event of traceEvents) {
+	const initialTrace = (job.trace as unknown[]) ?? [];
+	for (const event of initialTrace) {
 		await stream.writeSSE(stepPayload(event));
 	}
 
@@ -83,58 +79,39 @@ export async function streamComputeJobEvents(c: Context, stream: SSEStreamingApi
 		return;
 	}
 
-	// 3. Still running — set up the live pump.
-	const queue: QueueItem[] = [];
-	let wakeup: (() => void) | null = null;
-	const wake = () => {
-		wakeup?.();
-		wakeup = null;
-	};
+	// 3. Polling loop — re-read the row, forward any new trace entries,
+	// stop on terminal or client disconnect.
+	let lastSeenLen = initialTrace.length;
+	const signal = c.req.raw.signal;
 
-	const unsubscribe = subscribeLive(job.id, (live) => {
-		if (live.kind === "step") {
-			queue.push({ terminal: false, payload: stepPayload(live.event) });
-		} else {
-			queue.push({ terminal: true, payload: terminalPayload(live) });
-		}
-		wake();
-	});
+	while (!signal.aborted) {
+		await sleepOrAbort(POLL_INTERVAL_MS, signal);
+		if (signal.aborted) break;
 
-	c.req.raw.signal.addEventListener("abort", wake);
-
-	// 4. Race recovery: re-read after subscribe in case the worker
-	// emitted publishLive in the window between our snapshot above
-	// and the listener attaching above.
-	void getJob(job.id, job.apiKeyId).then((fresh) => {
-		if (!fresh) return;
-		const oldLen = traceEvents.length;
-		const newEvents = ((fresh.trace as unknown[]) ?? []).slice(oldLen);
-		for (const event of newEvents) {
-			queue.push({ terminal: false, payload: stepPayload(event) });
-		}
-		const recovered = terminalPayloadFromRow(fresh);
-		if (recovered) queue.push({ terminal: true, payload: recovered });
-		wake();
-	});
-
-	// 5. Drain the queue serially. Awaiting each writeSSE keeps the
-	// terminal `done` flushed before we return — without this, hono
-	// closes the response while the buffered write is still in
-	// flight, and the client falls through to "stream ended without
-	// a result".
-	try {
-		while (!c.req.raw.signal.aborted) {
-			while (queue.length > 0) {
-				const item = queue.shift();
-				if (!item) break;
-				await stream.writeSSE(item.payload);
-				if (item.terminal) return;
-			}
-			await new Promise<void>((resolve) => {
-				wakeup = resolve;
+		const fresh = await getJob(job.id, job.apiKeyId);
+		if (!fresh) {
+			// Row vanished (retention sweep) — synthesise a failed event so
+			// the client doesn't hang.
+			await stream.writeSSE({
+				event: "error",
+				data: JSON.stringify({ error: "not_found", message: "job no longer exists" }),
 			});
+			return;
 		}
-	} finally {
-		unsubscribe();
+
+		const traceArr = (fresh.trace as unknown[]) ?? [];
+		if (traceArr.length > lastSeenLen) {
+			const newEvents = traceArr.slice(lastSeenLen);
+			for (const event of newEvents) {
+				await stream.writeSSE(stepPayload(event));
+			}
+			lastSeenLen = traceArr.length;
+		}
+
+		const terminal = terminalPayloadFromRow(fresh);
+		if (terminal) {
+			await stream.writeSSE(terminal);
+			return;
+		}
 	}
 }

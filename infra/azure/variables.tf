@@ -54,6 +54,42 @@ variable "api_max_replicas" {
   default = 5
 }
 
+# --- Worker container -------------------------------------------------------
+# The worker runs compute_jobs (evaluate, discover) in a separate process so
+# CPU-bound pipelines never starve the API event loop. Same image as the api;
+# different entrypoint (`node dist/worker.js`). Scaled via KEDA on Postgres
+# queue depth — `min_replicas=0` so an idle deploy costs nothing.
+
+variable "worker_cpu" {
+  description = "Worker container CPU. Discover pipelines peg one core for 5-10 minutes; sized for that work, not for the API's HTTP latency."
+  type        = number
+  default     = 1.0
+}
+
+variable "worker_memory" {
+  description = "Worker memory. Discover holds variant cluster results in-memory across the run; observed peaks ~600MB before GC."
+  type        = string
+  default     = "2Gi"
+}
+
+variable "worker_min_replicas" {
+  description = "0 = scale to zero when no jobs queued (KEDA spins one up on enqueue). Keep at 0 unless the cold-start latency of ~10s matters for the use case."
+  type        = number
+  default     = 0
+}
+
+variable "worker_max_replicas" {
+  description = "KEDA scales to this many replicas under sustained load. Each replica runs one job at a time, so the cap is effectively the max parallel pipelines."
+  type        = number
+  default     = 3
+}
+
+variable "worker_keda_target" {
+  description = "KEDA Postgres scaler target value — number of queued/expired jobs per replica. 1 = each pending job triggers a replica until max."
+  type        = number
+  default     = 1
+}
+
 variable "custom_domain" {
   description = "Custom hostname for the api ingress. e.g. api.flipagent.dev. Empty disables custom domain wiring."
   type        = string

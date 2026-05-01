@@ -19,14 +19,18 @@ import { streamSSE } from "hono/streaming";
 import { describeRoute } from "hono-openapi";
 import type { ComputeJob } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
-import { dispatch } from "../../services/compute-jobs/dispatcher.js";
 import { httpStatusForPipelineError } from "../../services/compute-jobs/error-mapping.js";
-import { cancelJob, createJob, getJob } from "../../services/compute-jobs/queue.js";
+import { awaitTerminal, cancelJob, createJob, getJob } from "../../services/compute-jobs/queue.js";
 import { streamComputeJobEvents } from "../../services/compute-jobs/sse-stream.js";
-import { runDiscoverPipeline } from "../../services/evaluate/run-discover.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const discoverRoute = new Hono();
+
+/** Hard deadline for sync discover. Discover fans out per-cluster
+ * sold + active searches + LLM filtering — wide queries can run
+ * 5-10 min. Sync surface returns 504 with a pointer to /jobs +
+ * /stream past this deadline. */
+const SYNC_DISCOVER_TIMEOUT_MS = 4 * 60_000;
 
 discoverRoute.post(
 	"/",
@@ -56,23 +60,17 @@ discoverRoute.post(
 			kind: "discover",
 			params: params as unknown as Record<string, unknown>,
 		});
-		const final = await dispatch({
-			jobId: job.id,
-			run: (onStep, cancelCheck) =>
-				runDiscoverPipeline({
-					q: params.q,
-					categoryId: params.categoryId,
-					filter: params.filter,
-					limit: params.limit,
-					lookbackDays: params.lookbackDays,
-					soldLimit: params.soldLimit,
-					apiKey,
-					opts: params.opts,
-					onStep: (event) => void onStep(event),
-					cancelCheck,
-				}),
-		});
-		if (!final) return c.json({ error: "internal", message: "job dispatch produced no row" }, 500);
+		const final = await awaitTerminal(job.id, apiKey.id, { timeoutMs: SYNC_DISCOVER_TIMEOUT_MS });
+		if (!final) {
+			return c.json(
+				{
+					error: "discover_timeout",
+					message: `Job did not reach a terminal state within ${SYNC_DISCOVER_TIMEOUT_MS}ms. Use POST /v1/discover/jobs + /v1/discover/jobs/{id}/stream for long-running runs.`,
+					jobId: job.id,
+				},
+				504,
+			);
+		}
 		if (final.status === "completed") return c.json(final.result as unknown);
 		if (final.status === "cancelled") {
 			return c.json({ error: "cancelled", message: "job was cancelled before completion" }, 409);
@@ -107,22 +105,8 @@ discoverRoute.post(
 			kind: "discover",
 			params: params as unknown as Record<string, unknown>,
 		});
-		void dispatch({
-			jobId: job.id,
-			run: (onStep, cancelCheck) =>
-				runDiscoverPipeline({
-					q: params.q,
-					categoryId: params.categoryId,
-					filter: params.filter,
-					limit: params.limit,
-					lookbackDays: params.lookbackDays,
-					soldLimit: params.soldLimit,
-					apiKey,
-					opts: params.opts,
-					onStep: (event) => void onStep(event),
-					cancelCheck,
-				}),
-		});
+		// The worker container claims this row via `claimNextJob`; the
+		// API returns the receipt immediately.
 		return c.json({ id: job.id, status: job.status }, 202);
 	},
 );

@@ -793,22 +793,27 @@ export const webhookDeliveries = pgTable(
  * Server-side compute job queue. Backs `/v1/evaluate/jobs/*` and
  * `/v1/discover/jobs/*` so a tab close mid-run doesn't lose the result
  * and the user can cancel cooperatively. Distinct from `bridge_jobs`
- * (which targets the user's Chrome extension); these run inside the
- * API process against eBay scrape + LLM filter, with intermediate trace
- * events accumulated in `trace` so a /stream subscriber can replay.
+ * (which targets the user's Chrome extension); these run inside a
+ * dedicated worker container against eBay scrape + LLM filter, with
+ * intermediate trace events accumulated in `trace` so a /stream
+ * subscriber can replay.
  *
  * Status machine:
  *   queued ─► running ─► completed | failed | cancelled
  *   queued ─► cancelled  (cancel called before worker picked up)
+ *   running (lease expired) ─► queued | failed  (recovery sweep)
  *
  * Cancellation is cooperative — the worker checks `cancel_requested`
  * between steps and throws to the dispatcher, which transitions to
  * `cancelled`. Mid-step IO can't be aborted (eBay scrape, LLM call) but
  * step boundaries are tight enough (≤ a few s each) for UX purposes.
  *
- * Crash recovery: on api boot the sweeper marks any `running` rows as
- * `failed` with code `worker_crashed`. Single-replica deploy means at
- * most one process holds inflight work; rolling restart loses it.
+ * Crash recovery: workers claim with a `lease_until` deadline and renew
+ * via heartbeat. On crash, lease expires and a recovery sweep either
+ * requeues (if `attempts < max`) or marks `failed` with code
+ * `worker_lease_expired`. Step results land in `checkpoints` so a
+ * requeued job resumes from the last completed step instead of
+ * re-billing LLM/scrape calls.
  */
 export const computeJobs = pgTable(
 	"compute_jobs",
@@ -829,6 +834,25 @@ export const computeJobs = pgTable(
 		errorCode: text("error_code"),
 		errorMessage: text("error_message"),
 		cancelRequested: boolean("cancel_requested").notNull().default(false),
+		/**
+		 * Lease deadline for the worker holding this job. NULL when not
+		 * claimed (status='queued') or terminal. Worker heartbeats renew
+		 * this to `now() + WORKER_LEASE_MS`; if it falls in the past while
+		 * status='running', the recovery sweep releases the row.
+		 */
+		leaseUntil: timestamp("lease_until", { withTimezone: true }),
+		/** Worker identifier of the current lease holder, e.g. `worker-<podId>-<pid>`. */
+		claimedBy: text("claimed_by"),
+		/** How many times the job has been claimed; incremented on each (re)claim. */
+		attempts: integer("attempts").notNull().default(0),
+		/**
+		 * Step-keyed cache of intermediate results, written when each step
+		 * completes. On retry, the dispatcher consults this map and skips
+		 * any step whose hashed key is already present — protects against
+		 * re-billing LLM/scrape calls when a job is requeued after lease
+		 * expiry.
+		 */
+		checkpoints: jsonb("checkpoints").notNull().default(sql`'{}'::jsonb`),
 		startedAt: timestamp("started_at", { withTimezone: true }),
 		completedAt: timestamp("completed_at", { withTimezone: true }),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -839,6 +863,9 @@ export const computeJobs = pgTable(
 		apiKeyIdx: index("compute_jobs_api_key_idx").on(t.apiKeyId, t.createdAt.desc()),
 		statusIdx: index("compute_jobs_status_idx").on(t.status, t.startedAt),
 		expiresIdx: index("compute_jobs_expires_idx").on(t.expiresAt),
+		// Drives the worker's `claimNextJob` query: scan claimable rows
+		// (status='queued' OR expired lease) in FIFO order.
+		claimIdx: index("compute_jobs_claim_idx").on(t.status, t.leaseUntil, t.createdAt),
 	}),
 );
 

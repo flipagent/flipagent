@@ -272,12 +272,24 @@ the bridge route maps source → task name via
 
 ## Deploy
 
-- `packages/api` → Azure Container Apps via `infra/azure/` Terraform.
+- `packages/api` → **two Azure Container Apps from one image** via
+  `infra/azure/` Terraform:
+  - **`<prefix>-api`** runs `node dist/server.js` (HTTP only). HTTP
+    scale rule, `min_replicas=1`. `MIGRATE_ON_BOOT=1` so drizzle
+    migrations run before the api starts (idempotent; revisit if
+    `min_replicas` ever exceeds 1).
+  - **`<prefix>-worker`** runs `node dist/worker.js` (no HTTP).
+    Claims `compute_jobs` (evaluate, discover) so CPU-bound pipelines
+    never starve the api event loop. KEDA Postgres scaler reads queue
+    depth (`compute_jobs WHERE status='queued' OR expired-lease`) and
+    scales replicas 0→N. `min_replicas=0` so an idle deploy costs
+    nothing. `MIGRATE_ON_BOOT=0` (api owns migration).
+
   Container Registry pushes from `az acr build`; a system-assigned
-  identity has `AcrPull`. Postgres Flexible Server is reachable via the
-  "Allow Azure services" firewall rule. `MIGRATE_ON_BOOT=1` is set on
-  the Container App env so drizzle migrations run before the api starts
-  (idempotent; revisit if `min_replicas` ever exceeds 1).
+  identity has `AcrPull`. Postgres Flexible Server is reachable via
+  the "Allow Azure services" firewall rule. The worker process model
+  (lease + heartbeat + recovery sweep) is documented in
+  `services/compute-jobs/queue.ts`.
 - `apps/docs` → Cloudflare Pages. Static `dist/`.
 - OSS packages → npm publish via Changesets. Workflow: `npx changeset`
   on a PR to declare what changed and at what bump (patch/minor/major)
