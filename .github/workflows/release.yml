@@ -65,22 +65,12 @@ jobs:
       #      → publish each updated package to npm with provenance.
       #
       # Auth: npm Trusted Publishing (OIDC). No NPM_TOKEN secret stored.
-      # Configure once per package on npmjs.com → Settings → Trusted
+      # Configured once per package on npmjs.com → Settings → Trusted
       # Publisher → GitHub Actions, repo flipagent/flipagent,
       # workflow release.yml. id-token:write above + NPM_CONFIG_PROVENANCE=true
       # is the OIDC handshake.
-      #
-      # First-publish bootstrap: trusted publishing only kicks in for
-      # packages that already exist on npm. Until each scoped package
-      # has been manually `npm publish`-ed once + had its trusted
-      # publisher configured, this step will fail with E404. We mark it
-      # continue-on-error so the rest of the workflow stays green —
-      # remove that line once all 5 packages (@flipagent/types,
-      # @flipagent/ebay-scraper, @flipagent/sdk, flipagent-mcp,
-      # flipagent-cli) are bootstrapped.
       - name: Version or publish
         uses: changesets/action@v1
-        continue-on-error: true
         with:
           publish: npx changeset publish
         env:

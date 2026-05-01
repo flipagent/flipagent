@@ -121,16 +121,27 @@ async function fetchDiscoverPreset(preset: DiscoverPreset): Promise<unknown> {
 		q: preset.q,
 		soldOnly: true,
 		conditionIds: preset.conditionIds,
-		limit: 60,
+		limit: 200,
 	});
-	const sales = ("itemSales" in sold ? sold.itemSales : []) ?? [];
-	console.log(`  sold: ${sales.length}`);
+	const allSales = ("itemSales" in sold ? sold.itemSales : []) ?? [];
+
+	// Keep sold within the active price band (real discover clusters by
+	// title similarity; this approximates by price proximity for the mock).
+	const soldFiltered = allSales.filter((s) => {
+		const c = Math.round((Number.parseFloat(s.lastSoldPrice?.value ?? "0") || 0) * 100);
+		if (preset.priceMin && c < preset.priceMin * 100) return false;
+		if (preset.priceMax && c > preset.priceMax * 100) return false;
+		// If no preset bands, drop pennies + extreme luxury outliers
+		if (!preset.priceMin && !preset.priceMax && (c < 500 || c > 1_000_00)) return false;
+		return true;
+	});
+	console.log(`  sold: ${allSales.length} → ${soldFiltered.length} after price-band filter`);
 
 	return {
 		preset,
 		filter,
 		activeListings: picked,
-		soldListings: sales.slice(0, TARGET_SOLD_PER_PRESET),
+		soldListings: soldFiltered.slice(0, TARGET_SOLD_PER_PRESET),
 	};
 }
 
@@ -148,17 +159,30 @@ async function fetchEvaluatePreset(preset: EvaluatePreset): Promise<unknown> {
 		sort: "pricePlusShippingLowest",
 		limit: 12,
 	});
-	const candidates = ("itemSummaries" in search ? search.itemSummaries : []) ?? [];
-	const live = candidates.find((s) => s.image?.imageUrl && Number.parseFloat(s.price?.value ?? "0") > 0);
-	if (!live) {
+	const candidates = (("itemSummaries" in search ? search.itemSummaries : []) ?? []).filter(
+		(s) => s.image?.imageUrl && Number.parseFloat(s.price?.value ?? "0") > 0,
+	);
+	if (!candidates.length) {
 		console.log("  ! no live listing found for keyword");
 		return { preset, detail: null };
 	}
-	console.log(`  resolved → ${live.itemId} "${live.title}" $${live.price?.value}`);
 
-	const detail = await scrapeItemDetail(live.itemId);
-	if (!detail) {
-		console.log("  ! detail fetch failed for resolved itemId");
+	// Try up to the first 5 candidates — detail fetch is flaky for some
+	// listings (privacy-mode sellers, blocked variants, etc).
+	let live: typeof candidates[number] | null = null;
+	let detail: Awaited<ReturnType<typeof scrapeItemDetail>> | null = null;
+	for (const cand of candidates.slice(0, 5)) {
+		console.log(`  try → ${cand.itemId} "${cand.title}" $${cand.price?.value}`);
+		const got = await scrapeItemDetail(cand.itemId);
+		if (got) {
+			live = cand;
+			detail = got;
+			break;
+		}
+		console.log("    - detail fetch failed, trying next");
+	}
+	if (!live || !detail) {
+		console.log("  ! all candidates failed");
 		return { preset, detail: null };
 	}
 	console.log(`  ✓ detail "${detail.title}" $${detail.price?.value}`);
@@ -179,10 +203,20 @@ async function fetchEvaluatePreset(preset: EvaluatePreset): Promise<unknown> {
 		q: preset.keyword,
 		soldOnly: true,
 		conditionIds: ["3000"],
-		limit: 60,
+		limit: 200,
 	});
-	const sales = ("itemSales" in sold ? sold.itemSales : []) ?? [];
-	console.log(`  sold: ${sales.length}`);
+	const allSales = ("itemSales" in sold ? sold.itemSales : []) ?? [];
+	// Drop only the obvious outliers (>3× resolved ask) so we keep enough
+	// rows for a histogram. Real evaluate clusters by title, but these
+	// are keyword sold-search dumps so size/condition variance is fine.
+	const askCents = Math.round((Number.parseFloat(detail.price?.value ?? "0") || 0) * 100);
+	const sales = askCents
+		? allSales.filter((s) => {
+				const c = Math.round((Number.parseFloat(s.lastSoldPrice?.value ?? "0") || 0) * 100);
+				return c > 0 && c <= askCents * 3;
+		  })
+		: allSales;
+	console.log(`  sold: ${allSales.length} → ${sales.length} after outlier trim`);
 
 	const active = await scrapeSearch({
 		q: preset.keyword,
