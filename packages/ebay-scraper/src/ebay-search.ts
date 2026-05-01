@@ -35,6 +35,27 @@ export interface EbaySearchParams {
 	 */
 	conditionIds?: string[];
 	pages?: number;
+	/**
+	 * Single eBay leaf category id — applied as `_dcat=<id>` on the SRP
+	 * URL (and as the path segment `/sch/<id>/i.html` so eBay scopes the
+	 * right aspect facets to that category). Takes the first id from the
+	 * pipe-joined `category_ids` Browse param.
+	 */
+	categoryId?: string;
+	/**
+	 * Pre-parsed aspect filters: each entry becomes `&<AspectName>=<Value>`
+	 * on the SRP URL. Multi-value aspects pass the values pipe-joined
+	 * (e.g. `Color: "Black|White"`). Names go through verbatim — eBay's
+	 * web SRP encodes the human-readable aspect name as the URL key
+	 * (`US Shoe Size`, `Brand`, …), URL-encoded by the URL builder.
+	 */
+	aspectParams?: Record<string, string>;
+	/**
+	 * Extra tokens appended to the `_nkw` keyword. Used to fold GTIN /
+	 * UPC searches into the keyword query, since eBay's web SRP has no
+	 * dedicated GTIN axis.
+	 */
+	extraKeywords?: string;
 }
 
 /**
@@ -95,13 +116,21 @@ const SORT_MAP: Record<NonNullable<EbaySearchParams["sort"]>, string> = {
 };
 
 export function buildEbayUrl(params: EbaySearchParams, page: number): string {
-	const u = new URL(`${BASE_URL}/sch/i.html`);
-	u.searchParams.set("_nkw", params.keyword);
+	// `_dcat` scopes the SRP to a category — required for eBay to attach
+	// the right aspect facets (Color, Size, Brand, …) to the page. We
+	// also nest the cat in the path slug `/sch/<id>/i.html` per eBay's
+	// canonical pattern; both forms work, but the path-slug form is what
+	// eBay's UI emits when a user picks a leaf category.
+	const path = params.categoryId ? `/sch/${encodeURIComponent(params.categoryId)}/i.html` : "/sch/i.html";
+	const u = new URL(`${BASE_URL}${path}`);
+	const keyword = params.extraKeywords ? `${params.keyword} ${params.extraKeywords}`.trim() : params.keyword;
+	u.searchParams.set("_nkw", keyword);
 	// Note: `_sacat=0` (any category) used to be set here. eBay's robots.txt
 	// v26.2_COM_April_2026 added `Disallow: /sch/*_sacat=` under
 	// User-agent: *, so we omit the param — `_sacat` is the default-any
 	// behaviour anyway, results are identical without it.
 	u.searchParams.set("_pgn", String(page));
+	if (params.categoryId) u.searchParams.set("_dcat", params.categoryId);
 	if (params.soldOnly) {
 		u.searchParams.set("LH_Sold", "1");
 		u.searchParams.set("LH_Complete", "1");
@@ -112,6 +141,17 @@ export function buildEbayUrl(params: EbaySearchParams, page: number): string {
 		u.searchParams.set("LH_ItemCondition", params.conditionIds.join("|"));
 	}
 	if (params.sort) u.searchParams.set("_sop", SORT_MAP[params.sort]);
+	// Aspect facets — each entry becomes one URL-encoded query param.
+	// eBay's web SRP keys aspects by the visible aspect name (`Color`,
+	// `US Shoe Size`, `Brand`); URLSearchParams handles encoding. Note:
+	// eBay applies faceted filters through a different mechanism than
+	// the REST `aspect_filter` param; some categories honour the URL
+	// keys, some don't. Use the REST source for precise narrowing.
+	if (params.aspectParams) {
+		for (const [name, value] of Object.entries(params.aspectParams)) {
+			if (value) u.searchParams.set(name, value);
+		}
+	}
 	return u.toString();
 }
 

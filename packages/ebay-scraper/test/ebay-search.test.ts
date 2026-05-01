@@ -10,7 +10,7 @@ import {
 	parseFeedbackScore,
 	timeLeftFromEndDate,
 } from "../src/ebay-extract.js";
-import { parseEbaySearchHtml } from "../src/ebay-search.js";
+import { buildEbayUrl, parseEbaySearchHtml } from "../src/ebay-search.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -116,5 +116,72 @@ describe("ebay-extract pure helpers", () => {
 		expect(back).toBe("1d 4h");
 		expect(endDateFromTimeLeft("Ended", now)).toBeNull();
 		expect(endDateFromTimeLeft(null, now)).toBeNull();
+	});
+});
+
+describe("buildEbayUrl — eBay-spec params translated to web SRP", () => {
+	it("emits the bare keyword + page URL with no extras when nothing's set", () => {
+		const u = new URL(buildEbayUrl({ keyword: "canon ef 50mm" }, 1));
+		expect(u.pathname).toBe("/sch/i.html");
+		expect(u.searchParams.get("_nkw")).toBe("canon ef 50mm");
+		expect(u.searchParams.get("_pgn")).toBe("1");
+		// No category, no aspect facets, no LH_* flags
+		const keys = [...u.searchParams.keys()].sort();
+		expect(keys).toEqual(["_nkw", "_pgn"]);
+	});
+
+	it("nests categoryId in the path slug AND emits `_dcat` (canonical eBay form)", () => {
+		const u = new URL(buildEbayUrl({ keyword: "jordan 4", categoryId: "15709" }, 1));
+		expect(u.pathname).toBe("/sch/15709/i.html");
+		expect(u.searchParams.get("_dcat")).toBe("15709");
+	});
+
+	it("emits aspect facets as URL params keyed by aspect name (URL-encoded)", () => {
+		const u = new URL(
+			buildEbayUrl(
+				{
+					keyword: "jordan 4",
+					categoryId: "15709",
+					aspectParams: { Color: "Black|Red", "US Shoe Size": "8" },
+				},
+				1,
+			),
+		);
+		expect(u.searchParams.get("Color")).toBe("Black|Red");
+		expect(u.searchParams.get("US Shoe Size")).toBe("8");
+		// URLSearchParams encodes spaces as `+` (form encoding) and `|`
+		// as `%7C`. Both forms are valid query-string encodings; eBay
+		// accepts either.
+		expect(u.toString()).toContain("US+Shoe+Size=8");
+		expect(u.toString()).toContain("Color=Black%7CRed");
+	});
+
+	it("appends `extraKeywords` to `_nkw` for GTIN folding", () => {
+		const u = new URL(buildEbayUrl({ keyword: "canon", extraKeywords: "0013803131093" }, 1));
+		expect(u.searchParams.get("_nkw")).toBe("canon 0013803131093");
+	});
+
+	it("layers aspect / sold / condition flags together without conflict", () => {
+		const u = new URL(
+			buildEbayUrl(
+				{
+					keyword: "watch",
+					soldOnly: true,
+					conditionIds: ["1000", "3000"],
+					sort: "newlyListed",
+					categoryId: "31387",
+					aspectParams: { Brand: "Rolex" },
+				},
+				2,
+			),
+		);
+		expect(u.pathname).toBe("/sch/31387/i.html");
+		expect(u.searchParams.get("_pgn")).toBe("2");
+		expect(u.searchParams.get("LH_Sold")).toBe("1");
+		expect(u.searchParams.get("LH_Complete")).toBe("1");
+		expect(u.searchParams.get("LH_ItemCondition")).toBe("1000|3000");
+		expect(u.searchParams.get("_sop")).toBe("10"); // newlyListed
+		expect(u.searchParams.get("_dcat")).toBe("31387");
+		expect(u.searchParams.get("Brand")).toBe("Rolex");
 	});
 });

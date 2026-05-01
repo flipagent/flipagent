@@ -190,6 +190,10 @@ async function dispatch(
 	}
 	if (ctx.source === "scrape") {
 		try {
+			// Forward what eBay's web SRP can express; silently drop the
+			// rest (epid / fieldgroups / auto_correct / compatibility_filter
+			// / charity_ids — no SRP equivalents). Agents needing exact
+			// mirror semantics use the REST source.
 			return await scrapeSearch({
 				q: input.q,
 				auctionOnly: filterIncludesAuctionOnly(input.filter),
@@ -198,6 +202,9 @@ async function dispatch(
 				sort: input.sort ? SCRAPE_SORT_MAP[input.sort] : undefined,
 				limit,
 				offset: input.offset,
+				categoryIds: input.categoryIds,
+				aspectFilter: input.aspectFilter,
+				gtin: input.gtin,
 			});
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);

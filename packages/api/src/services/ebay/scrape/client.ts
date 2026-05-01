@@ -44,6 +44,25 @@ export interface ScrapeSearchInput {
 	 * but we don't expose that since the REST mirror can't.
 	 */
 	offset?: number;
+	/**
+	 * Pipe-joined Browse category ids. Web SRP scopes by a single leaf
+	 * category, so the first id wins; later ones are dropped (the demand-
+	 * pulse archive still records the full list).
+	 */
+	categoryIds?: string;
+	/**
+	 * eBay-spec `aspect_filter` expression
+	 * (`categoryId:N,Color:{Black|Red},Size:{8}`). Parsed into per-aspect
+	 * URL params on the SRP — eBay's web search keys aspects by name
+	 * (`Color`, `US Shoe Size`, …), so a clicked-facet URL drops in.
+	 */
+	aspectFilter?: string;
+	/**
+	 * UPC / EAN / ISBN. Folded into the keyword query (`_nkw=<q> <gtin>`)
+	 * since web SRP has no dedicated GTIN axis. Best-effort: only listings
+	 * whose seller put the GTIN in the title or aspects show up.
+	 */
+	gtin?: string;
 }
 
 /**
@@ -55,6 +74,42 @@ export interface ScrapeSearchInput {
  */
 const EBAY_SRP_PAGE_SIZE = 60;
 const SCRAPE_PAGINATION_CAP = 10000;
+
+/**
+ * Parse eBay's `aspect_filter` expression into the categoryId + per-
+ * aspect dict the web-SRP URL builder consumes. Spec format
+ * (https://developer.ebay.com/api-docs/buy/static/ref-buy-browse-filters.html):
+ *
+ *   `categoryId:<id>,Aspect1:{Value1|Value2},Aspect2:{Value}`
+ *
+ * The categoryId prefix is REQUIRED by eBay; if absent, we still emit
+ * any aspect pairs we can parse (the SRP just won't have a category
+ * scope and aspect facets may not narrow as expected — eBay's choice).
+ *
+ * Splitting top-level commas is safe — eBay's spec doesn't allow
+ * commas inside aspect values, only pipes.
+ */
+export function parseAspectFilter(input: string): {
+	categoryId?: string;
+	aspects: Record<string, string>;
+} {
+	const aspects: Record<string, string> = {};
+	let categoryId: string | undefined;
+	for (const part of input.split(",")) {
+		const trimmed = part.trim();
+		if (!trimmed) continue;
+		if (trimmed.startsWith("categoryId:")) {
+			categoryId = trimmed.slice("categoryId:".length);
+			continue;
+		}
+		const m = trimmed.match(/^([^:]+):\{([^}]+)\}$/);
+		if (m) {
+			const [, name, values] = m;
+			if (name && values) aspects[name] = values;
+		}
+	}
+	return { categoryId, aspects };
+}
 
 export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSearchResponse> {
 	const offset = Math.max(0, input.offset ?? 0);
@@ -68,6 +123,17 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 	}
 	const ebayPage = Math.floor(offset / EBAY_SRP_PAGE_SIZE) + 1;
 	const sliceStart = offset % EBAY_SRP_PAGE_SIZE;
+	// Translate eBay-spec mirror params to web-SRP equivalents.
+	// `_dcat` (category) and `LH_*` (canonical filters) are honoured by
+	// eBay's web SRP one-to-one. Aspect facets (`Color=Black`,
+	// `US Shoe Size=8`, …) are forwarded but eBay's web SRP applies
+	// faceted filters through a different mechanism than the REST
+	// `aspect_filter` param — we send the params canonical-named, which
+	// some categories accept and some ignore. For precise aspect
+	// narrowing use the REST source. `gtin` folds into the keyword
+	// query — best-effort, since eBay's web SRP has no GTIN axis.
+	const aspect = input.aspectFilter ? parseAspectFilter(input.aspectFilter) : null;
+	const categoryId = aspect?.categoryId ?? input.categoryIds?.split("|")[0] ?? undefined;
 	const params: EbaySearchParams = {
 		keyword: input.q,
 		soldOnly: input.soldOnly,
@@ -76,6 +142,9 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 		sort: input.sort,
 		conditionIds: input.conditionIds,
 		pages: 1,
+		categoryId,
+		aspectParams: aspect?.aspects,
+		extraKeywords: input.gtin,
 	};
 	const url = buildEbayUrl(params, ebayPage);
 	const html = await fetchHtmlViaScraperApi(url);

@@ -136,12 +136,18 @@ async function dispatch(
 	}
 	if (ctx.source === "scrape") {
 		try {
+			// Same SRP-translatable subset as active. Sold-only fields like
+			// `epid` / `fieldgroups` are silently dropped — no web-SRP
+			// equivalent on the completed-listings page either.
 			return await scrapeSearch({
 				q: input.q,
 				soldOnly: true,
 				limit,
 				offset: input.offset,
 				conditionIds: input.conditionIds ?? parseConditionIdsFilter(input.filter),
+				categoryIds: input.categoryIds,
+				aspectFilter: input.aspectFilter,
+				gtin: input.gtin,
 			});
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
