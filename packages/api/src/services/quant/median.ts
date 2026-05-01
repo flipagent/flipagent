@@ -138,6 +138,58 @@ export interface MarketContext {
 }
 
 /**
+ * Effective sales-per-day with exponential recency weighting. More
+ * recent sales count more — a market that did 90 sales in the last
+ * 30d but 0 in days 31–90 reports a higher rate than the bare
+ * `90 / 90 = 1.0`, matching what a reseller would call the "current"
+ * pace. Decays toward the older edge of the window so trend changes
+ * (item heating up / cooling off) shift the prediction without
+ * needing a new tunable parameter.
+ *
+ * Half-life = max(7, windowDays/3). For a 90-day window the last
+ * ~30 days dominate; for a 30-day window the last ~10 days dominate.
+ * Tied to the existing `windowDays` param rather than introducing a
+ * new one — the reasoning is "the most recent third of the lookback
+ * carries most of the signal".
+ *
+ * Falls back to the bare `n / windowDays` formula when fewer than
+ * half of the observations carry a `soldAt` timestamp — without
+ * timestamps we have no recency signal, and trusting partial data
+ * would skew toward whichever half happened to be timestamped.
+ *
+ * Mathematically, when sales are uniformly distributed over the
+ * window, this collapses exactly to `n / windowDays`. So the change
+ * is a no-op in steady markets and only kicks in when the temporal
+ * distribution is non-flat.
+ */
+function salesPerDayRecency(
+	observations: ReadonlyArray<PriceObservation>,
+	windowDays: number,
+): number {
+	if (windowDays <= 0 || observations.length === 0) return 0;
+	const tau = Math.max(7, windowDays / 3);
+	const now = Date.now();
+	let weighted = 0;
+	let dated = 0;
+	for (const o of observations) {
+		if (!o.soldAt) continue;
+		const ts = typeof o.soldAt === "string" ? Date.parse(o.soldAt) : o.soldAt.getTime();
+		if (!Number.isFinite(ts)) continue;
+		const ageDays = Math.max(0, (now - ts) / 86_400_000);
+		weighted += Math.exp(-ageDays / tau);
+		dated++;
+	}
+	if (dated < observations.length / 2) {
+		return observations.length / windowDays;
+	}
+	// Normalisation chosen so that a uniform distribution over [0,
+	// windowDays] gives back exactly n/windowDays.
+	//   ∫_0^windowDays exp(-d/tau) dd = tau · (1 − exp(−windowDays/tau))
+	const norm = tau * (1 - Math.exp(-windowDays / tau));
+	return weighted / norm;
+}
+
+/**
  * Drop outliers and compute mean/median/p25/p75/stdDev/salesPerDay over
  * a population of sold observations. Optionally aggregates `durationDays`
  * into `meanDaysToSell` + `daysStdDev` when at least one obs carries it.
@@ -153,7 +205,7 @@ export function summarizeSold(
 	const cleanedObs = filterIqrOutliersBy(observations, (o) => o.priceCents, options.iqrK);
 	const cleanedPrices = cleanedObs.map((o) => o.priceCents);
 	const n = cleanedPrices.length;
-	const salesPerDay = context.windowDays > 0 ? n / context.windowDays : 0;
+	const salesPerDay = salesPerDayRecency(cleanedObs, context.windowDays);
 
 	// Aggregate durationDays when at least one cleaned observation carries it.
 	// Sub-day durations are dropped to keep downstream IRR finite.

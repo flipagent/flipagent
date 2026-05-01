@@ -111,6 +111,54 @@ describe("summarizeSold", () => {
 		expect(stats.salesPerDay).toBe(0);
 	});
 
+	it("salesPerDay weights recent sales more when timestamps are present", () => {
+		// 30 sales in a 90-day window. Half are 5 days old (very recent),
+		// half are 80 days old (almost stale). Recency-weighted rate
+		// should sit clearly above the bare 30/90 = 0.33/day, since the
+		// "current" cohort is what dominates with half-life = windowDays/3 = 30d.
+		const now = Date.now();
+		const day = 86_400_000;
+		const recent = Array.from({ length: 15 }, () => ({
+			priceCents: 1000,
+			soldAt: new Date(now - 5 * day).toISOString(),
+		}));
+		const stale = Array.from({ length: 15 }, () => ({
+			priceCents: 1000,
+			soldAt: new Date(now - 80 * day).toISOString(),
+		}));
+		const stats = summarizeSold([...recent, ...stale], {
+			keyword: "test",
+			marketplace: "EBAY_US",
+			windowDays: 90,
+		});
+		expect(stats.salesPerDay).toBeGreaterThan(0.33);
+		// And conversely a market dominated by stale sales should report
+		// below the bare flat rate — those recent days are pulling the
+		// effective pace down.
+		const cooling = Array.from({ length: 30 }, (_, i) => ({
+			priceCents: 1000,
+			soldAt: new Date(now - (60 + i * 1) * day).toISOString(),
+		}));
+		const stats2 = summarizeSold(cooling, {
+			keyword: "test",
+			marketplace: "EBAY_US",
+			windowDays: 90,
+		});
+		expect(stats2.salesPerDay).toBeLessThan(0.33);
+	});
+
+	it("salesPerDay collapses to n/windowDays without timestamps", () => {
+		// Most observations missing soldAt → fall back to the simple
+		// formula; no false bumps from partial recency data.
+		const observations = Array.from({ length: 30 }, () => ({ priceCents: 1000 }));
+		const stats = summarizeSold(observations, {
+			keyword: "test",
+			marketplace: "EBAY_US",
+			windowDays: 90,
+		});
+		expect(stats.salesPerDay).toBeCloseTo(30 / 90, 6);
+	});
+
 	it("aggregates durationDays into mean/std/n when present", () => {
 		const observations = [
 			{ priceCents: 8000, durationDays: 10 },

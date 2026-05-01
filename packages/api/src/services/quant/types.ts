@@ -108,7 +108,16 @@ export interface MarketStats {
 	p25Cents: number;
 	p75Cents: number;
 	nObservations: number;
-	/** Sales per day = nObservations / windowDays. Liquidity proxy. */
+	/**
+	 * Effective sales per day. Exponentially recency-weighted with a
+	 * half-life of `windowDays/3` — recent sales count more, so a SKU
+	 * heating up (or cooling off) shifts this rate toward the current
+	 * pace rather than the average over the full lookback. Collapses to
+	 * the bare `nObservations / windowDays` when sales are uniformly
+	 * distributed in the window or when most observations lack
+	 * `soldAt` timestamps. Liquidity proxy and the baseline rate λ₀
+	 * for the lifecycle hazard model.
+	 */
 	salesPerDay: number;
 	/**
 	 * Time-to-sell statistics — populated when at least one PriceObservation
