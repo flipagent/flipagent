@@ -116,13 +116,23 @@ export const RESOURCE_TRANSPORTS = {
 	"markets.translation": { rest: { needsAuth: "app" } },
 	// Commerce identity
 	"identity.user": { rest: { needsAuth: "user" } },
-	// Trading XML (fills REST gaps)
-	"messages.list": { trading: { callName: "GetMyMessages" } },
-	"messages.reply": { trading: { callName: "AddMemberMessageRTQ" } },
+	// Conversation-threaded messaging — REST `commerce/message/v1`
+	// (verified live 2026-05-02; see notes/ebay-coverage.md G.1).
+	// FROM_EBAY conversation_type covers eBay system notifications
+	// (returns, payments, listing reminders); FROM_MEMBERS covers
+	// buyer↔seller chat. Trading `GetMyMessages` is dropped.
+	"messages.list": { rest: { needsAuth: "user" } },
+	"messages.thread": { rest: { needsAuth: "user" } },
+	"messages.send": { rest: { needsAuth: "user" } },
+	// Feedback — REST `commerce/feedback/v1` (verified live; supports
+	// full DSR templates on awaiting + AI-topic filters on list).
+	"feedback.list": { rest: { needsAuth: "user" } },
+	"feedback.awaiting": { rest: { needsAuth: "user" } },
+	"feedback.leave": { rest: { needsAuth: "user" } },
+	// Best Offer (inbound) stays Trading — REST has no equivalent for
+	// reading inbound offers as a seller.
 	"best-offer.list": { trading: { callName: "GetBestOffers" } },
 	"best-offer.respond": { trading: { callName: "RespondToBestOffer" } },
-	"feedback.list": { trading: { callName: "GetFeedback" } },
-	"feedback.leave": { trading: { callName: "LeaveFeedback" } },
 	// Inbox — bridge-only logged-in reads (no eBay API)
 	"inbox.watching": { bridge: { taskName: BRIDGE_TASKS.EBAY_INBOX_WATCHING } },
 	"inbox.offers": { bridge: { taskName: BRIDGE_TASKS.EBAY_INBOX_OFFERS } },

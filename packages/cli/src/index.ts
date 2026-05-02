@@ -455,25 +455,45 @@ async function runMessages(args: ParsedArgs): Promise<void> {
 	const opts = clientOpts(args);
 	if (sub === "list") {
 		const params = new URLSearchParams();
-		if (args.flags.has("--unread")) params.set("unreadOnly", "true");
-		if (args.values.direction) params.set("direction", args.values.direction);
+		if (args.values.type) params.set("type", args.values.type);
 		if (args.values.limit) params.set("limit", args.values.limit);
+		if (args.values.offset) params.set("offset", args.values.offset);
 		const out = await api("GET", `/v1/messages${params.toString() ? `?${params}` : ""}`, undefined, opts);
 		printJson(out);
 		return;
 	}
-	if (sub === "send") {
-		const to = args.values.to ?? args.values.recipient;
-		const subject = args.values.subject;
-		const body = args.values.body;
-		if (!to || !subject || !body) {
-			throw new Error("Usage: flipagent messages send --to <userId> --subject <s> --body <text>");
+	if (sub === "thread") {
+		const id = args.positional[1];
+		const type = args.values.type;
+		if (!id || !type) {
+			throw new Error("Usage: flipagent messages thread <conversationId> --type <from_ebay|from_members>");
 		}
-		const out = await api("POST", "/v1/messages", { recipient: to, subject, body }, opts);
+		const params = new URLSearchParams({ type });
+		if (args.values.limit) params.set("limit", args.values.limit);
+		const out = await api("GET", `/v1/messages/${encodeURIComponent(id)}?${params}`, undefined, opts);
 		printJson(out);
 		return;
 	}
-	throw new Error("Usage: flipagent messages <list [--unread] | send ...>");
+	if (sub === "send") {
+		const conversationId = args.values.conversation ?? args.values.conversationId;
+		const otherPartyUsername = args.values.to ?? args.values.otherParty;
+		const messageText = args.values.body ?? args.values.text;
+		if (!messageText || (!conversationId && !otherPartyUsername)) {
+			throw new Error(
+				"Usage: flipagent messages send (--conversation <id> | --to <username>) --body <text> [--listing <itemId>]",
+			);
+		}
+		const payload: Record<string, unknown> = { messageText };
+		if (conversationId) payload.conversationId = conversationId;
+		if (otherPartyUsername) payload.otherPartyUsername = otherPartyUsername;
+		if (args.values.listing) {
+			payload.reference = { referenceType: "listing", referenceId: args.values.listing };
+		}
+		const out = await api("POST", "/v1/messages", payload, opts);
+		printJson(out);
+		return;
+	}
+	throw new Error("Usage: flipagent messages <list | thread | send>");
 }
 
 async function runOffers(args: ParsedArgs): Promise<void> {

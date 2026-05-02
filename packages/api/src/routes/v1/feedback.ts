@@ -1,6 +1,7 @@
 /**
- * `/v1/feedback/*` — buyer/seller feedback, normalized.
- * Wraps Trading API XML internally.
+ * `/v1/feedback/*` — buyer/seller feedback. Backed by REST
+ * `commerce/feedback/v1` (verified live 2026-05-02; see
+ * notes/ebay-coverage.md G.1).
  */
 
 import {
@@ -13,40 +14,11 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { withTradingAuth } from "../../middleware/with-trading-auth.js";
-import { type FeedbackEntry, getFeedback, leaveFeedback } from "../../services/ebay/trading/feedback.js";
+import { awaitingFeedback, leaveFeedback, listFeedback } from "../../services/ebay/rest/feedback.js";
 import { scrubMessageBody } from "../../services/ebay/trading/message-hygiene.js";
-import { fetchAwaitingFeedback } from "../../services/feedback.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
 export const feedbackRoute = new Hono();
-
-const RATING_FROM: Record<string, Feedback["rating"]> = {
-	Positive: "positive",
-	Neutral: "neutral",
-	Negative: "negative",
-};
-const RATING_TO: Record<string, "Positive" | "Neutral" | "Negative"> = {
-	positive: "Positive",
-	neutral: "Neutral",
-	negative: "Negative",
-};
-
-function entryToFeedback(e: FeedbackEntry): Feedback {
-	const role: Feedback["role"] = e.role?.toLowerCase() === "buyer" ? "buyer" : "seller";
-	return {
-		id: e.feedbackId,
-		marketplace: "ebay",
-		role,
-		rating: RATING_FROM[e.commentType ?? "Positive"] ?? "positive",
-		comment: e.commentText ?? "",
-		fromUser: e.commentingUser ?? "",
-		toUser: "",
-		...(e.itemId ? { listingId: e.itemId } : {}),
-		...(e.transactionId ? { orderId: e.transactionId } : {}),
-		createdAt: e.commentTime ?? "",
-	};
-}
 
 feedbackRoute.get(
 	"/",
@@ -61,32 +33,39 @@ feedbackRoute.get(
 	}),
 	requireApiKey,
 	tbCoerce("query", FeedbackListQuery),
-	withTradingAuth(async (c, accessToken) => {
-		const limit = Number(c.req.query("limit") ?? 50);
+	async (c) => {
+		const apiKeyId = c.var.apiKey.id;
+		const limit = Number(c.req.query("limit") ?? 25);
+		const offset = Number(c.req.query("offset") ?? 0);
 		const role = (c.req.query("role") as "buyer" | "seller" | undefined) ?? "seller";
-		const feedbackType = role === "seller" ? "FeedbackReceivedAsSeller" : "FeedbackReceivedAsBuyer";
-		const raw = await getFeedback({ accessToken, feedbackType, entriesPerPage: limit, pageNumber: 1 });
-		const feedback = raw.map(entryToFeedback);
-		return c.json({ feedback, limit, offset: 0, source: "trading" as const });
-	}),
+		const result = await listFeedback({ apiKeyId, role, limit, offset });
+		return c.json({
+			feedback: result.feedback satisfies Feedback[],
+			limit: result.limit,
+			offset: result.offset,
+			...(result.total != null ? { total: result.total } : {}),
+			source: "rest" as const,
+		});
+	},
 );
 
 feedbackRoute.get(
 	"/awaiting",
 	describeRoute({
 		tags: ["Feedback"],
-		summary: "Orders awaiting feedback (Trading GetItemsAwaitingFeedback)",
+		summary: "Orders awaiting feedback",
 		responses: {
 			200: jsonResponse("Awaiting.", FeedbackAwaiting),
 			401: errorResponse("Auth missing."),
-			502: errorResponse("Trading API failed."),
 		},
 	}),
 	requireApiKey,
-	withTradingAuth(async (c, accessToken) => {
+	async (c) => {
+		const apiKeyId = c.var.apiKey.id;
 		const role = (c.req.query("role") as "buyer" | "seller" | undefined) ?? "seller";
-		return c.json({ ...(await fetchAwaitingFeedback(accessToken, role)), source: "trading" as const });
-	}),
+		const result = await awaitingFeedback({ apiKeyId, role });
+		return c.json({ ...result, source: "rest" as const });
+	},
 );
 
 feedbackRoute.post(
@@ -98,11 +77,12 @@ feedbackRoute.post(
 	}),
 	requireApiKey,
 	tbBody(FeedbackCreate),
-	withTradingAuth(async (c, accessToken) => {
+	async (c) => {
+		const apiKeyId = c.var.apiKey.id;
 		const body = (await c.req.json()) as {
 			orderId: string;
 			toUser: string;
-			rating: keyof typeof RATING_TO;
+			rating: "positive" | "neutral" | "negative";
 			comment: string;
 		};
 		// Off-eBay contact strip — same hygiene as messages. Feedback comments
@@ -124,13 +104,11 @@ feedbackRoute.post(
 			);
 		}
 		const result = await leaveFeedback({
-			accessToken,
-			itemId: body.orderId,
-			transactionId: body.orderId,
-			targetUser: body.toUser,
-			rating: RATING_TO[body.rating],
-			commentText: hygiene.cleanBody,
+			apiKeyId,
+			orderLineItemId: body.orderId,
+			rating: body.rating,
+			comment: hygiene.cleanBody,
 		});
-		return c.json({ ...result, redactions: hygiene.redactions });
-	}),
+		return c.json({ id: result.id, redactions: hygiene.redactions, source: "rest" as const });
+	},
 );

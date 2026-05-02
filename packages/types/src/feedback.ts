@@ -1,6 +1,7 @@
 /**
- * `/v1/feedback/*` — buyer/seller post-transaction feedback. Wraps
- * Trading API XML (`GetFeedback` / `LeaveFeedback`) internally.
+ * `/v1/feedback/*` — buyer/seller post-transaction feedback. Backed
+ * by REST `commerce/feedback/v1` (verified live 2026-05-02; see
+ * notes/ebay-coverage.md G.1).
  */
 
 import { type Static, Type } from "@sinclair/typebox";

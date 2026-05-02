@@ -97,7 +97,17 @@ import {
 	ebayTaxonomySuggestExecute,
 	ebayTaxonomySuggestInput,
 } from "./ebay-taxonomy.js";
-import { evaluateListingDescription, evaluateListingExecute, evaluateListingInput } from "./evaluate-listing.js";
+import {
+	evaluateJobDescription,
+	evaluateJobExecute,
+	evaluateJobInput,
+	evaluateListingDescription,
+	evaluateListingExecute,
+	evaluateListingInput,
+	evaluationPoolDescription,
+	evaluationPoolExecute,
+	evaluationPoolInput,
+} from "./evaluate-listing.js";
 import { expensesRecordDescription, expensesRecordExecute, expensesRecordInput } from "./expenses-record.js";
 import { expensesSummaryDescription, expensesSummaryExecute, expensesSummaryInput } from "./expenses-summary.js";
 import {
@@ -210,9 +220,12 @@ import {
 	mediaGetInput,
 } from "./media.js";
 import {
-	messagesListDescription,
-	messagesListExecute,
-	messagesListInput,
+	conversationsListDescription,
+	conversationsListExecute,
+	conversationsListInput,
+	conversationThreadDescription,
+	conversationThreadExecute,
+	conversationThreadInput,
 	messagesSendDescription,
 	messagesSendExecute,
 	messagesSendInput,
@@ -353,723 +366,876 @@ import {
 	webhooksRevokeInput,
 } from "./webhooks.js";
 
+/**
+ * Toolsets group ~108 tools so the host (Claude Desktop, Cursor, etc.) can
+ * load only the slice the user actually needs. Cursor caps at 40 MCP tools
+ * total; Anthropic notes selection accuracy degrades past 30–50. The default
+ * slice ("core") is kept under the 40-tool ceiling. Opt in to others via
+ * `FLIPAGENT_MCP_TOOLSETS=core,marketing,bulk,…`. Pattern follows GitHub's
+ * official MCP server.
+ */
+export type Toolset =
+	| "core" // sourcing + decisions + buy + listing prereqs + sale fulfillment + finance — default-on
+	| "comms" // messages + offers + disputes + feedback (post-sale buyer comms)
+	| "marketing" // promotions + markdowns + ads + store
+	| "bulk" // listings_bulk + listing_groups (power-user batch ops)
+	| "forwarder" // /v1/forwarder/{provider}/* (Planet Express today)
+	| "discovery" // watching + saved_searches + recommendations + trends + bids
+	| "seller_account" // /v1/me/seller/* read-only diagnostics
+	| "notifications" // webhooks + eBay platform notifications + browser_query
+	| "admin"; // bridge surfaces, key introspection, status
+
+export const ALL_TOOLSETS: readonly Toolset[] = [
+	"core",
+	"comms",
+	"marketing",
+	"bulk",
+	"forwarder",
+	"discovery",
+	"seller_account",
+	"notifications",
+	"admin",
+] as const;
+
+export const DEFAULT_TOOLSETS: readonly Toolset[] = ["core", "admin"] as const;
+
 export interface Tool {
 	name: string;
 	description: string;
 	inputSchema: TSchema;
 	execute: (config: Config, args: Record<string, unknown>) => Promise<unknown>;
+	toolset: Toolset;
 }
 
 /**
- * Tool naming convention: `flipagent_<resource>_<verb>`, snake_case, mirroring
- * the `/v1/<resource>/<verb>` route surface. Marketplace stays a *parameter*,
- * never part of the tool name (Amazon/Mercari adapters reuse the same names).
- * Verb vocabulary: list, get, search, create, update, relist, cancel, publish,
- * ship, suggest, aspects, quote. Per Anthropic's "Writing tools for agents"
- * guidance, the prefix avoids collisions when other MCP servers are loaded
- * alongside flipagent. https://www.anthropic.com/engineering/writing-tools-for-agents
+ * Tool naming convention: `flipagent_<verb>_<resource>`, snake_case. Per
+ * Anthropic's MCP-builder skill (anthropics/skills `mcp_best_practices.md`)
+ * and the GitHub / Stripe / Slack reference servers, action-leading names
+ * (`create_listing` over `listings_create`) align better with how LLMs plan
+ * tool calls. The `flipagent_` prefix keeps names collision-free when other
+ * MCP servers are loaded alongside. Marketplace stays a *parameter*, never
+ * part of the tool name — Amazon/Mercari adapters reuse the same names.
+ *
+ * Verb vocabulary: list, get, search, create, update, upsert, delete,
+ * enable, disable, ship, quote, evaluate, buy, cancel, place, watch,
+ * unwatch, leave, send, respond, register, revoke, refresh, dispatch,
+ * link, record, suggest, relist, publish, migrate, bulk_*.
  */
 export const tools: Tool[] = [
-	// Marketplace data — read (anonymous app token is enough)
+	// ─── core ────────────────────────────────────────────────────────────
+	// First-call discovery + key introspection.
 	{
-		name: "flipagent_items_search",
-		description: ebaySearchDescription,
-		inputSchema: ebaySearchInput,
-		execute: ebaySearchExecute,
-	},
-	{
-		name: "flipagent_items_get",
-		description: ebayItemDetailDescription,
-		inputSchema: ebayItemDetailInput,
-		execute: ebayItemDetailExecute,
-	},
-	{
-		name: "flipagent_items_search_sold",
-		description: ebaySoldSearchDescription,
-		inputSchema: ebaySoldSearchInput,
-		execute: ebaySoldSearchExecute,
-	},
-	{
-		name: "flipagent_categories_list",
-		description: ebayTaxonomyDefaultIdDescription,
-		inputSchema: ebayTaxonomyDefaultIdInput,
-		execute: ebayTaxonomyDefaultIdExecute,
-	},
-	{
-		name: "flipagent_categories_suggest",
-		description: ebayTaxonomySuggestDescription,
-		inputSchema: ebayTaxonomySuggestInput,
-		execute: ebayTaxonomySuggestExecute,
-	},
-	{
-		name: "flipagent_categories_aspects",
-		description: ebayTaxonomyAspectsDescription,
-		inputSchema: ebayTaxonomyAspectsInput,
-		execute: ebayTaxonomyAspectsExecute,
-	},
-
-	// flipagent management — capabilities is the agent's first call;
-	// connect_ebay_status stays for back-compat (narrower view of the same data).
-	{
-		name: "flipagent_capabilities",
+		name: "flipagent_get_capabilities",
 		description: flipagentCapabilitiesDescription,
 		inputSchema: flipagentCapabilitiesInput,
 		execute: flipagentCapabilitiesExecute,
+		toolset: "core",
 	},
 	{
-		name: "flipagent_connect_ebay_status",
-		description: flipagentConnectStatusDescription,
-		inputSchema: flipagentConnectStatusInput,
-		execute: flipagentConnectStatusExecute,
-	},
-
-	// Listing prerequisites — `flipagent_listings_create` references
-	// policy ids, location ids, and media URLs. Agents should fetch /
-	// upsert these first, then call listings_create.
-	{
-		name: "flipagent_media_create_upload",
-		description: mediaCreateUploadDescription,
-		inputSchema: mediaCreateUploadInput,
-		execute: mediaCreateUploadExecute,
-	},
-	{
-		name: "flipagent_media_get",
-		description: mediaGetDescription,
-		inputSchema: mediaGetInput,
-		execute: mediaGetExecute,
-	},
-	{
-		name: "flipagent_policies_list",
-		description: policiesListDescription,
-		inputSchema: policiesListInput,
-		execute: policiesListExecute,
-	},
-	{
-		name: "flipagent_policies_list_by_type",
-		description: policiesListByTypeDescription,
-		inputSchema: policiesListByTypeInput,
-		execute: policiesListByTypeExecute,
-	},
-	{
-		name: "flipagent_locations_list",
-		description: locationsListDescription,
-		inputSchema: locationsListInput,
-		execute: locationsListExecute,
-	},
-	{
-		name: "flipagent_locations_get",
-		description: locationsGetDescription,
-		inputSchema: locationsGetInput,
-		execute: locationsGetExecute,
-	},
-	{
-		name: "flipagent_locations_upsert",
-		description: locationsUpsertDescription,
-		inputSchema: locationsUpsertInput,
-		execute: locationsUpsertExecute,
-	},
-	{
-		name: "flipagent_locations_delete",
-		description: locationsDeleteDescription,
-		inputSchema: locationsDeleteInput,
-		execute: locationsDeleteExecute,
-	},
-	{
-		name: "flipagent_locations_enable",
-		description: locationsEnableDescription,
-		inputSchema: locationsEnableInput,
-		execute: locationsEnableExecute,
-	},
-	{
-		name: "flipagent_locations_disable",
-		description: locationsDisableDescription,
-		inputSchema: locationsDisableInput,
-		execute: locationsDisableExecute,
-	},
-
-	// Sell-side (user OAuth required; 401 not_connected if not bound)
-	{
-		name: "flipagent_listings_create",
-		description: ebayCreateInventoryItemDescription,
-		inputSchema: ebayCreateInventoryItemInput,
-		execute: ebayCreateInventoryItemExecute,
-	},
-	{
-		name: "flipagent_listings_update",
-		description: ebayCreateOfferDescription,
-		inputSchema: ebayCreateOfferInput,
-		execute: ebayCreateOfferExecute,
-	},
-	{
-		name: "flipagent_listings_relist",
-		description: ebayPublishOfferDescription,
-		inputSchema: ebayPublishOfferInput,
-		execute: ebayPublishOfferExecute,
-	},
-	{
-		name: "flipagent_sales_list",
-		description: ebayListOrdersDescription,
-		inputSchema: ebayListOrdersInput,
-		execute: ebayListOrdersExecute,
-	},
-	{
-		name: "flipagent_sales_ship",
-		description: ebayMarkShippedDescription,
-		inputSchema: ebayMarkShippedInput,
-		execute: ebayMarkShippedExecute,
-	},
-	{
-		name: "flipagent_payouts_list",
-		description: ebayListPayoutsDescription,
-		inputSchema: ebayListPayoutsInput,
-		execute: ebayListPayoutsExecute,
-	},
-	{
-		name: "flipagent_transactions_list",
-		description: transactionsListDescription,
-		inputSchema: transactionsListInput,
-		execute: transactionsListExecute,
-	},
-
-	// Buyer comms + post-sale (deal turnover)
-	{
-		name: "flipagent_messages_list",
-		description: messagesListDescription,
-		inputSchema: messagesListInput,
-		execute: messagesListExecute,
-	},
-	{
-		name: "flipagent_messages_send",
-		description: messagesSendDescription,
-		inputSchema: messagesSendInput,
-		execute: messagesSendExecute,
-	},
-	{
-		name: "flipagent_offers_list",
-		description: offersListDescription,
-		inputSchema: offersListInput,
-		execute: offersListExecute,
-	},
-	{
-		name: "flipagent_offers_create",
-		description: offersCreateDescription,
-		inputSchema: offersCreateInput,
-		execute: offersCreateExecute,
-	},
-	{
-		name: "flipagent_offers_eligible_listings",
-		description: offersEligibleListingsDescription,
-		inputSchema: offersEligibleListingsInput,
-		execute: offersEligibleListingsExecute,
-	},
-	{
-		name: "flipagent_offers_respond",
-		description: offersRespondDescription,
-		inputSchema: offersRespondInput,
-		execute: offersRespondExecute,
-	},
-	{
-		name: "flipagent_disputes_list",
-		description: disputesListDescription,
-		inputSchema: disputesListInput,
-		execute: disputesListExecute,
-	},
-	{
-		name: "flipagent_disputes_get",
-		description: disputesGetDescription,
-		inputSchema: disputesGetInput,
-		execute: disputesGetExecute,
-	},
-	{
-		name: "flipagent_disputes_respond",
-		description: disputesRespondDescription,
-		inputSchema: disputesRespondInput,
-		execute: disputesRespondExecute,
-	},
-	{
-		name: "flipagent_feedback_list",
-		description: feedbackListDescription,
-		inputSchema: feedbackListInput,
-		execute: feedbackListExecute,
-	},
-	{
-		name: "flipagent_feedback_awaiting",
-		description: feedbackAwaitingDescription,
-		inputSchema: feedbackAwaitingInput,
-		execute: feedbackAwaitingExecute,
-	},
-	{
-		name: "flipagent_feedback_leave",
-		description: feedbackLeaveDescription,
-		inputSchema: feedbackLeaveInput,
-		execute: feedbackLeaveExecute,
-	},
-
-	// Evaluate — single-listing judgment (Decisions pillar)
-	{
-		name: "flipagent_evaluate",
-		description: evaluateListingDescription,
-		inputSchema: evaluateListingInput,
-		execute: evaluateListingExecute,
-	},
-
-	// Ship — forwarder quote + catalog (Operations pillar)
-	{
-		name: "flipagent_ship_quote",
-		description: shipQuoteDescription,
-		inputSchema: shipQuoteInput,
-		execute: shipQuoteExecute,
-	},
-	{
-		name: "flipagent_ship_providers",
-		description: shipProvidersDescription,
-		inputSchema: shipProvidersInput,
-		execute: shipProvidersExecute,
-	},
-
-	// Expenses — append-only cost-side ledger (Finance phase, our half).
-	// Verb is `record` (not `create`) because the route is /expenses/record
-	// and the SDK is `client.expenses.record()` — append-only ledger,
-	// not generic CRUD.
-	{
-		name: "flipagent_expenses_record",
-		description: expensesRecordDescription,
-		inputSchema: expensesRecordInput,
-		execute: expensesRecordExecute,
-	},
-	{
-		name: "flipagent_expenses_summary",
-		description: expensesSummaryDescription,
-		inputSchema: expensesSummaryInput,
-		execute: expensesSummaryExecute,
-	},
-
-	// Buy — extension-bridged purchase flow. The user must install the
-	// flipagent Chrome extension and pair it with their API key (one-time,
-	// via the extension options panel) for the order to actually be driven
-	// against their logged-in eBay session. These tools always succeed at
-	// the API layer (they queue); the extension does the rest. See
-	// /docs/extension/ for install + pairing.
-	{
-		name: "flipagent_purchases_create",
-		description: ebayBuyItemDescription,
-		inputSchema: ebayBuyItemInput,
-		execute: ebayBuyItemExecute,
-	},
-	{
-		name: "flipagent_purchases_get",
-		description: ebayOrderStatusDescription,
-		inputSchema: ebayOrderStatusInput,
-		execute: ebayOrderStatusExecute,
-	},
-	{
-		name: "flipagent_purchases_cancel",
-		description: ebayOrderCancelDescription,
-		inputSchema: ebayOrderCancelInput,
-		execute: ebayOrderCancelExecute,
-	},
-
-	// Forwarders — `/v1/forwarder/{provider}/*`. Today only Planet Express
-	// is wired, so these tools target PE; the names are provider-agnostic
-	// because future forwarders will reuse the same paths via a `provider`
-	// param. Each name mirrors the SDK path with dots replaced by
-	// underscores (e.g. `forwarder.packages.photos` ↔
-	// `flipagent_forwarder_packages_photos`). All queue a bridge job and
-	// return a `jobId`; agents poll `flipagent_forwarder_jobs_get`.
-	{
-		name: "flipagent_forwarder_refresh",
-		description: planetExpressPackagesDescription,
-		inputSchema: planetExpressPackagesInput,
-		execute: planetExpressPackagesExecute,
-	},
-	{
-		name: "flipagent_forwarder_packages_photos",
-		description: planetExpressPackagePhotosDescription,
-		inputSchema: planetExpressPackagePhotosInput,
-		execute: planetExpressPackagePhotosExecute,
-	},
-	{
-		name: "flipagent_forwarder_packages_dispatch",
-		description: planetExpressPackageDispatchDescription,
-		inputSchema: planetExpressPackageDispatchInput,
-		execute: planetExpressPackageDispatchExecute,
-	},
-	{
-		name: "flipagent_forwarder_jobs_get",
-		description: planetExpressJobStatusDescription,
-		inputSchema: planetExpressJobStatusInput,
-		execute: planetExpressJobStatusExecute,
-	},
-	{
-		name: "flipagent_forwarder_inventory_list",
-		description: planetExpressInventoryDescription,
-		inputSchema: planetExpressInventoryInput,
-		execute: planetExpressInventoryExecute,
-	},
-	{
-		name: "flipagent_forwarder_packages_link",
-		description: planetExpressLinkDescription,
-		inputSchema: planetExpressLinkInput,
-		execute: planetExpressLinkExecute,
-	},
-
-	// Sourcing radar — query-based + item-based standing alerts, plus
-	// trend signals + flipagent's own recommendations.
-	{
-		name: "flipagent_watching_list",
-		description: watchingListDescription,
-		inputSchema: watchingListInput,
-		execute: watchingListExecute,
-	},
-	{
-		name: "flipagent_watching_watch",
-		description: watchingWatchDescription,
-		inputSchema: watchingWatchInput,
-		execute: watchingWatchExecute,
-	},
-	{
-		name: "flipagent_watching_unwatch",
-		description: watchingUnwatchDescription,
-		inputSchema: watchingUnwatchInput,
-		execute: watchingUnwatchExecute,
-	},
-	{
-		name: "flipagent_saved_searches_list",
-		description: savedSearchesListDescription,
-		inputSchema: savedSearchesListInput,
-		execute: savedSearchesListExecute,
-	},
-	{
-		name: "flipagent_saved_searches_create",
-		description: savedSearchesCreateDescription,
-		inputSchema: savedSearchesCreateInput,
-		execute: savedSearchesCreateExecute,
-	},
-	{
-		name: "flipagent_saved_searches_delete",
-		description: savedSearchesDeleteDescription,
-		inputSchema: savedSearchesDeleteInput,
-		execute: savedSearchesDeleteExecute,
-	},
-	{
-		name: "flipagent_trends_categories",
-		description: trendsCategoriesDescription,
-		inputSchema: trendsCategoriesInput,
-		execute: trendsCategoriesExecute,
-	},
-	{
-		name: "flipagent_recommendations_list",
-		description: recommendationsListDescription,
-		inputSchema: recommendationsListInput,
-		execute: recommendationsListExecute,
-	},
-	{
-		name: "flipagent_bids_list",
-		description: bidsListDescription,
-		inputSchema: bidsListInput,
-		execute: bidsListExecute,
-	},
-	{
-		name: "flipagent_bids_place",
-		description: bidsPlaceDescription,
-		inputSchema: bidsPlaceInput,
-		execute: bidsPlaceExecute,
-	},
-	{
-		name: "flipagent_bids_eligible_listings",
-		description: bidsEligibleListingsDescription,
-		inputSchema: bidsEligibleListingsInput,
-		execute: bidsEligibleListingsExecute,
-	},
-
-	// Seller account — read-only views on standing, KYC, subscription.
-	{
-		name: "flipagent_seller_eligibility",
-		description: sellerEligibilityDescription,
-		inputSchema: sellerEligibilityInput,
-		execute: sellerEligibilityExecute,
-	},
-	{
-		name: "flipagent_seller_privilege",
-		description: sellerPrivilegeDescription,
-		inputSchema: sellerPrivilegeInput,
-		execute: sellerPrivilegeExecute,
-	},
-	{
-		name: "flipagent_seller_kyc",
-		description: sellerKycDescription,
-		inputSchema: sellerKycInput,
-		execute: sellerKycExecute,
-	},
-	{
-		name: "flipagent_seller_subscription",
-		description: sellerSubscriptionDescription,
-		inputSchema: sellerSubscriptionInput,
-		execute: sellerSubscriptionExecute,
-	},
-	{
-		name: "flipagent_seller_payments_program",
-		description: sellerPaymentsProgramDescription,
-		inputSchema: sellerPaymentsProgramInput,
-		execute: sellerPaymentsProgramExecute,
-	},
-	{
-		name: "flipagent_seller_advertising_eligibility",
-		description: sellerAdvertisingEligibilityDescription,
-		inputSchema: sellerAdvertisingEligibilityInput,
-		execute: sellerAdvertisingEligibilityExecute,
-	},
-	{
-		name: "flipagent_seller_sales_tax",
-		description: sellerSalesTaxDescription,
-		inputSchema: sellerSalesTaxInput,
-		execute: sellerSalesTaxExecute,
-	},
-
-	// Marketing + storefront — promotions, markdowns, ads, store.
-	{
-		name: "flipagent_promotions_list",
-		description: promotionsListDescription,
-		inputSchema: promotionsListInput,
-		execute: promotionsListExecute,
-	},
-	{
-		name: "flipagent_promotions_create",
-		description: promotionsCreateDescription,
-		inputSchema: promotionsCreateInput,
-		execute: promotionsCreateExecute,
-	},
-	{
-		name: "flipagent_promotions_reports_list",
-		description: promotionsReportsListDescription,
-		inputSchema: promotionsReportsListInput,
-		execute: promotionsReportsListExecute,
-	},
-	{
-		name: "flipagent_promotions_reports_create",
-		description: promotionsReportsCreateDescription,
-		inputSchema: promotionsReportsCreateInput,
-		execute: promotionsReportsCreateExecute,
-	},
-	{
-		name: "flipagent_promotions_reports_get",
-		description: promotionsReportsGetDescription,
-		inputSchema: promotionsReportsGetInput,
-		execute: promotionsReportsGetExecute,
-	},
-	{
-		name: "flipagent_markdowns_list",
-		description: markdownsListDescription,
-		inputSchema: markdownsListInput,
-		execute: markdownsListExecute,
-	},
-	{
-		name: "flipagent_markdowns_create",
-		description: markdownsCreateDescription,
-		inputSchema: markdownsCreateInput,
-		execute: markdownsCreateExecute,
-	},
-	{
-		name: "flipagent_ads_campaigns_list",
-		description: adsCampaignsListDescription,
-		inputSchema: adsCampaignsListInput,
-		execute: adsCampaignsListExecute,
-	},
-	{
-		name: "flipagent_ads_campaigns_create",
-		description: adsCampaignsCreateDescription,
-		inputSchema: adsCampaignsCreateInput,
-		execute: adsCampaignsCreateExecute,
-	},
-	{
-		name: "flipagent_ads_ads_list",
-		description: adsAdsListDescription,
-		inputSchema: adsAdsListInput,
-		execute: adsAdsListExecute,
-	},
-	{
-		name: "flipagent_ads_groups_list",
-		description: adsGroupsListDescription,
-		inputSchema: adsGroupsListInput,
-		execute: adsGroupsListExecute,
-	},
-	{
-		name: "flipagent_ads_groups_create",
-		description: adsGroupsCreateDescription,
-		inputSchema: adsGroupsCreateInput,
-		execute: adsGroupsCreateExecute,
-	},
-	{
-		name: "flipagent_ads_reports_metadata",
-		description: adsReportsMetadataDescription,
-		inputSchema: adsReportsMetadataInput,
-		execute: adsReportsMetadataExecute,
-	},
-	{
-		name: "flipagent_ads_reports_list",
-		description: adsReportsListDescription,
-		inputSchema: adsReportsListInput,
-		execute: adsReportsListExecute,
-	},
-	{
-		name: "flipagent_ads_reports_create",
-		description: adsReportsCreateDescription,
-		inputSchema: adsReportsCreateInput,
-		execute: adsReportsCreateExecute,
-	},
-	{
-		name: "flipagent_ads_reports_get",
-		description: adsReportsGetDescription,
-		inputSchema: adsReportsGetInput,
-		execute: adsReportsGetExecute,
-	},
-	{
-		name: "flipagent_store_categories",
-		description: storeCategoriesDescription,
-		inputSchema: storeCategoriesInput,
-		execute: storeCategoriesExecute,
-	},
-	{
-		name: "flipagent_store_categories_upsert",
-		description: storeCategoriesUpsertDescription,
-		inputSchema: storeCategoriesUpsertInput,
-		execute: storeCategoriesUpsertExecute,
-	},
-
-	// Listing groups + bulk listing ops — variations + power-user batch
-	// surfaces. Bulk endpoints return per-row results (partial success
-	// is normal); agents iterate the result.
-	{
-		name: "flipagent_listing_groups_get",
-		description: listingGroupsGetDescription,
-		inputSchema: listingGroupsGetInput,
-		execute: listingGroupsGetExecute,
-	},
-	{
-		name: "flipagent_listing_groups_upsert",
-		description: listingGroupsUpsertDescription,
-		inputSchema: listingGroupsUpsertInput,
-		execute: listingGroupsUpsertExecute,
-	},
-	{
-		name: "flipagent_listing_groups_delete",
-		description: listingGroupsDeleteDescription,
-		inputSchema: listingGroupsDeleteInput,
-		execute: listingGroupsDeleteExecute,
-	},
-	{
-		name: "flipagent_listings_bulk_get_inventory",
-		description: listingsBulkGetInventoryDescription,
-		inputSchema: listingsBulkGetInventoryInput,
-		execute: listingsBulkGetInventoryExecute,
-	},
-	{
-		name: "flipagent_listings_bulk_get_offers",
-		description: listingsBulkGetOffersDescription,
-		inputSchema: listingsBulkGetOffersInput,
-		execute: listingsBulkGetOffersExecute,
-	},
-	{
-		name: "flipagent_listings_bulk_update_prices",
-		description: listingsBulkUpdatePricesDescription,
-		inputSchema: listingsBulkUpdatePricesInput,
-		execute: listingsBulkUpdatePricesExecute,
-	},
-	{
-		name: "flipagent_listings_bulk_upsert",
-		description: listingsBulkUpsertDescription,
-		inputSchema: listingsBulkUpsertInput,
-		execute: listingsBulkUpsertExecute,
-	},
-	{
-		name: "flipagent_listings_bulk_publish",
-		description: listingsBulkPublishDescription,
-		inputSchema: listingsBulkPublishInput,
-		execute: listingsBulkPublishExecute,
-	},
-	{
-		name: "flipagent_listings_bulk_migrate",
-		description: listingsBulkMigrateDescription,
-		inputSchema: listingsBulkMigrateInput,
-		execute: listingsBulkMigrateExecute,
-	},
-
-	// Setup-time — webhooks (flipagent → caller), notifications (eBay →
-	// flipagent → caller), key introspection. Boring but needed.
-	{
-		name: "flipagent_webhooks_register",
-		description: webhooksRegisterDescription,
-		inputSchema: webhooksRegisterInput,
-		execute: webhooksRegisterExecute,
-	},
-	{
-		name: "flipagent_webhooks_list",
-		description: webhooksListDescription,
-		inputSchema: webhooksListInput,
-		execute: webhooksListExecute,
-	},
-	{
-		name: "flipagent_webhooks_revoke",
-		description: webhooksRevokeDescription,
-		inputSchema: webhooksRevokeInput,
-		execute: webhooksRevokeExecute,
-	},
-	{
-		name: "flipagent_notifications_topics",
-		description: notificationsTopicsDescription,
-		inputSchema: notificationsTopicsInput,
-		execute: notificationsTopicsExecute,
-	},
-	{
-		name: "flipagent_notifications_destinations",
-		description: notificationsDestinationsDescription,
-		inputSchema: notificationsDestinationsInput,
-		execute: notificationsDestinationsExecute,
-	},
-	{
-		name: "flipagent_notifications_subscriptions_list",
-		description: notificationsSubscriptionsListDescription,
-		inputSchema: notificationsSubscriptionsListInput,
-		execute: notificationsSubscriptionsListExecute,
-	},
-	{
-		name: "flipagent_notifications_subscriptions_create",
-		description: notificationsSubscriptionsCreateDescription,
-		inputSchema: notificationsSubscriptionsCreateInput,
-		execute: notificationsSubscriptionsCreateExecute,
-	},
-	{
-		name: "flipagent_notifications_subscriptions_get",
-		description: notificationsSubscriptionsGetDescription,
-		inputSchema: notificationsSubscriptionsGetInput,
-		execute: notificationsSubscriptionsGetExecute,
-	},
-	{
-		name: "flipagent_notifications_subscriptions_delete",
-		description: notificationsSubscriptionsDeleteDescription,
-		inputSchema: notificationsSubscriptionsDeleteInput,
-		execute: notificationsSubscriptionsDeleteExecute,
-	},
-	{
-		name: "flipagent_notifications_recent",
-		description: notificationsRecentDescription,
-		inputSchema: notificationsRecentInput,
-		execute: notificationsRecentExecute,
-	},
-	{
-		name: "flipagent_keys_me",
+		name: "flipagent_get_my_key",
 		description: keysMeDescription,
 		inputSchema: keysMeInput,
 		execute: keysMeExecute,
+		toolset: "core",
 	},
 
-	// Generic browser primitives — direct DOM queries through the bridge
-	// for cases the high-level tools don't cover (custom marketplaces, new
-	// fields, selector tuning). 1st-class surface, not a fallback path.
+	// Sourcing — marketplace data (anonymous app token works)
 	{
-		name: "flipagent_browser_query",
+		name: "flipagent_search_items",
+		description: ebaySearchDescription,
+		inputSchema: ebaySearchInput,
+		execute: ebaySearchExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_get_item",
+		description: ebayItemDetailDescription,
+		inputSchema: ebayItemDetailInput,
+		execute: ebayItemDetailExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_search_sold_items",
+		description: ebaySoldSearchDescription,
+		inputSchema: ebaySoldSearchInput,
+		execute: ebaySoldSearchExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_list_categories",
+		description: ebayTaxonomyDefaultIdDescription,
+		inputSchema: ebayTaxonomyDefaultIdInput,
+		execute: ebayTaxonomyDefaultIdExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_suggest_category",
+		description: ebayTaxonomySuggestDescription,
+		inputSchema: ebayTaxonomySuggestInput,
+		execute: ebayTaxonomySuggestExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_list_category_aspects",
+		description: ebayTaxonomyAspectsDescription,
+		inputSchema: ebayTaxonomyAspectsInput,
+		execute: ebayTaxonomyAspectsExecute,
+		toolset: "core",
+	},
+
+	// Decisions + Operations — flipagent value-add
+	{
+		name: "flipagent_evaluate_item",
+		description: evaluateListingDescription,
+		inputSchema: evaluateListingInput,
+		execute: evaluateListingExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_get_evaluate_job",
+		description: evaluateJobDescription,
+		inputSchema: evaluateJobInput,
+		execute: evaluateJobExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_get_evaluation_pool",
+		description: evaluationPoolDescription,
+		inputSchema: evaluationPoolInput,
+		execute: evaluationPoolExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_quote_shipping",
+		description: shipQuoteDescription,
+		inputSchema: shipQuoteInput,
+		execute: shipQuoteExecute,
+		toolset: "core",
+	},
+
+	// Buying (extension-bridged or REST passthrough)
+	{
+		name: "flipagent_create_purchase",
+		description: ebayBuyItemDescription,
+		inputSchema: ebayBuyItemInput,
+		execute: ebayBuyItemExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_get_purchase",
+		description: ebayOrderStatusDescription,
+		inputSchema: ebayOrderStatusInput,
+		execute: ebayOrderStatusExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_cancel_purchase",
+		description: ebayOrderCancelDescription,
+		inputSchema: ebayOrderCancelInput,
+		execute: ebayOrderCancelExecute,
+		toolset: "core",
+	},
+
+	// Listing prereqs + listing CRUD (sell-side, eBay OAuth required)
+	{
+		name: "flipagent_create_media_upload",
+		description: mediaCreateUploadDescription,
+		inputSchema: mediaCreateUploadInput,
+		execute: mediaCreateUploadExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_get_media",
+		description: mediaGetDescription,
+		inputSchema: mediaGetInput,
+		execute: mediaGetExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_list_policies",
+		description: policiesListDescription,
+		inputSchema: policiesListInput,
+		execute: policiesListExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_list_policies_by_type",
+		description: policiesListByTypeDescription,
+		inputSchema: policiesListByTypeInput,
+		execute: policiesListByTypeExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_list_locations",
+		description: locationsListDescription,
+		inputSchema: locationsListInput,
+		execute: locationsListExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_upsert_location",
+		description: locationsUpsertDescription,
+		inputSchema: locationsUpsertInput,
+		execute: locationsUpsertExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_create_listing",
+		description: ebayCreateInventoryItemDescription,
+		inputSchema: ebayCreateInventoryItemInput,
+		execute: ebayCreateInventoryItemExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_update_listing",
+		description: ebayCreateOfferDescription,
+		inputSchema: ebayCreateOfferInput,
+		execute: ebayCreateOfferExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_relist_listing",
+		description: ebayPublishOfferDescription,
+		inputSchema: ebayPublishOfferInput,
+		execute: ebayPublishOfferExecute,
+		toolset: "core",
+	},
+
+	// Sale fulfillment + finance (sell-side)
+	{
+		name: "flipagent_list_sales",
+		description: ebayListOrdersDescription,
+		inputSchema: ebayListOrdersInput,
+		execute: ebayListOrdersExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_ship_sale",
+		description: ebayMarkShippedDescription,
+		inputSchema: ebayMarkShippedInput,
+		execute: ebayMarkShippedExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_list_payouts",
+		description: ebayListPayoutsDescription,
+		inputSchema: ebayListPayoutsInput,
+		execute: ebayListPayoutsExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_list_transactions",
+		description: transactionsListDescription,
+		inputSchema: transactionsListInput,
+		execute: transactionsListExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_record_expense",
+		description: expensesRecordDescription,
+		inputSchema: expensesRecordInput,
+		execute: expensesRecordExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_get_expense_summary",
+		description: expensesSummaryDescription,
+		inputSchema: expensesSummaryInput,
+		execute: expensesSummaryExecute,
+		toolset: "core",
+	},
+
+	// ─── admin ───────────────────────────────────────────────────────────
+	// Connection status, ship providers, location-state toggles, location detail/delete.
+	{
+		name: "flipagent_get_ebay_connection",
+		description: flipagentConnectStatusDescription,
+		inputSchema: flipagentConnectStatusInput,
+		execute: flipagentConnectStatusExecute,
+		toolset: "admin",
+	},
+	{
+		name: "flipagent_list_shipping_providers",
+		description: shipProvidersDescription,
+		inputSchema: shipProvidersInput,
+		execute: shipProvidersExecute,
+		toolset: "admin",
+	},
+	{
+		name: "flipagent_get_location",
+		description: locationsGetDescription,
+		inputSchema: locationsGetInput,
+		execute: locationsGetExecute,
+		toolset: "admin",
+	},
+	{
+		name: "flipagent_delete_location",
+		description: locationsDeleteDescription,
+		inputSchema: locationsDeleteInput,
+		execute: locationsDeleteExecute,
+		toolset: "admin",
+	},
+	{
+		name: "flipagent_enable_location",
+		description: locationsEnableDescription,
+		inputSchema: locationsEnableInput,
+		execute: locationsEnableExecute,
+		toolset: "admin",
+	},
+	{
+		name: "flipagent_disable_location",
+		description: locationsDisableDescription,
+		inputSchema: locationsDisableInput,
+		execute: locationsDisableExecute,
+		toolset: "admin",
+	},
+
+	// ─── comms (post-sale buyer turnover) ────────────────────────────────
+	{
+		name: "flipagent_list_conversations",
+		description: conversationsListDescription,
+		inputSchema: conversationsListInput,
+		execute: conversationsListExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_get_conversation_thread",
+		description: conversationThreadDescription,
+		inputSchema: conversationThreadInput,
+		execute: conversationThreadExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_send_message",
+		description: messagesSendDescription,
+		inputSchema: messagesSendInput,
+		execute: messagesSendExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_list_offers",
+		description: offersListDescription,
+		inputSchema: offersListInput,
+		execute: offersListExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_create_offer",
+		description: offersCreateDescription,
+		inputSchema: offersCreateInput,
+		execute: offersCreateExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_list_offer_eligible_listings",
+		description: offersEligibleListingsDescription,
+		inputSchema: offersEligibleListingsInput,
+		execute: offersEligibleListingsExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_respond_to_offer",
+		description: offersRespondDescription,
+		inputSchema: offersRespondInput,
+		execute: offersRespondExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_list_disputes",
+		description: disputesListDescription,
+		inputSchema: disputesListInput,
+		execute: disputesListExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_get_dispute",
+		description: disputesGetDescription,
+		inputSchema: disputesGetInput,
+		execute: disputesGetExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_respond_to_dispute",
+		description: disputesRespondDescription,
+		inputSchema: disputesRespondInput,
+		execute: disputesRespondExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_list_feedback",
+		description: feedbackListDescription,
+		inputSchema: feedbackListInput,
+		execute: feedbackListExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_list_awaiting_feedback",
+		description: feedbackAwaitingDescription,
+		inputSchema: feedbackAwaitingInput,
+		execute: feedbackAwaitingExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_leave_feedback",
+		description: feedbackLeaveDescription,
+		inputSchema: feedbackLeaveInput,
+		execute: feedbackLeaveExecute,
+		toolset: "comms",
+	},
+
+	// ─── marketing (promotions, markdowns, ads, store) ───────────────────
+	{
+		name: "flipagent_list_promotions",
+		description: promotionsListDescription,
+		inputSchema: promotionsListInput,
+		execute: promotionsListExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_create_promotion",
+		description: promotionsCreateDescription,
+		inputSchema: promotionsCreateInput,
+		execute: promotionsCreateExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_list_promotion_reports",
+		description: promotionsReportsListDescription,
+		inputSchema: promotionsReportsListInput,
+		execute: promotionsReportsListExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_create_promotion_report",
+		description: promotionsReportsCreateDescription,
+		inputSchema: promotionsReportsCreateInput,
+		execute: promotionsReportsCreateExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_get_promotion_report",
+		description: promotionsReportsGetDescription,
+		inputSchema: promotionsReportsGetInput,
+		execute: promotionsReportsGetExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_list_markdowns",
+		description: markdownsListDescription,
+		inputSchema: markdownsListInput,
+		execute: markdownsListExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_create_markdown",
+		description: markdownsCreateDescription,
+		inputSchema: markdownsCreateInput,
+		execute: markdownsCreateExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_list_ad_campaigns",
+		description: adsCampaignsListDescription,
+		inputSchema: adsCampaignsListInput,
+		execute: adsCampaignsListExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_create_ad_campaign",
+		description: adsCampaignsCreateDescription,
+		inputSchema: adsCampaignsCreateInput,
+		execute: adsCampaignsCreateExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_list_ads",
+		description: adsAdsListDescription,
+		inputSchema: adsAdsListInput,
+		execute: adsAdsListExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_list_ad_groups",
+		description: adsGroupsListDescription,
+		inputSchema: adsGroupsListInput,
+		execute: adsGroupsListExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_create_ad_group",
+		description: adsGroupsCreateDescription,
+		inputSchema: adsGroupsCreateInput,
+		execute: adsGroupsCreateExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_get_ad_report_metadata",
+		description: adsReportsMetadataDescription,
+		inputSchema: adsReportsMetadataInput,
+		execute: adsReportsMetadataExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_list_ad_reports",
+		description: adsReportsListDescription,
+		inputSchema: adsReportsListInput,
+		execute: adsReportsListExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_create_ad_report",
+		description: adsReportsCreateDescription,
+		inputSchema: adsReportsCreateInput,
+		execute: adsReportsCreateExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_get_ad_report",
+		description: adsReportsGetDescription,
+		inputSchema: adsReportsGetInput,
+		execute: adsReportsGetExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_list_store_categories",
+		description: storeCategoriesDescription,
+		inputSchema: storeCategoriesInput,
+		execute: storeCategoriesExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_upsert_store_categories",
+		description: storeCategoriesUpsertDescription,
+		inputSchema: storeCategoriesUpsertInput,
+		execute: storeCategoriesUpsertExecute,
+		toolset: "marketing",
+	},
+
+	// ─── bulk (variations + power-user batch) ────────────────────────────
+	{
+		name: "flipagent_get_listing_group",
+		description: listingGroupsGetDescription,
+		inputSchema: listingGroupsGetInput,
+		execute: listingGroupsGetExecute,
+		toolset: "bulk",
+	},
+	{
+		name: "flipagent_upsert_listing_group",
+		description: listingGroupsUpsertDescription,
+		inputSchema: listingGroupsUpsertInput,
+		execute: listingGroupsUpsertExecute,
+		toolset: "bulk",
+	},
+	{
+		name: "flipagent_delete_listing_group",
+		description: listingGroupsDeleteDescription,
+		inputSchema: listingGroupsDeleteInput,
+		execute: listingGroupsDeleteExecute,
+		toolset: "bulk",
+	},
+	{
+		name: "flipagent_bulk_get_inventory",
+		description: listingsBulkGetInventoryDescription,
+		inputSchema: listingsBulkGetInventoryInput,
+		execute: listingsBulkGetInventoryExecute,
+		toolset: "bulk",
+	},
+	{
+		name: "flipagent_bulk_get_offers",
+		description: listingsBulkGetOffersDescription,
+		inputSchema: listingsBulkGetOffersInput,
+		execute: listingsBulkGetOffersExecute,
+		toolset: "bulk",
+	},
+	{
+		name: "flipagent_bulk_update_listing_prices",
+		description: listingsBulkUpdatePricesDescription,
+		inputSchema: listingsBulkUpdatePricesInput,
+		execute: listingsBulkUpdatePricesExecute,
+		toolset: "bulk",
+	},
+	{
+		name: "flipagent_bulk_upsert_listings",
+		description: listingsBulkUpsertDescription,
+		inputSchema: listingsBulkUpsertInput,
+		execute: listingsBulkUpsertExecute,
+		toolset: "bulk",
+	},
+	{
+		name: "flipagent_bulk_publish_listings",
+		description: listingsBulkPublishDescription,
+		inputSchema: listingsBulkPublishInput,
+		execute: listingsBulkPublishExecute,
+		toolset: "bulk",
+	},
+	{
+		name: "flipagent_bulk_migrate_listings",
+		description: listingsBulkMigrateDescription,
+		inputSchema: listingsBulkMigrateInput,
+		execute: listingsBulkMigrateExecute,
+		toolset: "bulk",
+	},
+
+	// ─── forwarder ───────────────────────────────────────────────────────
+	{
+		name: "flipagent_refresh_forwarder",
+		description: planetExpressPackagesDescription,
+		inputSchema: planetExpressPackagesInput,
+		execute: planetExpressPackagesExecute,
+		toolset: "forwarder",
+	},
+	{
+		name: "flipagent_list_forwarder_inventory",
+		description: planetExpressInventoryDescription,
+		inputSchema: planetExpressInventoryInput,
+		execute: planetExpressInventoryExecute,
+		toolset: "forwarder",
+	},
+	{
+		name: "flipagent_request_package_photos",
+		description: planetExpressPackagePhotosDescription,
+		inputSchema: planetExpressPackagePhotosInput,
+		execute: planetExpressPackagePhotosExecute,
+		toolset: "forwarder",
+	},
+	{
+		name: "flipagent_dispatch_package",
+		description: planetExpressPackageDispatchDescription,
+		inputSchema: planetExpressPackageDispatchInput,
+		execute: planetExpressPackageDispatchExecute,
+		toolset: "forwarder",
+	},
+	{
+		name: "flipagent_link_package",
+		description: planetExpressLinkDescription,
+		inputSchema: planetExpressLinkInput,
+		execute: planetExpressLinkExecute,
+		toolset: "forwarder",
+	},
+	{
+		name: "flipagent_get_forwarder_job",
+		description: planetExpressJobStatusDescription,
+		inputSchema: planetExpressJobStatusInput,
+		execute: planetExpressJobStatusExecute,
+		toolset: "forwarder",
+	},
+
+	// ─── discovery (sourcing radar) ──────────────────────────────────────
+	{
+		name: "flipagent_list_watching",
+		description: watchingListDescription,
+		inputSchema: watchingListInput,
+		execute: watchingListExecute,
+		toolset: "discovery",
+	},
+	{
+		name: "flipagent_watch_item",
+		description: watchingWatchDescription,
+		inputSchema: watchingWatchInput,
+		execute: watchingWatchExecute,
+		toolset: "discovery",
+	},
+	{
+		name: "flipagent_unwatch_item",
+		description: watchingUnwatchDescription,
+		inputSchema: watchingUnwatchInput,
+		execute: watchingUnwatchExecute,
+		toolset: "discovery",
+	},
+	{
+		name: "flipagent_list_saved_searches",
+		description: savedSearchesListDescription,
+		inputSchema: savedSearchesListInput,
+		execute: savedSearchesListExecute,
+		toolset: "discovery",
+	},
+	{
+		name: "flipagent_create_saved_search",
+		description: savedSearchesCreateDescription,
+		inputSchema: savedSearchesCreateInput,
+		execute: savedSearchesCreateExecute,
+		toolset: "discovery",
+	},
+	{
+		name: "flipagent_delete_saved_search",
+		description: savedSearchesDeleteDescription,
+		inputSchema: savedSearchesDeleteInput,
+		execute: savedSearchesDeleteExecute,
+		toolset: "discovery",
+	},
+	{
+		name: "flipagent_get_category_trends",
+		description: trendsCategoriesDescription,
+		inputSchema: trendsCategoriesInput,
+		execute: trendsCategoriesExecute,
+		toolset: "discovery",
+	},
+	{
+		name: "flipagent_list_recommendations",
+		description: recommendationsListDescription,
+		inputSchema: recommendationsListInput,
+		execute: recommendationsListExecute,
+		toolset: "discovery",
+	},
+	{
+		name: "flipagent_list_bids",
+		description: bidsListDescription,
+		inputSchema: bidsListInput,
+		execute: bidsListExecute,
+		toolset: "discovery",
+	},
+	{
+		name: "flipagent_place_bid",
+		description: bidsPlaceDescription,
+		inputSchema: bidsPlaceInput,
+		execute: bidsPlaceExecute,
+		toolset: "discovery",
+	},
+	{
+		name: "flipagent_list_biddable_listings",
+		description: bidsEligibleListingsDescription,
+		inputSchema: bidsEligibleListingsInput,
+		execute: bidsEligibleListingsExecute,
+		toolset: "discovery",
+	},
+
+	// ─── seller_account (read-only diagnostics) ──────────────────────────
+	{
+		name: "flipagent_get_seller_eligibility",
+		description: sellerEligibilityDescription,
+		inputSchema: sellerEligibilityInput,
+		execute: sellerEligibilityExecute,
+		toolset: "seller_account",
+	},
+	{
+		name: "flipagent_get_seller_privilege",
+		description: sellerPrivilegeDescription,
+		inputSchema: sellerPrivilegeInput,
+		execute: sellerPrivilegeExecute,
+		toolset: "seller_account",
+	},
+	{
+		name: "flipagent_get_seller_kyc",
+		description: sellerKycDescription,
+		inputSchema: sellerKycInput,
+		execute: sellerKycExecute,
+		toolset: "seller_account",
+	},
+	{
+		name: "flipagent_get_seller_subscription",
+		description: sellerSubscriptionDescription,
+		inputSchema: sellerSubscriptionInput,
+		execute: sellerSubscriptionExecute,
+		toolset: "seller_account",
+	},
+	{
+		name: "flipagent_get_seller_payments_program",
+		description: sellerPaymentsProgramDescription,
+		inputSchema: sellerPaymentsProgramInput,
+		execute: sellerPaymentsProgramExecute,
+		toolset: "seller_account",
+	},
+	{
+		name: "flipagent_get_seller_advertising_eligibility",
+		description: sellerAdvertisingEligibilityDescription,
+		inputSchema: sellerAdvertisingEligibilityInput,
+		execute: sellerAdvertisingEligibilityExecute,
+		toolset: "seller_account",
+	},
+	{
+		name: "flipagent_get_seller_sales_tax",
+		description: sellerSalesTaxDescription,
+		inputSchema: sellerSalesTaxInput,
+		execute: sellerSalesTaxExecute,
+		toolset: "seller_account",
+	},
+
+	// ─── notifications + browser DOM primitive ───────────────────────────
+	{
+		name: "flipagent_register_webhook",
+		description: webhooksRegisterDescription,
+		inputSchema: webhooksRegisterInput,
+		execute: webhooksRegisterExecute,
+		toolset: "notifications",
+	},
+	{
+		name: "flipagent_list_webhooks",
+		description: webhooksListDescription,
+		inputSchema: webhooksListInput,
+		execute: webhooksListExecute,
+		toolset: "notifications",
+	},
+	{
+		name: "flipagent_revoke_webhook",
+		description: webhooksRevokeDescription,
+		inputSchema: webhooksRevokeInput,
+		execute: webhooksRevokeExecute,
+		toolset: "notifications",
+	},
+	{
+		name: "flipagent_list_notification_topics",
+		description: notificationsTopicsDescription,
+		inputSchema: notificationsTopicsInput,
+		execute: notificationsTopicsExecute,
+		toolset: "notifications",
+	},
+	{
+		name: "flipagent_list_notification_destinations",
+		description: notificationsDestinationsDescription,
+		inputSchema: notificationsDestinationsInput,
+		execute: notificationsDestinationsExecute,
+		toolset: "notifications",
+	},
+	{
+		name: "flipagent_list_notification_subscriptions",
+		description: notificationsSubscriptionsListDescription,
+		inputSchema: notificationsSubscriptionsListInput,
+		execute: notificationsSubscriptionsListExecute,
+		toolset: "notifications",
+	},
+	{
+		name: "flipagent_create_notification_subscription",
+		description: notificationsSubscriptionsCreateDescription,
+		inputSchema: notificationsSubscriptionsCreateInput,
+		execute: notificationsSubscriptionsCreateExecute,
+		toolset: "notifications",
+	},
+	{
+		name: "flipagent_get_notification_subscription",
+		description: notificationsSubscriptionsGetDescription,
+		inputSchema: notificationsSubscriptionsGetInput,
+		execute: notificationsSubscriptionsGetExecute,
+		toolset: "notifications",
+	},
+	{
+		name: "flipagent_delete_notification_subscription",
+		description: notificationsSubscriptionsDeleteDescription,
+		inputSchema: notificationsSubscriptionsDeleteInput,
+		execute: notificationsSubscriptionsDeleteExecute,
+		toolset: "notifications",
+	},
+	{
+		name: "flipagent_list_recent_notifications",
+		description: notificationsRecentDescription,
+		inputSchema: notificationsRecentInput,
+		execute: notificationsRecentExecute,
+		toolset: "notifications",
+	},
+	{
+		name: "flipagent_query_browser",
 		description: browserQueryDescription,
 		inputSchema: browserQueryInput,
 		execute: browserQueryExecute,
+		toolset: "notifications",
 	},
 ];
+
+/**
+ * Filter the registry by toolsets enabled for this MCP instance.
+ * Pass `["*"]` to enable all. Default = `DEFAULT_TOOLSETS`.
+ */
+export function selectTools(enabled: readonly Toolset[] | readonly ["*"]): Tool[] {
+	if (enabled.length === 1 && enabled[0] === "*") return tools;
+	const set = new Set(enabled as readonly Toolset[]);
+	return tools.filter((t) => set.has(t.toolset));
+}

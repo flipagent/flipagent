@@ -265,3 +265,17 @@ export async function fetchEbayUserSummary(accessToken: string): Promise<{ userI
 export function _resetAppTokenCache() {
 	cachedAppToken = null;
 }
+
+/**
+ * Look up the eBay username persisted at OAuth callback time. Used by
+ * `/v1/feedback` (REST `commerce/feedback/v1` requires `user_id`,
+ * which we serve as the connected seller's username).
+ */
+export async function getEbayUsernameForApiKey(apiKeyId: string): Promise<string | null> {
+	const rows = await db
+		.select({ ebayUserName: userEbayOauth.ebayUserName })
+		.from(userEbayOauth)
+		.where(eq(userEbayOauth.apiKeyId, apiKeyId))
+		.limit(1);
+	return rows[0]?.ebayUserName ?? null;
+}

@@ -46,6 +46,8 @@ const Schema = Type.Object({
 			"https://api.ebay.com/oauth/api_scope/sell.finances",
 			"https://api.ebay.com/oauth/api_scope/sell.account",
 			"https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
+			"https://api.ebay.com/oauth/api_scope/commerce.message",
+			"https://api.ebay.com/oauth/api_scope/commerce.feedback",
 		].join(" "),
 	}),
 	// Buy Order API is Limited Release. Set to `1` only after eBay approves

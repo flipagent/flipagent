@@ -1,91 +1,124 @@
 /**
- * `/v1/messages/*` — buyer ↔ seller messages, normalized.
- * Wraps Trading API XML internally; caller sees flipagent `Message` shape.
+ * `/v1/messages/*` — eBay messaging exposed in the conversation-threaded
+ * model that REST `commerce/message/v1` uses (verified live 2026-05-02;
+ * see notes/ebay-coverage.md G.1).
+ *
+ *   GET  /v1/messages              → list conversations
+ *   GET  /v1/messages/{id}?type=…  → fetch the messages within one thread
+ *   POST /v1/messages              → send into existing thread (or open one)
  */
 
-import { type Message, type MessageCreate, MessagesListQuery, MessagesListResponse } from "@flipagent/types";
-import { Type } from "@sinclair/typebox";
+import {
+	type Conversation,
+	ConversationsListQuery,
+	ConversationsListResponse,
+	ConversationThreadQuery,
+	ConversationThreadResponse,
+	type ConversationType,
+	MessageSendRequest,
+	MessageSendResponse,
+	type ThreadMessage,
+} from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { withTradingAuth } from "../../middleware/with-trading-auth.js";
+import { getConversationThread, listConversations, sendMessage } from "../../services/ebay/rest/messages.js";
 import { scrubMessageBody } from "../../services/ebay/trading/message-hygiene.js";
-import { getMyMessages, type MyMessage, replyToBuyer } from "../../services/ebay/trading/messages.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
-function tradingMessageToMessage(m: MyMessage, myUsername: string | undefined): Message {
-	const direction: Message["direction"] = myUsername && m.sender === myUsername ? "outgoing" : "incoming";
-	return {
-		id: m.messageId,
-		marketplace: "ebay",
-		direction,
-		from: m.sender ?? "",
-		to: m.recipient ?? "",
-		body: m.text ?? "",
-		...(m.subject ? { subject: m.subject } : {}),
-		...(m.itemId ? { listingId: m.itemId } : {}),
-		...(m.read != null ? { read: m.read } : {}),
-		createdAt: m.receiveDate ?? "",
-	};
-}
-
 export const messagesRoute = new Hono();
-
-const MessageCreateSchema = Type.Object(
-	{
-		to: Type.String(),
-		body: Type.String({ minLength: 1, maxLength: 2000 }),
-		subject: Type.Optional(Type.String()),
-		listingId: Type.Optional(Type.String()),
-		replyTo: Type.Optional(Type.String()),
-	},
-	{ $id: "MessageCreate" },
-);
 
 messagesRoute.get(
 	"/",
 	describeRoute({
 		tags: ["Messages"],
-		summary: "List messages",
-		parameters: paramsFor("query", MessagesListQuery),
+		summary: "List conversations",
+		parameters: paramsFor("query", ConversationsListQuery),
 		responses: {
-			200: jsonResponse("Messages page.", MessagesListResponse),
+			200: jsonResponse("Conversation page.", ConversationsListResponse),
 			401: errorResponse("Auth missing."),
-			502: errorResponse("Trading API failed."),
 		},
 	}),
 	requireApiKey,
-	tbCoerce("query", MessagesListQuery),
-	withTradingAuth(async (c, accessToken) => {
+	tbCoerce("query", ConversationsListQuery),
+	async (c) => {
+		const apiKeyId = c.var.apiKey.id;
 		const limit = Number(c.req.query("limit") ?? 50);
-		const direction = c.req.query("direction") as "incoming" | "outgoing" | undefined;
-		const raw = await getMyMessages({ accessToken, entriesPerPage: limit, pageNumber: 1 });
-		const myUsername = c.var.apiKey.userId ?? undefined;
-		const messages = raw.map((m) => tradingMessageToMessage(m, myUsername));
-		const filtered = direction ? messages.filter((m) => m.direction === direction) : messages;
-		return c.json({ messages: filtered, limit, offset: 0, source: "trading" as const });
+		const offset = Number(c.req.query("offset") ?? 0);
+		const type = c.req.query("type") as ConversationType | undefined;
+		const result = await listConversations({ apiKeyId, limit, offset, ...(type ? { type } : {}) });
+		return c.json({
+			conversations: result.conversations satisfies Conversation[],
+			limit: result.limit,
+			offset: result.offset,
+			...(result.total != null ? { total: result.total } : {}),
+			source: "rest" as const,
+		});
+	},
+);
+
+messagesRoute.get(
+	"/:conversationId",
+	describeRoute({
+		tags: ["Messages"],
+		summary: "Get the messages in one conversation thread",
+		parameters: paramsFor("query", ConversationThreadQuery),
+		responses: {
+			200: jsonResponse("Conversation thread.", ConversationThreadResponse),
+			400: errorResponse("Validation failed (type query param required)."),
+			401: errorResponse("Auth missing."),
+		},
 	}),
+	requireApiKey,
+	tbCoerce("query", ConversationThreadQuery),
+	async (c) => {
+		const apiKeyId = c.var.apiKey.id;
+		const conversationId = c.req.param("conversationId");
+		const type = c.req.query("type") as ConversationType | undefined;
+		if (!type) {
+			return c.json(
+				{
+					error: "missing_query_param" as const,
+					message: "?type=from_ebay|from_members is required (carry over from the list response).",
+				},
+				400,
+			);
+		}
+		const limit = Number(c.req.query("limit") ?? 25);
+		const offset = Number(c.req.query("offset") ?? 0);
+		const result = await getConversationThread({ apiKeyId, conversationId, type, limit, offset });
+		return c.json({
+			conversation: result.conversation satisfies Conversation,
+			messages: result.messages satisfies ThreadMessage[],
+			limit: result.limit,
+			offset: result.offset,
+			...(result.total != null ? { total: result.total } : {}),
+			source: "rest" as const,
+		});
+	},
 );
 
 messagesRoute.post(
 	"/",
 	describeRoute({
 		tags: ["Messages"],
-		summary: "Send / reply to a message",
+		summary: "Send a message (reply into a thread or open a new one)",
 		responses: {
-			200: jsonResponse("Acknowledged.", Type.Object({ ack: Type.String() })),
+			200: jsonResponse("Sent.", MessageSendResponse),
 			400: errorResponse("Validation failed."),
+			422: errorResponse("Off-eBay contact info detected; edit + retry or pass ?force_send=1."),
 		},
 	}),
 	requireApiKey,
-	tbBody(MessageCreateSchema),
-	withTradingAuth(async (c, accessToken) => {
-		const body = (await c.req.json()) as MessageCreate;
-		if (!body.replyTo || !body.listingId) {
+	tbBody(MessageSendRequest),
+	async (c) => {
+		const apiKeyId = c.var.apiKey.id;
+		const body = (await c.req.json()) as MessageSendRequest;
+		if (!body.conversationId && !body.otherPartyUsername) {
 			return c.json(
 				{
-					error: "missing_reply_context",
-					message: "replyTo + listingId are required for now (Trading AddMemberMessageRTQ).",
+					error: "missing_target" as const,
+					message: "Provide either `conversationId` (reply) or `otherPartyUsername` (new thread).",
 				},
 				400,
 			);
@@ -95,7 +128,7 @@ messagesRoute.post(
 		// reject the send so the caller knows their copy contained a phone /
 		// email / external URL; pass `?force_send=1` to ship the redacted
 		// body anyway (used by automation pipelines that already vet copy).
-		const hygiene = scrubMessageBody(body.body);
+		const hygiene = scrubMessageBody(body.messageText);
 		const forceSend = c.req.query("force_send") === "1";
 		if (hygiene.redactions.length > 0 && !forceSend) {
 			return c.json(
@@ -111,14 +144,24 @@ messagesRoute.post(
 				422,
 			);
 		}
-		const result = await replyToBuyer({
-			accessToken,
-			itemId: body.listingId,
-			recipientUserId: body.to,
-			parentMessageId: body.replyTo,
-			subject: body.subject ?? "Re:",
-			body: hygiene.cleanBody,
+		const result = await sendMessage({
+			apiKeyId,
+			...(body.conversationId ? { conversationId: body.conversationId } : {}),
+			...(body.otherPartyUsername ? { otherPartyUsername: body.otherPartyUsername } : {}),
+			...(body.reference ? { reference: body.reference } : {}),
+			messageText: hygiene.cleanBody,
+			...(body.emailCopyToSender != null ? { emailCopyToSender: body.emailCopyToSender } : {}),
 		});
-		return c.json({ ...result, redactions: hygiene.redactions });
-	}),
+		return c.json({
+			id: result.id,
+			...(result.conversationId ? { conversationId: result.conversationId } : {}),
+			...(result.senderUsername ? { senderUsername: result.senderUsername } : {}),
+			...(result.recipientUsername ? { recipientUsername: result.recipientUsername } : {}),
+			...(result.subject ? { subject: result.subject } : {}),
+			body: result.body,
+			createdAt: result.createdAt,
+			source: "rest" as const,
+			...(hygiene.redactions.length > 0 ? { redactions: hygiene.redactions } : {}),
+		});
+	},
 );
