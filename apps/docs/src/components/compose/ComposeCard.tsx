@@ -16,6 +16,10 @@ export interface ComposeTab<Id extends string = string> {
 	id: Id;
 	label: string;
 	icon: ReactNode;
+	/** Short one-line description shown under the tab row when this tab is
+	 *  active. Tells the user *when* to pick this tab (intent + endpoint),
+	 *  so adjacent tabs stop blurring together. Optional. */
+	caption?: ReactNode;
 }
 
 export function ComposeCard({
@@ -50,27 +54,35 @@ export function ComposeTabs<Id extends string>({
 	active: Id;
 	onChange: (next: Id) => void;
 }) {
+	const activeTab = tabs.find((t) => t.id === active);
 	return (
-		<div className="flex items-center gap-1 px-2 py-2 border-b border-[var(--border-faint)] bg-[var(--bg-soft)]">
-			{tabs.map((t) => {
-				const isActive = t.id === active;
-				return (
-					<button
-						key={t.id}
-						type="button"
-						onClick={() => onChange(t.id)}
-						className={`relative flex items-center gap-1.5 h-8 px-3 rounded-[7px] text-[12.5px] font-medium border transition-colors duration-150 cursor-pointer ${
-							isActive
-								? "bg-[var(--surface)] text-[var(--text)] border-[var(--border-faint)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-								: "border-transparent text-[var(--text-3)] hover:text-[var(--text)] hover:bg-[var(--surface)]"
-						}`}
-					>
-						<span className={isActive ? "text-[var(--brand)]" : ""}>{t.icon}</span>
-						{t.label}
-					</button>
-				);
-			})}
-		</div>
+		<>
+			<div className="flex items-center gap-1 px-2 py-2 border-b border-[var(--border-faint)] bg-[var(--bg-soft)]">
+				{tabs.map((t) => {
+					const isActive = t.id === active;
+					return (
+						<button
+							key={t.id}
+							type="button"
+							onClick={() => onChange(t.id)}
+							className={`relative flex items-center gap-1.5 h-8 px-3 rounded-[7px] text-[12.5px] font-medium border transition-colors duration-150 cursor-pointer ${
+								isActive
+									? "bg-[var(--surface)] text-[var(--text)] border-[var(--border-faint)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+									: "border-transparent text-[var(--text-3)] hover:text-[var(--text)] hover:bg-[var(--surface)]"
+							}`}
+						>
+							<span className={isActive ? "text-[var(--brand)]" : ""}>{t.icon}</span>
+							{t.label}
+						</button>
+					);
+				})}
+			</div>
+			{activeTab?.caption ? (
+				<div className="px-3.5 py-2 border-b border-[var(--border-faint)] text-[12px] text-[var(--text-3)] bg-[var(--surface)]">
+					{activeTab.caption}
+				</div>
+			) : null}
+		</>
 	);
 }
 

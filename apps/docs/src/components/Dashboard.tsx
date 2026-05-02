@@ -1247,9 +1247,24 @@ const PG_TAB_ICONS = {
 type PgTabId = "search" | "sourcing" | "evaluate";
 
 const PG_TABS: ReadonlyArray<ComposeTab<PgTabId>> = [
-	{ id: "search", label: "Search", icon: PG_TAB_ICONS.search },
-	{ id: "sourcing", label: "Sourcing", icon: PG_TAB_ICONS.sourcing },
-	{ id: "evaluate", label: "Evaluate", icon: PG_TAB_ICONS.evaluate },
+	{
+		id: "search",
+		label: "Search",
+		icon: PG_TAB_ICONS.search,
+		caption: "Type a keyword to find listings. Active or sold.",
+	},
+	{
+		id: "sourcing",
+		label: "Sourcing",
+		icon: PG_TAB_ICONS.sourcing,
+		caption: "No keyword in mind? Browse by category to see what's selling there.",
+	},
+	{
+		id: "evaluate",
+		label: "Evaluate",
+		icon: PG_TAB_ICONS.evaluate,
+		caption: "Pick a listing. Get its profit, sell-through, and a buy or skip call.",
+	},
 ];
 
 /**
