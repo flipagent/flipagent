@@ -1,7 +1,7 @@
 /**
  * Per-pair match-decision cache. The two-pass LLM matcher pays for one
- * inference per (candidate, item) pair on every Discover / Evaluate
- * call — many of those pairs are seen repeatedly across users (the same
+ * inference per (candidate, item) pair on every Evaluate call — many
+ * of those pairs are seen repeatedly across users (the same
  * Travis Scott Mocha listings get scanned by every sneaker hunter for
  * weeks). This cache short-circuits the second pass: if the same pair
  * was decided in the last 30 days, return that decision directly.

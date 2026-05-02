@@ -20,11 +20,11 @@ export FLIPAGENT_API_KEY=fa_free_…   # any flipagent key paired against this h
 node fake-ext.mjs reset            # clear local state
 node fake-ext.mjs pair             # POST /v1/bridge/tokens     → get fbt_… token
 node fake-ext.mjs login alice      # POST /v1/bridge/login-status (loggedIn=true, user=alice)
-node fake-ext.mjs queue 12345                # POST /v1/buy/order/checkout_session/initiate + …/place_order
+node fake-ext.mjs queue 12345                # POST /v1/purchases
 node fake-ext.mjs poll             # GET  /v1/bridge/poll       → claim the job (200 + payload, or 204 idle)
 node fake-ext.mjs result <jobId> placing                          # intermediate
 node fake-ext.mjs result <jobId> completed --ebayOrderId 09-1-2 --totalCents 4895
-node fake-ext.mjs status <purchaseOrderId> # GET /v1/buy/order/purchase_order/{id} → eBay-shape state
+node fake-ext.mjs status <purchaseId>      # GET /v1/purchases/{id} → flipagent Purchase state
 ```
 
 State (token, last job, last orderId) lives in
@@ -39,8 +39,8 @@ What it covers:
 | `login` | `POST /v1/bridge/login-status` | bridge token |
 | `poll` | `GET /v1/bridge/poll` (longpoll up to 25s) | bridge token |
 | `result` | `POST /v1/bridge/result` | bridge token |
-| `queue` | `POST /v1/buy/order/checkout_session/initiate` + `POST /…/{sessionId}/place_order` (convenience to put a job in front of `poll`) | api key |
-| `status` | `GET /v1/buy/order/purchase_order/{id}` (convenience) | api key |
+| `queue` | `POST /v1/purchases` (convenience to put a job in front of `poll`) | api key |
+| `status` | `GET /v1/purchases/{id}` (convenience) | api key |
 
 After `pair` + `login`, `GET /v1/connect/ebay/status` shows
 `bridge.paired: true, bridge.ebayLoggedIn: true` exactly as it would

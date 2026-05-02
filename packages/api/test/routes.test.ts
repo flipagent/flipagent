@@ -55,7 +55,7 @@ describe("descriptors + health", () => {
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { name: string; paths: string[] };
 		expect(body.name).toBe("flipagent");
-		expect(body.paths).toContain("GET /v1/buy/browse/item_summary/search");
+		expect(body.paths).toContain("GET /v1/items/search");
 	});
 
 	it("GET /healthz reports db ok", async () => {
@@ -159,10 +159,10 @@ describe("/v1/keys/permissions", () => {
 	});
 });
 
-describe("/v1/buy/marketplace_insights/item_sales/search (scrape with source field)", () => {
+describe("/v1/items/search?status=sold (scrape with source field)", () => {
 	it("returns source: 'scrape' in body and X-Flipagent-Source header", async () => {
 		const key = await issueFreeKey("integration+sold@example.com");
-		const res = await call("/v1/buy/marketplace_insights/item_sales/search?q=widget&limit=5", {
+		const res = await call("/v1/items/search?q=widget&status=sold&limit=5", {
 			headers: { authorization: `Bearer ${key}` },
 		});
 		expect(res.status).toBe(200);
@@ -172,36 +172,36 @@ describe("/v1/buy/marketplace_insights/item_sales/search (scrape with source fie
 	});
 });
 
-describe("/v1/buy/browse (mocked scrape)", () => {
+describe("/v1/items (mocked scrape)", () => {
 	it("rejects calls without an api key", async () => {
-		const res = await call("/v1/buy/browse/item_summary/search?q=test");
+		const res = await call("/v1/items/search?q=test");
 		expect(res.status).toBe(401);
 	});
 
 	it("returns mocked search results with rate-limit headers", async () => {
 		const key = await issueFreeKey("integration+search@example.com");
-		const res = await call("/v1/buy/browse/item_summary/search?q=widget&limit=5", {
+		const res = await call("/v1/items/search?q=widget&limit=5", {
 			headers: { authorization: `Bearer ${key}` },
 		});
 		expect(res.status).toBe(200);
 		// Free tier: 500 credits one-time (auth/limits.ts TIER_LIMITS.free).
 		expect(res.headers.get("x-ratelimit-limit")).toBe("500");
 		expect(res.headers.get("x-flipagent-source")).toMatch(/^(scrape|cache:scrape)$/);
-		const body = (await res.json()) as { itemSummaries: Array<{ itemId: string }> };
-		expect(body.itemSummaries.length).toBe(1);
-		expect(body.itemSummaries[0]?.itemId).toBe("v1|TEST01|0");
+		const body = (await res.json()) as { items: Array<{ id: string; status: string }> };
+		expect(body.items.length).toBe(1);
+		// Test fixture uses non-numeric itemId; transformer's regex requires digits, so passes through.
+		expect(body.items[0]?.id).toBe("v1|TEST01|0");
 	});
 
 	it("returns mocked item detail", async () => {
 		const key = await issueFreeKey("integration+detail@example.com");
-		// Numeric legacy id — the scrape branch validates `^\d{6,}$` before
-		// dispatching, so synthetic fixtures need to look like real eBay ids.
-		const res = await call("/v1/buy/browse/item/v1%7C987654321%7C0", {
+		const res = await call("/v1/items/v1%7C987654321%7C0", {
 			headers: { authorization: `Bearer ${key}` },
 		});
 		expect(res.status).toBe(200);
-		const body = (await res.json()) as { itemId: string };
-		expect(body.itemId).toBe("987654321");
+		const body = (await res.json()) as { id: string; marketplace: string };
+		expect(body.id).toBe("987654321");
+		expect(body.marketplace).toBe("ebay");
 	});
 });
 

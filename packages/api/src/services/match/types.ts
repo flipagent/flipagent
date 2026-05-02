@@ -1,10 +1,8 @@
 /**
- * Internal types for the LLM same-product matcher. Used by the
- * composite intelligence pipelines (`/v1/discover`, `/v1/evaluate`) to
- * curate raw search pools to listings that describe the same product
+ * Internal types for the LLM same-product matcher. Used by `/v1/evaluate`
+ * to curate raw search pools to listings that describe the same product
  * as the seed item. Not a public surface — never reachable via SDK or
- * MCP; the matcher is only invoked server-side from `runEvaluatePipeline`
- * / `runDiscoverPipeline`.
+ * MCP; the matcher is only invoked server-side.
  *
  * The classifier is intentionally strict — different model number,
  * finish, colour, condition, or missing accessories all become

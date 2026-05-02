@@ -1,7 +1,6 @@
 import type { TSchema } from "@sinclair/typebox";
 import type { Config } from "../config.js";
 import { browserQueryDescription, browserQueryExecute, browserQueryInput } from "./browser-primitives.js";
-import { discoverDealsDescription, discoverDealsExecute, discoverDealsInput } from "./discover-deals.js";
 import {
 	ebayBuyItemDescription,
 	ebayBuyItemExecute,
@@ -14,16 +13,6 @@ import {
 	ebayOrderStatusInput,
 } from "./ebay-buy.js";
 import { ebayItemDetailDescription, ebayItemDetailExecute, ebayItemDetailInput } from "./ebay-item-detail.js";
-import { ebaySearchDescription, ebaySearchExecute, ebaySearchInput } from "./ebay-search.js";
-import { ebayListPayoutsDescription, ebayListPayoutsExecute, ebayListPayoutsInput } from "./ebay-sell-finance.js";
-import {
-	ebayListOrdersDescription,
-	ebayListOrdersExecute,
-	ebayListOrdersInput,
-	ebayMarkShippedDescription,
-	ebayMarkShippedExecute,
-	ebayMarkShippedInput,
-} from "./ebay-sell-fulfillment.js";
 import {
 	ebayCreateInventoryItemDescription,
 	ebayCreateInventoryItemExecute,
@@ -34,7 +23,17 @@ import {
 	ebayPublishOfferDescription,
 	ebayPublishOfferExecute,
 	ebayPublishOfferInput,
-} from "./ebay-sell-inventory.js";
+} from "./ebay-listings.js";
+import { ebayListPayoutsDescription, ebayListPayoutsExecute, ebayListPayoutsInput } from "./ebay-payouts.js";
+import {
+	ebayListOrdersDescription,
+	ebayListOrdersExecute,
+	ebayListOrdersInput,
+	ebayMarkShippedDescription,
+	ebayMarkShippedExecute,
+	ebayMarkShippedInput,
+} from "./ebay-sales.js";
+import { ebaySearchDescription, ebaySearchExecute, ebaySearchInput } from "./ebay-search.js";
 import { ebaySoldSearchDescription, ebaySoldSearchExecute, ebaySoldSearchInput } from "./ebay-sold-search.js";
 import {
 	ebayTaxonomyAspectsDescription,
@@ -91,7 +90,7 @@ export interface Tool {
 }
 
 export const tools: Tool[] = [
-	// Discovery — read marketplace data
+	// Marketplace data — read
 	{
 		name: "ebay_search",
 		description: ebaySearchDescription,
@@ -188,14 +187,6 @@ export const tools: Tool[] = [
 		description: evaluateListingDescription,
 		inputSchema: evaluateListingInput,
 		execute: evaluateListingExecute,
-	},
-
-	// Discover — rank deals across a search (Overnight pillar)
-	{
-		name: "discover_deals",
-		description: discoverDealsDescription,
-		inputSchema: discoverDealsInput,
-		execute: discoverDealsExecute,
 	},
 
 	// Ship — forwarder quote + catalog (Operations pillar)

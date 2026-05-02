@@ -1,8 +1,8 @@
 /**
  * Same-product classifier — internal-only. Used by composite
- * intelligence pipelines (`/v1/evaluate`, `/v1/discover`,
- * watchlists/scan) to filter raw search pools down to listings that
- * describe the same product as the seed item.
+ * intelligence pipelines (`/v1/evaluate`, watchlists/scan) to filter
+ * raw search pools down to listings that describe the same product as
+ * the seed item.
  *
  * Two-bucket output (`match` / `reject`). Decision is delegated to an
  * LLM that reads titles, structured aspects, conditions, and

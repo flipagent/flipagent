@@ -8,15 +8,10 @@
 import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import type { ActiveAsk, MarketStats, PriceObservation, QuantListing } from "../quant/index.js";
 import { summarizeMarket } from "../quant/index.js";
+import { toCents } from "../shared/money.js";
 
 /** eBay returns dollar strings on the wire; quant wants cents. Round, not floor. */
-export function toCents(dollarString: string | undefined | null): number {
-	if (!dollarString) return 0;
-	const n = Number.parseFloat(dollarString);
-	return Number.isFinite(n) ? Math.round(n * 100) : 0;
-}
-
-function isItemDetail(item: ItemSummary | ItemDetail): item is ItemDetail {
+export function isItemDetail(item: ItemSummary | ItemDetail): item is ItemDetail {
 	return "description" in item || "categoryPath" in item || "additionalImages" in item;
 }
 
@@ -127,8 +122,8 @@ export function marketFromSold(
 function computeDurationDays(listing: ItemSummary, detail: ItemDetail | undefined): number | undefined {
 	const detailEndMs = detail?.itemEndDate ? Date.parse(detail.itemEndDate) : NaN;
 	const detailIsCurrentLive = Number.isFinite(detailEndMs) && detailEndMs > Date.now();
-	// itemCreationDate / itemEndDate are on the summary too (sold_search +
-	// listings/search both populate them). Detail wins when present AND
+	// itemCreationDate / itemEndDate are on the summary too (both the sold
+	// and active items search paths populate them). Detail wins when present AND
 	// not pointing at a relisted instance; the summary fallback unlocks
 	// duration math for the common case where the caller hasn't fetched
 	// per-listing details.

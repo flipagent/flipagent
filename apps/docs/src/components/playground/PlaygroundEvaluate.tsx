@@ -16,7 +16,7 @@ import {
 	type ComposeTab,
 } from "../compose/ComposeCard";
 import { FilterPill, type SelectOption } from "../compose/FilterPill";
-import { DealFilters } from "./DealFilters";
+import { EvaluateSettings, SELL_WITHIN_OPTIONS } from "./EvaluateSettings";
 import { EvaluateResult } from "./EvaluateResult";
 import {
 	cancelComputeJob,
@@ -35,6 +35,7 @@ import { useResumeSweep } from "./useResumeSweep";
 import { QuickStarts, type QuickStart } from "./QuickStarts";
 import { useRecentRuns, type RecentRun } from "./recent";
 import { RecentRuns } from "./RecentRuns";
+import { playgroundApi } from "./api";
 import type { Step } from "./types";
 
 interface EvaluateQuery {
@@ -72,15 +73,38 @@ const IconStack = (
 		<path d="M3 8l5 2 5-2M3 11l5 2 5-2" />
 	</svg>
 );
+const IconHourglass = (
+	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M4 2h8M4 14h8" />
+		<path d="M4 2c0 3 4 4 4 6s-4 3-4 6" />
+		<path d="M12 2c0 3-4 4-4 6s4 3 4 6" />
+	</svg>
+);
 
+/**
+ * Hardcoded fallback. Used (a) on first paint before
+ * `/v1/evaluate/featured` resolves, and (b) in `mockMode` since the
+ * mock pipeline only knows these specific itemIds. In real mode we
+ * overwrite with server-curated examples sourced from real recent
+ * successful runs — those become stale-resistant on their own (every
+ * fresh run rotates the pool).
+ */
 const QUICKSTART_EXAMPLES: ReadonlyArray<{ label: string; itemId: string }> = [
 	{ label: "Gucci YA1264153 watch", itemId: "388236252829" },
 	{ label: "Travis Scott AJ1 Mocha (sz 4)", itemId: "127595526397" },
 ];
 
+const FEATURED_LIMIT = 4;
+
+/** Trim long titles for the chip — match brevity of the hardcoded fallbacks. */
+function shortenTitle(title: string): string {
+	const trimmed = title.trim().replace(/\s+/g, " ");
+	if (trimmed.length <= 48) return trimmed;
+	return `${trimmed.slice(0, 45).trimEnd()}…`;
+}
+
 // Min profit / Sell within / Shipping option arrays + the More-panel
-// component live in ./DealFilters so Discover renders the exact same
-// controls + defaults — single source of truth.
+// component live in ./EvaluateSettings — Evaluate-only scoring inputs.
 
 export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate">({
 	tabsProps,
@@ -100,7 +124,7 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 	const [lookbackDays, setLookbackDays] = useState("90");
 	const [sampleLimit, setSampleLimit] = useState("50");
 	const [minProfit, setMinProfit] = useState("10");
-	const [recoveryDays, setRecoveryDays] = useState("180");
+	const [recoveryDays, setRecoveryDays] = useState("30");
 	// More panel — detail-level cost assumptions. "" means "use server
 	// default" (currently $10 shipping, $0 floor); typing a number
 	// overrides per-call. The pill row keeps coarse presets; this panel
@@ -116,6 +140,11 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 	const [outcome, setOutcome] = useState<Partial<EvaluateOutcome>>({});
 	const [err, setErr] = useState<{ message: string; upgradeUrl?: string } | null>(null);
 	const [hasRun, setHasRun] = useState(false);
+	// Server-curated showcase. Empty until the fetch resolves; we render
+	// the hardcoded fallback in the meantime so the "Try one" row is
+	// never blank on first paint. In mockMode we never fetch — the mock
+	// pipeline only knows the hardcoded itemIds.
+	const [featuredExamples, setFeaturedExamples] = useState<ReadonlyArray<{ label: string; itemId: string }>>([]);
 	const recent = useRecentRuns<EvaluateQuery>("evaluate");
 	// Active job + abort controller. Track in refs (not state) since the
 	// values are only consumed by the cancel handler / unmount cleanup —
@@ -133,6 +162,28 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 	}, []);
 
 	useResumeSweep("evaluate", recent);
+
+	// Pull a fresh "Try one" pool from the server. One-shot on mount —
+	// the data shifts slowly enough that polling for it would be wasted
+	// requests, and re-fetching mid-session would surprise the user
+	// mid-decision. Failure (offline, logged-out, 5xx) silently falls
+	// through to the hardcoded fallback.
+	useEffect(() => {
+		if (mockMode) return;
+		let cancelled = false;
+		void (async () => {
+			const res = await playgroundApi.featuredEvaluations(FEATURED_LIMIT).exec();
+			if (cancelled) return;
+			if (!res.ok) return;
+			const body = res.body as { items?: Array<{ itemId: string; title: string }> } | undefined;
+			const items = body?.items;
+			if (!items || items.length === 0) return;
+			setFeaturedExamples(items.map((it) => ({ label: shortenTitle(it.title), itemId: it.itemId })));
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [mockMode]);
 
 	function cancel() {
 		const id = jobIdRef.current;
@@ -406,12 +457,15 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 		}
 	}
 
-	const QUICKSTARTS: ReadonlyArray<QuickStart> = QUICKSTART_EXAMPLES.map((ex) => ({
+	// Prefer server-curated examples once they load; fall back to the
+	// hardcoded list while the fetch is pending or in mockMode.
+	const examples = featuredExamples.length > 0 ? featuredExamples : QUICKSTART_EXAMPLES;
+	const QUICKSTARTS: ReadonlyArray<QuickStart> = examples.map((ex) => ({
 		label: ex.label,
-		// Mirror Discover's behaviour: clicking a preset fills the input but
-		// does not auto-run. The user reviews filters / More panel and hits
-		// Run themselves. Auto-running surprised users who clicked to *see*
-		// the example, not to spend a credit on it.
+		// Click a preset → fill input, don't auto-run. The user reviews
+		// filters / More panel and hits Run themselves. Auto-running
+		// surprised users who clicked to *see* the example, not to spend
+		// a credit on it.
 		apply: () => setInput(ex.itemId),
 	}));
 
@@ -435,7 +489,6 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 					// pill row honest about whether hidden settings are active.
 					const moreActive =
 						(minProfit !== "10" ? 1 : 0) +
-						(recoveryDays !== "180" ? 1 : 0) +
 						(shippingDollars !== "10" ? 1 : 0);
 					return (
 						<>
@@ -447,6 +500,14 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 									onChange={setLookbackDays}
 									icon={IconClock}
 									label="Look back"
+								/>
+								<FilterPill
+									value={recoveryDays}
+									defaultValue="30"
+									options={SELL_WITHIN_OPTIONS}
+									onChange={setRecoveryDays}
+									icon={IconHourglass}
+									label="Sell within"
 								/>
 								<FilterPill
 									value={sampleLimit}
@@ -480,11 +541,10 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 
 							{moreOpen && (
 								<div className="px-5 py-4 border-b border-[var(--border-faint)] bg-[color:var(--bg-soft)]/40 max-sm:px-4">
-									<DealFilters
-										value={{ minProfit, sellWithin: recoveryDays, shipping: shippingDollars }}
+									<EvaluateSettings
+										value={{ minProfit, shipping: shippingDollars }}
 										onChange={(next) => {
 											setMinProfit(next.minProfit);
-											setRecoveryDays(next.sellWithin);
 											setShippingDollars(next.shipping);
 										}}
 									/>
@@ -518,6 +578,8 @@ export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate
 								steps={steps}
 								sellWithinDays={Number.parseInt(recoveryDays, 10) || undefined}
 								pending={pending}
+								onCancel={cancel}
+								onRerun={() => run(input)}
 							/>
 						)}
 					</ComposeOutput>

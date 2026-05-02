@@ -21,7 +21,7 @@ const { app } = await import("../src/app.js");
 const { closeDb, db } = await import("../src/db/client.js");
 const { apiKeys, forwarderInventory, webhookDeliveries } = await import("../src/db/schema.js");
 const { issueKey } = await import("../src/auth/keys.js");
-const { dispatchCycleEvent } = await import("../src/services/webhooks/dispatch.js");
+const { dispatchCycleEvent } = await import("../src/services/webhooks.js");
 const { findBySku, findByPackageId } = await import("../src/services/forwarder/inventory.js");
 const { sql } = await import("drizzle-orm");
 

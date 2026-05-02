@@ -48,10 +48,9 @@ solely responsible for complying with eBay's terms.** Specifically:
   and [Marketplace Insights API](https://developer.ebay.com/api-docs/buy/marketplace_insights/overview.html)
   with your own OAuth credentials.
 
-`fetchEbaySearch` retrieves `/sch/i.html`, which eBay's `robots.txt` lists
-under `User-agent: *` Disallow. The hosted flipagent API documents its
-operational position, takedown channel, and incident-response commitments
-at [flipagent.dev/legal/compliance](https://flipagent.dev/legal/compliance).
+The hosted flipagent API documents its takedown channel and incident-
+response commitments at
+[flipagent.dev/legal/compliance](https://flipagent.dev/legal/compliance).
 Self-hosters operate their own instance under their own posture.
 
 The `flipagent/flipagent` repository ships a hosted convenience layer

@@ -2,7 +2,7 @@
  * `client.expenses.*` — append-only cost-side event log + aggregated
  * cost summary. Records what eBay's Finances API doesn't know about
  * (acquisition, forwarder, external expenses); sales / refunds /
- * eBay fees come from `client.finance.*` (eBay Finances mirror).
+ * eBay fees come from `client.payouts.*` + `client.transactions.*`.
  */
 
 import type { ExpenseRecordRequest, ExpenseRecordResponse, ExpenseSummaryResponse } from "@flipagent/types";

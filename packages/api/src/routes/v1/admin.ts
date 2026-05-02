@@ -95,7 +95,6 @@ adminRoute.get(
 					calls: sql<number>`cast(count(*) as int)`,
 					credits: sql<number>`cast(coalesce(sum(case
 						when ${usageEvents.endpoint} like '/v1/evaluate%' then 50
-						when ${usageEvents.endpoint} like '/v1/discover%' then 250
 						when ${usageEvents.endpoint} like '/v1/browser%' then 5
 						else 1
 					end), 0) as int)`,
@@ -220,7 +219,6 @@ adminRoute.get(
 					userId: usageEvents.userId,
 					credits: sql<number>`cast(coalesce(sum(case
 						when ${usageEvents.endpoint} like '/v1/evaluate%' then 50
-						when ${usageEvents.endpoint} like '/v1/discover%' then 250
 						when ${usageEvents.endpoint} like '/v1/browser%' then 5
 						else 1
 					end), 0) as int)`,

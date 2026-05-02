@@ -3,8 +3,8 @@
  * status into `results[0].status_code`. fetchRetry can't see those, so
  * the adapter classifies them itself and retries transient ones. The
  * regression we're guarding: prior to this, one 613 ("faulty job") on
- * any sold-search call would silently drop a whole cluster from a
- * multi-cluster discover.
+ * any sold-search call would silently drop a whole variant group from
+ * a batched run.
  */
 
 import { describe, expect, it } from "vitest";

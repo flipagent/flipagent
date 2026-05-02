@@ -22,7 +22,7 @@ import { config, isEbayOAuthConfigured } from "../../config.js";
 import { db } from "../../db/client.js";
 import { userEbayOauth } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
-import { ebayConnectStatusForApiKey } from "../../services/bridge/connect-state.js";
+import { ebayConnectStatusForApiKey } from "../../services/bridge.js";
 import { exchangeCode, fetchEbayUserSummary } from "../../services/ebay/oauth.js";
 import {
 	buildEbayAuthorizeUrl,

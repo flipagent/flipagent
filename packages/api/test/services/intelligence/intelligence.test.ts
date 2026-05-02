@@ -1,9 +1,10 @@
 import type { BrowseSearchResponse, ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import { describe, expect, it } from "vitest";
-import { toCents, toQuantListing } from "../../../src/services/evaluate/adapter.js";
-import { discoverDeals } from "../../../src/services/evaluate/discover-deals.js";
+import { toQuantListing } from "../../../src/services/evaluate/adapter.js";
 import { evaluate } from "../../../src/services/evaluate/evaluate.js";
-import { landedCost } from "../../../src/services/ship/landed-cost.js";
+import { rankCandidates } from "../../../src/services/evaluate/rank-candidates.js";
+import { toCents } from "../../../src/services/shared/money.js";
+import { landedCost } from "../../../src/services/ship.js";
 
 /** Build an ItemSummary with sane defaults for tests. */
 function summary(over: Partial<ItemSummary> = {}): ItemSummary {
@@ -171,9 +172,9 @@ describe("find", () => {
 		const okDeal = summary({ itemId: "v1|ok|0", price: { value: "70.00", currency: "USD" } });
 		const results: BrowseSearchResponse = { itemSummaries: [tooExpensive, okDeal, cheapDeal] };
 
-		const ranked = await discoverDeals(results, { sold: SOLD, minConfidence: 0, minSalesPerDay: 0 });
+		const ranked = await rankCandidates(results, { sold: SOLD, minConfidence: 0, minSalesPerDay: 0 });
 
-		// Ranker is non-filtering: callers (or UI) decide what counts as a buyable deal.
+		// Ranker is non-filtering: callers (or UI) decide what counts as a buyable candidate.
 		expect(ranked.length).toBe(3);
 		// Sort is monotonic non-increasing on dollarsPerDay (nullish to bottom).
 		const yields = ranked.map((r) => r.evaluation.recommendedExit?.dollarsPerDay ?? Number.NEGATIVE_INFINITY);

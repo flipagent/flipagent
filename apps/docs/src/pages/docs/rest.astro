@@ -11,18 +11,19 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<p class="lead">flipagent exposes one unified surface under <code>/v1/*</code>. Every resource is marketplace-agnostic; today eBay-shape responses, future Amazon / Mercari adapters reuse the same paths via a <code>marketplace</code> parameter.</p>
 
 				<h2>Search active listings</h2>
-				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon%2050mm&limit=5" \\
+				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/items/search?q=canon%2050mm&limit=5" \\
   -H "Authorization: Bearer fa_free_xxx"`}</code></pre></div>
-				<p>Returns a <code>SearchPagedCollection</code>-shaped envelope (<code>itemSummaries[]</code>, <code>total</code>).</p>
+				<p>Returns a normalized <code>ItemSearchResponse</code> (<code>items[]</code>, <code>limit</code>, <code>offset</code>, optional <code>total</code>) with cents-int Money and a <code>marketplace</code> tag on every record.</p>
 
 				<h2>Listing detail</h2>
-				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/buy/browse/item/v1%7C123456789%7C0" \\
+				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/items/v1%7C123456789%7C0" \\
   -H "Authorization: Bearer fa_free_xxx"`}</code></pre></div>
+				<p>Accepts any id form: bare numeric, eBay v1 (<code>v1|123|0</code>), or the full <code>ebay.com/itm/...</code> URL.</p>
 
 				<h2>Sold listings (last 90 days)</h2>
-				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/buy/marketplace_insights/item_sales/search?q=canon%2050mm&limit=50" \\
+				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/items/search?q=canon%2050mm&status=sold&limit=50" \\
   -H "Authorization: Bearer fa_free_xxx"`}</code></pre></div>
-				<p>Returns <code>itemSales[]</code>: Marketplace-Insights-shape entries with <code>lastSoldDate</code>.</p>
+				<p>Same shape as active; sold-only entries carry <code>soldAt</code>, <code>soldPrice</code>, <code>soldQuantity</code>.</p>
 
 				<h2>Score one listing</h2>
 				<div class="code"><pre><code>{`curl -X POST "https://api.flipagent.dev/v1/evaluate" \\
@@ -30,13 +31,6 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
   -H "Content-Type: application/json" \\
   -d '{"itemId": "v1|123456789|0", "opts": {"minNetCents": 2000}}'`}</code></pre></div>
 				<p>Composite: server fetches the item detail, searches sold + active listings of the same product, runs an LLM same-product filter, and scores. Returns <code>{`{ item, soldPool, activePool, rejectedSoldPool, rejectedActivePool, market, evaluation, meta }`}</code> — evaluation carries <code>rating: "buy" | "hold" | "skip"</code>, signals, and the recommended exit; meta describes what was fetched (<code>itemSource</code>, <code>soldCount</code>, <code>soldSource</code>, <code>activeCount</code>, <code>activeSource</code>, plus kept/rejected counts after the filter).</p>
-
-				<h2>Find deals matching a query</h2>
-				<div class="code"><pre><code>{`curl -X POST "https://api.flipagent.dev/v1/discover" \\
-  -H "Authorization: Bearer fa_free_xxx" \\
-  -H "Content-Type: application/json" \\
-  -d '{"q": "charizard 1st edition", "limit": 50, "opts": {"minNetCents": 2000}}'`}</code></pre></div>
-				<p>Composite: server runs the active search, clusters candidates by product (<code>epid</code> → <code>gtin</code> → LLM batch grouping), then per cluster fetches sold listings, applies the LLM same-product filter, and scores. Returns <code>{`{ deals: RankedDeal[], clusters: DealCluster[], rejectedSoldPool, rejectedActivePool, meta }`}</code> — deals are filtered to positive-net and sorted by <code>recommendedExit.dollarsPerDay</code> (capital efficiency); each cluster carries its own canonical name + market stats (sold median, IQR, sales/day) so UIs can group results by SKU. One usage event per call. Capped at 200 candidates.</p>
 
 				<h2>Forwarder quote</h2>
 				<div class="code"><pre><code>{`curl -X POST "https://api.flipagent.dev/v1/ship/quote" \\
@@ -46,10 +40,10 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 
 				<h2>Use it from Node</h2>
 				<div class="code"><pre><code>{`const res = await fetch(
-  "https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon%2050mm",
+  "https://api.flipagent.dev/v1/items/search?q=canon%2050mm",
   { headers: { Authorization: \`Bearer \${process.env.FLIPAGENT_API_KEY}\` } }
 );
-const { itemSummaries, total } = await res.json();`}</code></pre></div>
+const { items, total } = await res.json();`}</code></pre></div>
 				<p>Or use <a href="/docs/quickstart/"><code>@flipagent/sdk</code></a> for typed namespaces.</p>
 
 				<h2>Response headers</h2>

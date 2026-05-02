@@ -14,7 +14,7 @@ import { CapabilitiesResponse } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { computeCapabilities } from "../../services/marketplaces/capabilities.js";
+import { computeCapabilities } from "../../services/capabilities.js";
 import { errorResponse, jsonResponse } from "../../utils/openapi.js";
 
 export const capabilitiesRoute = new Hono();

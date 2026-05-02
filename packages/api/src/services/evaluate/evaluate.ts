@@ -9,8 +9,9 @@ import {
 	optimalListPrice,
 	percentile,
 } from "../quant/index.js";
-import { landedCost } from "../ship/landed-cost.js";
-import { marketFromSold, toCents, toQuantListing } from "./adapter.js";
+import { toCents } from "../shared/money.js";
+import { landedCost } from "../ship.js";
+import { marketFromSold, toQuantListing } from "./adapter.js";
 import type { EvaluableItem, EvaluateOptions, Evaluation, FiredSignal, NetRangeCents } from "./types.js";
 
 const EMPTY_MARKET: MarketStats = {
@@ -135,11 +136,13 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		fees: DEFAULT_FEES,
 		outboundShippingCents: outbound,
 		activeAskPrices: askPriceCents,
-		// 6 months is the longest a reseller would realistically hold a
-		// flip; without a cap, the high-β tail can produce multi-year
-		// "least loss" picks that are mathematically optimal but useless
-		// as a recommendation. User-supplied `maxDaysToSell` always wins.
-		maxDaysToSell: opts.maxDaysToSell ?? 180,
+		// Default 30d — the realistic horizon for a flip. Without a tight
+		// cap, the max-yield ranker drifts into the high-β tail and picks
+		// "least loss" prices that take 5–6 months to clear (positive net
+		// per sale, near-zero $/day, miserable hold). 30d matches typical
+		// reseller turnover; the user-supplied `opts.maxDaysToSell` (Sell
+		// within filter) always overrides for slower SKUs.
+		maxDaysToSell: opts.maxDaysToSell ?? 30,
 		beta,
 		// Rank candidate list prices by net-after-buy yield, not gross.
 		// Without this, the ranker can recommend a fast-flipping cheap
@@ -177,8 +180,7 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 	// callers without time-to-sell data still get a number.
 	//
 	// `opts.minNetCents ?? 0` — true break-even by default. Callers wanting
-	// a profit floor pass `opts.minNetCents` explicitly (e.g. /v1/discover
-	// passes 30 to filter for $30+ deals).
+	// a profit floor pass `opts.minNetCents` explicitly.
 	const exitBasisCents = advice?.listPriceCents ?? market.meanCents;
 	const bidCeilingCents =
 		exitBasisCents > 0
@@ -214,6 +216,3 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		recommendedExit,
 	};
 }
-
-// Re-exported so callers get cents-conversion without importing adapter.js directly.
-export { toCents };

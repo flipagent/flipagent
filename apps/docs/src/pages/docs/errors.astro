@@ -40,7 +40,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td>502</td><td><code>upstream_failed</code></td><td>eBay returned an error or scraping was blocked. Usually transient; retry once.</td></tr>
 						<tr><td>503</td><td><code>billing_not_configured</code></td><td>Stripe isn't enabled on the server. Hosted users won't see this.</td></tr>
 						<tr><td>503</td><td><code>auth_not_configured</code></td><td>Better-Auth env (<code>BETTER_AUTH_SECRET</code>, GitHub/Google OAuth) not set. <code>/v1/me/*</code> + <code>/api/auth/*</code> return this.</td></tr>
-						<tr><td>503</td><td><code>ebay_not_configured</code></td><td>eBay OAuth env (<code>EBAY_CLIENT_ID</code>, etc.) not set. <code>/v1/connect/ebay</code>, <code>/v1/sell/*</code>, <code>/v1/commerce/*</code>, <code>/v1/post-order/*</code>, and <code>/v1/buy/order/*</code> (in REST mode) return this.</td></tr>
+						<tr><td>503</td><td><code>ebay_not_configured</code></td><td>eBay OAuth env (<code>EBAY_CLIENT_ID</code>, etc.) not set. <code>/v1/connect/ebay</code> and any sell-side route that needs user OAuth (listings, sales, payouts, transactions, transfers, policies, …) return this. Same for <code>/v1/purchases</code> in REST transport mode.</td></tr>
 					</tbody>
 				</table>
 

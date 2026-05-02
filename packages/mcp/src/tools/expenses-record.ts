@@ -5,7 +5,7 @@ import type { Config } from "../config.js";
 export { ExpensesRecordInputSchema as expensesRecordInput };
 
 export const expensesRecordDescription =
-	"Record one cost-side event (purchased | forwarder_fee | expense). Calls POST /v1/expenses/record. eBay-side cash flow (sales / refunds / final-value fees) is read from /v1/sell/finances/* — don't double-record those here. `amountCents` is always positive. For `purchased` events, set `payload.predictedNetCents` (and optionally `payload.predictedDaysToSell`) to preserve evaluate()'s prediction for the future calibration loop in /v1/portfolio/pnl.";
+	"Record one cost-side event (purchased | forwarder_fee | expense). Calls POST /v1/expenses/record. eBay-side cash flow (sales / refunds / final-value fees) is read from /v1/payouts + /v1/transactions — don't double-record those here. `amountCents` is always positive. For `purchased` events, set `payload.predictedNetCents` (and optionally `payload.predictedDaysToSell`) to preserve evaluate()'s prediction for the future calibration loop.";
 
 export async function expensesRecordExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const client = getClient(config);

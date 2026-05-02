@@ -22,7 +22,7 @@ import { describeRoute } from "hono-openapi";
 import { db } from "../../db/client.js";
 import { webhookEndpoints } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
-import { generateWebhookSecret } from "../../services/webhooks/dispatch.js";
+import { generateWebhookSecret } from "../../services/webhooks.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const webhooksRoute = new Hono();

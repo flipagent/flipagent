@@ -30,9 +30,16 @@ import { db } from "../../db/client.js";
 import { apiKeys, usageEvents } from "../../db/schema.js";
 import { requireSession } from "../../middleware/session.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
-import { meEbayRoute } from "./me/ebay.js";
+import { meEbayRoute } from "./me-ebay.js";
+import { meOverviewRoute } from "./me-overview.js";
 
 export const meRoute = new Hono();
+
+// `/me/selling` and `/me/buying` carry their own `requireApiKey` +
+// `withTradingAuth` middleware, so mount that sub-app FIRST, before
+// the dashboard `requireSession` gate below — otherwise sessions
+// would shadow the API-key flow on those paths.
+meRoute.route("/", meOverviewRoute);
 
 meRoute.use("*", requireSession);
 meRoute.route("/ebay", meEbayRoute);

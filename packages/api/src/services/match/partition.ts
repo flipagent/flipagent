@@ -1,9 +1,9 @@
 /**
  * Split a matched-pool result back into its originating cohorts after a
- * combined-pool `matchPool` call. Composite intelligence flows
- * (`/v1/evaluate`, `/v1/discover`) search sold + active in parallel,
- * dedupe into one pool, run a single LLM filter pass via `matchPool`,
- * then need to route the kept items back to the right argument:
+ * combined-pool `matchPool` call. The composite intelligence flow
+ * (`/v1/evaluate`) searches sold + active in parallel, dedupes into one
+ * pool, runs a single LLM filter pass via `matchPool`, then needs to
+ * route the kept items back to the right argument:
  *
  *   matched ∩ rawSoldIds   →  sold    (price reference)
  *   matched ∖ rawSoldIds   →  active  (competition)

@@ -14,6 +14,7 @@
  * (and can be ignored downstream).
  */
 
+import { NotificationSubscriptionCreate, NotificationSubscriptionsListResponse } from "@flipagent/types";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
@@ -22,6 +23,14 @@ import { db } from "../../db/client.js";
 import { marketplaceNotifications } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { getUserAccessToken } from "../../services/ebay/oauth.js";
+import {
+	createSubscription,
+	deleteSubscription,
+	getSubscription,
+	listDestinations,
+	listSubscriptions,
+	listTopics,
+} from "../../services/notification-subs.js";
 import { dispatchNotification } from "../../services/notifications/dispatch.js";
 import {
 	dedupeKey,
@@ -31,7 +40,7 @@ import {
 	TRACKED_EVENTS,
 	verifySignature,
 } from "../../services/notifications/ebay-trading.js";
-import { errorResponse } from "../../utils/openapi.js";
+import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const notificationsRoute = new Hono();
 
@@ -222,5 +231,83 @@ notificationsRoute.get(
 				id: r.id.toString(),
 			})),
 		});
+	},
+);
+
+/* ----- /v1/notifications subscriptions (user → destinations) -------- */
+
+const SUBS_COMMON = { 401: errorResponse("Auth missing."), 502: errorResponse("Upstream eBay failed.") };
+
+notificationsRoute.get(
+	"/topics",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "List available notification topics",
+		responses: { 200: { description: "Topics." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => c.json({ ...(await listTopics({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+);
+
+notificationsRoute.get(
+	"/destinations",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "List notification destinations",
+		responses: { 200: { description: "Destinations." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => c.json({ ...(await listDestinations({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+);
+
+notificationsRoute.get(
+	"/subscriptions",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "List subscriptions",
+		responses: { 200: jsonResponse("Subscriptions.", NotificationSubscriptionsListResponse), ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => c.json({ ...(await listSubscriptions({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+);
+
+notificationsRoute.post(
+	"/subscriptions",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Create subscription",
+		responses: { 201: { description: "Created." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	tbBody(NotificationSubscriptionCreate),
+	async (c) => c.json(await createSubscription(c.req.valid("json"), { apiKeyId: c.var.apiKey.id }), 201),
+);
+
+notificationsRoute.get(
+	"/subscriptions/:id",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Get subscription",
+		responses: { 200: { description: "Subscription." }, 404: errorResponse("Not found."), ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const r = await getSubscription(c.req.param("id"), { apiKeyId: c.var.apiKey.id });
+		if (!r) return c.json({ error: "subscription_not_found" }, 404);
+		return c.json(r);
+	},
+);
+
+notificationsRoute.delete(
+	"/subscriptions/:id",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Delete subscription",
+		responses: { 204: { description: "Deleted." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await deleteSubscription(c.req.param("id"), { apiKeyId: c.var.apiKey.id });
+		return c.body(null, 204);
 	},
 );

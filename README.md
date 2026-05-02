@@ -40,20 +40,18 @@
 
 # **flipagent**
 
-**Let your agent run the eBay reselling business.** ONE API for the full reseller cycle — discovery, evaluation, buying, listing, fulfillment, and finance — across marketplaces. Today: eBay (REST mirror + scrape fallback). Soon: Amazon, Mercari, Poshmark.
+**The API to resell on eBay for AI agents.** Search, evaluate, buy, list, fulfill, and reconcile — every step under `/v1/<resource>` with one API key. Today: eBay (REST + Trading XML + scrape + bridge). Soon: Amazon, Mercari, Poshmark.
 
 ```ts
 import { createFlipagentClient } from "@flipagent/sdk";
 
 const client = createFlipagentClient({ apiKey: process.env.FLIPAGENT_API_KEY! });
 
-// Rank deals matching a query — server runs the full pipeline.
-const { deals } = await client.discover.deals({
-  q: "canon ef 50mm 1.8",
-  opts: { minNetCents: 2000 },
-});
+// Score a single listing — server fetches item, runs sold + active in
+// parallel, applies LLM same-product filter, returns rating + expected net.
+const { evaluation } = await client.evaluate.listing({ itemId: "v1|123456789|0" });
 
-deals.forEach((d) => console.log(d.evaluation.expectedNetCents, d.evaluation.rating, d.item.title));
+console.log(evaluation.expectedNetCents, evaluation.rating, evaluation.signals);
 ```
 
 > **Get a free key** (500 credits one-time, no card) at [flipagent.dev/signup](https://flipagent.dev/signup). Hop into [Discord](https://discord.gg/PUyURdjMtv) for questions, bugs, and build talk.
@@ -62,9 +60,9 @@ deals.forEach((d) => console.log(d.evaluation.expectedNetCents, d.evaluation.rat
 
 ## Why flipagent?
 
-- **Composite endpoints, not glue code.** `evaluate_listing` and `discover_deals` fetch the item, search sold + active in parallel, run an LLM same-product filter, and score in a single call.
+- **Composite endpoints, not glue code.** `evaluate_listing` fetches the item, searches sold + active in parallel, runs an LLM same-product filter, and scores in a single call.
 - **Server-side scoring, one source of truth.** Median, IQR cleaning, brand-typo signals, landed cost — every client (TS / MCP / future Python / Go) gets the same math from `services/quant/`.
-- **eBay REST surface mirrored 1:1.** `/v1/buy/*`, `/v1/sell/*`, `/v1/commerce/*`, `/v1/post-order/*` map verbatim onto eBay's paths so agents can read eBay docs and call our routes one-to-one.
+- **Marketplace-agnostic, flipagent-native surface.** One `/v1/<resource>` shape across eBay (today) and Amazon / Mercari (next). Cents-int Money, ISO timestamps, lowercase status enums — read once, port nowhere.
 - **Bridge for the human-only steps.** A Chrome extension runs sensitive flows (BIN checkout, forwarder dashboards) inside *your* browser with *your* logins — flipagent never holds third-party credentials.
 - **Anti-thundering-herd cache.** 60min active / 12h sold / 4h detail. Short TTLs, original `ebay.com/itm/...` URL on every cached row.
 - **Agent-ready out of the box.** One-command MCP setup for Claude Desktop, Cursor, Cline, Zed, Continue, Windsurf.
@@ -74,24 +72,36 @@ deals.forEach((d) => console.log(d.evaluation.expectedNetCents, d.evaluation.rat
 
 ## Feature Overview
 
-**Core endpoints**
+**Marketplace data (read)**
 
 | Feature | Description |
 |---|---|
-| [**Listings**](#listings) | Search active eBay listings (REST or scrape, server picks). |
-| [**Sold**](#sold) | Search sold comps (last 90d). |
+| [**Items**](#items) | Search active or sold listings (cents-int Money, marketplace-tagged). |
+| [**Categories**](#categories) | Taxonomy tree, suggestions, per-category aspects. |
+| [**Products**](#products) | Universal product catalog (eBay EPID + scrape fallback). |
+
+**My side (write)**
+
+| Feature | Description |
+|---|---|
+| [**Listings**](#listings) | One-shot create / list / update / end. |
+| [**Purchases**](#purchases) | Buy via REST passthrough or bridge transport. |
+| [**Sales**](#sales) | List orders received, mark shipped, refund, cancel. |
+
+**Intelligence (composite)**
+
+| Feature | Description |
+|---|---|
 | [**Evaluate**](#evaluate) | Score one listing — composite item + sold + active + LLM filter. |
-| [**Discover**](#discover) | Rank deals for a query. Returns evaluations with `expectedNetCents` + rating. |
+| [**Ship**](#ship) | Forwarder + carrier quote. Math runs server-side in cents. |
+| [**Expenses**](#expenses) | P&L ledger — record purchases, COGS, fees; monthly summaries. |
 
-**More**
+**Money + ops**
 
 | Feature | Description |
 |---|---|
-| [**Ship**](#ship) | Forwarder + carrier quotes. Math runs server-side in cents. |
-| [**Buy Order**](#buy-order) | `/v1/buy/order/*` — REST passthrough or bridge transport. |
-| [**Inventory / Fulfillment / Finance**](#sell-side) | Sell-side eBay mirrors after `/v1/connect/ebay`. |
+| [**Payouts / Transactions / Transfers**](#money) | Money in/out of your eBay seller balance — cents-int + lifecycle status. |
 | [**Forwarder**](#forwarder) | Pull inbound packages from Planet Express via the bridge. |
-| [**Expenses**](#expenses) | P&L ledger — record purchases, get monthly summaries. |
 
 ---
 
@@ -99,15 +109,20 @@ deals.forEach((d) => console.log(d.evaluation.expectedNetCents, d.evaluation.rat
 
 Sign up at [flipagent.dev/signup](https://flipagent.dev/signup) — 500 credits, no card. Try the [playground](https://flipagent.dev/playground).
 
-### Listings
+### Items
 
-Search active eBay listings.
+Search active or sold marketplace listings.
 
 ```ts
 import { createFlipagentClient } from "@flipagent/sdk";
 
 const client = createFlipagentClient({ apiKey: process.env.FLIPAGENT_API_KEY! });
-const { itemSummaries } = await client.listings.search({ q: "canon ef 50mm 1.8", limit: 50 });
+
+// Active
+const { items } = await client.items.search({ q: "canon ef 50mm 1.8", limit: 50 });
+
+// Sold (last 90d)
+const { items: sold } = await client.items.search({ q: "canon ef 50mm 1.8", status: "sold", limit: 50 });
 ```
 
 <details>
@@ -115,7 +130,7 @@ const { itemSummaries } = await client.listings.search({ q: "canon ef 50mm 1.8",
 
 **cURL**
 ```bash
-curl -X GET 'https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon%20ef%2050mm%201.8&limit=50' \
+curl -X GET 'https://api.flipagent.dev/v1/items/search?q=canon%20ef%2050mm%201.8&limit=50' \
   -H 'X-API-Key: fa_free_xxx'
 ```
 
@@ -125,12 +140,19 @@ ebay_search { "q": "canon ef 50mm 1.8", "limit": 50 }
 ```
 </details>
 
-### Sold
-
-Search sold comps from the last 90 days.
+### Categories
 
 ```ts
-const { itemSales } = await client.sold.search({ q: "canon ef 50mm 1.8", limit: 50 });
+const { categories } = await client.categories.list();                       // top-level
+const { suggestions } = await client.categories.suggest({ title: "..." });   // title → category
+const { aspects } = await client.categories.aspects(categoryId);             // required + recommended
+```
+
+### Products
+
+```ts
+const product = await client.products.get(epid);
+const { products } = await client.products.search({ q: "...", gtin: "..." });
 ```
 
 ### Evaluate
@@ -140,17 +162,6 @@ Score one listing — composite call. Server fetches the item, runs sold + activ
 ```ts
 const { evaluation } = await client.evaluate.listing({ itemId: "v1|123456789|0" });
 //   evaluation.expectedNetCents, evaluation.rating, evaluation.signals, ...
-```
-
-### Discover
-
-Rank deals for a query.
-
-```ts
-const { deals } = await client.discover.deals({
-  q: "canon ef 50mm 1.8",
-  opts: { minNetCents: 2000 },
-});
 ```
 
 ### Ship
@@ -188,9 +199,7 @@ Or one-command setup that detects your installed clients:
 npx -y flipagent-cli init --mcp
 ```
 
-Your agent gets 30 tools across search, sold, evaluate, discover, buy, list, ship, and expenses.
-
-`evaluate_listing` and `discover_deals` are **composite** — server-side they fetch the item, search sold + active in parallel, run an LLM same-product filter (Anthropic / OpenAI / Google), and score in a single call. Set one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` on the API server to enable; without a key the composite endpoints fall back to the unfiltered sold + active pools (looser, evaluations still run).
+`evaluate_listing` is **composite** — server-side it fetches the item, searches sold + active in parallel, runs an LLM same-product filter (Anthropic / OpenAI / Google), and scores in a single call. Set one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` on the API server to enable; without a key the composite endpoints fall back to the unfiltered sold + active pools (looser, evaluations still run).
 
 ### SDK
 
@@ -205,36 +214,69 @@ import { createFlipagentClient } from "@flipagent/sdk";
 
 const client = createFlipagentClient({ apiKey: process.env.FLIPAGENT_API_KEY! });
 
-await client.listings.search({ q: "...", limit: 50 });          // active listings
-await client.sold.search({ q: "...", limit: 50 });              // sold listings (last 90d)
-await client.evaluate.listing({ itemId });                      // score one listing (composite)
-await client.discover.deals({ q, opts });                       // rank deals for a query (composite)
-await client.ship.quote({ item, forwarder: { destState, weightG } });
+// Marketplace data (read)
+await client.items.search({ q, status: "active", limit: 50 });
+await client.items.get(itemId);
+
+// My side (write)
+await client.listings.create({ ... });
+await client.purchases.create({ itemId, quantity: 1 });
+await client.sales.list({ filter });
+
+// Intelligence
+await client.evaluate.listing({ itemId });
+await client.ship.quote({ item, forwarder: { destState } });
+
+// Money
+await client.payouts.list();
+await client.transactions.list();
 ```
 
-Sell-side namespaces (`inventory`, `fulfillment`, `finance`, `markets`) require the user to authorize their eBay account first via `/v1/connect/ebay`.
+Sell-side namespaces require the user to authorize their eBay account first via `/v1/connect/ebay`.
 
 ---
 
 ## More Endpoints
 
-### Buy Order
-
-`/v1/buy/order/*` is the single Buy Order surface with two **first-class** transports — `rest` and `bridge`. Both produce the same eBay-shape `CheckoutSession` / `EbayPurchaseOrder` response.
-
-- **REST transport** — direct passthrough. Requires `EBAY_ORDER_API_APPROVED=1` and the api key's eBay OAuth binding.
-- **Bridge transport** — runs the BIN flow inside *your* logged-in Chrome via the extension. The agent never auto-clicks BIN or Confirm-and-pay; every click is yours, because [eBay's robots.txt](https://www.ebay.com/robots.txt) requires checkout to be human-driven. The agent's value is BEFORE the click (find / evaluate / queue) and AFTER (record / reconcile / P&L), not the click itself.
-
-The 2-stage flow (`initiate` → `place_order`) is fully implemented in both transports. Multi-stage update endpoints (`shipping_address`, `payment_instrument`, `coupon`) only work in REST — bridge uses the buyer's stored eBay defaults and returns 412 with a clear pointer to switch transport.
-
-### Sell-side
-
-After [`/v1/connect/ebay`](https://docs.flipagent.dev/connect-ebay) authorizes the user's eBay account:
+### Listings
 
 ```ts
-await client.inventory.createOrReplaceItem({ sku, ... });
-await client.fulfillment.getOrders({ filter });
-await client.finance.getPayouts({ filter });
+await client.listings.create({ sku, title, price, condition, categoryId, images, policies, merchantLocationKey });
+await client.listings.update(sku, { price, quantity });
+await client.listings.end(sku);
+await client.listings.relist(sku);
+```
+
+One-shot create compresses eBay's three-step Sell Inventory dance (PUT inventory_item → POST offer → POST publish) into a single call. Returns the live `Listing` with `status='active'` on success.
+
+### Purchases
+
+`/v1/purchases` is the single Buy Order surface with two **first-class** transports — `rest` and `bridge`. Both produce the same flipagent `Purchase` shape.
+
+- **REST transport** — direct passthrough. Requires `EBAY_ORDER_API_APPROVED=1` and the api key's eBay OAuth binding.
+- **Bridge transport** — runs the BIN flow inside *your* logged-in Chrome via the extension. The agent never auto-clicks BIN or Confirm-and-pay; every click is yours, because eBay's policy treats checkout as human-only. The agent's value is BEFORE the click (find / evaluate / queue) and AFTER (record / reconcile / P&L), not the click itself.
+
+```ts
+const order = await client.purchases.create({ itemId, quantity: 1 });
+const status = await client.purchases.get(order.id);
+await client.purchases.cancel(order.id);
+```
+
+### Sales
+
+```ts
+await client.sales.list({ filter });
+await client.sales.markShipped(orderId, { trackingNumber, carrier });
+await client.sales.refund(orderId, { reason });
+await client.sales.cancel(orderId, { reason });
+```
+
+### Money
+
+```ts
+await client.payouts.list();
+await client.payouts.summary({ from, to });
+await client.transactions.list({ type: "sale" });
 ```
 
 ### Forwarder
@@ -282,7 +324,9 @@ apps/docs/         @flipagent/docs         — flipagent.dev marketing + dashboa
                                                   │
                                                   ├── Postgres  (cache + auth + usage)
                                                   ├── services/quant    (deal-finding math)
-                                                  └── adapters/ebay → managed scraper → ebay.com
+                                                  └── services/ebay/{rest,scrape,bridge,trading}
+                                                           │
+                                                           └── managed scraper → ebay.com
 ```
 
 What the hosted service does for you:
@@ -331,7 +375,7 @@ flipagent is an **experimental research project**. **Not affiliated with, endors
 
 **eBay restrictions, effective 2026-02-20.** eBay's [updated User Agreement](https://www.ebay.com/help/policies/member-behaviour-policies/user-agreement?id=4259) prohibits robots, scrapers, LLM-driven bots, and end-to-end automated ordering against eBay's services without express permission from eBay. The eBay [API License Agreement](https://developer.ebay.com/join/api-license-agreement) further restricts using eBay data to train AI/LLM models and transferring it to third parties.
 
-The MCP server, the `/buy/browse/*` + `/buy/marketplace_insights/*` scrape paths, and `/buy/order/*` flows are likely subject to these restrictions when run against production eBay without permission. Sandbox use, local research, and the pure-function math under `packages/api/src/services/{quant,forwarder}/` are not affected.
+The MCP server, the scrape paths backing `/v1/items/*`, and `/v1/purchases` bridge flows are likely subject to these restrictions when run against production eBay without permission. Sandbox use, local research, and the pure-function math under `packages/api/src/services/{quant,forwarder}/` are not affected.
 
 **Your responsibility.** If you use this code or the hosted API, you bear sole responsibility for whether your use case is permitted, for securing your credentials, for the behavior of any agent built on top, and for any account action or legal consequence. The authors accept no liability.
 

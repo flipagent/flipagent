@@ -1,18 +1,19 @@
 /**
  * `ebay_buy_item` / `ebay_order_status` / `ebay_order_cancel` — buy-side
- * tools backed by the flipagent Chrome extension (the "bridge client")
- * via the `/v1/buy/order/*` surface (eBay Buy Order API mirror).
+ * tools backed by `/v1/purchases`. Auto-picks the REST transport when
+ * `EBAY_ORDER_API_APPROVED=1`; otherwise drives the user's paired
+ * Chrome extension (the "bridge client") to BIN inside their real
+ * Chrome session.
  *
- * `ebay_buy_item` queues an order and returns immediately with the
- * `purchaseOrderId`. The agent should poll `ebay_order_status` until it
- * reports a terminal state — `PROCESSED`, `FAILED`, `CANCELED`. That
- * keeps the MCP tool bounded (no minute-long blocking calls) while the
- * user's extension handles the actual purchase asynchronously inside
- * their real Chrome session.
+ * `ebay_buy_item` queues a purchase and returns immediately with the
+ * `purchaseOrderId`. The agent should poll `ebay_order_status` until
+ * it reports a terminal state — `completed`, `failed`, `cancelled`.
+ * That keeps the MCP tool bounded (no minute-long blocking calls)
+ * while the underlying transport works asynchronously.
  *
- * Without the extension paired (no `fbt_…` bridge token issued), orders
- * sit `QUEUED_FOR_PROCESSING` until they expire and `purchaseOrderStatus`
- * flips to `CANCELED` — surface that cleanly. Install + setup at
+ * Without the extension paired (no `fbt_…` bridge token issued) and
+ * REST not approved, purchases sit `queued` until they expire and
+ * flip to `cancelled` — surface that cleanly. Install + setup at
  * /docs/extension/.
  */
 
@@ -32,16 +33,19 @@ export const ebayBuyItemInput = Type.Object(
 );
 
 export const ebayBuyItemDescription =
-	"Queue a buy-side eBay order for the user's flipagent Chrome extension to execute. Calls POST /v1/buy/order/checkout_session/initiate then /place_order (single eBay-shape PurchaseOrder back). Returns immediately with `purchaseOrderId` and `purchaseOrderStatus: QUEUED_FOR_PROCESSING`. Poll `ebay_order_status` until terminal (`PROCESSED`, `FAILED`, `CANCELED`). The user must have installed the flipagent Chrome extension and paired it with their API key (one-time setup at https://flipagent.dev/docs/extension/) — without a paired extension the order will sit queued and expire.";
+	"Buy an item (one-shot). Calls POST /v1/purchases — flipagent's normalized buy surface, which compresses initiate + place_order into a single call. Returns a `Purchase` with status `queued`/`processing`/`completed`/`failed`/`cancelled`. Poll `ebay_order_status` until terminal. Auto-picks REST transport when `EBAY_ORDER_API_APPROVED=1`; otherwise the bridge transport drives the user's paired Chrome extension — install at https://flipagent.dev/docs/extension/.";
 
 export async function ebayBuyItemExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
-		return await client.buy.order.quickCheckout(
-			args as unknown as Parameters<typeof client.buy.order.quickCheckout>[0],
-		);
+		const itemId = String(args.itemId);
+		const quantity = (args.quantity as number | undefined) ?? 1;
+		const variationId = args.variationId as string | undefined;
+		return await client.purchases.create({
+			items: [{ itemId, quantity, ...(variationId ? { variationId } : {}) }],
+		});
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/buy/order/checkout_session");
+		const e = toApiCallError(err, "/v1/purchases");
 		return {
 			error: "buy_order_failed",
 			status: e.status,
@@ -63,15 +67,15 @@ export const ebayOrderStatusInput = Type.Object(
 );
 
 export const ebayOrderStatusDescription =
-	"Read current status + result for a queued purchase order. Calls GET /v1/buy/order/purchase_order/{id}. The `purchaseOrderStatus` field tracks the extension's progress: QUEUED_FOR_PROCESSING → PROCESSING → PROCESSED | FAILED | CANCELED. eBay shape — `lineItems`, `ebayOrderId`, `receiptUrl`, `failureReason` populated as the bridge progresses.";
+	"Read status + result for a purchase order. Calls GET /v1/purchases/{id}. `status` lifecycle: queued → processing → completed | failed | cancelled.";
 
 export async function ebayOrderStatusExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const id = String(args.purchaseOrderId);
 	try {
 		const client = getClient(config);
-		return await client.buy.order.purchaseOrder.get(id);
+		return await client.purchases.get(id);
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/buy/order/purchase_order/${id}`);
+		const e = toApiCallError(err, `/v1/purchases/${id}`);
 		return { error: "buy_order_status_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
@@ -90,11 +94,9 @@ export async function ebayOrderCancelExecute(config: Config, args: Record<string
 	const id = String(args.purchaseOrderId);
 	try {
 		const client = getClient(config);
-		// Bridge cancel — uses internal queue endpoint via http escape hatch
-		// because eBay's Buy Order REST has no public cancel.
-		return await client.http.post(`/v1/buy/order/purchase_order/${encodeURIComponent(id)}/cancel`, {});
+		return await client.purchases.cancel(id);
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/buy/order/purchase_order/${id}/cancel`);
+		const e = toApiCallError(err, `/v1/purchases/${id}/cancel`);
 		return { error: "buy_order_cancel_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

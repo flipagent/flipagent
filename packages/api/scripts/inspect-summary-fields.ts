@@ -1,11 +1,11 @@
 /**
  * Inspects which signals are actually populated in active-search
  * ItemSummary responses for a given query. Diagnostic only — answers
- * "what cluster signals do we already have at this point, before any
- * detail fetch?"
+ * "what grouping signals do we already have at this point, before
+ * any detail fetch?"
  */
 
-import { searchActiveListings } from "../src/services/listings/search.js";
+import { searchActiveListings } from "../src/services/items/search.js";
 
 const q = process.argv[2] ?? "gucci watch";
 const limit = Number.parseInt(process.argv[3] ?? "50", 10);

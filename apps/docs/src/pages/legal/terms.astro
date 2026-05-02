@@ -11,7 +11,7 @@ const updated = "2026-04-26";
 			</p>
 
 			<h2>What flipagent provides</h2>
-			<p>A unified HTTP API at <code>api.flipagent.dev</code> for the online reselling cycle (discovery, evaluation, forwarder quoting, sell-side passthrough), an MCP server for AI-agent integrations, and open-source TypeScript packages including the SDK (<code>@flipagent/sdk</code>), MCP server (<code>flipagent-mcp</code>), and CLI installer (<code>flipagent-cli</code>). The hosted service caches eBay public listing data, proxies eBay OAuth on your behalf, runs server-side deal-scoring math, and meters per-call usage by tier.</p>
+			<p>An HTTP API at <code>api.flipagent.dev</code> covering the online reselling cycle — search, evaluation, buying, listing, fulfillment, finance — plus an MCP server for AI-agent integrations and open-source TypeScript packages (the SDK <code>@flipagent/sdk</code>, MCP server <code>flipagent-mcp</code>, CLI installer <code>flipagent-cli</code>). The hosted service caches eBay public listing data, proxies eBay OAuth on your behalf, runs server-side margin-scoring math, and meters per-call usage by tier.</p>
 
 			<h2>Your account</h2>
 			<ul>
@@ -33,7 +33,7 @@ const updated = "2026-04-26";
 
 			<h2>Tier limits + billing</h2>
 			<ul>
-				<li>Tier allowances reset monthly (UTC calendar month) and are counted by metered API call against the marketplace and intelligence endpoints under <code>/v1/*</code> (listings, sold, orders, inventory, fulfillment, finance, markets, market, evaluate, discover, ship). Management routes (<code>/v1/me/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/health</code>) are free.</li>
+				<li>Tier allowances reset monthly (UTC calendar month) and are counted by metered API call against the marketplace and intelligence endpoints under <code>/v1/*</code> (items, categories, products, evaluate, ship). Management routes (<code>/v1/me/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/health</code>) are free.</li>
 				<li>Stripe handles payment. Subscription changes take effect immediately for upgrades and at the end of the billing period for downgrades.</li>
 				<li>Refunds: pro-rated on cancellation only when the cause is a service-side outage or material breach of these terms. Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>.</li>
 			</ul>
@@ -41,8 +41,8 @@ const updated = "2026-04-26";
 			<h2>Open-source packages</h2>
 			<p>The MIT-licensed packages (<code>@flipagent/sdk</code>, <code>flipagent-mcp</code>, <code>flipagent-cli</code>, <code>@flipagent/ebay-scraper</code>, <code>@flipagent/types/ebay</code>, <code>@flipagent/types</code>, and the <code>@flipagent/api</code> backend source) are governed by their own LICENSE files, not these terms. You can use them with or without an account here.</p>
 
-			<h2>eBay-compat passthrough</h2>
-			<p>When you connect an eBay account at <code>/v1/connect/ebay</code>, you authorize flipagent to forward your sell-side and (when approved) Order API calls to <code>api.ebay.com</code> using the OAuth refresh token you grant. Tokens stay in our database; we don't share them with third parties. Disconnect any time at the dashboard.</p>
+			<h2>Connected eBay account</h2>
+			<p>When you connect an eBay account at <code>/v1/connect/ebay</code>, you authorize flipagent to act on your sell-side resources (listings, sales, payouts, transactions, policies) and — when REST transport is approved — your purchases, using the OAuth refresh token you grant. Tokens stay in our database; we don't share them with third parties. Disconnect any time at the dashboard.</p>
 
 			<h2>Service availability</h2>
 			<p>We aim for 99.5% monthly uptime on the hosted API. We don't currently offer a contractual SLA. Status updates go on <a href="https://github.com/flipagent/flipagent">our GitHub</a> until a status page is live.</p>

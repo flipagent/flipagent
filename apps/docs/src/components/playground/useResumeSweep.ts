@@ -5,7 +5,7 @@
  * the tab was closed.
  *
  * Pure read — never replays content. The user clicking the row is what
- * triggers a stream resubscribe (PlaygroundEvaluate / PlaygroundDiscover
+ * triggers a stream resubscribe (PlaygroundEvaluate
  * own that handler). This hook is just the catch-up.
  */
 

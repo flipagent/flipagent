@@ -1,20 +1,14 @@
 /**
- * One canonical scorer used by both pipelines:
+ * One canonical scorer for `/v1/evaluate`. Delegates into
+ * `rankCandidates` (the N-item ranker) with N=1, so per-item ranking
+ * changes land in a single code path.
  *
- *   - `/v1/evaluate`        → 1-item case (the seed)
- *   - `/v1/discover` (per cluster) → N-item case (cluster's actives)
- *
- * Both delegate into `discoverDeals` (the N-item ranker). evaluate's
- * 1-item path is just N=1 of the same function. This keeps a single
- * code path for fitted-β resolution + per-item `evaluate()` math, so
- * future ranking changes land in one place.
- *
- * Pre-flight (shared, both shapes):
+ * Pre-flight:
  *   1. enrich sold + active listings with `itemCreationDate` / `itemEndDate`
  *      so the hazard model can fit (sold-search and Browse summaries
  *      omit start dates — they live only on detail). Items where the
  *      matcher already spliced dates (Option B) short-circuit.
- *   2. delegate to `discoverDeals`, which resolves per-category fitted β
+ *   2. delegate to `rankCandidates`, which resolves per-category fitted β
  *      once and runs synchronous `evaluate()` per item.
  *
  * Async — enrichment may scrape detail pages.
@@ -22,9 +16,9 @@
 
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import { toLegacyId } from "../../utils/item-id.js";
-import { getItemDetail } from "../listings/detail.js";
-import { discoverDeals } from "./discover-deals.js";
+import { getItemDetail } from "../items/detail.js";
 import { evaluate } from "./evaluate.js";
+import { rankCandidates } from "./rank-candidates.js";
 import type { EvaluableItem, EvaluateOptions, Evaluation } from "./types.js";
 
 /**
@@ -61,18 +55,17 @@ export async function enrichWithDuration<T extends ItemSummary>(items: ReadonlyA
 
 /**
  * Score a single listing against a sold pool. Thin wrapper over
- * `discoverDeals` — same enrichment + same fitted-β + same `evaluate()`
- * math, just N=1. Used by `/v1/evaluate` route. `discoverDeals` runs
- * the N-item path directly.
+ * `rankCandidates` — same enrichment + same fitted-β + same `evaluate()`
+ * math, just N=1. Used by `/v1/evaluate` route.
  */
 export async function evaluateWithContext(item: EvaluableItem, opts: EvaluateOptions = {}): Promise<Evaluation> {
 	const enrichedSold = opts.sold ? await enrichWithDuration(opts.sold) : opts.sold;
 	const enrichedAsks = opts.asks ? await enrichWithDuration(opts.asks) : opts.asks;
-	const ranked = await discoverDeals(
+	const ranked = await rankCandidates(
 		{ itemSummaries: [item as ItemSummary], total: 1 },
 		{ ...opts, sold: enrichedSold, asks: enrichedAsks },
 	);
-	// `discoverDeals` returns every input entry (no filtering), so a
+	// `rankCandidates` returns every input entry (no filtering), so a
 	// 1-item input always yields a 1-item output. The fallback is a
 	// belt-and-suspenders against future ranker changes.
 	return ranked[0]?.evaluation ?? evaluate(item, { ...opts, sold: enrichedSold, asks: enrichedAsks });

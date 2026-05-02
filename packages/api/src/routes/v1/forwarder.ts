@@ -7,11 +7,11 @@
  *   POST /v1/forwarder/{provider}/packages/{packageId}/dispatch   queue outbound shipment
  *
  * Today only `planetexpress` is wired. Behind the scenes the bridge-job
- * queue (`services/bridge-jobs/queue.ts`) handles dispatch — the
+ * queue (`services/bridge-jobs.ts`) handles dispatch — the
  * extension's content script for the provider claims the job, drives
  * the provider's logged-in web UI, and reports the result back.
  *
- * Sits at `/v1/forwarder/*` (not `/v1/buy/...` or `/v1/sell/...`)
+ * Sits at top level (not nested under `/purchases` or `/sales`)
  * because forwarders touch both flows: inbound receipts during buy,
  * outbound shipping during sell. The dispatch route closes the loop —
  * once a listed item sells, agents/automation queue a dispatch job

@@ -5,7 +5,7 @@
  *
  * Views:
  *   overview  → endpoint cards + API key + agent integrations + recent usage
- *   playground/* → small forms that hit the real eBay-compat endpoints
+ *   playground/* → small forms that hit the live `/v1/*` endpoints
  *   keys      → CRUD against /v1/me/keys
  *   usage     → monthly counter + (future) per-endpoint breakdown
  *   ebay      → connect / status / disconnect
@@ -18,9 +18,9 @@ import { Toaster, toast } from "sonner";
 import { CHANGELOG, type ChangelogEntry, type ChangelogTag } from "../data/changelog";
 import { apiBase, apiFetch, authClient, signOut } from "../lib/authClient";
 import type { ComposeTab } from "./compose/ComposeCard";
-import { PlaygroundDiscover } from "./playground/PlaygroundDiscover";
 import { PlaygroundEvaluate } from "./playground/PlaygroundEvaluate";
 import { PlaygroundSearch } from "./playground/PlaygroundSearch";
+import { PlaygroundSourcing } from "./playground/PlaygroundSourcing";
 import "./Dashboard.css";
 import "./ui/ui.css";
 import "./playground/Playground.css";
@@ -30,7 +30,7 @@ type Tier = "free" | "hobby" | "standard" | "growth";
 type View =
 	| "overview"
 	| "playground/search"
-	| "playground/discover"
+	| "playground/sourcing"
 	| "playground/evaluate"
 	| "keys"
 	| "settings"
@@ -134,9 +134,9 @@ export default function Dashboard() {
 	const [keys, setKeys] = useState<KeyRow[]>([]);
 	const [ebay, setEbay] = useState<EbayStatus | null>(null);
 	const [permissions, setPermissions] = useState<Permissions | null>(null);
-	// Cross-link from Discover → Evaluate: Discover passes the row's
-	// itemId here, we navigate to evaluate; the panel reads it as its
-	// initial input and auto-runs.
+	// Cross-link from Search → Evaluate: a row click passes its itemId
+	// here, we navigate to evaluate; the panel reads it as its initial
+	// input and auto-runs.
 	const [evaluateSeed, setEvaluateSeed] = useState<string | null>(null);
 	const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
 	const [issued, setIssued] = useState<IssuedKey | null>(null);
@@ -283,22 +283,22 @@ export default function Dashboard() {
 						/>
 					)}
 					{(view === "playground/search" ||
-						view === "playground/discover" ||
+						view === "playground/sourcing" ||
 						view === "playground/evaluate") && (
 						<PlaygroundShell
 							active={
 								view === "playground/search"
 									? "search"
-									: view === "playground/discover"
-										? "discover"
+									: view === "playground/sourcing"
+										? "sourcing"
 										: "evaluate"
 							}
 							onChange={(next) =>
 								setView(
 									next === "search"
 										? "playground/search"
-										: next === "discover"
-											? "playground/discover"
+										: next === "sourcing"
+											? "playground/sourcing"
 											: "playground/evaluate",
 								)
 							}
@@ -528,8 +528,8 @@ function Sidebar({
 	const overviewMatch = matches("Overview");
 	const pgItems: { v: View; icon: keyof typeof ICONS; label: string; pill?: string }[] = [
 		{ v: "playground/search", icon: "search", label: "Search" },
-		{ v: "playground/discover", icon: "compass", label: "Discover deals" },
-		{ v: "playground/evaluate", icon: "gauge", label: "Evaluate listing" },
+		{ v: "playground/sourcing", icon: "tree", label: "Sourcing" },
+		{ v: "playground/evaluate", icon: "gauge", label: "Evaluate" },
 	];
 	type SidebarGroup = { label: string; items: { v: View; icon: keyof typeof ICONS; label: string }[] };
 	const groups: SidebarGroup[] = [
@@ -797,6 +797,7 @@ const ICONS = {
 	search: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="7" cy="7" r="4.5" /><path d="m13 13-2.5-2.5" /></svg>,
 	doc: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 1.5h7L13 4v10.5H3z" /><path d="M10 1.5V4h3M5.5 8h5M5.5 11h5" /></svg>,
 	compass: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6" /><path d="M8 3l2 5-2 5-2-5z" /></svg>,
+	tree: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="3" cy="3" r="1" /><path d="M3 4v9" /><path d="M3 8h5" /><path d="M3 12h5" /><circle cx="10" cy="8" r="1" /><circle cx="10" cy="12" r="1" /></svg>,
 	gauge: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11a5 5 0 0 1 10 0" /><path d="M8 11l2.5-2.5" /><circle cx="8" cy="11" r="0.6" fill="currentColor" /></svg>,
 	box: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 5l6-3 6 3v6l-6 3-6-3V5z" /><path d="M2 5l6 3 6-3M8 8v6" /></svg>,
 	key: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="11" r="2.5" /><path d="M7 9l6-6M11 5l1.5 1.5" /></svg>,
@@ -927,7 +928,7 @@ function OnboardingChecklist({
 		{
 			done: hasCall,
 			title: "Make your first API call",
-			text: "Copy the cURL below, paste in your terminal — or click through Discover to see a full trace.",
+			text: "Copy the cURL below, paste in your terminal — or click through Sourcing to navigate eBay's tree live.",
 			cta: "Show cURL",
 			view: "overview",
 			anchor: "quickstart-curl",
@@ -937,7 +938,7 @@ function OnboardingChecklist({
 		{
 			done: hasEbay,
 			title: "Connect your eBay account",
-			text: "One-click OAuth so flipagent can call sell-side APIs (inventory, fulfillment, finance) on your behalf.",
+			text: "One-click OAuth so flipagent can call sell-side routes (listings, sales, payouts, transactions) on your behalf.",
 			cta: "Connect",
 			view: "settings",
 			anchor: "settings-ebay",
@@ -1043,7 +1044,7 @@ function Overview({
 		<>
 			<section className="dash-page-head">
 				<h1>Explore your endpoints</h1>
-				<p>Hit eBay-compat paths through one bearer token, or run scoring + forwarder math locally.</p>
+				<p>Try the live API from the browser — search, evaluate, and ship — without leaving the dashboard.</p>
 			</section>
 
 			{showChecklist && (
@@ -1057,13 +1058,13 @@ function Overview({
 
 			<div className="dash-cards">
 				<EndpointCard
-					title="Discover deals"
+					title="Sourcing"
 					tag="API"
-					body="Sweep a category for under-priced active listings. Ranked by capital efficiency ($/day), end-to-end trace."
-					onClick={() => onGoto("playground/discover")}
+					body="Navigate eBay's category tree live. Scan active listings in any category, narrow with a keyword, jump to a single Evaluate run."
+					onClick={() => onGoto("playground/sourcing")}
 				/>
 				<EndpointCard
-					title="Evaluate listing"
+					title="Evaluate"
 					tag="API"
 					body="Drop in any eBay item. Full pipeline: detail → sold + active search → same-product filter → buy/pass call."
 					onClick={() => onGoto("playground/evaluate")}
@@ -1102,7 +1103,7 @@ function Overview({
 						type="button"
 						className="dash-btn dash-btn--sm"
 						onClick={() => {
-							const cmd = `curl "${apiBase}/v1/buy/browse/item_summary/search?q=canon%2050mm&limit=5" -H "X-API-Key: ${
+							const cmd = `curl "${apiBase}/v1/items/search?q=canon%2050mm&limit=5" -H "X-API-Key: ${
 								primaryKey ? primaryKey.prefix + "…" : "<YOUR_KEY>"
 							}"`;
 							navigator.clipboard.writeText(cmd).catch(() => undefined);
@@ -1112,15 +1113,15 @@ function Overview({
 					</button>
 				</div>
 				<pre className="dash-snippet">
-					<code>{`curl "${apiBase}/v1/buy/browse/item_summary/search?q=canon%2050mm&limit=5" \\
+					<code>{`curl "${apiBase}/v1/items/search?q=canon%2050mm&limit=5" \\
   -H "X-API-Key: ${primaryKey ? primaryKey.prefix + "…" : "<YOUR_KEY>"}"`}</code>
 				</pre>
 				<p className="dash-muted" style={{ marginTop: 10 }}>
 					Or run it from the {" "}
-					<button type="button" className="dash-link" onClick={() => onGoto("playground/discover")}>
-						Discover playground
+					<button type="button" className="dash-link" onClick={() => onGoto("playground/sourcing")}>
+						Sourcing playground
 					</button>{" "}
-					with a click-through trace of every sub-call.
+					with a click-through tree and inline Evaluate.
 				</p>
 			</div>
 
@@ -1170,7 +1171,7 @@ function RecentActivityCard({ onGoto }: { onGoto: (v: View) => void }) {
 						<tbody>
 							{events.map((e) => (
 								<tr key={e.id}>
-									<td style={{ width: 80 }}>{new Date(e.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+									<td style={{ width: 80, whiteSpace: "nowrap" }}>{new Date(e.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
 									<td className="dash-mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 380 }}>
 										{e.endpoint}
 									</td>
@@ -1224,10 +1225,14 @@ const PG_TAB_ICONS = {
 			<path d="m20 20-4.5-4.5" />
 		</svg>
 	),
-	discover: (
+	sourcing: (
 		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-			<circle cx="12" cy="12" r="9" />
-			<path d="M12 5l3 7-3 7-3-7z" />
+			<circle cx="5" cy="5" r="1.5" />
+			<path d="M5 6.5v11" />
+			<path d="M5 12h7" />
+			<path d="M5 18h7" />
+			<circle cx="14" cy="12" r="1.5" />
+			<circle cx="14" cy="18" r="1.5" />
 		</svg>
 	),
 	evaluate: (
@@ -1239,16 +1244,16 @@ const PG_TAB_ICONS = {
 	),
 };
 
-type PgTabId = "search" | "discover" | "evaluate";
+type PgTabId = "search" | "sourcing" | "evaluate";
 
 const PG_TABS: ReadonlyArray<ComposeTab<PgTabId>> = [
 	{ id: "search", label: "Search", icon: PG_TAB_ICONS.search },
-	{ id: "discover", label: "Discover", icon: PG_TAB_ICONS.discover },
+	{ id: "sourcing", label: "Sourcing", icon: PG_TAB_ICONS.sourcing },
 	{ id: "evaluate", label: "Evaluate", icon: PG_TAB_ICONS.evaluate },
 ];
 
 /**
- * Frames Search + Discover + Evaluate. Each panel renders its own
+ * Frames Search + Sourcing + Evaluate. Each panel renders its own
  * ComposeCard + Tabs (so it can position QuickStarts/RecentRuns below
  * the card on its own). PlaygroundShell mounts all three and toggles
  * visibility — form state and trace history survive across tab
@@ -1271,8 +1276,8 @@ function PlaygroundShell({
 			<div className={active === "search" ? "" : "hidden"}>
 				<PlaygroundSearch tabsProps={tabsProps} />
 			</div>
-			<div className={active === "discover" ? "" : "hidden"}>
-				<PlaygroundDiscover tabsProps={tabsProps} onEvaluate={onEvaluate} />
+			<div className={active === "sourcing" ? "" : "hidden"}>
+				<PlaygroundSourcing tabsProps={tabsProps} />
 			</div>
 			<div className={active === "evaluate" ? "" : "hidden"}>
 				<PlaygroundEvaluate tabsProps={tabsProps} seed={evaluateSeed} />
@@ -1680,12 +1685,10 @@ type BreakdownRow = {
 // Used in the breakdown table to render `count × credits = total` for each
 // endpoint. Keep in sync with the server-side function.
 function creditsForEndpoint(endpoint: string): number {
-	if (endpoint.startsWith("/v1/discover")) return 250;
 	if (endpoint.startsWith("/v1/evaluate")) return 50;
-	if (endpoint.startsWith("/v1/buy/browse/")) return 1;
-	if (endpoint.startsWith("/v1/buy/marketplace_insights/")) return 1;
-	if (endpoint.startsWith("/v1/commerce/catalog/")) return 1;
-	if (endpoint.startsWith("/v1/search")) return 1;
+	if (endpoint.startsWith("/v1/items")) return 1;
+	if (endpoint.startsWith("/v1/products")) return 1;
+	if (endpoint.startsWith("/v1/categories")) return 1;
 	if (endpoint.startsWith("/v1/trends")) return 1;
 	return 0;
 }
@@ -1874,7 +1877,7 @@ function ActivityPanel() {
 							{events.map((e) => {
 								const isExpanded = expanded.has(e.id);
 								const replayState = replays[e.id];
-								const replayable = e.endpoint.startsWith("/v1/buy/browse") || e.endpoint.startsWith("/v1/buy/marketplace_insights") || e.endpoint.startsWith("/v1/commerce/taxonomy");
+								const replayable = e.endpoint.startsWith("/v1/items") || e.endpoint.startsWith("/v1/categories") || e.endpoint.startsWith("/v1/products");
 								return (
 									<Fragment key={e.id}>
 										<tr>
@@ -2217,8 +2220,8 @@ function rollupStatus(statuses: ScopeStatus[]): ScopeStatus {
  * Connection-focused access view — only surfaces what the user can actually
  * connect or act on. Two rows:
  *
- *   - Sell-side API access: one eBay OAuth grants Inventory + Fulfillment +
- *     Finance simultaneously.
+ *   - Sell-side API access: one eBay OAuth lights up the listings / sales /
+ *     payouts / transactions / policies routes simultaneously.
  *   - Browser extension (optional): paired Chrome extension + browser eBay
  *     login, drives buy-side flows. Surface both sub-states (not installed /
  *     installed but signed out / active) since they have different actions.

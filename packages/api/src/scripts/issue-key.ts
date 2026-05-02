@@ -9,8 +9,10 @@
  * Tier defaults to "free". The plaintext is printed once and gone.
  */
 
+import { eq } from "drizzle-orm";
 import { issueKey, type Tier } from "../auth/keys.js";
-import { closeDb } from "../db/client.js";
+import { closeDb, db } from "../db/client.js";
+import { user } from "../db/schema.js";
 
 async function main(): Promise<void> {
 	const [, , email, tierArg] = process.argv;
@@ -24,7 +26,8 @@ async function main(): Promise<void> {
 		console.error(`tier must be one of: ${valid.join(", ")}`);
 		process.exit(1);
 	}
-	const issued = await issueKey({ tier, ownerEmail: email });
+	const [u] = await db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1);
+	const issued = await issueKey({ tier, ownerEmail: email, userId: u?.id });
 	console.log("");
 	console.log("  tier:      ", issued.tier);
 	console.log("  prefix:    ", issued.prefix);

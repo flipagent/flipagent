@@ -8,7 +8,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>Rate limits</h1>
-				<p class="lead">Credits cover the work that runs on flipagent's infrastructure — sourcing scrape (1), AI evaluation (50), deal discovery (250). Calls that pass through to your own connected eBay account are unmetered. Cached responses don't count. Free is a one-time grant; paid tiers refill monthly (UTC).</p>
+				<p class="lead">Credits cover the work that runs on flipagent's infrastructure — sourcing scrape (1) and AI evaluation (50). Calls that pass through to your own connected eBay account are unmetered. Cached responses don't count. Free is a one-time grant; paid tiers refill monthly (UTC).</p>
 
 				<h2>Tier table</h2>
 				<table class="api">
@@ -25,13 +25,12 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<table class="api">
 					<thead><tr><th>Feature</th><th>Endpoint prefix</th><th>Credits</th></tr></thead>
 					<tbody>
-						<tr><td>Search (scrape)</td><td><code>/v1/buy/browse/*</code>, <code>/v1/buy/marketplace_insights/*</code>, <code>/v1/commerce/catalog/*</code>, <code>/v1/search</code>, <code>/v1/trends</code></td><td>1</td></tr>
+						<tr><td>Marketplace data</td><td><code>/v1/items</code>, <code>/v1/categories</code>, <code>/v1/products</code>, <code>/v1/trends</code></td><td>1</td></tr>
 						<tr><td>Evaluate</td><td><code>/v1/evaluate</code></td><td>50</td></tr>
-						<tr><td>Discover</td><td><code>/v1/discover</code></td><td>250</td></tr>
 						<tr><td>Cache hit</td><td>any (response carries <code>X-Flipagent-From-Cache: true</code>)</td><td>0</td></tr>
 					</tbody>
 				</table>
-				<p>Free routes (uncounted, burst rate-limit only): everything that runs on your own connected eBay account or browser — <code>/v1/sell/*</code>, <code>/v1/post-order/*</code>, <code>/v1/buy/order/*</code>, <code>/v1/buy/feed/*</code>, <code>/v1/buy/deal/*</code>, <code>/v1/buy/offer/*</code>, <code>/v1/commerce/taxonomy/*</code>, <code>/v1/commerce/identity/*</code>, <code>/v1/commerce/translation/*</code>, <code>/v1/messages</code>, <code>/v1/best-offer</code>, <code>/v1/feedback</code>, <code>/v1/forwarder/*</code>, <code>/v1/ship/*</code>, <code>/v1/expenses/*</code>, <code>/v1/browser/*</code>, <code>/v1/bridge/*</code> — plus account routes: <code>/v1/health/*</code>, <code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/capabilities</code>.</p>
+				<p>Free routes (uncounted, burst rate-limit only): everything that runs on your own connected eBay account or browser — <code>/v1/listings</code>, <code>/v1/sales</code>, <code>/v1/payouts</code>, <code>/v1/transactions</code>, <code>/v1/transfers</code>, <code>/v1/disputes</code>, <code>/v1/policies</code>, <code>/v1/violations</code>, <code>/v1/recommendations</code>, <code>/v1/marketplaces</code>, <code>/v1/me/seller</code>, <code>/v1/messages</code>, <code>/v1/offers</code>, <code>/v1/feedback</code>, <code>/v1/promotions</code>, <code>/v1/markdowns</code>, <code>/v1/ads</code>, <code>/v1/store</code>, <code>/v1/analytics</code>, <code>/v1/feeds</code>, <code>/v1/bids</code>, <code>/v1/translate</code>, <code>/v1/labels</code>, <code>/v1/purchases</code>, <code>/v1/forwarder/*</code>, <code>/v1/ship/*</code>, <code>/v1/expenses/*</code>, <code>/v1/browser/*</code>, <code>/v1/bridge/*</code>, <code>/v1/watching</code>, <code>/v1/saved-searches</code>, <code>/v1/charities</code>, <code>/v1/media</code>, <code>/v1/featured</code>, <code>/v1/listing-groups</code>, <code>/v1/locations</code>, <code>/v1/notifications</code>, <code>/v1/webhooks</code> — plus account routes: <code>/v1/health</code>, <code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/capabilities</code>, <code>/v1/admin/*</code>.</p>
 
 				<h2>Headers on every authed response</h2>
 				<div class="code"><pre><code>{`X-RateLimit-Limit:              500       # tier credit budget

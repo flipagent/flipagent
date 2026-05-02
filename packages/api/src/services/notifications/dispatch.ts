@@ -3,14 +3,14 @@
  * notification into a row (or two): always logs to
  * marketplace_notifications, and for sale events also writes to
  * expense_events with kind="sold" so it shows up in the P&L ledger
- * alongside the buy-side `purchased` row written by bridge-jobs/queue.ts.
+ * alongside the buy-side `purchased` row written by bridge-jobs.ts.
  */
 
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { type ExpenseEvent, expenseEvents, marketplaceNotifications, userEbayOauth } from "../../db/schema.js";
 import { type AutoDispatchOutcome, maybeAutoDispatch } from "../forwarder/auto-dispatch.js";
-import { dispatchCycleEvent } from "../webhooks/dispatch.js";
+import { dispatchCycleEvent } from "../webhooks.js";
 
 export interface DispatchInput {
 	eventType: string;

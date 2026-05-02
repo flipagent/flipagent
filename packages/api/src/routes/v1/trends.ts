@@ -11,7 +11,7 @@ import { Type } from "@sinclair/typebox";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { topTrendingCategories } from "../../services/trends/index.js";
+import { topTrendingCategories } from "../../services/trends.js";
 import { errorResponse, jsonResponse } from "../../utils/openapi.js";
 
 export const trendsRoute = new Hono();

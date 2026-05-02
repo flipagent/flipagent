@@ -125,10 +125,6 @@ export function buildEbayUrl(params: EbaySearchParams, page: number): string {
 	const u = new URL(`${BASE_URL}${path}`);
 	const keyword = params.extraKeywords ? `${params.keyword} ${params.extraKeywords}`.trim() : params.keyword;
 	u.searchParams.set("_nkw", keyword);
-	// Note: `_sacat=0` (any category) used to be set here. eBay's robots.txt
-	// v26.2_COM_April_2026 added `Disallow: /sch/*_sacat=` under
-	// User-agent: *, so we omit the param — `_sacat` is the default-any
-	// behaviour anyway, results are identical without it.
 	u.searchParams.set("_pgn", String(page));
 	if (params.categoryId) u.searchParams.set("_dcat", params.categoryId);
 	if (params.soldOnly) {
@@ -144,15 +140,6 @@ export function buildEbayUrl(params: EbaySearchParams, page: number): string {
 	// Aspect facets — each entry becomes one URL-encoded query param.
 	// eBay's web SRP keys aspects by the visible aspect name (`Color`,
 	// `US Shoe Size`, `Brand`); URLSearchParams handles encoding.
-	//
-	// Important: as of 2026-05 eBay's web SRP does NOT narrow results
-	// by URL-based aspect params — facets are applied JS-side via the
-	// sidebar checkbox state (AJAX-replaced result list), and the URL
-	// `&AspectName=Value` keys eBay's UI emits are used only for chip
-	// rendering and click tracking. We still forward them: the work is
-	// harmless, keeps the URL audit-readable, and lets us auto-pick up
-	// a future eBay change that consolidates URL + JS filters. **For
-	// precise aspect narrowing today, use the REST source.**
 	if (params.aspectParams) {
 		for (const [name, value] of Object.entries(params.aspectParams)) {
 			if (value) u.searchParams.set(name, value);
@@ -351,6 +338,37 @@ export interface EbayItemDetail {
 	 * default. Null on single-SKU listings.
 	 */
 	selectedVariationId: string | null;
+	/**
+	 * Authenticity Guarantee block — same shape Browse REST emits as
+	 * `getItem.authenticityGuarantee`. Null on non-AG listings.
+	 */
+	authenticityGuarantee: { description?: string } | null;
+	/** `<meta name="description">` content — REST's `shortDescription`. */
+	shortDescription: string | null;
+	/**
+	 * Normalized payment brand keys from the PDP (`PAYPAL`, `VISA`,
+	 * `MASTERCARD`, `DISCOVER`, `AMERICAN_EXPRESS`, `APPLE_PAY`,
+	 * `GOOGLE_PAY`, `DINERS_CLUB`, `PAYPAL_CREDIT`). The transform layer
+	 * groups them into Browse REST's `paymentMethods[]` shape.
+	 */
+	paymentBrands: string[];
+	/**
+	 * Cross-border shipping eligibility — `regionIncluded[]` /
+	 * `regionExcluded[]`. Mirror of Browse REST `shipToLocations`. Each
+	 * entry carries a `regionName` from the visible PDP comma list;
+	 * `regionId` / `regionType` aren't surfaced by scrape.
+	 */
+	shipToLocations: {
+		regionIncluded: Array<{ regionName: string }>;
+		regionExcluded: Array<{ regionName: string }>;
+	} | null;
+	/** SEMANTIC_DATA `immediatePay` — Browse REST `immediatePay`. */
+	immediatePay: boolean | null;
+	/**
+	 * SEMANTIC_DATA `guestCheckout` — Browse REST `enabledForGuestCheckout`.
+	 * Different field name on each side; same boolean.
+	 */
+	guestCheckout: boolean | null;
 }
 
 export type { EbayReturnTerms, EbayVariation } from "./ebay-extract.js";
@@ -402,5 +420,11 @@ export function parseEbayDetailHtml(
 		returnTerms: raw.returnTerms,
 		variations: raw.variations,
 		selectedVariationId: raw.selectedVariationId,
+		authenticityGuarantee: raw.authenticityGuarantee,
+		shortDescription: raw.shortDescription,
+		paymentBrands: raw.paymentBrands,
+		shipToLocations: raw.shipToLocations,
+		immediatePay: raw.immediatePay,
+		guestCheckout: raw.guestCheckout,
 	};
 }

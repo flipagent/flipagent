@@ -17,7 +17,7 @@ export type { Evaluation, FiredSignal, ForwarderInput, NetRangeCents } from "@fl
 /** Anything we can evaluate. Search results give ItemSummary; detail fetches give ItemDetail. */
 export type EvaluableItem = ItemSummary | ItemDetail;
 
-/** Tunables shared by `evaluate` and `discoverDeals`. */
+/** Tunables shared by `evaluate` and `rankCandidates`. */
 export interface EvaluateOptions {
 	/** Sold listings (the price-reference pool). Required for margin + signal math. */
 	sold?: ReadonlyArray<ItemSummary>;

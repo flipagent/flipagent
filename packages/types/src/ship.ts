@@ -6,9 +6,13 @@
 import { type Static, Type } from "@sinclair/typebox";
 import { ItemDetail, ItemSummary } from "./ebay/buy.js";
 
-/** Either an ItemSummary (search result) or ItemDetail (single fetch). */
-export const Listing = Type.Union([ItemSummary, ItemDetail], { $id: "Listing" });
-export type Listing = Static<typeof Listing>;
+/**
+ * Ship-quote input item — either an `ItemSummary` (from a search hit)
+ * or `ItemDetail` (from a single fetch). Renamed from the misnamed
+ * `Listing` (which conflicted with sell-side `Listing` in `listings.ts`).
+ */
+export const ShipQuoteItem = Type.Union([ItemSummary, ItemDetail], { $id: "ShipQuoteItem" });
+export type ShipQuoteItem = Static<typeof ShipQuoteItem>;
 
 /* ----------------------------- forwarder leg ----------------------------- */
 
@@ -53,7 +57,7 @@ export type LandedCostBreakdown = Static<typeof LandedCostBreakdown>;
 
 export const ShipQuoteRequest = Type.Object(
 	{
-		item: Listing,
+		item: ShipQuoteItem,
 		forwarder: ForwarderInput,
 	},
 	{ $id: "ShipQuoteRequest" },

@@ -1,6 +1,6 @@
 # @flipagent/extension
 
-Local executor for the bridge surfaces (`/v1/buy/order/*`,
+Local executor for the bridge surfaces (`/v1/purchases`,
 `/v1/forwarder/*`, `/v1/browser/*`). The hosted flipagent API queues
 jobs; this extension picks them up and runs them inside the user's
 existing Chrome — their browser, their cookies, their eBay session.
@@ -9,8 +9,7 @@ existing Chrome — their browser, their cookies, their eBay session.
 the eBay buy flow it reads price, validates against the agent's cap,
 shows a banner, and records the eBay order id after the user confirms
 — but the user clicks Buy It Now and Confirm-and-pay themselves.
-[eBay's robots.txt](https://www.ebay.com/robots.txt) is explicit:
-"Checkouts are strictly for human users." The bridge transport is
+eBay's policy treats checkout as human-only. The bridge transport is
 built around that requirement, so the extension only handles what
 isn't a click. The agent's value is BEFORE the click (find / evaluate
 / queue) and AFTER (record / reconcile / P&L), not the click itself.
@@ -23,7 +22,7 @@ keep working.
 
 ```
 hosted API (api.flipagent.dev)                          extension (this package)
-  POST /v1/buy/order/checkout    ←  AI agent / SDK
+  POST /v1/purchases             ←  AI agent / SDK
   GET  /v1/bridge/poll           ──────────────────────►  background.js
                                                           (chrome.alarms 30s tick)
   POST /v1/bridge/result         ◄──────────────────────  background.js

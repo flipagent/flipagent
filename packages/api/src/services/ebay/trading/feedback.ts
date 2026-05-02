@@ -3,8 +3,9 @@
  * post-transaction feedback yet — Trading remains the way to leave
  * feedback for buyers and read your own seller feedback profile.
  *
- *   GetFeedback     — read inbound feedback
- *   LeaveFeedback   — leave feedback for a transaction
+ *   GetFeedback                  — read inbound feedback
+ *   LeaveFeedback                — leave feedback for a transaction
+ *   GetItemsAwaitingFeedback     — orders pending feedback action
  */
 
 import { arrayify, escapeXml, parseTrading, stringFrom, tradingCall } from "./client.js";
@@ -84,4 +85,45 @@ export async function leaveFeedback(args: {
 		ack: stringFrom(parsed.Ack) ?? "Unknown",
 		feedbackId: stringFrom(parsed.FeedbackID),
 	};
+}
+
+export interface AwaitingFeedbackRow {
+	orderId: string;
+	listingId: string;
+	counterparty: string;
+	title: string;
+	priceValue: string;
+	priceCurrency: string;
+	transactionDate: string;
+}
+
+export async function getItemsAwaitingFeedback(
+	accessToken: string,
+	role: "Buyer" | "Seller" = "Seller",
+): Promise<AwaitingFeedbackRow[]> {
+	const body = `<?xml version="1.0" encoding="utf-8"?>
+<GetItemsAwaitingFeedbackRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+	<Role>${role}</Role>
+	<DetailLevel>ReturnAll</DetailLevel>
+</GetItemsAwaitingFeedbackRequest>`;
+	const xml = await tradingCall({ callName: "GetItemsAwaitingFeedback", accessToken, body });
+	const parsed = parseTrading(xml, "GetItemsAwaitingFeedback");
+	const rows = arrayify(
+		(parsed.ItemsAwaitingFeedback as Record<string, unknown>)?.TransactionArray as Record<string, unknown>,
+	);
+	const inner = rows.length === 1 && rows[0]?.Transaction !== undefined ? arrayify(rows[0].Transaction) : rows;
+	return inner.map((tx) => {
+		const item = (tx.Item ?? {}) as Record<string, unknown>;
+		const buyer = (tx.Buyer ?? tx.Seller ?? {}) as Record<string, unknown>;
+		const price = (tx.TransactionPrice ?? {}) as { _: string; "@_currencyID": string };
+		return {
+			orderId: stringFrom(tx.TransactionID) ?? "",
+			listingId: stringFrom(item.ItemID) ?? "",
+			counterparty: stringFrom(buyer.UserID) ?? "",
+			title: stringFrom(item.Title) ?? "",
+			priceValue: price._ ?? "0",
+			priceCurrency: price["@_currencyID"] ?? "USD",
+			transactionDate: stringFrom(tx.CreatedDate) ?? "",
+		};
+	});
 }

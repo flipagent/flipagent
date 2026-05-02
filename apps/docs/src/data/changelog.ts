@@ -34,22 +34,10 @@ export const CHANGELOG: ChangelogEntry[] = [
 		body: "Replaced the GitHub-only sign-in with a Firecrawl-style chromeless /signup page — Log In / Sign Up tab, email + password form, GitHub / Google / SSO continuation, Last-used badge.",
 	},
 	{
-		date: "2026-04-26",
-		tag: "feature",
-		title: "eBay-compat surface complete",
-		body: "Buy / Sell / Order / Commerce route stubs with eBay's exact paths. Sell-side and Order API are session-backed via /v1/me/ebay/connect; Browse + Taxonomy run on flipagent's app-credential token. Order API stays at 501 until EBAY_ORDER_API_APPROVED=1.",
-	},
-	{
 		date: "2026-04-25",
 		tag: "feature",
 		title: "@flipagent/forwarder",
 		body: "New MIT package: US-domestic forwarder fee estimation (Planet Express handling + USPS/UPS rate-table lookup, zone-banded by destination state). Plugs into @flipagent/quant via the ShippingEstimate structural type.",
-	},
-	{
-		date: "2026-04-25",
-		tag: "improvement",
-		title: "/sell/finances/v1 path fix + eBay error envelope",
-		body: "Renamed the singular /sell/finance route to the plural /sell/finances to match eBay verbatim. flipagent's own errors (not_configured / not_connected / token_refresh_failed / order_api_pending) now match eBay's `{ errors: [{ errorId, domain, category, message }] }` shape, so existing eBay SDKs route them through the same handler.",
 	},
 	{
 		date: "2026-04-25",

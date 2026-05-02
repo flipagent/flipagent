@@ -37,10 +37,6 @@ export const ErrorCode = Type.Union(
 		Type.Literal("unauthorized"),
 		Type.Literal("unauthenticated"),
 		Type.Literal("forbidden"),
-		// "rate_limited" is the legacy alias kept for backward compat with
-		// older self-host releases; the live API now emits "credits_exceeded"
-		// (monthly budget) or "burst_rate_limited" (per-min/per-hour) instead.
-		Type.Literal("rate_limited"),
 		Type.Literal("credits_exceeded"),
 		Type.Literal("burst_rate_limited"),
 		Type.Literal("not_found"),
@@ -118,7 +114,7 @@ export const FeaturesResponse = Type.Object(
 		stripe: Type.Boolean({ description: "All four STRIPE_* vars — gates /v1/billing/*." }),
 		llm: Type.Boolean({
 			description:
-				"At least one of ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY set — gates the same-product matcher used internally by /v1/evaluate and /v1/discover.",
+				"At least one of ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY set — gates the same-product matcher used internally by /v1/evaluate.",
 		}),
 	},
 	{ $id: "FeaturesResponse" },
@@ -209,9 +205,9 @@ export type KeyCreateResponse = Static<typeof KeyCreateResponse>;
 
 const Usage = Type.Object({
 	// One unified credit budget. Each call charges N credits depending on
-	// what it does (1 for search/marketplace mirror, 50 for evaluate, 250
-	// for discover, 5 for browser ops, 0 for cache hits). See
-	// /docs/rate-limits for the full table.
+	// what it does (1 for search/marketplace mirror, 50 for evaluate, 5
+	// for browser ops, 0 for cache hits). See /docs/rate-limits for the
+	// full table.
 	creditsUsed: Type.Integer(),
 	creditsLimit: Type.Integer(),
 	creditsRemaining: Type.Integer(),

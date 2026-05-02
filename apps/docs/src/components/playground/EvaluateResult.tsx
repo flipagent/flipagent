@@ -18,7 +18,7 @@ import { InfoTooltip } from "../ui/InfoTooltip";
 import { PriceHistogram } from "./PriceHistogram";
 import { Trace } from "./Trace";
 import type { EvaluateOutcome } from "./pipelines";
-import type { ItemDetail, ItemSummary, MarketStats, Returns, Step } from "./types";
+import type { EvaluateMeta, ItemDetail, ItemSummary, MarketStats, Returns, Step } from "./types";
 
 
 function fmtUsd(cents: number | undefined | null): string {
@@ -132,6 +132,9 @@ export function EvaluateResult({
 	steps,
 	sellWithinDays,
 	pending = false,
+	onCancel,
+	onRerun,
+	hideHero = false,
 }: {
 	outcome: Partial<EvaluateOutcome>;
 	steps: Step[];
@@ -139,6 +142,14 @@ export function EvaluateResult({
 	sellWithinDays?: number;
 	/** True while the chain is still running — sections without data show skeletons. */
 	pending?: boolean;
+	/** Pending → Cancel button on the footer-left. Complete → Re-run. Both
+	 *  optional; without them the footer renders without the action button
+	 *  (back-compat for callers that haven't wired the handlers). */
+	onCancel?: () => void;
+	onRerun?: () => void;
+	/** Forwarded to EvaluateResultBody. The row drawer renders its own
+	 *  ItemCard above this and would otherwise double up the hero. */
+	hideHero?: boolean;
 }) {
 	const finalPayload = isComplete(outcome) ? (outcome as EvaluateOutcome) : null;
 	// Run halted with sections still missing — flag the wrapper so live skeletons
@@ -154,15 +165,20 @@ export function EvaluateResult({
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ duration: 0.25 }}
 		>
-			<EvaluateResultBody outcome={outcome} sellWithinDays={sellWithinDays} pending={pending} />
+			<EvaluateResultBody
+				outcome={outcome}
+				sellWithinDays={sellWithinDays}
+				pending={pending}
+				hideHero={hideHero}
+			/>
 
-			{finalPayload ? (
-				<Footer payload={finalPayload} steps={steps} />
-			) : (
-				<div className="pg-result-foot pg-result-foot--running">
-					<Trace steps={steps} />
-				</div>
-			)}
+			<EvalFooter
+				pending={pending}
+				payload={finalPayload}
+				steps={steps}
+				onCancel={onCancel}
+				onRerun={onRerun}
+			/>
 		</motion.div>
 	);
 }
@@ -170,28 +186,59 @@ export function EvaluateResult({
 /**
  * Body of an Evaluate-style result — hero · histogram · facts. No
  * footer (caller supplies its own trace/copy footer). Exported so
- * Discover's side-detail pane can render the same exact layout for a
- * single deal: feed in `{ item, evaluation, market, soldPool, activePool }`
- * built from the deal + its cluster, get back identical visual output.
+ * a side-detail pane can render the same exact layout for a single
+ * variant: feed in `{ item, evaluation, market, soldPool, activePool }`
+ * and get back identical visual output.
  *
  * Skeletons fire when `pending` and the underlying data slot is empty —
  * matches Evaluate's main-result behavior.
+ *
+ * `hideHero` lets a parent supply its own anchor hero (e.g. the row
+ * drawer renders the item card itself, then drops Evaluate's market
+ * analysis in below — same visual hero, no double-render).
  */
 export function EvaluateResultBody({
 	outcome,
 	sellWithinDays,
 	pending = false,
+	hideHero = false,
 }: {
 	outcome: Partial<EvaluateOutcome>;
 	sellWithinDays?: number;
 	pending?: boolean;
+	hideHero?: boolean;
 }) {
 	const candidatePriceCents = outcome.item?.price
 		? Math.round(Number.parseFloat(outcome.item.price.value) * 100)
 		: null;
+	// Matcher rejected every candidate — empty matched pool. Distinct from
+	// "still loading" (where meta is undefined). The downstream rows
+	// (Avg sold, Resells at, Est. profit) all degrade to placeholders or
+	// misleading numbers computed against a zero market; surface the real
+	// reason up here instead so the user knows the rec block isn't broken.
+	const noMatches =
+		outcome.meta != null &&
+		outcome.meta.soldKept === 0 &&
+		outcome.meta.activeKept === 0 &&
+		(outcome.meta.soldRejected > 0 || outcome.meta.activeRejected > 0);
+	// Per-pool gates — sold-driven rows (Avg sold, Est. profit fallback)
+	// and active-driven rows (Active asks, Active bids) need to degrade
+	// independently. The half-empty case (one side 0, other side > 0)
+	// otherwise either shows `$0` placeholders or a misleading
+	// `expectedNetCents` computed against an empty market.
+	const noSoldMatched =
+		outcome.meta != null &&
+		outcome.meta.soldKept === 0 &&
+		(outcome.meta.soldRejected > 0 || outcome.meta.activeRejected > 0);
+	const noActiveMatched =
+		outcome.meta != null &&
+		outcome.meta.activeKept === 0 &&
+		(outcome.meta.soldRejected > 0 || outcome.meta.activeRejected > 0);
 	return (
 		<>
-			{outcome.item ? <ItemHero item={outcome.item} /> : <ItemHeroSkeleton />}
+			{!hideHero && (outcome.item ? <ItemHero item={outcome.item} /> : <ItemHeroSkeleton />)}
+
+			{noMatches && <NoMatchesBanner meta={outcome.meta!} />}
 
 			{outcome.soldPool && outcome.soldPool.length > 0 ? (
 				<PriceHistogram
@@ -208,6 +255,8 @@ export function EvaluateResultBody({
 				pending={pending}
 				returns={outcome.returns ?? null}
 				sellWithinDays={sellWithinDays}
+				noSoldMatched={noSoldMatched}
+				noActiveMatched={noActiveMatched}
 			/>
 		</>
 	);
@@ -215,6 +264,48 @@ export function EvaluateResultBody({
 
 function isComplete(o: Partial<EvaluateOutcome>): boolean {
 	return !!(o.item && o.evaluation && o.meta);
+}
+
+/* ----------------------------- no matches banner ----------------------------- */
+
+/**
+ * Surfaced between the hero and the (now-blank) market rows when the
+ * LLM same-product matcher rejected every candidate. Without it the
+ * row block reads as broken — `$0–$0`, "insufficient data", a
+ * misleading "Est. profit −$X". The real reason (different reference,
+ * size, condition, brand) lives in the trace's filter step + the
+ * `match_decisions` table; this banner makes the verdict legible
+ * without forcing the user to drill in.
+ */
+function NoMatchesBanner({ meta }: { meta: EvaluateMeta }) {
+	const total = meta.soldRejected + meta.activeRejected;
+	return (
+		<div className="pg-result-no-matches">
+			<svg
+				width="14"
+				height="14"
+				viewBox="0 0 16 16"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.6"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				aria-hidden="true"
+				className="pg-result-no-matches-icon"
+			>
+				<circle cx="8" cy="8" r="6.5" />
+				<path d="M5.5 5.5l5 5M10.5 5.5l-5 5" />
+			</svg>
+			<div className="pg-result-no-matches-body">
+				<p className="pg-result-no-matches-title">No comparable products in the market</p>
+				<p className="pg-result-no-matches-sub">
+					Scanned {meta.soldRejected} sold + {meta.activeRejected} active ({total} total). The same-product
+					matcher rejected all of them — different reference, size, condition, or brand. Click <strong>View</strong>
+					{" "}on the rows below for per-listing reasons.
+				</p>
+			</div>
+		</div>
+	);
 }
 
 /* ----------------------------- item hero ----------------------------- */
@@ -347,6 +438,8 @@ function Facts({
 	pending,
 	returns,
 	sellWithinDays,
+	noSoldMatched = false,
+	noActiveMatched = false,
 }: {
 	outcome: Partial<EvaluateOutcome>;
 	pending: boolean;
@@ -355,6 +448,15 @@ function Facts({
 	 *  Net profit row appends a "· over your N-day window" warn aside so
 	 *  the buyer sees the timeline mismatch without a separate block. */
 	sellWithinDays?: number;
+	/** Sold pool empty after the matcher (active may still have matches).
+	 *  Hides the misleading `expectedNetCents` fallback on Est. profit and
+	 *  swaps Avg. sold's value for a placeholder + a View into the rejected
+	 *  sold pool. */
+	noSoldMatched?: boolean;
+	/** Active pool empty after the matcher (sold may still have matches).
+	 *  Active asks degrades to a placeholder + a View into the rejected
+	 *  active pool. */
+	noActiveMatched?: boolean;
 }) {
 	const evaluation = outcome.evaluation;
 	const market = outcome.market;
@@ -437,10 +539,16 @@ function Facts({
 			    "average sold" colloquially means to resellers). Aside
 			    order: value · range · count · [View]. */}
 			<Row label="Avg. sold">
-				{referenceSaleCents != null ? (
+				{noSoldMatched ? (
+					// Sold pool empty after the matcher — `market.medianCents` is 0 here,
+					// which would render as "$0.00 / $0–$0 range" and read as a real
+					// average. Show the placeholder; the View button below opens the
+					// rejected sold pool with per-listing reasons.
+					<span className="pg-result-facts-aside">no comparable products</span>
+				) : referenceSaleCents != null && referenceSaleCents > 0 ? (
 					<>
 						<span className="pg-result-facts-val">{fmtUsd(referenceSaleCents)}</span>
-						{p25 != null && p75 != null && (
+						{p25 != null && p75 != null && p25 > 0 && p75 > 0 && (
 							<span className="pg-result-facts-aside">
 								{fmtUsdRound(p25)}–{fmtUsdRound(p75)} range
 							</span>
@@ -451,24 +559,31 @@ function Facts({
 						{lowSample && (
 							<span className="pg-result-facts-warn">low sample</span>
 						)}
-						{((outcome.soldPool?.length ?? 0) + (outcome.rejectedSoldPool?.length ?? 0)) > 0 && (
-							<button
-								type="button"
-								onClick={() => setSoldOpen((o) => !o)}
-								className="pg-result-facts-toggle"
-							>
-								{soldOpen ? "Hide" : "View"}
-							</button>
-						)}
 					</>
-				) : (
+				) : pending ? (
 					<Skel w={180} />
+				) : (
+					<span className="pg-result-facts-aside">no sold data</span>
+				)}
+				{/* View attaches whenever there's anything to inspect — kept OR
+				 * rejected. Lives outside the value branches so a 0-matched run
+				 * still surfaces the rejected pool, and a populated run still
+				 * gets the same affordance. */}
+				{((outcome.soldPool?.length ?? 0) + (outcome.rejectedSoldPool?.length ?? 0)) > 0 && (
+					<button
+						type="button"
+						onClick={() => setSoldOpen((o) => !o)}
+						className="pg-result-facts-toggle"
+					>
+						{soldOpen ? "Hide" : "View"}
+					</button>
 				)}
 			</Row>
 			{soldOpen && (
 				<MatchInline
 					kept={outcome.soldPool ?? []}
 					rejected={outcome.rejectedSoldPool ?? []}
+					reasons={outcome.rejectionReasons}
 				/>
 			)}
 
@@ -511,47 +626,53 @@ function Facts({
 			    floor a reseller would have to undercut (or beat on speed) to
 			    win the next sale. */}
 			<Row label="Active asks">
-				{(() => {
-					const rejectedActiveCount = outcome.rejectedActivePool?.length ?? 0;
-					const hasAnyActive = activePool.length > 0 || rejectedActiveCount > 0;
-					if (!hasAnyActive) {
-						return pending ? (
-							<Skel w={140} />
+				{noActiveMatched ? (
+					// Active pool empty after the matcher — symmetric to Avg. sold's
+					// `noSoldMatched` branch. View attaches below and opens the
+					// rejected active pool with per-listing reasons.
+					<span className="pg-result-facts-aside">no comparable listings</span>
+				) : activePool.length === 0 && (outcome.rejectedActivePool?.length ?? 0) === 0 ? (
+					pending ? (
+						<Skel w={140} />
+					) : (
+						<span className="pg-result-facts-aside">no current asks</span>
+					)
+				) : (
+					<>
+						{lowestAskCents != null ? (
+							<>
+								<span className="pg-result-facts-val">{fmtUsdRound(lowestAskCents)}</span>
+								<span className="pg-result-facts-aside">lowest</span>
+								{highestAskCents != null && highestAskCents !== lowestAskCents && (
+									<span className="pg-result-facts-aside">
+										· {fmtUsdRound(lowestAskCents)}–{fmtUsdRound(highestAskCents)} range
+									</span>
+								)}
+							</>
 						) : (
-							<span className="pg-result-facts-aside">no current asks</span>
-						);
-					}
-					return (
-						<>
-							{lowestAskCents != null ? (
-								<>
-									<span className="pg-result-facts-val">{fmtUsdRound(lowestAskCents)}</span>
-									<span className="pg-result-facts-aside">lowest</span>
-									{highestAskCents != null && highestAskCents !== lowestAskCents && (
-										<span className="pg-result-facts-aside">
-											· {fmtUsdRound(lowestAskCents)}–{fmtUsdRound(highestAskCents)} range
-										</span>
-									)}
-								</>
-							) : (
-								<span className="pg-result-facts-aside">no priced listings</span>
-							)}
-							{activePool.length > 0 && (
-								<span className="pg-result-facts-aside">· {activePool.length} listings</span>
-							)}
-							<button
-								type="button"
-								onClick={() => setActiveOpen((o) => !o)}
-								className="pg-result-facts-toggle"
-							>
-								{activeOpen ? "Hide" : "View"}
-							</button>
-						</>
-					);
-				})()}
+							<span className="pg-result-facts-aside">no priced listings</span>
+						)}
+						{activePool.length > 0 && (
+							<span className="pg-result-facts-aside">· {activePool.length} listings</span>
+						)}
+					</>
+				)}
+				{((outcome.activePool?.length ?? 0) + (outcome.rejectedActivePool?.length ?? 0)) > 0 && (
+					<button
+						type="button"
+						onClick={() => setActiveOpen((o) => !o)}
+						className="pg-result-facts-toggle"
+					>
+						{activeOpen ? "Hide" : "View"}
+					</button>
+				)}
 			</Row>
 			{activeOpen && (
-				<MatchInline kept={activePool} rejected={outcome.rejectedActivePool ?? []} />
+				<MatchInline
+					kept={activePool}
+					rejected={outcome.rejectedActivePool ?? []}
+					reasons={outcome.rejectionReasons}
+				/>
 			)}
 
 			{/* Active bids — current bidding action on AUCTION items in the
@@ -688,7 +809,7 @@ function Facts({
 					pending ? (
 						<Skel w={140} />
 					) : (
-						<span className="pg-result-facts-aside">insufficient data</span>
+						<span className="pg-result-facts-aside">—</span>
 					)
 				) : (
 					<>
@@ -771,10 +892,10 @@ function Facts({
 								</span>
 							)}
 					</>
-				) : evaluation ? (
+				) : evaluation && !noSoldMatched ? (
 					// True null path — hazard model couldn't run (no duration
-					// data, σ=0, etc). Surface what we have so the row isn't
-					// empty; days are missing here by design.
+					// data, σ=0, etc) but a sold pool existed. Surface what we
+					// have so the row isn't empty; days are missing here by design.
 					<>
 						<span
 							className={`pg-result-facts-val${
@@ -790,6 +911,14 @@ function Facts({
 						</span>
 						<span className="pg-result-facts-aside">at typical exit</span>
 					</>
+				) : evaluation && noSoldMatched ? (
+					// Sold pool empty — `expectedNetCents` here is `score(item,
+					// EMPTY_MARKET)` which subtracts the buy price from a $0
+					// sale, producing a misleading "negative profit" that's
+					// just the buy cost. Suppress it; the banner up top (when
+					// active is also empty) or the Avg. sold row's "no
+					// comparable products" already carries the signal.
+					<span className="pg-result-facts-aside">—</span>
 				) : (
 					<Skel w={180} />
 				)}
@@ -802,14 +931,18 @@ function Facts({
  * Inline list of same-product filter outcomes — kept (green) and rejected
  * (greyed) — shown when the user clicks "View" on a Sold for / Active
  * asks row. Lets the user audit the LLM's judgement: which listings were
- * deemed the same product, and which were excluded.
+ * deemed the same product, and which were excluded. Rejected rows carry
+ * the LLM's per-listing reason underneath when available so the verdict
+ * is legible without a DB drill-in.
  */
 function MatchInline({
 	kept,
 	rejected,
+	reasons,
 }: {
 	kept: ItemSummary[];
 	rejected: ItemSummary[];
+	reasons?: Record<string, string>;
 }) {
 	if (kept.length === 0 && rejected.length === 0) return null;
 	return (
@@ -830,7 +963,12 @@ function MatchInline({
 						<span>Rejected · {rejected.length}</span>
 					</div>
 					{rejected.map((item) => (
-						<MatchRow key={`r-${item.itemId}`} item={item} bucket="reject" />
+						<MatchRow
+							key={`r-${item.itemId}`}
+							item={item}
+							bucket="reject"
+							reason={reasons?.[item.itemId]}
+						/>
 					))}
 				</>
 			)}
@@ -883,9 +1021,12 @@ export function Row({
 function MatchRow({
 	item,
 	bucket,
+	reason,
 }: {
 	item: ItemSummary;
 	bucket: "match" | "reject";
+	/** LLM's verdict text, surfaced under the meta line for rejected rows. */
+	reason?: string;
 }) {
 	const priceText = item.lastSoldPrice?.value ?? item.price?.value;
 	const isAuction = item.buyingOptions?.includes("AUCTION") ?? false;
@@ -923,6 +1064,7 @@ function MatchRow({
 					{priceText && <span className="font-mono">${priceText}</span>}
 					{modeTag && <span className="pg-result-matches-tag">{modeTag}</span>}
 				</div>
+				{reason && <p className="pg-result-matches-reason">{reason}</p>}
 			</div>
 			<a
 				href={cleanItemUrl(item.itemWebUrl)}
@@ -958,15 +1100,35 @@ function SellingPaceTag({ market }: { market: MarketStats }) {
 	return <span className="pg-result-facts-aside">—</span>;
 }
 
-/* ----------------------------- footer (copy + trace) ----------------------------- */
+/* ----------------------------- footer (cancel/re-run + trace) ----------------------------- */
 
-export function Footer({ payload, steps }: { payload: unknown; steps: Step[] }) {
-	// Default open — the trace was visible while the chain ran, so collapsing
-	// it the moment the run completes feels like the table just disappeared.
-	// User can still hide if they want.
+/**
+ * Unified Evaluate footer — same shape as the row drawer's eval footer
+ * so users learn one pattern. Left side carries the primary action
+ * (Cancel while running, Re-run after complete) plus Copy JSON for the
+ * complete-state's API payload. Right side toggles the trace.
+ *
+ * Trace stays open by default through both states — the user was
+ * already watching it run, so collapsing on completion would feel like
+ * the table just disappeared.
+ */
+export function EvalFooter({
+	pending,
+	payload,
+	steps,
+	onCancel,
+	onRerun,
+}: {
+	pending: boolean;
+	payload: unknown | null;
+	steps: Step[];
+	onCancel?: () => void;
+	onRerun?: () => void;
+}) {
 	const [open, setOpen] = useState(true);
 	const [copied, setCopied] = useState(false);
 	async function copy() {
+		if (payload == null) return;
 		try {
 			await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
 			setCopied(true);
@@ -975,16 +1137,41 @@ export function Footer({ payload, steps }: { payload: unknown; steps: Step[] }) 
 			/* ignore */
 		}
 	}
+	const showCancel = pending && onCancel != null;
+	// Re-run shows whenever not pending — matches the drawer's pattern.
+	// Errors and cancellations also benefit from a one-click retry.
+	const showRerun = !pending && onRerun != null;
 	return (
 		<div className="pg-result-foot">
 			<div className="pg-result-foot-row">
-				<button type="button" onClick={copy} className="pg-result-copy">
-					<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-						<rect x="5" y="5" width="9" height="9" rx="1.5" />
-						<path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
-					</svg>
-					{copied ? "Copied" : "Copy JSON"}
-				</button>
+				<div className="pg-result-foot-actions">
+					{showCancel && (
+						<button type="button" onClick={onCancel} className="pg-result-cancel">
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+								<path d="M6 6l12 12M18 6l-12 12" />
+							</svg>
+							Cancel
+						</button>
+					)}
+					{showRerun && (
+						<button type="button" onClick={onRerun} className="pg-result-rerun" title="Re-run">
+							<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+								<path d="M14 4v4h-4" />
+								<path d="M14 8a6 6 0 1 1-1.6-4.1" />
+							</svg>
+							Re-run
+						</button>
+					)}
+					{payload != null && (
+						<button type="button" onClick={copy} className="pg-result-copy">
+							<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+								<rect x="5" y="5" width="9" height="9" rx="1.5" />
+								<path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+							</svg>
+							{copied ? "Copied" : "Copy JSON"}
+						</button>
+					)}
+				</div>
 				<button type="button" className="pg-result-trace-toggle" onClick={() => setOpen((o) => !o)}>
 					<svg
 						width="9"

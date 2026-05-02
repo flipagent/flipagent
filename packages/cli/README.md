@@ -33,9 +33,6 @@ flipagent sold "canon ef 50mm 1.8" --limit 50
 # Score one listing — composite (server fetches detail + sold + active)
 flipagent evaluate v1|123456789|0
 
-# Rank deals for a query — composite (server runs the full pipeline)
-flipagent discover "canon ef 50mm 1.8" --min-net 2000
-
 # Forwarder catalog + per-item quote
 flipagent ship providers
 flipagent ship quote --item v1|123456789|0 --weight 500 --dest NY
@@ -66,7 +63,6 @@ flipagent whoami
 flipagent search <query> [--limit N] [--filter <expr>] [--sort <key>]
 flipagent sold <query> [--limit N]
 flipagent evaluate <itemId> [--lookback-days N] [--sold-limit N] [--min-net <cents>]
-flipagent discover <query> [--limit N] [--min-net <cents>]
 flipagent ship providers
 flipagent ship quote --item <id> --weight <g> --dest <state> [--provider <id>]
 

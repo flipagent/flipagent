@@ -2,8 +2,8 @@
  * Per-mode recent-runs store. Persists to localStorage as a "recent
  * results" log: every status (success / failure / cancelled /
  * in_progress) survives reload, and clicking a row opens the saved job
- * via `/v1/{evaluate,discover}/jobs/{id}` — resume the live stream when
- * still in progress, hydrate the saved result otherwise.
+ * via `/v1/evaluate/jobs/{id}` — resume the live stream when still in
+ * progress, hydrate the saved result otherwise.
  *
  * Capped at 5 per mode. Re-running an identical query bumps the
  * timestamp + flips status back to `in_progress` (deduped by `id`).
@@ -15,7 +15,7 @@
 
 import { useEffect, useState } from "react";
 
-export type RecentMode = "discover" | "evaluate" | "search";
+export type RecentMode = "evaluate" | "search";
 
 export type RecentStatus = "success" | "failure" | "cancelled" | "in_progress";
 

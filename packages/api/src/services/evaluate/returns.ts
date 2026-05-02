@@ -1,17 +1,12 @@
 /**
- * Extract a flipagent-shape `Returns` summary from a runtime eBay item-detail
- * object. eBay's Browse REST `getItem` carries a `returnTerms` block; our
- * mirror `ItemDetail` doesn't declare it (mirror is intentionally narrow),
- * so we read it permissively from the runtime payload.
- *
- * Sources today:
- *   - rest:   upstream JSON passes through `fetchItemDetailRest` as a cast,
- *             so `returnTerms` lives on the runtime object verbatim.
- *   - scrape: `ebayDetailToBrowse` (services/listings/transform.ts) doesn't
- *             yet emit `returnTerms`. Returns null until the scraper learns
- *             the policy block — UI renders that as "—".
- *   - bridge: same as scrape — extension's raw payload could attach the
- *             shape on its own, in which case it surfaces here for free.
+ * Extract a flipagent-shape `Returns` summary from an eBay item-detail
+ * object. `returnTerms` is now formally declared on the mirror
+ * `ItemDetail` (Browse REST parity), so all three transports populate
+ * the same field: REST passes the upstream block through verbatim,
+ * scrape parses the JSON-LD `hasMerchantReturnPolicy` block, and bridge
+ * fills the same shape from its raw payload. We still read it
+ * permissively because eBay sometimes omits sub-fields (`returnPeriod`
+ * unit/value pair) and we want to fail soft to null.
  */
 
 import type { Returns } from "@flipagent/types";

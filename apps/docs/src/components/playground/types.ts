@@ -85,7 +85,31 @@ export interface ItemDetail extends ItemSummary {
 	categoryIdPath?: string;
 	description?: string;
 	topRatedBuyingExperience?: boolean;
+	authenticityGuarantee?: boolean;
 	localizedAspects?: LocalizedAspect[];
+	/** All listing images in seller-supplied order. First is primary. */
+	images?: string[];
+	/** ISO 8601 — auction end time. */
+	endsAt?: string;
+	/** Number of buyers watching the listing right now (when surfaced). */
+	watchCount?: number;
+	/** Where it ships from. */
+	itemLocation?: { city?: string; region?: string; country?: string };
+	/** Seller's return policy. */
+	returnTerms?: { accepted?: boolean; periodDays?: number; shippingCostPayer?: "buyer" | "seller" };
+	/** Original / strikethrough price for marked-down items. */
+	originalPrice?: Money;
+	/** "20" — percent off, eBay-shape kept verbatim. */
+	discountPercentage?: string;
+}
+
+export interface AskStats {
+	meanCents: number;
+	stdDevCents: number;
+	medianCents: number;
+	p25Cents: number;
+	p75Cents: number;
+	nActive: number;
 }
 
 export interface MarketStats {
@@ -107,6 +131,7 @@ export interface MarketStats {
 	daysP70?: number;
 	daysP90?: number;
 	nDurations?: number;
+	asks?: AskStats;
 }
 
 export interface ListPriceRecommendation {
@@ -174,40 +199,6 @@ export interface BrowseSearchResponse {
 
 export type TransportSource = "rest" | "scrape" | "bridge";
 
-export interface DiscoverMeta {
-	activeCount: number;
-	activeSource: TransportSource;
-	soldCount: number;
-	soldSource: TransportSource;
-	clusterCount: number;
-}
-
-/**
- * One variant cluster — the unit Evaluate operates on. Carries the full
- * Evaluate-shape payload (item, soldPool, activePool, market,
- * evaluation, returns, meta) plus group metadata (canonical, source,
- * count). UIs render one row per cluster.
- */
-export interface DealCluster {
-	canonical: string;
-	source: "epid" | "gtin" | "singleton";
-	count: number;
-	item: ItemDetail;
-	soldPool: ItemSummary[];
-	activePool: ItemSummary[];
-	rejectedSoldPool: ItemSummary[];
-	rejectedActivePool: ItemSummary[];
-	market: MarketStats;
-	evaluation: Evaluation;
-	returns: Returns | null;
-	meta: EvaluateMeta;
-}
-
-export interface DiscoverResponse {
-	clusters: DealCluster[];
-	meta: DiscoverMeta;
-}
-
 export interface EvaluateMeta {
 	itemSource: TransportSource;
 	soldCount: number;
@@ -237,6 +228,11 @@ export interface EvaluateResponse {
 	activePool: ItemSummary[];
 	rejectedSoldPool: ItemSummary[];
 	rejectedActivePool: ItemSummary[];
+	/** Per-itemId LLM reason string for rejected listings — keyed by
+	 *  `ItemSummary.itemId` of items in `rejectedSoldPool` ∪
+	 *  `rejectedActivePool`. Empty when LLM didn't run or nothing was
+	 *  rejected. */
+	rejectionReasons: Record<string, string>;
 	market: MarketStats;
 	evaluation: Evaluation;
 	returns: Returns | null;

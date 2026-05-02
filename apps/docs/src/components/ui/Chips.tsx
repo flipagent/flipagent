@@ -40,3 +40,36 @@ export function Chips<V extends string>({
 		</RxToggleGroup.Root>
 	);
 }
+
+/**
+ * Single-select variant — same visuals as `Chips`, exclusive semantics.
+ * Empty string represents "none selected"; clicking a selected chip
+ * clears the group (Radix returns `""` when nothing is set).
+ */
+export function ChipsSingle<V extends string>({
+	value,
+	options,
+	onChange,
+	"aria-labelledby": ariaLabelledBy,
+}: {
+	value: V | "";
+	options: ReadonlyArray<ChipOption<V>>;
+	onChange: (next: V | "") => void;
+	"aria-labelledby"?: string;
+}) {
+	return (
+		<RxToggleGroup.Root
+			type="single"
+			value={value}
+			onValueChange={(v) => onChange(v as V | "")}
+			className="ui-chips"
+			aria-labelledby={ariaLabelledBy}
+		>
+			{options.map((o) => (
+				<RxToggleGroup.Item key={o.value} value={o.value} className="ui-chip">
+					{o.label}
+				</RxToggleGroup.Item>
+			))}
+		</RxToggleGroup.Root>
+	);
+}

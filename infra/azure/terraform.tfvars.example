@@ -28,8 +28,10 @@ postgres_sku = "B_Standard_B1ms"
 # stripe_price_standard = "price_..."
 # stripe_price_growth   = "price_..."
 
-# eBay OAuth — leave empty to ship with /sell/*, /commerce/*, /v1/connect/ebay
-# returning 503 not_configured. Register the keyset + RuName at developer.ebay.com.
+# eBay OAuth — leave empty to ship with /v1/connect/ebay + every sell-side
+# route (/v1/listings, /v1/sales, /v1/payouts, /v1/transactions, /v1/policies,
+# /v1/disputes, …) returning 503 not_configured. Register the keyset + RuName
+# at developer.ebay.com.
 # Sandbox: swap api.ebay.com → api.sandbox.ebay.com and auth.ebay.com → auth.sandbox.ebay.com.
 # ebay_client_id          = "YourApp-PRD-..."
 # ebay_client_secret      = "PRD-..."
@@ -41,9 +43,9 @@ postgres_sku = "B_Standard_B1ms"
 # ebay_catalog_approved   = false   # flip to true ONLY after Commerce Catalog approval
 
 # Per-listing observation archive — hosted-only feature. When true, every
-# /v1/buy/browse/* + /v1/buy/marketplace_insights/* response writes one row
-# to listing_observations for historical depth + cross-user reputation.
-# Self-host typically leaves off (default).
+# /v1/items/* response writes one row to listing_observations for
+# historical depth + cross-user reputation. Self-host typically leaves
+# off (default).
 # observation_enabled = false
 
 # Operator allow-list. Comma-separated emails auto-promoted to role=admin
@@ -89,10 +91,10 @@ postgres_sku = "B_Standard_B1ms"
 # ebay_sold_source     = "scrape"
 
 # LLM provider for the same-product matcher used internally by
-# /v1/evaluate and /v1/discover. Pick one of anthropic | openai | google.
+# /v1/evaluate. Pick one of anthropic | openai | google.
 # Empty `llm_provider` falls back to the first key set
 # (anthropic → openai → google). Without any key, the composite
-# endpoints fall back to the unfiltered sold + active pools; every
+# endpoint falls back to the unfiltered sold + active pools; every
 # other route still works.
 # llm_provider      = "google"
 # anthropic_api_key = "sk-ant-..."

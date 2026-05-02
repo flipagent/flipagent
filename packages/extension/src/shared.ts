@@ -144,14 +144,14 @@ export async function reportLoginStatus(cfg: ExtensionConfig, body: BridgeLoginS
 }
 
 export async function getOrderStatus(cfg: ExtensionConfig, purchaseOrderId: string): Promise<EbayPurchaseOrder> {
-	const path = `/v1/buy/order/purchase_order/${encodeURIComponent(purchaseOrderId)}`;
+	const path = `/v1/purchases/${encodeURIComponent(purchaseOrderId)}`;
 	const r = await apiCall<EbayPurchaseOrder>(cfg, path, { auth: "apiKey", timeoutMs: 10_000 });
 	if (!r.body) throw new ApiError(500, path, "empty body");
 	return r.body;
 }
 
 export async function cancelOrder(cfg: ExtensionConfig, purchaseOrderId: string): Promise<EbayPurchaseOrder> {
-	const path = `/v1/buy/order/purchase_order/${encodeURIComponent(purchaseOrderId)}/cancel`;
+	const path = `/v1/purchases/${encodeURIComponent(purchaseOrderId)}/cancel`;
 	const r = await apiCall<EbayPurchaseOrder>(cfg, path, { method: "POST", auth: "apiKey", timeoutMs: 10_000 });
 	if (!r.body) throw new ApiError(500, path, "empty body");
 	return r.body;

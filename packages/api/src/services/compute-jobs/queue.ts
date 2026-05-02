@@ -1,8 +1,7 @@
 /**
  * Compute-job queue. Pure DB ops + lease-based claim/heartbeat for the
- * job rows that back `/v1/evaluate/jobs/*` and `/v1/discover/jobs/*`.
- * The actual pipeline runner lives in `dispatcher.ts`; this file only
- * writes state.
+ * job rows that back `/v1/evaluate/jobs/*`. The actual pipeline runner
+ * lives in `dispatcher.ts`; this file only writes state.
  *
  * Status machine:
  *   queued ─► running ─► completed | failed | cancelled
@@ -289,10 +288,10 @@ function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
 
 /**
  * Poll `getJob` until status is terminal or `timeoutMs` elapses. Used
- * by the sync `POST /v1/evaluate` and `POST /v1/discover` routes after
- * enqueueing — the API container doesn't run pipelines, so it observes
- * the worker's outcome through this helper. Returns the terminal row,
- * or null on timeout / abort / row vanished.
+ * by the sync `POST /v1/evaluate` route after enqueueing — the API
+ * container doesn't run pipelines, so it observes the worker's outcome
+ * through this helper. Returns the terminal row, or null on timeout /
+ * abort / row vanished.
  *
  * `getJob` throws (DB blip) are absorbed: log, briefly back off, then
  * resume polling. The job state lives in the row, not in this loop —

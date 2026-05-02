@@ -10,7 +10,7 @@ import { GoogleGenAI } from "@google/genai";
 import { config } from "../../../config.js";
 import type { LlmContent, LlmProvider, LlmRequest } from "./index.js";
 
-const DEFAULT_MODEL = "gemini-3.1-flash-lite-preview";
+const DEFAULT_MODEL = "gemini-2.5-flash";
 
 export function createGoogleProvider(): LlmProvider {
 	const apiKey = config.GOOGLE_API_KEY;

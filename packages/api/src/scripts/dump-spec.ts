@@ -15,7 +15,7 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { generateSpecs } from "hono-openapi";
 import { app } from "../app.js";
-import { documentation } from "../openapi.js";
+import { documentation } from "../openapi-spec.js";
 
 async function main() {
 	const out = process.argv[2];

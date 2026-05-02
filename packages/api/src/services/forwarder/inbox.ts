@@ -1,6 +1,6 @@
 /**
  * Forwarder ops service. Wraps the bridge-job queue
- * (`services/bridge-jobs/queue.ts`) for provider-specific package ops:
+ * (`services/bridge-jobs.ts`) for provider-specific package ops:
  *   - `refreshForwarder`  — pull the inbox listing
  *   - `getPackagePhotos`  — fetch the per-package photo set
  *   - `dispatchPackage`   — instruct the forwarder to ship a package
@@ -26,7 +26,7 @@ import type {
 	ForwarderShipmentRequest,
 } from "@flipagent/types";
 import type { BridgeJob } from "../../db/schema.js";
-import { createBridgeJob, getJobForApiKey } from "../bridge-jobs/queue.js";
+import { createBridgeJob, getJobForApiKey } from "../bridge-jobs.js";
 import { BRIDGE_TASKS } from "../ebay/bridge/tasks.js";
 
 export interface RefreshArgs {

@@ -1,26 +1,20 @@
-import { BrowseSearchQuery } from "@flipagent/types/ebay/buy";
+import { ItemSearchQuery } from "@flipagent/types";
 import { getClient, toApiCallError } from "../client.js";
 import type { Config } from "../config.js";
 import { mockSearch } from "../mock.js";
 
-export { BrowseSearchQuery as ebaySearchInput };
+export { ItemSearchQuery as ebaySearchInput };
 
 export const ebaySearchDescription =
-	"Search active eBay listings via the unified flipagent surface. Calls GET /v1/buy/browse/item_summary/search at api.flipagent.dev. Returns the standard SearchPagedCollection envelope (eBay-shape).";
+	"Search active marketplace listings (any seller). Calls GET /v1/items/search. Returns normalized `Item` records — cents-int Money, ISO timestamps, marketplace-tagged.";
 
 export async function ebaySearchExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	if (config.mock) return mockSearch();
 	try {
 		const client = getClient(config);
-		return await client.listings.search({
-			q: args.q as string,
-			filter: args.filter as string | undefined,
-			sort: args.sort as string | undefined,
-			limit: args.limit as number | undefined,
-			offset: args.offset as number | undefined,
-		});
+		return await client.items.search(args as unknown as Parameters<typeof client.items.search>[0]);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/buy/browse/item_summary/search");
+		const e = toApiCallError(err, "/v1/items/search");
 		return {
 			error: "listings_search_failed",
 			status: e.status,

@@ -1,161 +1,223 @@
-import type { EbayItemDetail } from "@flipagent/ebay-scraper";
+import type { ListingCreate, ListingUpdate } from "@flipagent/types";
+import type { InventoryItem, OfferDetails } from "@flipagent/types/ebay/sell";
 import { describe, expect, it } from "vitest";
-import { ebayDetailToBrowse } from "../../../src/services/listings/transform.js";
+import { ebayToListing, listingCreateToEbay, listingUpdateToEbay } from "../../../src/services/listings/transform.js";
+import { toCents, toDollarString } from "../../../src/services/shared/money.js";
 
-const baseRaw: EbayItemDetail = {
-	itemId: "406338886641",
-	title: "Test listing",
-	url: "https://www.ebay.com/itm/406338886641",
-	condition: "New",
-	priceCents: 44995,
-	currency: "USD",
-	shippingCents: null,
-	bidCount: null,
-	watchCount: null,
-	itemCreationDate: null,
-	itemEndDate: null,
-	listingStatus: "ACTIVE",
-	marketplaceListedOn: "EBAY_US",
-	itemLocationText: null,
-	categoryPath: [],
-	categoryIds: [],
-	topRatedBuyingExperience: false,
-	seller: { name: null, feedbackScore: null, feedbackPercent: null },
-	description: null,
-	imageUrls: [],
-	aspects: [],
-	soldOut: null,
-	bestOfferEnabled: false,
-	returnTerms: null,
-	timeLeftText: null,
-	variations: null,
-	selectedVariationId: null,
+const baseCreate: ListingCreate = {
+	title: "Apple AirPods Pro 2",
+	description: "Brand new sealed",
+	price: { value: 18999, currency: "USD" },
+	quantity: 5,
+	condition: "new",
+	categoryId: "172465",
+	images: ["https://img/a.jpg", "https://img/b.jpg"],
+	policies: { fulfillmentPolicyId: "F1", paymentPolicyId: "P1", returnPolicyId: "R1" },
+	merchantLocationKey: "warehouse-01",
 };
 
-describe("ebayDetailToBrowse — image mapping", () => {
-	it("maps the first scraped URL to `image` and the rest to `additionalImages`", () => {
-		const raw: EbayItemDetail = {
-			...baseRaw,
-			imageUrls: [
-				"https://i.ebayimg.com/g/abc/s-l1600.jpg",
-				"https://i.ebayimg.com/g/abc/s-l1600-2.jpg",
-				"https://i.ebayimg.com/g/abc/s-l1600-3.jpg",
-			],
-		};
-		const out = ebayDetailToBrowse(raw);
-		expect(out).not.toBeNull();
-		expect(out?.image).toEqual({ imageUrl: "https://i.ebayimg.com/g/abc/s-l1600.jpg" });
-		expect(out?.additionalImages).toEqual([
-			{ imageUrl: "https://i.ebayimg.com/g/abc/s-l1600-2.jpg" },
-			{ imageUrl: "https://i.ebayimg.com/g/abc/s-l1600-3.jpg" },
-		]);
+describe("listingCreateToEbay", () => {
+	it("packs InventoryItem with cents→dollars and uppercase condition", () => {
+		const out = listingCreateToEbay(baseCreate, {
+			sku: "SKU-1",
+			policies: baseCreate.policies!,
+			merchantLocationKey: baseCreate.merchantLocationKey!,
+		});
+		expect(out.inventoryItem.product?.title).toBe("Apple AirPods Pro 2");
+		expect(out.inventoryItem.product?.imageUrls).toEqual(["https://img/a.jpg", "https://img/b.jpg"]);
+		expect(out.inventoryItem.condition).toBe("NEW");
+		expect(out.inventoryItem.availability?.shipToLocationAvailability?.quantity).toBe(5);
 	});
 
-	it("sets `image` even when there's only one scraped URL (the playground hero reads `image.imageUrl`)", () => {
-		const raw: EbayItemDetail = {
-			...baseRaw,
-			imageUrls: ["https://i.ebayimg.com/g/abc/s-l1600.jpg"],
-		};
-		const out = ebayDetailToBrowse(raw);
-		expect(out?.image).toEqual({ imageUrl: "https://i.ebayimg.com/g/abc/s-l1600.jpg" });
-		expect(out?.additionalImages).toBeUndefined();
+	it("packs OfferDetails with dollar-string price + listingPolicies + locationKey", () => {
+		const out = listingCreateToEbay(baseCreate, {
+			sku: "SKU-1",
+			policies: baseCreate.policies!,
+			merchantLocationKey: baseCreate.merchantLocationKey!,
+		});
+		expect(out.offerDetails.sku).toBe("SKU-1");
+		expect(out.offerDetails.format).toBe("FIXED_PRICE");
+		expect(out.offerDetails.pricingSummary.price).toEqual({ value: "189.99", currency: "USD" });
+		expect(out.offerDetails.categoryId).toBe("172465");
+		expect(out.offerDetails.listingPolicies).toEqual({
+			fulfillmentPolicyId: "F1",
+			paymentPolicyId: "P1",
+			returnPolicyId: "R1",
+		});
+		expect(out.offerDetails.merchantLocationKey).toBe("warehouse-01");
+		expect(out.offerDetails.marketplaceId).toBe("EBAY_US");
 	});
 
-	it("leaves both image fields undefined when the scraper found no images", () => {
-		const out = ebayDetailToBrowse({ ...baseRaw, imageUrls: [] });
-		expect(out?.image).toBeUndefined();
-		expect(out?.additionalImages).toBeUndefined();
+	it("converts auction format", () => {
+		const auction: ListingCreate = { ...baseCreate, format: "auction" };
+		const out = listingCreateToEbay(auction, {
+			sku: "SKU-2",
+			policies: auction.policies!,
+			merchantLocationKey: auction.merchantLocationKey!,
+		});
+		expect(out.offerDetails.format).toBe("AUCTION");
+	});
+
+	it("preserves quantity default of 1 when omitted", () => {
+		const noQty: ListingCreate = { ...baseCreate, quantity: undefined };
+		const out = listingCreateToEbay(noQty, {
+			sku: "SKU-3",
+			policies: noQty.policies!,
+			merchantLocationKey: noQty.merchantLocationKey!,
+		});
+		expect(out.inventoryItem.availability?.shipToLocationAvailability?.quantity).toBe(1);
+	});
+
+	it("packs aspects as Record<string, string[]>", () => {
+		const withAspects: ListingCreate = {
+			...baseCreate,
+			aspects: { Brand: ["Apple"], Color: ["White"], "Compatible Model": ["iPhone", "iPad"] },
+		};
+		const out = listingCreateToEbay(withAspects, {
+			sku: "SKU-4",
+			policies: withAspects.policies!,
+			merchantLocationKey: withAspects.merchantLocationKey!,
+		});
+		expect(out.inventoryItem.product?.aspects).toEqual({
+			Brand: ["Apple"],
+			Color: ["White"],
+			"Compatible Model": ["iPhone", "iPad"],
+		});
+	});
+
+	it("packs package weight + dimensions with uppercase eBay units", () => {
+		const withPkg: ListingCreate = {
+			...baseCreate,
+			package: {
+				weight: { value: 1.5, unit: "pound" },
+				dimensions: { length: 6, width: 4, height: 2, unit: "inch" },
+			},
+		};
+		const out = listingCreateToEbay(withPkg, {
+			sku: "SKU-5",
+			policies: withPkg.policies!,
+			merchantLocationKey: withPkg.merchantLocationKey!,
+		});
+		expect(out.inventoryItem.packageWeightAndSize?.weight).toEqual({ value: 1.5, unit: "POUND" });
+		expect(out.inventoryItem.packageWeightAndSize?.dimensions).toEqual({
+			length: 6,
+			width: 4,
+			height: 2,
+			unit: "INCH",
+		});
 	});
 });
 
-describe("ebayDetailToBrowse — variation id encoding", () => {
-	it("emits `v1|<n>|0` when no variation is supplied", () => {
-		const out = ebayDetailToBrowse(baseRaw);
-		expect(out?.itemId).toBe("v1|406338886641|0");
+describe("listingUpdateToEbay", () => {
+	it("only emits inventoryItem payload when item-level fields touched", () => {
+		const patch: ListingUpdate = { price: { value: 9999, currency: "USD" } };
+		const out = listingUpdateToEbay(patch, { sku: "S", condition: "new", quantity: 1 });
+		expect(out.inventoryItem).toBeUndefined();
+		expect(out.offer?.pricingSummary?.price).toEqual({ value: "99.99", currency: "USD" });
 	});
 
-	it("encodes the variation id into the v1 itemId third segment when supplied", () => {
-		const out = ebayDetailToBrowse(baseRaw, "626382683495");
-		expect(out?.itemId).toBe("v1|406338886641|626382683495");
+	it("emits inventoryItem payload when title/aspects/qty/etc touched", () => {
+		const patch: ListingUpdate = { title: "New title", quantity: 3 };
+		const out = listingUpdateToEbay(patch, { sku: "S", condition: "used_good", quantity: 1 });
+		expect(out.inventoryItem?.product?.title).toBe("New title");
+		expect(out.inventoryItem?.availability?.shipToLocationAvailability?.quantity).toBe(3);
+		expect(out.inventoryItem?.condition).toBe("USED_GOOD");
 	});
 
-	it("falls back to `|0` when the supplied variation id isn't all digits", () => {
-		const out = ebayDetailToBrowse(baseRaw, "not-a-number");
-		expect(out?.itemId).toBe("v1|406338886641|0");
+	it("merges policy update onto offer payload alongside price", () => {
+		const patch: ListingUpdate = {
+			price: { value: 5000, currency: "USD" },
+			policies: { fulfillmentPolicyId: "F2" },
+		};
+		const out = listingUpdateToEbay(patch, { sku: "S", condition: "new", quantity: 1 });
+		expect(out.offer?.pricingSummary?.price).toEqual({ value: "50.00", currency: "USD" });
+		expect(out.offer?.listingPolicies).toEqual({ fulfillmentPolicyId: "F2" });
 	});
 });
 
-describe("ebayDetailToBrowse — variation aspect + price merging", () => {
-	const multiVarRaw: EbayItemDetail = {
-		...baseRaw,
-		priceCents: 35990,
-		aspects: [
-			{ name: "Brand", value: "Nike" },
-			{ name: "Department", value: "Men" },
-		],
-		variations: [
-			{
-				variationId: "626382683495",
-				priceCents: 35990,
-				currency: "USD",
-				aspects: [{ name: "Size", value: "US M8 / W9.5" }],
+describe("ebayToListing (inbound)", () => {
+	it("merges inventoryItem + offer + listingId into a flat Listing with cents-int Money", () => {
+		const inv: InventoryItem = {
+			product: {
+				title: "Levi's 501",
+				description: "Classic fit",
+				imageUrls: ["https://img/x.jpg"],
+				aspects: { Brand: ["Levi's"], Size: ["32"] },
 			},
-			{
-				variationId: "626578342371",
-				priceCents: 13500,
-				currency: "USD",
-				aspects: [{ name: "Size", value: "PS 3Y / W4.5" }],
-			},
-		],
-		selectedVariationId: "626382683495",
-	};
-
-	it("surfaces the variations array as a runtime extension on the detail body", () => {
-		const out = ebayDetailToBrowse(multiVarRaw);
-		expect((out as Record<string, unknown>).variations).toEqual(multiVarRaw.variations);
-		expect((out as Record<string, unknown>).selectedVariationId).toBe("626382683495");
-	});
-
-	it("merges the requested variation's aspects into localizedAspects", () => {
-		const out = ebayDetailToBrowse(multiVarRaw, "626578342371");
-		// Generic aspects flow through; variation aspects (Size: PS 3Y) are added.
-		expect(out?.localizedAspects).toEqual([
-			{ name: "Brand", value: "Nike", type: "STRING" },
-			{ name: "Department", value: "Men", type: "STRING" },
-			{ name: "Size", value: "PS 3Y / W4.5", type: "STRING" },
-		]);
-	});
-
-	it("uses the variation's own price when caller specifies a variation", () => {
-		const out = ebayDetailToBrowse(multiVarRaw, "626578342371");
-		expect(out?.price).toEqual({ value: "135.00", currency: "USD" });
-	});
-
-	it("leaves the page-rendered price untouched when no variation is requested", () => {
-		const out = ebayDetailToBrowse(multiVarRaw);
-		// matchedVariation only kicks in when caller asked for one — without
-		// it the rendered top-of-page price wins.
-		expect(out?.price).toEqual({ value: "359.90", currency: "USD" });
-		// And the localized aspects stay generic — no variation-tier signal
-		// is spliced in unless the caller asked.
-		expect(out?.localizedAspects).toEqual([
-			{ name: "Brand", value: "Nike", type: "STRING" },
-			{ name: "Department", value: "Men", type: "STRING" },
-		]);
-	});
-
-	it("variation aspect overrides a generic aspect of the same name", () => {
-		const raw: EbayItemDetail = {
-			...multiVarRaw,
-			aspects: [
-				{ name: "Brand", value: "Nike" },
-				// Generic page-level Size that's wrong for one of the variations.
-				{ name: "Size", value: "8" },
-			],
+			condition: "USED_GOOD",
+			availability: { shipToLocationAvailability: { quantity: 2 } },
 		};
-		const out = ebayDetailToBrowse(raw, "626578342371");
-		const sizes = out?.localizedAspects?.filter((a) => a.name === "Size") ?? [];
-		expect(sizes).toHaveLength(1);
-		expect(sizes[0]?.value).toBe("PS 3Y / W4.5");
+		const offer: Partial<OfferDetails> & { offerId: string; listing: { listingId: string } } = {
+			offerId: "OFR-99",
+			sku: "LV-501",
+			marketplaceId: "EBAY_US",
+			format: "FIXED_PRICE",
+			pricingSummary: { price: { value: "45.00", currency: "USD" } },
+			categoryId: "11483",
+			listingPolicies: { fulfillmentPolicyId: "F", paymentPolicyId: "P", returnPolicyId: "R" },
+			merchantLocationKey: "wh-01",
+			listing: { listingId: "123456789012" },
+		};
+		const out = ebayToListing({ sku: "LV-501", inventoryItem: inv, offer });
+		expect(out).toMatchObject({
+			id: "123456789012",
+			sku: "LV-501",
+			offerId: "OFR-99",
+			marketplace: "ebay",
+			status: "active",
+			title: "Levi's 501",
+			description: "Classic fit",
+			price: { value: 4500, currency: "USD" },
+			quantity: 2,
+			condition: "used_good",
+			format: "fixed_price",
+			images: ["https://img/x.jpg"],
+			aspects: { Brand: ["Levi's"], Size: ["32"] },
+			policies: { fulfillmentPolicyId: "F", paymentPolicyId: "P", returnPolicyId: "R" },
+			merchantLocationKey: "wh-01",
+			url: "https://www.ebay.com/itm/123456789012",
+		});
+	});
+
+	it("returns status='draft' when offer has no listingId", () => {
+		const inv: InventoryItem = {
+			condition: "NEW",
+			availability: { shipToLocationAvailability: { quantity: 1 } },
+			product: { title: "x" },
+		};
+		const out = ebayToListing({
+			sku: "S",
+			inventoryItem: inv,
+			offer: { offerId: "O" },
+		});
+		expect(out.status).toBe("draft");
+		expect(out.id).toBe("");
+	});
+
+	it("returns status='out_of_stock' when active offer has 0 quantity", () => {
+		const inv: InventoryItem = {
+			condition: "NEW",
+			availability: { shipToLocationAvailability: { quantity: 0 } },
+			product: { title: "x" },
+		};
+		const out = ebayToListing({
+			sku: "S",
+			inventoryItem: inv,
+			offer: { offerId: "O", listing: { listingId: "123" } },
+		});
+		expect(out.status).toBe("out_of_stock");
+	});
+});
+
+describe("money helpers", () => {
+	it("toDollarString rounds to two decimals", () => {
+		expect(toDollarString(0)).toBe("0.00");
+		expect(toDollarString(1)).toBe("0.01");
+		expect(toDollarString(18999)).toBe("189.99");
+	});
+	it("toCents rounds half-up and handles missing", () => {
+		expect(toCents("12.345")).toBe(1235);
+		expect(toCents(undefined)).toBe(0);
+		expect(toCents("")).toBe(0);
 	});
 });

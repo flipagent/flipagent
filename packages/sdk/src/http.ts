@@ -22,7 +22,7 @@ export interface HttpOptions {
 	fetch?: typeof globalThis.fetch;
 }
 
-export type RequestMethod = "GET" | "POST" | "PUT" | "DELETE";
+export type RequestMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export interface FlipagentHttp {
 	request<T>(
@@ -34,6 +34,7 @@ export interface FlipagentHttp {
 	get<T>(path: string, query?: Record<string, string | number | undefined>): Promise<T>;
 	post<T>(path: string, body?: unknown): Promise<T>;
 	put<T>(path: string, body?: unknown): Promise<T>;
+	patch<T>(path: string, body?: unknown): Promise<T>;
 	delete<T>(path: string, query?: Record<string, string | number | undefined>): Promise<T>;
 }
 
@@ -87,6 +88,7 @@ export function createHttp(opts: HttpOptions): FlipagentHttp {
 		get: (path, query) => request("GET", path, undefined, query),
 		post: (path, body) => request("POST", path, body),
 		put: (path, body) => request("PUT", path, body),
+		patch: (path, body) => request("PATCH", path, body),
 		delete: (path, query) => request("DELETE", path, undefined, query),
 	};
 }

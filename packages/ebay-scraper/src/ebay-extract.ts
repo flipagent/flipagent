@@ -321,6 +321,57 @@ export interface RawEbayDetail {
 	 * aspects with one entry in `variations`.
 	 */
 	selectedVariationId: string | null;
+	/**
+	 * Authenticity Guarantee block when the listing qualifies for eBay's
+	 * authenticator program (sneakers / handbags / watches / trading cards
+	 * / fine jewelry). Null on non-AG listings. Mirror of Browse REST
+	 * `getItem.authenticityGuarantee` — same field shape so callers read
+	 * scrape + REST through one extractor.
+	 *
+	 * `description` is the visible PDP text ("This item is shipped to an
+	 * eBay authenticator before delivery."). `termsWebUrl` stays absent
+	 * from scrape — eBay doesn't expose a stable terms link in the PDP
+	 * markup; REST is the only source for it.
+	 */
+	authenticityGuarantee: { description?: string } | null;
+	/**
+	 * Short description from the listing's `<meta name="description">` tag
+	 * — eBay populates it from the seller's first paragraph. Mirror of
+	 * Browse REST `getItem.shortDescription`.
+	 */
+	shortDescription: string | null;
+	/**
+	 * Distinct payment brand names visible in the PDP's payments section
+	 * — `PAYPAL`, `VISA`, `MASTERCARD`, `DISCOVER`, `AMERICAN_EXPRESS`,
+	 * `APPLE_PAY`, `GOOGLE_PAY`, `DINERS_CLUB`, `PAYPAL_CREDIT`. The
+	 * transform layer buckets these into REST's
+	 * `paymentMethods[]` shape (`WALLET` / `CREDIT_CARD` / `OTHER`).
+	 */
+	paymentBrands: string[];
+	/**
+	 * Cross-border shipping eligibility — `regionIncluded` is the
+	 * countries/regions the seller will ship to; `regionExcluded` overrides
+	 * specific countries inside an included region. Mirror of Browse REST
+	 * `getItem.shipToLocations`. We populate `regionName` from the visible
+	 * comma list; `regionId` / `regionType` stay absent because the PDP
+	 * doesn't expose ISO codes (REST is the source of truth for those).
+	 */
+	shipToLocations: {
+		regionIncluded: Array<{ regionName: string }>;
+		regionExcluded: Array<{ regionName: string }>;
+	} | null;
+	/**
+	 * `immediatePay` from the embedded `SEMANTIC_DATA` JSON block — eBay's
+	 * "buyer must pay immediately on Buy It Now" flag. Null when the page
+	 * doesn't carry the SEMANTIC_DATA block (older layouts).
+	 */
+	immediatePay: boolean | null;
+	/**
+	 * `guestCheckout` from `SEMANTIC_DATA` — eBay's
+	 * `enabledForGuestCheckout` REST field. Same boolean, different name
+	 * on the wire side. Null when SEMANTIC_DATA is missing.
+	 */
+	guestCheckout: boolean | null;
 }
 
 /**
@@ -675,6 +726,138 @@ function hasTopRatedPlus(root: ParentNode | Element): boolean {
 	);
 }
 
+// Read `<meta name="description" content="…">` — eBay seeds this with
+// the seller's first description paragraph, which is what Browse REST
+// surfaces as `shortDescription`. eBay's PDP rendering sometimes serves
+// a stripped variant where the meta tag is absent (we observed this on
+// roughly 1-in-10 fetches) — in that case fall back to the `<title>`
+// element minus the trailing " | eBay" suffix. The title alone isn't as
+// rich as the description but it's always present.
+function extractShortDescription(root: ParentNode): string | null {
+	const r = root as Element;
+	const meta = r.querySelector?.<HTMLMetaElement>('meta[name="description"]');
+	const content = meta?.getAttribute("content")?.trim();
+	if (content) return content;
+	const titleEl = r.querySelector?.("title");
+	const titleText = titleEl?.textContent?.trim();
+	if (!titleText) return null;
+	return titleText.replace(/\s*\|\s*eBay\s*$/i, "").trim() || null;
+}
+
+// Pull distinct payment brand names from the PDP payments section.
+// eBay renders each accepted brand as a `<span ux-textspans--<BRAND>>`
+// + `title=<Brand> aria-label=<Brand>` element. The visible spelling
+// varies ("PayPal" vs "Paypal Credit", "Master Card" vs "Mastercard");
+// we normalize to the REST `paymentMethodBrandType` enum form
+// (UPPER_SNAKE) so the transform layer maps to REST's bucketed shape
+// without per-brand string juggling. `PAYPAL_CREDIT` is the financing
+// option — REST emits it as a separate brand under `WALLET`.
+const PAYMENT_BRAND_NORMALIZER: ReadonlyArray<readonly [RegExp, string]> = [
+	[/^paypal credit$/i, "PAYPAL_CREDIT"],
+	[/^paypal$/i, "PAYPAL"],
+	[/^apple\s*pay$/i, "APPLE_PAY"],
+	[/^google\s*pay$/i, "GOOGLE_PAY"],
+	[/^visa$/i, "VISA"],
+	[/^master\s*card$/i, "MASTERCARD"],
+	[/^discover$/i, "DISCOVER"],
+	[/^american\s*express|^amex$/i, "AMERICAN_EXPRESS"],
+	[/^diners\s*club$/i, "DINERS_CLUB"],
+];
+
+function normalizePaymentBrand(name: string): string | null {
+	const trimmed = name.trim();
+	for (const [re, key] of PAYMENT_BRAND_NORMALIZER) {
+		if (re.test(trimmed)) return key;
+	}
+	return null;
+}
+
+function extractPaymentBrands(root: ParentNode): string[] {
+	const r = root as Element;
+	// `aria-label` is set on every payment icon and matches the visible
+	// brand name; `title` carries the same string. Querying either gets us
+	// the full set without depending on which attribute eBay rendered.
+	const nodes = r.querySelectorAll?.<HTMLElement>("[aria-label], [title]");
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const el of Array.from(nodes ?? [])) {
+		// Only consider elements inside a payment span (the brand-icon
+		// wrapper carries `ux-textspans--<BRAND>` or sits inside a
+		// `data-testid` payments scope). This avoids false positives from
+		// random aria-labels elsewhere in the page.
+		const cls = el.getAttribute("class") ?? "";
+		const inPaymentSpan = /ux-textspans--/.test(cls);
+		if (!inPaymentSpan) continue;
+		const label = el.getAttribute("aria-label") ?? el.getAttribute("title");
+		if (!label) continue;
+		const key = normalizePaymentBrand(label);
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		out.push(key);
+	}
+	return out;
+}
+
+// Pull "Ships to" / "Excludes" comma-list values from the embedded
+// shipping-section JSON. eBay renders both as `TextualDisplay` blocks
+// in `SHIPPING_SECTION_MODULE`; the visible label is one TextSpan, the
+// comma-joined country list is the next `values[].textualDisplays[].textSpans[].text`.
+// We walk the raw HTML rather than the DOM because the relevant payload
+// lives inside a JSON-encoded `<script>` tag — DOM nodes are the
+// rendered surface, not the data behind them.
+function extractShipToLocations(html: string | undefined): {
+	regionIncluded: Array<{ regionName: string }>;
+	regionExcluded: Array<{ regionName: string }>;
+} | null {
+	if (!html) return null;
+	const pull = (label: string): Array<{ regionName: string }> => {
+		const idx = html.indexOf(`"text":"${label}"`);
+		if (idx === -1) return [];
+		// After the label, eBay nests one or more `values[]` with the
+		// comma list inside the next `textSpans[].text`. The slice cap
+		// (1500 chars) keeps us inside the same TextualDisplay block —
+		// past it we'd risk picking up an unrelated downstream label.
+		const slice = html.slice(idx, idx + 1500);
+		const m = /"values":\[\{[^}]*?"text":"([^"]+)"/s.exec(slice);
+		const text = m?.[1];
+		if (!text) return [];
+		return text
+			.split(",")
+			.map((s) => s.trim())
+			.filter((s) => s.length > 0)
+			.map((regionName) => ({ regionName }));
+	};
+	const included = pull("Ships to");
+	const excluded = pull("Excludes");
+	if (included.length === 0 && excluded.length === 0) return null;
+	return { regionIncluded: included, regionExcluded: excluded };
+}
+
+// Detect Authenticity Guarantee. eBay embeds the program icon symbol
+// (`icon-authenticity-guarantee-{16,24,...}`) only on listings enrolled
+// in the authenticator program — every reseller-bait category we care
+// about (sneakers, handbags, watches, trading cards, fine jewelry).
+// When present we extract the visible description from the PDP trust
+// panel block: `[data-testid="ux-section-icon-with-details"]` whose
+// icon is the AG one carries a `__data-item-text` row with the user-
+// facing copy ("This item is shipped to an eBay authenticator before
+// delivery."). REST exposes a slightly different copy + a `termsWebUrl`;
+// the URL isn't in the PDP markup so we leave it undefined and let
+// callers treat presence-of-block as the boolean signal.
+function extractAuthenticityGuarantee(root: ParentNode): { description?: string } | null {
+	const r = root as Element;
+	if (!r.querySelector?.('use[href*="icon-authenticity-guarantee"]')) return null;
+	const sections = r.querySelectorAll?.<HTMLElement>('[data-testid="ux-section-icon-with-details"]');
+	for (const section of Array.from(sections ?? [])) {
+		if (!section.querySelector('use[href*="icon-authenticity-guarantee"]')) continue;
+		const desc = section.querySelector(".ux-section-icon-with-details__data-item-text");
+		const text = desc?.textContent?.replace(/\s+/g, " ").trim();
+		if (text) return { description: text };
+		break;
+	}
+	return {};
+}
+
 /**
  * Pull the `<dl data-testid="ux-labels-values">` rows from the eBay
  * detail page's "Item specifics" section. Each `<dl>` is one row:
@@ -869,6 +1052,16 @@ export function extractEbayDetail(root: ParentNode, sourceUrl: string, html?: st
 		returnTerms: extractReturnTerms(html),
 		variations: msku?.variations ?? null,
 		selectedVariationId: msku?.selectedVariationId ?? null,
+		authenticityGuarantee: extractAuthenticityGuarantee(root),
+		shortDescription: extractShortDescription(root),
+		paymentBrands: extractPaymentBrands(root),
+		shipToLocations: extractShipToLocations(html),
+		// SEMANTIC_DATA carries the canonical `immediatePay` and
+		// `guestCheckout` (= REST `enabledForGuestCheckout`) flags. Reuse
+		// the already-parsed `semantic` object instead of walking script
+		// tags twice.
+		immediatePay: typeof semantic?.immediatePay === "boolean" ? semantic.immediatePay : null,
+		guestCheckout: typeof semantic?.guestCheckout === "boolean" ? semantic.guestCheckout : null,
 	};
 }
 
@@ -1008,8 +1201,8 @@ export function hasBestOfferFormat(text: string | string[] | null | undefined): 
  * eBay's canonical condition labels and their numeric `conditionId` enums.
  * Source: eBay Marketplace Insights `condition` enum + Browse `conditionIds`
  * filter values. The display label is what shows up in `s-card__subtitle`
- * (e.g. `"Brand New"`, `"Pre-Owned"`); the id is what callers can pass
- * back into `/v1/buy/browse/item_summary/search?filter=conditionIds:{1000}`.
+ * (e.g. `"Brand New"`, `"Pre-Owned"`); the id is what callers pass back
+ * via the eBay-shape `filter=conditionIds:{1000}` Browse expression.
  *
  * Ordered most-specific first so partial matches (e.g. "New (Other)")
  * don't get swallowed by "New".

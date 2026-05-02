@@ -40,7 +40,7 @@ If absent or invalid:
 
 1. Direct the user to `https://flipagent.dev/signup` (open the URL if
    you have a browser tool; otherwise instruct the user to open it).
-   Tell them: "Free tier is a one-time 500 credits (≈500 searches, or 10 evaluations, or 2 discoveries — credits don't refill on Free), no card."
+   Tell them: "Free tier is a one-time 500 credits (≈500 searches or 10 evaluations — credits don't refill on Free), no card."
 2. Ask the user to paste back the key (`fa_free_*`).
 3. Verify:
    ```
@@ -116,16 +116,20 @@ Available namespaces (every endpoint at `api.flipagent.dev/v1/*`):
 
 | Namespace | Use for |
 |---|---|
-| `client.listings.*` | search + detail (eBay-shape responses) |
-| `client.sold.*` | sold-listing search (last 90 days) |
+| `client.items.*` | active + sold marketplace search + detail |
+| `client.categories.*` | taxonomy tree + suggestions + per-category aspects |
+| `client.products.*` | universal product lookup by EPID + product summary search |
 | `client.evaluate.*` | score one listing → buy/hold/skip + signals (Decisions pillar) |
-| `client.discover.*` | rank deals across a search (Overnight pillar) |
 | `client.ship.*` | forwarder quote + provider catalog (Operations pillar) |
-| `client.buy.order.*` | buy flow (Limited Release; needs `/v1/connect/ebay`) |
-| `client.inventory.*` | seller-side write (needs `/v1/connect/ebay`) |
-| `client.fulfillment.*` | shipping + tracking |
-| `client.finance.*` | payouts + transactions |
-| `client.markets.*` | taxonomy + selling policies |
+| `client.purchases.*` | buy flow — REST passthrough or bridge transport (needs `/v1/connect/ebay`) |
+| `client.listings.*` | seller-side inventory + offer + publish (needs `/v1/connect/ebay`) |
+| `client.sales.*` | seller orders + ship + refund + cancel (needs `/v1/connect/ebay`) |
+| `client.payouts.*` / `client.transactions.*` | finance — cents-int Money + lifecycle status |
+| `client.disputes.*` | returns / cases / cancellations / inquiries / payment disputes |
+| `client.policies.*` | fulfillment / payment / return policies (24h cache) |
+| `client.expenses.*` | P&L ledger — record purchases, COGS, fees; monthly summaries |
+| `client.forwarder.*` | Planet Express inbound packages (via bridge) |
+| `client.webhooks.*`, `client.capabilities.*` | webhook subscriptions + agent capability discovery |
 | `client.http.*` | escape hatch for any /v1/* path not yet typed |
 
 ### 3c. Other languages (Python, Go, Rust, ...)
@@ -133,7 +137,7 @@ Available namespaces (every endpoint at `api.flipagent.dev/v1/*`):
 There's no language-specific SDK yet. Use HTTP directly:
 
 ```
-curl "https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon+50mm&limit=10" \
+curl "https://api.flipagent.dev/v1/items/search?q=canon+50mm&limit=10" \
   -H "Authorization: Bearer $FLIPAGENT_API_KEY"
 ```
 
@@ -151,14 +155,14 @@ return results. If the tool doesn't appear, the client wasn't restarted.
 
 **SDK** (3b):
 ```ts
-const r = await client.listings.search({ q: "canon ef 50mm", limit: 1 });
-console.log(r.itemSummaries?.length ?? 0, "result(s)");
+const r = await client.items.search({ q: "canon ef 50mm", limit: 1 });
+console.log(r.items?.length ?? 0, "result(s)");
 ```
 Expect `1 result(s)`.
 
 **HTTP** (3c):
 ```
-curl -s "https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon+50mm&limit=1" \
+curl -s "https://api.flipagent.dev/v1/items/search?q=canon+50mm&limit=1" \
   -H "Authorization: Bearer $FLIPAGENT_API_KEY" | jq .total
 ```
 Expect a non-zero number.
@@ -176,12 +180,14 @@ If verification fails:
 
 After verified setup, summarize the agent's new capabilities:
 
-- **Discover deals**: active search + sold search + same-product
-  filter + ranked deals — all in one call. End-to-end with
-  `client.discover.deals({ q, opts })` (composite).
+- **Find candidates**: `client.items.search({ q, status: "active" })`
+  for live listings, `status: "sold"` for the sold comp set. Same
+  shape, one knob. Filter by price / category / GTIN / EPID at the
+  query level.
 - **Decide on a single listing**: `client.evaluate.listing({ itemId })`
   → composite (server fetches detail + sold + active) → rating
-  buy/hold/skip + signals + recommendedExit.
+  buy/hold/skip + signals + recommendedExit. This is the scoring
+  primitive — call it per-candidate to rank.
 - **Estimate landed cost**: `client.ship.quote({ item, forwarder })` →
   total delivered cost via Planet Express (more forwarders coming).
 - **Sell-side** (after `/v1/connect/ebay`): create inventory items,
@@ -191,9 +197,11 @@ The user will likely ask you to do real work (e.g. "find me canon
 lenses under $100 with positive margin"). The full chain looks like:
 
 ```
-discover.deals({ q: "canon lens", filter: "price:[..100]", opts: { minNetCents: 1500 } })
-  ↓                                  (server runs active search + sold search + filter + rank)
-ship.quote({ item: deals[0].item, forwarder: { destState, weightG } })
+items.search({ q: "canon lens", filter: "price:[..100]", limit: 20 })
+  ↓                                  (active candidates)
+for each candidate: evaluate.listing({ itemId })
+  ↓                                  (server scores buy/hold/skip + recommendedExit)
+ship.quote({ item: top.item, forwarder: { destState, weightG } })
   ↓
 present top 3 to user with rationale
 ```

@@ -20,9 +20,9 @@
 import type { EvaluateMeta, EvaluateResponse, MarketStats, TransportSource } from "@flipagent/types";
 import type { ApiKey } from "../../db/schema.js";
 import { parseItemId } from "../../utils/item-id.js";
-import { getItemDetail } from "../listings/detail.js";
-import { searchActiveListings } from "../listings/search.js";
-import { searchSoldListings } from "../listings/sold.js";
+import { getItemDetail } from "../items/detail.js";
+import { searchActiveListings } from "../items/search.js";
+import { searchSoldListings } from "../items/sold.js";
 import { marketFromSold } from "./adapter.js";
 import { evaluateWithContext } from "./evaluate-with-context.js";
 import { buildPath, EvaluateError, runMatchFilter, type StepListener, withStep } from "./pipeline.js";
@@ -80,7 +80,7 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 		{
 			key: "detail",
 			label: LABELS.detail,
-			request: { method: "GET", path: `/v1/buy/browse/item/${encodeURIComponent(itemId)}` },
+			request: { method: "GET", path: `/v1/items/${encodeURIComponent(itemId)}` },
 			onStep,
 			cancelCheck,
 		},
@@ -100,7 +100,12 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 
 	// 2. search (parallel) ----------------------------------------------
 	const q = detail.body.title.trim();
-	const since = new Date(Date.now() - lookbackDays * 86_400_000).toISOString();
+	// Truncate `since` to UTC day-start so the cache key is stable across
+	// the day. Without this, ms-precision `Date.now()` makes every evaluate
+	// call a fresh Oxylabs scrape — the 12h cache never hits.
+	const DAY_MS = 86_400_000;
+	const sinceMs = Math.floor(Date.now() / DAY_MS) * DAY_MS - lookbackDays * DAY_MS;
+	const since = new Date(sinceMs).toISOString();
 	const lookbackFilter = `lastSoldDate:[${since}..]`;
 
 	if (cancelCheck) await cancelCheck();
@@ -119,7 +124,7 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 				parent: "search",
 				request: {
 					method: "GET",
-					path: buildPath("/v1/buy/marketplace_insights/item_sales/search", {
+					path: buildPath("/v1/items/search?status=sold", {
 						q,
 						limit: soldLimit,
 						filter: lookbackFilter,
@@ -145,7 +150,7 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 				parent: "search",
 				request: {
 					method: "GET",
-					path: buildPath("/v1/buy/browse/item_summary/search", { q, limit: 50 }),
+					path: buildPath("/v1/items/search", { q, limit: 50 }),
 				},
 				onStep,
 				cancelCheck,
@@ -262,6 +267,7 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 		activePool: filtered.matchedActive,
 		rejectedSoldPool: filtered.rejectedSold,
 		rejectedActivePool: filtered.rejectedActive,
+		rejectionReasons: filtered.rejectionReasons,
 		market,
 		evaluation,
 		returns: extractReturns(detail.body),

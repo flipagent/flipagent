@@ -19,11 +19,11 @@
  *   call. Strict: rejects different reference / variant / condition.
  *   Decisions are written back to the cache.
  *
- * Same shape used by /v1/evaluate (single seed) and /v1/discover
- * (per-cluster). No skip-verify mode. Detail resolution is a `port`
- * (`DetailFetcher`) — the caller supplies an adapter (typically
- * `detailFetcherFor(apiKey)` from the listings service) so the matcher
- * stays decoupled from eBay transport, auth, and tier-quota concerns.
+ * Used by /v1/evaluate (single seed). No skip-verify mode. Detail
+ * resolution is a `port` (`DetailFetcher`) — the caller supplies an
+ * adapter (typically `detailFetcherFor(apiKey)` from the listings
+ * service) so the matcher stays decoupled from eBay transport, auth,
+ * and tier-quota concerns.
  */
 
 import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";

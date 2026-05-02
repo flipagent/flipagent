@@ -8,11 +8,11 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>Quickstart</h1>
-				<p class="lead">Five minutes from zero to your first deal scan.</p>
+				<p class="lead">Five minutes from zero to your first listing score.</p>
 
 				<h2>1. Get an API key</h2>
 				<p>
-					<a href="/signup/">Sign up</a>. The free tier is a one-time 500-credit grant — about 500 searches, or 10 AI evaluations, or 2 deal discoveries. Mix as you like. Credits don't refill on Free; upgrade for monthly credits. No card required. Your dashboard issues a key in one click; copy it from the modal (it's only shown once).
+					<a href="/signup/">Sign up</a>. The free tier is a one-time 500-credit grant — about 500 searches or 10 AI evaluations. Mix as you like. Credits don't refill on Free; upgrade for monthly credits. No card required. Your dashboard issues a key in one click; copy it from the modal (it's only shown once).
 				</p>
 				<p>
 					Self-hosting? Run the API in your own infrastructure and your dashboard will be at <code>your-host/dashboard/</code> instead. See <a href="/docs/self-host/">self-host</a>.
@@ -37,7 +37,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<h2>2b. From any HTTP client</h2>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>shell</span></div>
-<pre><code>{`curl "https://api.flipagent.dev/v1/buy/browse/item_summary/search?q=canon%2050mm&limit=10" \\
+<pre><code>{`curl "https://api.flipagent.dev/v1/items/search?q=canon%2050mm&limit=10" \\
   -H "Authorization: Bearer fa_free_xxx"`}</code></pre>
 				</div>
 
@@ -49,28 +49,20 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 
 const client = createFlipagentClient({ apiKey: "fa_free_xxx" });
 
-const results = await client.listings.search({ q: "canon 50mm", limit: 10 });
-console.log(results.itemSummaries?.length, "active listings");`}</code></pre>
+const { items } = await client.items.search({ q: "canon 50mm", limit: 10 });
+console.log(items.length, "active listings");`}</code></pre>
 				</div>
 
-				<h2>3. Score the deals</h2>
-				<p>Server-side scoring runs on the API, so the math is identical regardless of language. Both <code>discover.deals</code> and <code>evaluate.listing</code> are composite — pass a query (or an itemId) and the server searches sold + active, runs an LLM same-product filter, and scores in one call:</p>
+				<h2>3. Score a listing</h2>
+				<p>Server-side scoring runs on the API, so the math is identical regardless of language. <code>evaluate.listing</code> is composite — pass an itemId and the server fetches the item, searches sold + active, runs an LLM same-product filter, and scores in one call:</p>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>node</span></div>
-<pre><code>{`// Rank deals matching a query
-const { deals } = await client.discover.deals({
-  q: "canon 50mm",
+<pre><code>{`const { evaluation } = await client.evaluate.listing({
+  itemId: items[0].id,
   opts: { minNetCents: 2000 },
 });
 
-for (const d of deals) {
-  if (d.evaluation.rating === "buy") console.log(d);
-}
-
-// Or evaluate a single listing
-const evaluation = await client.evaluate.listing({
-  itemId: results.itemSummaries[0].itemId,
-});`}</code></pre>
+if (evaluation.rating === "buy") console.log(evaluation);`}</code></pre>
 				</div>
 
 				<h2>Next</h2>

@@ -83,10 +83,11 @@ function TraceStep({ step, index, children }: { step: Step; index: number; child
 				)}
 				{/* The HTTP status pill carries the outcome whenever a real
 				    response landed (2xx/4xx/5xx). Only show the wordy pill for
-				    states that have no HTTP code: running, skipped, network
-				    failure (status=0). Keeps the trace consistent — every row
-				    shows exactly one outcome indicator. */}
-				{(step.httpStatus == null || step.httpStatus === 0) && step.status !== "pending" && (
+				    states that have no HTTP code: pending, running, skipped,
+				    network failure (status=0). Pending rows still render
+				    "Waiting" — without it the row looks indistinguishable from
+				    one that never existed. */}
+				{(step.httpStatus == null || step.httpStatus === 0) && (
 					<span className={`pg-step-pill pg-step-pill--${step.status}`}>
 						{step.status === "running" && (
 							<svg
@@ -208,7 +209,7 @@ function TraceChild({ step }: { step: Step }) {
 						{step.httpStatus}
 					</span>
 				)}
-				{(step.httpStatus == null || step.httpStatus === 0) && step.status !== "pending" && (
+				{(step.httpStatus == null || step.httpStatus === 0) && (
 					<span className={`pg-step-pill pg-step-pill--${step.status}`}>
 						{step.status === "running" && (
 							<svg

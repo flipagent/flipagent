@@ -14,7 +14,7 @@ import { BrowserQueryRequest, BrowserQueryResponse } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { createBridgeJob, waitForTerminal } from "../../services/bridge-jobs/queue.js";
+import { createBridgeJob, waitForTerminal } from "../../services/bridge-jobs.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const browserRoute = new Hono();

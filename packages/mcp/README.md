@@ -47,24 +47,23 @@ Tools return canned responses so you can verify the wiring before signing up.
 
 All tools call the unified `/v1/*` surface at `api.flipagent.dev`.
 
-### Discovery
+### Marketplace data
 
 | Tool | Backed by |
 |---|---|
-| `ebay_search` | `GET /v1/buy/browse/item_summary/search` |
-| `ebay_item_detail` | `GET /v1/buy/browse/item/{itemId}` |
-| `ebay_sold_search` | `GET /v1/buy/marketplace_insights/item_sales/search` |
-| `ebay_taxonomy_default_id` | `GET /v1/commerce/taxonomy/get_default_category_tree_id` |
-| `ebay_taxonomy_suggest` | `GET /v1/commerce/taxonomy/category_tree/{id}/get_category_suggestions` |
-| `ebay_taxonomy_aspects` | `GET /v1/commerce/taxonomy/category_tree/{id}/get_item_aspects_for_category` |
+| `ebay_search` | `GET /v1/items/search` |
+| `ebay_item_detail` | `GET /v1/items/{itemId}` |
+| `ebay_sold_search` | `GET /v1/items/search?status=sold` |
+| `ebay_taxonomy_default_id` | `GET /v1/categories?marketplace={id}` |
+| `ebay_taxonomy_suggest` | `GET /v1/categories/suggest?q={query}` |
+| `ebay_taxonomy_aspects` | `GET /v1/categories/{id}/aspects` |
 | `flipagent_capabilities` | `GET /v1/capabilities` |
 
-### Decisions / Overnight / Operations (server-side scoring)
+### Decisions / Operations (server-side scoring)
 
 | Tool | Backed by |
 |---|---|
 | `evaluate_listing` | `POST /v1/evaluate` — composite (detail → search sold + active → LLM same-product filter → score) |
-| `discover_deals` | `POST /v1/discover` — composite (active search → sold search → LLM filter → batch rank) |
 | `ship_quote` | `POST /v1/ship/quote` |
 | `ship_providers` | `GET /v1/ship/providers` |
 | `expenses_record` / `expenses_summary` | `POST /v1/expenses` / `GET /v1/expenses/summary` |
@@ -81,22 +80,22 @@ Run `/v1/connect/ebay` once to bind your eBay seller account, then:
 | Tool | Backed by |
 |---|---|
 | `flipagent_connect_status` | `GET /v1/connect/ebay/status` |
-| `ebay_create_inventory_item` | `PUT /v1/sell/inventory/inventory_item/{sku}` |
-| `ebay_create_offer` | `POST /v1/sell/inventory/offer` |
-| `ebay_publish_offer` | `POST /v1/sell/inventory/offer/{offerId}/publish` |
-| `ebay_list_orders` | `GET /v1/sell/fulfillment/order` |
-| `ebay_mark_shipped` | `POST /v1/sell/fulfillment/order/{orderId}/shipping_fulfillment` |
-| `ebay_list_payouts` | `GET /v1/sell/finances/payout` |
+| `ebay_create_inventory_item` | `PUT /v1/listings/{sku}` |
+| `ebay_create_offer` | `POST /v1/listings` |
+| `ebay_publish_offer` | `POST /v1/listings/{sku}/relist` |
+| `ebay_list_orders` | `GET /v1/sales` |
+| `ebay_mark_shipped` | `POST /v1/sales/{id}/ship` |
+| `ebay_list_payouts` | `GET /v1/payouts` |
 
 ### Buy ordering + bridge surfaces
 
-The `/v1/buy/order/*` surface runs in two transports — REST passthrough (with eBay's Buy Order API approval, `EBAY_ORDER_API_APPROVED=1`) or bridge (the Chrome extension navigates the listing in your real Chrome session; you click Buy It Now + Confirm-and-pay yourself, the extension records the result). Same response shape either way; pick per call with `?transport=rest|bridge` or let the capability matrix decide. Forwarder ops (`/v1/forwarder/*`) and browser DOM queries (`/v1/browser/*`) are bridge-only — they read from the user's logged-in sessions through the extension.
+The `/v1/purchases` surface runs in two transports — REST passthrough (with eBay's Buy Order API approval, `EBAY_ORDER_API_APPROVED=1`) or bridge (the Chrome extension navigates the listing in your real Chrome session; you click Buy It Now + Confirm-and-pay yourself, the extension records the result). Same response shape either way; pick per call with `?transport=rest|bridge` or let the capability matrix decide. Forwarder ops (`/v1/forwarder/*`) and browser DOM queries (`/v1/browser/*`) are bridge-only — they read from the user's logged-in sessions through the extension.
 
 | Tool | Backed by |
 |---|---|
-| `ebay_buy_item` | `POST /v1/buy/order/checkout_session/initiate` + `place_order` (one-shot) |
-| `ebay_order_status` | `GET /v1/buy/order/purchase_order/{id}` |
-| `ebay_order_cancel` | `POST /v1/buy/order/purchase_order/{id}/cancel` (bridge transport only) |
+| `ebay_buy_item` | `POST /v1/purchases` (one-shot) |
+| `ebay_order_status` | `GET /v1/purchases/{id}` |
+| `ebay_order_cancel` | `POST /v1/purchases/{id}/cancel` (bridge transport only) |
 | `planet_express_packages` | `POST /v1/forwarder/planetexpress/refresh` |
 | `browser_query` | `POST /v1/browser/query` |
 
@@ -104,22 +103,24 @@ The `/v1/buy/order/*` surface runs in two transports — REST passthrough (with 
 
 Tools are typed and orthogonal — agents can chain them end-to-end:
 
-> "Find canon ef 50mm under $100 → score the deals → estimate landed
-> cost via Planet Express → pick the best one and tell me the net margin."
+> "Search for canon ef 50mm under $100 → pick a candidate → score it →
+> estimate landed cost via Planet Express → tell me the net margin."
 
 Translates to:
 
 ```
-discover_deals({ q: "canon ef 50mm 1.8", opts: { minNetCents: 2000 } })
-  ↓                                              (server: active search → sold search → LLM filter → rank)
-ship_quote({ item: deals[0].item, forwarder: { destState: "NY", weightG: 250 } })
+ebay_search({ q: "canon ef 50mm 1.8", filter: "price:[..100]" })
+  ↓
+evaluate_listing({ itemId: results[0].itemId })  (server: detail → sold + active → LLM filter → score)
+  ↓
+ship_quote({ item: results[0], forwarder: { destState: "NY", weightG: 250 } })
 ```
 
-`evaluate_listing` and `discover_deals` are composite — server-side they
-fetch detail / sold / active in parallel, run an LLM same-product filter,
-and score in a single call. Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or
+`evaluate_listing` is composite — server-side it fetches detail / sold /
+active in parallel, runs an LLM same-product filter, and scores in a
+single call. Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or
 `GOOGLE_API_KEY` on the API server to enable the filter; without a key
-the composite endpoints fall back to the unfiltered pool.
+the composite endpoint falls back to the unfiltered pool.
 
 ## Compatibility
 

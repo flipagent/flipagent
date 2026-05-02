@@ -50,10 +50,10 @@ export interface LlmProvider {
 }
 
 /**
- * Per-process LLM concurrency cap. Multi-cluster discover fans out
- * many verify calls in parallel — one per (cluster × verify chunk);
- * without this gate they all hit the provider at once and the slowest
- * queue at provider side.
+ * Per-process LLM concurrency cap. The variants pipeline fans out
+ * many verify calls in parallel — one per (variant group × verify
+ * chunk); without this gate they all hit the provider at once and
+ * the slowest queue at provider side.
  * Capping in-process means the queue is observable from our side and
  * the same calls don't pile up against the provider's rate-limit
  * window. Default 8 — comfortable for Anthropic tier 2+ and OpenAI

@@ -35,10 +35,10 @@ import { db } from "../../db/client.js";
 import { bridgeTokens } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { requireBridgeToken } from "../../middleware/bridge-auth.js";
-import { claimNextForApiKey, getJobForApiKey, transition } from "../../services/bridge-jobs/queue.js";
+import { claimNextForApiKey, getJobForApiKey, transition } from "../../services/bridge-jobs.js";
 import { bridgeTaskForOrder } from "../../services/ebay/bridge/tasks.js";
 import { reconcileBridgeResult } from "../../services/forwarder/reconcile.js";
-import { dispatchCycleEvent, dispatchOrderEvent } from "../../services/webhooks/dispatch.js";
+import { dispatchCycleEvent, dispatchOrderEvent } from "../../services/webhooks.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const bridgeRoute = new Hono();

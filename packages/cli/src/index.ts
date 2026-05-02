@@ -11,7 +11,6 @@
  *   flipagent search <query>             Search active listings
  *   flipagent sold <query>               Search sold listings (last 90 days)
  *   flipagent evaluate <itemId>          Score one listing (composite — server fetches detail + sold + active)
- *   flipagent discover <query>           Rank deals for a query (composite — server runs the full pipeline)
  *   flipagent ship providers             List supported forwarders
  *   flipagent ship quote --item <id> --weight <g> --dest <state>
  *
@@ -357,7 +356,7 @@ async function runSearch(args: ParsedArgs): Promise<void> {
 	if (args.values.limit) params.set("limit", args.values.limit);
 	if (args.values.filter) params.set("filter", args.values.filter);
 	if (args.values.sort) params.set("sort", args.values.sort);
-	const result = await api("GET", `/v1/buy/browse/item_summary/search?${params}`, undefined, opts);
+	const result = await api("GET", `/v1/items/search?${params}`, undefined, opts);
 	printJson(result);
 }
 
@@ -365,9 +364,9 @@ async function runSold(args: ParsedArgs): Promise<void> {
 	const q = args.positional[0];
 	if (!q) throw new Error("Usage: flipagent sold <query> [--limit N]");
 	const opts = clientOpts(args);
-	const params = new URLSearchParams({ q });
+	const params = new URLSearchParams({ q, status: "sold" });
 	if (args.values.limit) params.set("limit", args.values.limit);
-	const result = await api("GET", `/v1/buy/marketplace_insights/item_sales/search?${params}`, undefined, opts);
+	const result = await api("GET", `/v1/items/search?${params}`, undefined, opts);
 	printJson(result);
 }
 
@@ -387,19 +386,6 @@ async function runEvaluate(args: ParsedArgs): Promise<void> {
 	printJson(evaluation);
 }
 
-async function runDiscover(args: ParsedArgs): Promise<void> {
-	const q = args.positional[0];
-	if (!q) throw new Error("Usage: flipagent discover <query> [--limit N] [--min-net <cents>]");
-	const opts = clientOpts(args);
-	const body: Record<string, unknown> = { q };
-	const limit = args.values.limit;
-	if (limit) body.limit = Number.parseInt(limit, 10);
-	const minNet = args.values["min-net"] ?? args.values.minNet;
-	if (minNet) body.opts = { minNetCents: Number.parseInt(minNet, 10) };
-	const out = await api("POST", "/v1/discover", body, opts);
-	printJson(out);
-}
-
 async function runShip(args: ParsedArgs): Promise<void> {
 	const sub = args.positional[0];
 	const opts = clientOpts(args);
@@ -415,7 +401,7 @@ async function runShip(args: ParsedArgs): Promise<void> {
 		if (!itemId || !weight || !dest) {
 			throw new Error("Usage: flipagent ship quote --item <id> --weight <g> --dest <state> [--provider <id>]");
 		}
-		const item = await api<unknown>("GET", `/v1/buy/browse/item/${encodeURIComponent(itemId)}`, undefined, opts);
+		const item = await api<unknown>("GET", `/v1/items/${encodeURIComponent(itemId)}`, undefined, opts);
 		const forwarder: Record<string, unknown> = { destState: dest, weightG: Number.parseInt(weight, 10) };
 		if (args.values.provider) forwarder.provider = args.values.provider;
 		const out = await api("POST", "/v1/ship/quote", { item, forwarder }, opts);
@@ -568,7 +554,6 @@ Data (uses stored key, env, or --key):
   flipagent search <query> [--limit N] [--filter <expr>] [--sort <key>]
   flipagent sold <query> [--limit N]
   flipagent evaluate <itemId> [--lookback-days N] [--sold-limit N] [--min-net <cents>]
-  flipagent discover <query> [--limit N] [--min-net <cents>]
   flipagent ship providers
   flipagent ship quote --item <id> --weight <g> --dest <state> [--provider <id>]
 
@@ -577,11 +562,11 @@ Setup:
                                       Detect Claude Desktop / Cursor and write the
                                       flipagent MCP entry.
 
-Buy-side execution (/v1/buy/order/*) runs in two transports — REST
+Buy-side execution (/v1/purchases) runs in two transports — REST
 passthrough (with eBay Buy Order API approval) or the flipagent
 Chrome extension (runs inside your existing Chrome session; you
-click Buy It Now and Confirm-and-pay yourself the way eBay's
-robots.txt requires). Extension install + setup:
+click Buy It Now and Confirm-and-pay yourself, the way eBay's
+policy requires). Extension install + setup:
 https://flipagent.dev/docs/extension/
 
 Get a free key (500 credits one-time, no card) at https://flipagent.dev/signup.
@@ -622,9 +607,6 @@ async function main(): Promise<void> {
 		case "evaluate":
 			await runEvaluate(args);
 			return;
-		case "discover":
-			await runDiscover(args);
-			return;
 		case "ship":
 			await runShip(args);
 			return;
@@ -634,7 +616,7 @@ async function main(): Promise<void> {
 		case "daemon":
 			stdout.write(
 				"`flipagent daemon` was removed. Buy-side execution runs through\n" +
-					"`/v1/buy/order/*` — REST transport (with eBay Buy Order API approval)\n" +
+					"`/v1/purchases` — REST transport (with eBay Buy Order API approval)\n" +
 					"or the flipagent Chrome extension. Install + setup:\n" +
 					"https://flipagent.dev/docs/extension/\n",
 			);

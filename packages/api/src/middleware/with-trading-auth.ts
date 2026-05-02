@@ -1,7 +1,9 @@
 /**
  * Bridges flipagent api-key auth into eBay's Trading API token
  * requirement. Every Trading endpoint we wrap (`/v1/messages`,
- * `/v1/best-offer`, `/v1/feedback`, …) needs the connected user's
+ * `/v1/offers`, `/v1/feedback`, `/v1/me/selling`, `/v1/me/buying`,
+ * `/v1/watching`, `/v1/saved-searches`, `/v1/listings/verify`) needs
+ * the connected user's
  * eBay OAuth access token in `X-EBAY-API-IAF-TOKEN`. Without this
  * middleware, each route had to call `getUserAccessToken` + try/catch
  * + map errors itself — duplicated work, drifted error shapes.

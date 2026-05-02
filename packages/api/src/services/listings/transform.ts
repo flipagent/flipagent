@@ -1,204 +1,323 @@
 /**
- * Shared raw-scraper → Browse-API shape mappers. Used by both the
- * server-side scrape backend (Oxylabs) and the bridge backend (extension
- * sends raw `EbayItemDetail`, the API normalises to `ItemDetail` so the
- * wire shape is identical regardless of transport).
- */
-
-import { type EbayItemDetail, resolveConditionId } from "@flipagent/ebay-scraper";
-import type { ItemDetail, ItemLocation, LocalizedAspect } from "@flipagent/types/ebay/buy";
-
-// Browse REST publishes a top-level `gtin` whenever the listing carries
-// a UPC, EAN, or ISBN aspect. We follow the same precedence — UPC first
-// (US-default) then EAN, then ISBN — so a single field always points at
-// the most specific identifier eBay surfaced.
-const GTIN_ASPECT_NAMES = ["UPC", "EAN", "ISBN"] as const;
-
-function findAspect(aspects: ReadonlyArray<{ name: string; value: string }>, name: string): string | undefined {
-	const hit = aspects.find((a) => a.name === name);
-	return hit?.value || undefined;
-}
-
-function findGtin(aspects: ReadonlyArray<{ name: string; value: string }>): string | undefined {
-	for (const name of GTIN_ASPECT_NAMES) {
-		const v = findAspect(aspects, name);
-		if (v) return v;
-	}
-	return undefined;
-}
-
-export function ebayDetailToBrowse(raw: EbayItemDetail, variationId?: string): ItemDetail | null {
-	if (!raw.itemId) return null;
-	const conditionId = resolveConditionId(raw.condition);
-	const baseAspects = raw.aspects ?? [];
-
-	// Multi-SKU listings carry per-variation aspects (Size, Color, …) inside
-	// the page's MSKU model — distinct from the generic top-of-fold aspects
-	// that look the same regardless of which variation the page rendered
-	// for. When the caller asked about a specific variation, splice that
-	// variation's aspects on top so the matcher LLM sees the variation-tier
-	// signal it needs to filter mismatched-size sold listings out of the
-	// pool. Without this, "Size: PS 3Y" and "Size: US M8" both look like
-	// the same parent listing.
-	const matchedVariation =
-		variationId && raw.variations ? raw.variations.find((v) => v.variationId === variationId) : null;
-	const aspects =
-		matchedVariation && matchedVariation.aspects.length > 0
-			? mergeAspects(baseAspects, matchedVariation.aspects)
-			: baseAspects;
-	const localizedAspects: LocalizedAspect[] | undefined =
-		aspects.length > 0 ? aspects.map(({ name, value }) => ({ name, value, type: "STRING" })) : undefined;
-	// When the caller specified a variation, encode it in the v1 itemId
-	// (`v1|<legacy>|<variationId>` is eBay's native shape) so downstream
-	// services that re-parse the id naturally carry the variation. The
-	// `|0` sentinel stays the default for non-variation listings.
-	const v1Suffix = variationId && /^\d+$/.test(variationId) ? variationId : "0";
-	// Defensive: prefer the variation's own price from MSKU when we know
-	// which variation the caller wanted. The scraper already navigates to
-	// `?var=<id>`, so the rendered top-of-fold price *should* already match
-	// — but if eBay ever serves a stale render or a different default we'd
-	// rather use the JSON-encoded ground truth than the DOM scrape.
-	const priceCents = matchedVariation?.priceCents ?? raw.priceCents;
-	const currency = matchedVariation?.currency ?? raw.currency;
-	const item: ItemDetail = {
-		itemId: `v1|${raw.itemId}|${v1Suffix}`,
-		legacyItemId: raw.itemId,
-		title: raw.title,
-		itemWebUrl: raw.url,
-		condition: raw.condition ?? undefined,
-		conditionId: conditionId ?? undefined,
-		price: priceCents != null ? { value: (priceCents / 100).toFixed(2), currency } : undefined,
-		shippingOptions:
-			raw.shippingCents != null
-				? [{ shippingCost: { value: (raw.shippingCents / 100).toFixed(2), currency } }]
-				: undefined,
-		buyingOptions: deriveBuyingOptions(raw),
-		bidCount: raw.bidCount ?? undefined,
-		watchCount: raw.watchCount ?? undefined,
-		itemCreationDate: raw.itemCreationDate ?? undefined,
-		itemEndDate: raw.itemEndDate ?? undefined,
-		listingMarketplaceId: raw.marketplaceListedOn ?? undefined,
-		itemLocation: parseItemLocation(raw.itemLocationText),
-		estimatedAvailabilities: synthAvailability(raw),
-		seller: raw.seller.name
-			? {
-					username: raw.seller.name,
-					feedbackScore: raw.seller.feedbackScore ?? undefined,
-					feedbackPercentage:
-						raw.seller.feedbackPercent != null ? raw.seller.feedbackPercent.toFixed(1) : undefined,
-				}
-			: undefined,
-		description: raw.description ?? undefined,
-		categoryPath: raw.categoryPath.length > 0 ? raw.categoryPath.join("|") : undefined,
-		categoryId: raw.categoryIds.length > 0 ? raw.categoryIds[raw.categoryIds.length - 1] : undefined,
-		categoryIdPath: raw.categoryIds.length > 0 ? raw.categoryIds.join("|") : undefined,
-		// eBay Browse REST splits images into a single primary + an array
-		// of extras. Match that shape: first url → `image`, rest →
-		// `additionalImages`. Without this, the playground item hero, match
-		// thumbnails, and observations.imageUrl all read empty.
-		image: raw.imageUrls[0] ? { imageUrl: raw.imageUrls[0] } : undefined,
-		additionalImages: raw.imageUrls.length > 1 ? raw.imageUrls.slice(1).map((url) => ({ imageUrl: url })) : undefined,
-		localizedAspects,
-		brand: findAspect(aspects, "Brand"),
-		gtin: findGtin(aspects),
-		topRatedBuyingExperience: raw.topRatedBuyingExperience || undefined,
-	};
-	// Attach `returnTerms` as a runtime extension. The eBay-mirror
-	// `ItemDetail` type doesn't declare it (mirror is intentionally narrow),
-	// but the REST passthrough already carries it through at runtime via
-	// the upstream JSON cast — adding it here gives scrape the same runtime
-	// shape so `services/evaluate/returns.ts` reads both transports through
-	// one extractor without branching.
-	if (raw.returnTerms) {
-		(item as Record<string, unknown>).returnTerms = raw.returnTerms;
-	}
-	// Surface the full variation list as a runtime extension so callers
-	// (MCP, SDK, dashboard) can render "this listing has 6 sizes, here are
-	// the prices" without re-fetching. Mirror's ItemDetail intentionally
-	// stays narrow; we attach the field at runtime the same way returnTerms
-	// rides through. Callers that don't know about it just ignore it.
-	if (raw.variations && raw.variations.length > 0) {
-		(item as Record<string, unknown>).variations = raw.variations;
-		if (raw.selectedVariationId) {
-			(item as Record<string, unknown>).selectedVariationId = raw.selectedVariationId;
-		}
-	}
-	return item;
-}
-
-/**
- * Merge per-variation aspects (Size, Color) on top of the page's
- * generic aspects. Variation values win on collision — they're the
- * SKU-specific truth for axes the listing varies on. Generic aspects
- * (Brand, Department, Vintage) flow through unchanged.
- */
-function mergeAspects(
-	base: ReadonlyArray<{ name: string; value: string }>,
-	overrides: ReadonlyArray<{ name: string; value: string }>,
-): Array<{ name: string; value: string }> {
-	const overrideNames = new Set(overrides.map((a) => a.name));
-	const filtered = base.filter((a) => !overrideNames.has(a.name));
-	return [...filtered, ...overrides];
-}
-
-/**
- * Derive `buyingOptions` from the scraped detail signals. eBay's REST
- * surfaces this directly; from HTML we assemble it:
+ * flipagent Listing ↔ eBay InventoryItem + OfferDetails.
  *
- *   - listing has time-left counter            → AUCTION
- *   - otherwise (priced page rendered)         → FIXED_PRICE
- *   - "or Best Offer" textspan present         → also BEST_OFFER
- *   - listing ENDED/COMPLETED                  → omit (no live options)
+ *   ListingCreate → { inventoryItem, offerDetails }   (outbound, write)
+ *   { inventoryItem, offer, listingId } → Listing     (inbound, read)
  *
- * Returned `undefined` (not empty array) when the listing is no longer
- * live — the field is `Type.Optional` in the mirror, so omitting reads
- * correctly downstream.
+ * Cents-int Money → dollar string at this boundary. Lower-snake
+ * `condition` ↔ eBay UPPER_SNAKE. Aspects shape stays
+ * `Record<string, string[]>` — eBay accepts that directly. Image array
+ * is just URLs both ways.
  */
-function deriveBuyingOptions(raw: EbayItemDetail): ItemDetail["buyingOptions"] {
-	const status = raw.listingStatus?.toUpperCase();
-	if (status === "ENDED" || status === "COMPLETED") return undefined;
-	const opts: Array<"AUCTION" | "FIXED_PRICE" | "BEST_OFFER"> = [];
-	if (raw.timeLeftText) opts.push("AUCTION");
-	else opts.push("FIXED_PRICE");
-	if (raw.bestOfferEnabled) opts.push("BEST_OFFER");
-	return opts;
+
+import type {
+	Listing,
+	ListingAspects,
+	ListingCondition,
+	ListingCreate,
+	ListingFormat,
+	ListingPackage,
+	ListingPolicies,
+	ListingStatus,
+	ListingUpdate,
+	Marketplace,
+} from "@flipagent/types";
+import type {
+	InventoryConditionEnum,
+	InventoryItem,
+	OfferDetails,
+	PackageWeightAndSize,
+} from "@flipagent/types/ebay/sell";
+import { toCents, toDollarString } from "../shared/money.js";
+
+const DEFAULT_MARKETPLACE_ID = "EBAY_US";
+
+const MARKETPLACE_TO_EBAY: Record<Marketplace, string> = {
+	ebay: "EBAY_US",
+	amazon: "EBAY_US",
+	mercari: "EBAY_US",
+	poshmark: "EBAY_US",
+};
+
+const CONDITION_TO_EBAY: Record<ListingCondition, InventoryConditionEnum> = {
+	new: "NEW",
+	like_new: "LIKE_NEW",
+	new_other: "NEW_OTHER",
+	new_with_defects: "NEW_WITH_DEFECTS",
+	manufacturer_refurbished: "MANUFACTURER_REFURBISHED",
+	certified_refurbished: "CERTIFIED_REFURBISHED",
+	excellent_refurbished: "EXCELLENT_REFURBISHED",
+	very_good_refurbished: "VERY_GOOD_REFURBISHED",
+	good_refurbished: "GOOD_REFURBISHED",
+	seller_refurbished: "SELLER_REFURBISHED",
+	used_excellent: "USED_EXCELLENT",
+	used_very_good: "USED_VERY_GOOD",
+	used_good: "USED_GOOD",
+	used_acceptable: "USED_ACCEPTABLE",
+	for_parts_or_not_working: "FOR_PARTS_OR_NOT_WORKING",
+};
+
+const CONDITION_FROM_EBAY = invert(CONDITION_TO_EBAY);
+
+const FORMAT_TO_EBAY: Record<ListingFormat, "FIXED_PRICE" | "AUCTION"> = {
+	fixed_price: "FIXED_PRICE",
+	auction: "AUCTION",
+};
+
+const FORMAT_FROM_EBAY: Record<"FIXED_PRICE" | "AUCTION", ListingFormat> = {
+	FIXED_PRICE: "fixed_price",
+	AUCTION: "auction",
+};
+
+function invert<K extends string, V extends string>(map: Record<K, V>): Record<V, K> {
+	const out = {} as Record<V, K>;
+	for (const [k, v] of Object.entries(map) as Array<[K, V]>) out[v] = k;
+	return out;
 }
 
-function parseItemLocation(text: string | null | undefined): ItemLocation | undefined {
-	if (!text) return undefined;
-	const parts = text
-		.split(",")
-		.map((s) => s.trim())
-		.filter(Boolean);
-	if (parts.length === 3) {
-		const country = parts[2];
-		return {
-			city: parts[0] || undefined,
-			stateOrProvince: parts[1] || undefined,
-			country: country === "United States" ? "US" : country,
+function packageToEbay(pkg: ListingPackage | undefined): PackageWeightAndSize | undefined {
+	if (!pkg) return undefined;
+	const out: PackageWeightAndSize = {};
+	if (pkg.weight) {
+		out.weight = {
+			value: pkg.weight.value,
+			unit: pkg.weight.unit.toUpperCase() as "POUND" | "OUNCE" | "KILOGRAM" | "GRAM",
 		};
 	}
-	if (parts.length === 2) {
-		const country = parts[1];
-		return { city: parts[0] || undefined, country: country === "United States" ? "US" : country };
+	if (pkg.dimensions) {
+		out.dimensions = {
+			length: pkg.dimensions.length,
+			width: pkg.dimensions.width,
+			height: pkg.dimensions.height,
+			unit: pkg.dimensions.unit.toUpperCase() as "INCH" | "FEET" | "CENTIMETER" | "METER",
+		};
 	}
-	if (parts.length === 1) return { country: parts[0] };
-	return undefined;
+	if (pkg.packageType) out.packageType = pkg.packageType;
+	return Object.keys(out).length > 0 ? out : undefined;
 }
 
-function synthAvailability(raw: EbayItemDetail): ItemDetail["estimatedAvailabilities"] {
-	const status = raw.listingStatus?.toUpperCase();
-	if (!status) return undefined;
-	if (status === "ACTIVE") return [{ estimatedAvailabilityStatus: "IN_STOCK" }];
-	if (status === "ENDED" || status === "COMPLETED") {
-		return [
-			{
-				estimatedAvailabilityStatus: "OUT_OF_STOCK",
-				estimatedAvailableQuantity: 0,
-				estimatedSoldQuantity: raw.soldOut === true ? 1 : 0,
-				estimatedRemainingQuantity: 0,
-			},
-		];
+type WeightUnit = "pound" | "ounce" | "kilogram" | "gram";
+type DimensionUnit = "inch" | "feet" | "centimeter" | "meter";
+
+function packageFromEbay(pkg: PackageWeightAndSize | undefined): ListingPackage | undefined {
+	if (!pkg) return undefined;
+	const out: ListingPackage = {};
+	if (pkg.weight) {
+		out.weight = {
+			value: pkg.weight.value,
+			unit: pkg.weight.unit.toLowerCase() as WeightUnit,
+		};
 	}
-	return undefined;
+	if (pkg.dimensions) {
+		out.dimensions = {
+			length: pkg.dimensions.length,
+			width: pkg.dimensions.width,
+			height: pkg.dimensions.height,
+			unit: pkg.dimensions.unit.toLowerCase() as DimensionUnit,
+		};
+	}
+	if (pkg.packageType) out.packageType = pkg.packageType;
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+export interface OutboundListing {
+	inventoryItem: InventoryItem;
+	offerDetails: OfferDetails;
+	sku: string;
+}
+
+/**
+ * `ListingCreate` → eBay `InventoryItem` + `OfferDetails` payloads.
+ * Caller still needs to PUT the inventory item and POST the offer
+ * separately — this function builds the bodies.
+ */
+export function listingCreateToEbay(
+	input: ListingCreate,
+	resolved: { sku: string; policies: ListingPolicies; merchantLocationKey: string },
+): OutboundListing {
+	const inventoryItem: InventoryItem = {
+		product: {
+			title: input.title,
+			...(input.description !== undefined ? { description: input.description } : {}),
+			...(input.images.length > 0 ? { imageUrls: input.images } : {}),
+			...(input.aspects ? { aspects: input.aspects } : {}),
+			...(input.brand ? { brand: input.brand } : {}),
+			...(input.mpn ? { mpn: input.mpn } : {}),
+			...(input.epid ? { epid: input.epid } : {}),
+			...(input.upc ? { upc: input.upc } : input.gtin && /^\d{12}$/.test(input.gtin) ? { upc: [input.gtin] } : {}),
+			...(input.ean ? { ean: input.ean } : input.gtin && /^\d{13}$/.test(input.gtin) ? { ean: [input.gtin] } : {}),
+			...(input.isbn ? { isbn: input.isbn } : {}),
+		},
+		condition: CONDITION_TO_EBAY[input.condition],
+		...(input.conditionDescription !== undefined ? { conditionDescription: input.conditionDescription } : {}),
+		availability: {
+			shipToLocationAvailability: { quantity: input.quantity ?? 1 },
+			...(input.pickupAtLocation
+				? {
+						pickupAtLocationAvailability: input.pickupAtLocation.map((p) => ({
+							merchantLocationKey: p.merchantLocationKey,
+							quantity: p.quantity,
+							...(p.availabilityType ? { availabilityType: p.availabilityType } : {}),
+						})),
+					}
+				: {}),
+		},
+	};
+	const pkg = packageToEbay(input.package);
+	if (pkg) inventoryItem.packageWeightAndSize = pkg;
+
+	const marketplaceId = input.marketplace ? MARKETPLACE_TO_EBAY[input.marketplace] : DEFAULT_MARKETPLACE_ID;
+	const offerDetails: OfferDetails = {
+		sku: resolved.sku,
+		marketplaceId,
+		format: FORMAT_TO_EBAY[input.format ?? "fixed_price"],
+		pricingSummary: {
+			price: { value: toDollarString(input.price.value), currency: input.price.currency },
+		},
+		...(input.description !== undefined ? { listingDescription: input.description } : {}),
+		categoryId: input.categoryId,
+		listingPolicies: resolved.policies,
+		merchantLocationKey: resolved.merchantLocationKey,
+	};
+
+	return { inventoryItem, offerDetails, sku: resolved.sku };
+}
+
+/** Compose patch payloads for `ListingUpdate`. eBay PUT-replaces the inventory item, PUT-updates the offer. */
+export interface UpdatePayloads {
+	inventoryItem?: InventoryItem;
+	offer?: Partial<OfferDetails>;
+}
+
+export function listingUpdateToEbay(
+	input: ListingUpdate,
+	current: { sku: string; condition: ListingCondition; quantity: number },
+): UpdatePayloads {
+	const out: UpdatePayloads = {};
+	const itemTouched = touchesInventoryItem(input);
+	if (itemTouched) {
+		const product: NonNullable<InventoryItem["product"]> = { title: input.title ?? "" };
+		if (input.title === undefined) {
+			// eBay's PUT inventory_item replaces — caller must supply title.
+			// Leaving empty makes that explicit so we don't silently wipe.
+		}
+		if (input.description !== undefined) product.description = input.description;
+		if (input.images !== undefined) product.imageUrls = input.images;
+		if (input.aspects !== undefined) product.aspects = input.aspects;
+		const inventoryItem: InventoryItem = {
+			product,
+			condition: CONDITION_TO_EBAY[current.condition],
+			availability: {
+				shipToLocationAvailability: { quantity: input.quantity ?? current.quantity },
+			},
+		};
+		if (input.conditionDescription !== undefined) inventoryItem.conditionDescription = input.conditionDescription;
+		const pkg = packageToEbay(input.package);
+		if (pkg) inventoryItem.packageWeightAndSize = pkg;
+		out.inventoryItem = inventoryItem;
+	}
+	if (input.price !== undefined) {
+		out.offer = {
+			pricingSummary: { price: { value: toDollarString(input.price.value), currency: input.price.currency } },
+		};
+	}
+	if (input.policies !== undefined) {
+		out.offer = { ...(out.offer ?? {}), listingPolicies: input.policies };
+	}
+	return out;
+}
+
+function touchesInventoryItem(u: ListingUpdate): boolean {
+	return (
+		u.title !== undefined ||
+		u.description !== undefined ||
+		u.images !== undefined ||
+		u.aspects !== undefined ||
+		u.conditionDescription !== undefined ||
+		u.quantity !== undefined ||
+		u.package !== undefined
+	);
+}
+
+/**
+ * Build a flipagent `Listing` from the eBay-side bits. `listingId` is
+ * absent until the offer is published. `offerId` is the orchestrator's
+ * handle for subsequent updates.
+ */
+export interface InboundListing {
+	sku: string;
+	inventoryItem: InventoryItem;
+	offer?: { offerId?: string; listing?: { listingId?: string } } & Partial<OfferDetails>;
+	createdAt?: string;
+	updatedAt?: string;
+	marketplace?: Marketplace;
+}
+
+export function ebayToListing(parts: InboundListing): Listing {
+	const { inventoryItem, offer, sku } = parts;
+	const ebayCondition = inventoryItem.condition;
+	const condition: ListingCondition = ebayCondition
+		? (CONDITION_FROM_EBAY[ebayCondition] ?? "used_good")
+		: "used_good";
+	const quantity = inventoryItem.availability?.shipToLocationAvailability?.quantity ?? 0;
+	const ebayFormat = offer?.format;
+	const format: ListingFormat = ebayFormat ? (FORMAT_FROM_EBAY[ebayFormat] ?? "fixed_price") : "fixed_price";
+
+	const listingId = offer?.listing?.listingId ?? "";
+	const status: ListingStatus = inferStatus({ listingId, quantity, withdrawn: !!offer?.listing && !listingId });
+
+	const out: Listing = {
+		id: listingId,
+		sku,
+		marketplace: parts.marketplace ?? "ebay",
+		status,
+		title: inventoryItem.product?.title ?? "",
+		price: priceFromOffer(offer),
+		quantity,
+		condition,
+		categoryId: offer?.categoryId ?? "",
+		images: inventoryItem.product?.imageUrls ?? [],
+		format,
+		createdAt: parts.createdAt ?? new Date().toISOString(),
+	};
+	if (offer?.offerId) out.offerId = offer.offerId;
+	if (inventoryItem.product?.description) out.description = inventoryItem.product.description;
+	if (inventoryItem.conditionDescription) out.conditionDescription = inventoryItem.conditionDescription;
+	if (inventoryItem.product?.aspects) out.aspects = inventoryItem.product.aspects as ListingAspects;
+	const pkg = packageFromEbay(inventoryItem.packageWeightAndSize);
+	if (pkg) out.package = pkg;
+	if (offer?.listingPolicies) out.policies = offer.listingPolicies;
+	if (offer?.merchantLocationKey) out.merchantLocationKey = offer.merchantLocationKey;
+	if (parts.updatedAt) out.updatedAt = parts.updatedAt;
+	if (listingId) out.url = `https://www.ebay.com/itm/${listingId}`;
+
+	// Catalog identifiers — echo back on the inbound shape so callers
+	// see what eBay actually stored.
+	const product = inventoryItem.product;
+	if (product?.brand) out.brand = product.brand;
+	if (product?.mpn) out.mpn = product.mpn;
+	if (product?.epid) out.epid = product.epid;
+	if (product?.upc?.[0]) out.upc = product.upc;
+	if (product?.ean?.[0]) out.ean = product.ean;
+	if (product?.isbn?.[0]) out.isbn = product.isbn;
+	const gtin = product?.upc?.[0] ?? product?.ean?.[0] ?? product?.isbn?.[0];
+	if (gtin) out.gtin = gtin;
+
+	return out;
+}
+
+function priceFromOffer(offer: InboundListing["offer"]): Listing["price"] {
+	const price = offer?.pricingSummary?.price;
+	if (!price) return { value: 0, currency: "USD" };
+	return {
+		value: toCents(price.value),
+		currency: price.currency ?? "USD",
+	};
+}
+
+function inferStatus(input: { listingId: string; quantity: number; withdrawn: boolean }): ListingStatus {
+	if (input.withdrawn) return "withdrawn";
+	if (!input.listingId) return "draft";
+	if (input.quantity === 0) return "out_of_stock";
+	return "active";
 }

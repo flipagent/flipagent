@@ -147,7 +147,7 @@ export interface SelectTransportContext {
 	 * REST capabilities with `needsAuth: "app"` are unreachable — auto
 	 * falls through to scrape (or throws if no scrape available, e.g.
 	 * markets.taxonomy). Self-hosters who run flipagent without
-	 * configuring eBay creds should still get a working `/v1/buy/*`
+	 * configuring eBay creds should still get a working `/v1/items + /v1/categories + /v1/products`
 	 * read path via scrape.
 	 */
 	appCredsConfigured?: boolean;

@@ -1,9 +1,9 @@
 # flipagent
 
-ONE API for online reselling. The hosted service at `api.flipagent.dev`
-gives AI agents and apps a unified surface for the full reseller cycle
-(discovery → evaluation → buying → listing → fulfillment → finance)
-across marketplaces. Today: eBay (REST mirror + scrape fallback). Soon:
+The API to resell on eBay for AI agents. The hosted service at
+`api.flipagent.dev` covers the full reseller cycle (search →
+evaluation → buying → listing → fulfillment → finance) under one
+key. Today: eBay (REST + Trading XML + scrape + bridge). Soon:
 Amazon, Mercari, Poshmark.
 
 The whole API server is OSS (recall.ai-style: open backend, hosted
@@ -18,14 +18,14 @@ any other vendor-side concern.
 
 | Path | Name | License | Role |
 |---|---|---|---|
-| `packages/types` | `@flipagent/types` | MIT | TypeBox schemas for flipagent's own `/v1/*` — `evaluate`, `discover`, `ship` (intelligence layer) plus errors, tier, billing, keys, takedown, health |
-| `packages/types/ebay` | `@flipagent/types/ebay` | MIT | TypeBox schemas mirroring eBay REST shapes — `/buy` (Browse + Marketplace Insights) and `/sell` (Inventory, Fulfillment) subpaths |
-| `packages/ebay-scraper` | `@flipagent/ebay-scraper` | MIT | eBay HTML parsers + plain-HTTP fetcher (BYO proxy) |
-| `packages/sdk` | `@flipagent/sdk` | MIT | Typed client. Marketplace passthrough namespaces (`listings`, `sold`, `buy.order`, `inventory`, `fulfillment`, `finance`, `markets`, `forwarder`) plus flipagent intelligence (`evaluate`, `discover`, `ship`, `expenses`) and ops (`webhooks`, `capabilities`). |
-| `packages/mcp` | `flipagent-mcp` | MIT | MCP server — exposes eBay tools + deal-finding tools to Claude Desktop / Cursor / Cline. |
+| `packages/types` | `@flipagent/types` | MIT | TypeBox schemas for the flipagent-native `/v1/*` surface. One file per resource (`items`, `listings`, `purchases`, `sales`, `payouts`, `messages`, `offers`, `disputes`, `policies`, `evaluate`, `ship`, `expenses`, …). |
+| `packages/types/ebay` | `@flipagent/types/ebay` | MIT | TypeBox schemas mirroring eBay's REST shapes (`buy`, `sell`, `commerce`). Used by the api internally for upstream wire shape, and by the Chrome extension + MCP mock for typing eBay-shape responses. |
+| `packages/ebay-scraper` | `@flipagent/ebay-scraper` | MIT | Pure eBay HTML parsers (no fetcher, no DB). The fetcher + vendor dispatch lives in `packages/api/src/services/ebay/scrape/`. |
+| `packages/sdk` | `@flipagent/sdk` | MIT | Typed thin client for `api.flipagent.dev`. Namespaces match the route resources: `items`, `listings`, `purchases`, `sales`, `payouts`, `transactions`, `disputes`, `policies`, `categories`, `products`, `forwarder`, `evaluate`, `ship`, `expenses`, `webhooks`, `capabilities`. |
+| `packages/mcp` | `flipagent-mcp` | MIT | MCP server — exposes flipagent tools (search, evaluate, buy, list, …) to Claude Desktop / Cursor / Cline. |
 | `packages/cli` | `flipagent-cli` | MIT | One-command MCP setup. Detects Claude Desktop / Cursor and writes the `flipagent` server entry. `npx -y flipagent-cli init --mcp --keys`. |
-| `packages/extension` | `@flipagent/extension` | MIT | Chrome extension — local executor for the bridge surfaces (`/v1/buy/order/*`, `/v1/forwarder/*`, `/v1/browser/*`). Runs jobs inside the user's existing Chrome (their cookies, their marketplace logins). |
-| `packages/api` | `@flipagent/api` | FSL-1.1-ALv2 (private — not published, source on GitHub; converts to Apache 2.0 two years after each release) | Hono backend: unified API surface (eBay-compat + `/v1/*`), scraping, scoring, auth, billing. |
+| `packages/extension` | `@flipagent/extension` | MIT | Chrome extension — local executor for the bridge surfaces (`/v1/purchases`, `/v1/forwarder/*`, `/v1/browser/*`). Runs jobs inside the user's existing Chrome (their cookies, their marketplace logins). |
+| `packages/api` | `@flipagent/api` | FSL-1.1-ALv2 (private — not published, source on GitHub; converts to Apache 2.0 two years after each release) | Hono backend: the unified `/v1/*` surface, scraping, scoring, auth, billing. |
 | `apps/docs` | `@flipagent/docs` | proprietary (All Rights Reserved) | flipagent.dev marketing + dashboard site (Astro static). Source visible for transparency; redistribution / rebrand not permitted. |
 
 ## Dependency direction
@@ -53,87 +53,62 @@ get the same scoring without re-implementing it.
 
 ## Structural rules
 
-- **Marketplace-agnostic surface.** Endpoints live under `/v1/*` in
-  three layers. The mirror layer mirrors eBay's REST path shape
-  verbatim (`/v1/buy/*`, `/v1/sell/*`, `/v1/commerce/*`,
-  `/v1/post-order/*`) so agents can read eBay docs and call our routes
-  one-to-one.
-  - Marketplace mirror — Buy:
-    sourcing reads (`/v1/buy/browse/item_summary/search`,
-    `/v1/buy/browse/item/{itemId}`,
-    `/v1/buy/browse/item/get_items`,
-    `/v1/buy/browse/item/get_items_by_item_group`),
-    sold listings (`/v1/buy/marketplace_insights/item_sales/search`),
-    buy ordering (`/v1/buy/order/*` — single surface, REST + bridge transports),
-    bulk ops (`/v1/buy/feed/*`, `/v1/buy/deal/*`),
-    buyer-side bidding (`/v1/buy/offer/*`).
-  - Marketplace mirror — Sell:
-    listing CRUD (`/v1/sell/inventory/*`),
-    order ops (`/v1/sell/fulfillment/*`),
-    payouts (`/v1/sell/finances/*`),
-    selling policies (`/v1/sell/account/{fulfillment,payment,return}_policy`),
-    seller marketing (`/v1/sell/marketing/*`),
-    Best Offer outbound (`/v1/sell/negotiation/*`),
-    seller perf (`/v1/sell/analytics/*`, `/v1/sell/compliance/*`,
-    `/v1/sell/recommendation/*`),
-    bulk ops (`/v1/sell/feed/*`),
-    shipping labels (`/v1/sell/logistics/*`),
-    eBay Stores (`/v1/sell/stores/*`),
-    sell metadata (`/v1/sell/metadata/*`).
-  - Marketplace mirror — Commerce (cross-cutting):
-    taxonomy (`/v1/commerce/taxonomy/*`),
-    catalog (`/v1/commerce/catalog/*`),
-    connected user (`/v1/commerce/identity/*`),
-    translation (`/v1/commerce/translation/*`).
-  - Marketplace mirror — Post-order:
-    returns/cases/cancellations/inquiries/issues (`/v1/post-order/*`).
-  - Trading API XML wrappers exposed as JSON (no REST equivalent on
-    eBay): `/v1/messages`, `/v1/best-offer` (inbound Best Offer
-    respond), `/v1/feedback`.
-  - flipagent intelligence — `/v1/evaluate`, `/v1/discover`,
-    `/v1/ship`, `/v1/expenses`, `/v1/trends`.
-  - Forwarder ops (provider-namespaced; used in both buy + sell flows):
-    `/v1/forwarder/{provider}/*`.
-  - Account/ops — `/v1/{keys,billing,connect,me,takedown,capabilities,health}`.
-  - Operator (`requireAdmin` = session + `user.role==='admin'`):
-    `/v1/admin/{users,grants,keys,stats}`. Bootstrap by adding emails
-    to `ADMIN_EMAILS` env — Better-Auth's user-create hook +
-    `requireSession` reconcile `user.role` on next visit. Admin tier /
-    role / credit overrides never touch Stripe — they're operator
-    actions independent of subscription state. Credit overrides go
-    through the append-only `credit_grants` ledger (positive = bonus,
-    negative = clawback, with optional `expiresAt`); `snapshotUsage`
-    folds active grants into `creditsLimit`.
-  - Agent plumbing — `/v1/bridge` (extension wire protocol),
-    `/v1/browser` (browser-agent integration), `/v1/notifications`
-    (eBay Trading inbound webhook), `/v1/webhooks` (outbound dispatch
-    to user-registered endpoints).
-  `/v1/buy/order/*` is the single Buy Order surface with two
-  first-class transports — `rest` and `bridge` — selected by
-  `selectTransport` per the capability matrix + `?transport=`
-  override + `EBAY_ORDER_API_APPROVED`. New marketplaces (Amazon,
-  Mercari, …) reuse the mirror paths via a `marketplace` parameter
-  rather than path prefixes. Internally, the REST passthrough
-  rewrites our `/v1/<group>/<resource>/...` to eBay's
-  `/<group>/<resource>/v1/...` shape (the per-API version segment
-  shifts from prefix to between resource and operation) — see
-  PATH_MAP in `packages/api/src/services/ebay/rest/client.ts`.
-- **Provider / resource / route layering.** The eBay provider lives at
-  `packages/api/src/services/ebay/{rest,scrape,bridge,trading}/` —
-  one folder per transport, all eBay-specific code and only that.
-  Resource services at `services/<resource>/*` (listings, match,
-  inventory, …) are marketplace-agnostic business logic; they pick a
-  transport via `services/shared/transport.ts` (`selectTransport` +
-  `RESOURCE_TRANSPORTS` capability matrix) and dispatch into the
-  provider. Routes at `routes/v1/*` validate input, call the
-  resource service, render headers via `renderResultHeaders`. Every
-  resource service returns the shared `FlipagentResult<T>` envelope
-  from `services/shared/result.ts`. Cross-cutting cache wrapping is
-  `services/shared/with-cache.ts`. Future Amazon / Mercari adapters
+- **Marketplace-agnostic, flipagent-native surface.** Endpoints live
+  under `/v1/<resource>` only. Every route has a flipagent shape with
+  cents-int Money, ISO timestamps, lowercase status enums, and a
+  `marketplace` discriminator on every record. New marketplaces
+  (Amazon, Mercari, …) reuse the same paths via the `marketplace`
+  parameter rather than path prefixes.
+
+  Resources, by group:
+
+  - **Marketplace data (read)** — `/v1/{items,categories,products,charities,media,featured}`
+  - **My side (write)** — `/v1/{listings,listings/bulk,listing-groups,locations,purchases,sales}`
+  - **Money + comms + disputes** —
+    `/v1/{payouts,transactions,transfers,messages,offers,feedback,disputes,policies,violations,recommendations,marketplaces}`
+  - **Intelligence** — `/v1/{evaluate,ship,expenses,trends}`
+  - **Marketing + storefront** — `/v1/{promotions,markdowns,ads,store,analytics,feeds,bids,translate,labels}`
+  - **My eBay surfaces** — `/v1/me/seller`, `/v1/me/{selling,buying}`, `/v1/{watching,saved-searches}`
+  - **Account / ops** — `/v1/{forwarder,connect,me,keys,billing,health,capabilities,takedown,admin}`
+  - **Agent plumbing** — `/v1/{bridge,browser,notifications,webhooks}`
+
+  Operator routes (`requireAdmin` = session + `user.role==='admin'`):
+  `/v1/admin/{users,grants,keys,stats}`. Bootstrap by adding emails
+  to `ADMIN_EMAILS` env — Better-Auth's user-create hook +
+  `requireSession` reconcile `user.role` on next visit. Admin tier /
+  role / credit overrides never touch Stripe — they're operator
+  actions independent of subscription state. Credit overrides go
+  through the append-only `credit_grants` ledger (positive = bonus,
+  negative = clawback, with optional `expiresAt`); `snapshotUsage`
+  folds active grants into `creditsLimit`.
+
+- **Provider / resource / route layering.** The eBay provider lives
+  at `packages/api/src/services/ebay/{rest,scrape,bridge,trading}/`
+  — one folder per transport, all eBay-specific code and only that.
+  REST is split into two clients: `rest/user-client.ts` (`sellRequest`,
+  user OAuth) and `rest/app-client.ts` (`appRequest`, app credential).
+  Resource services at `services/<resource>/*` (items, listings,
+  purchases, sales, money, marketing/{promotions,ads,markdowns,reports},
+  …) are marketplace-agnostic business logic; transport-pluggable
+  resources pick a transport via `services/shared/transport.ts`
+  (`selectTransport` + `RESOURCE_TRANSPORTS` capability matrix) and
+  dispatch into the eBay provider folders. Routes at `routes/v1/*`
+  validate input via TypeBox, call the resource service, and render
+  cache/source headers via `renderResultHeaders` from
+  `services/shared/headers.ts`. Future Amazon / Mercari adapters
   drop in as `services/amazon/`, `services/mercari/` siblings of
   `services/ebay/`, with their own capability matrices.
+
+- **One file per route resource.** `routes/v1/<resource>.ts` mounts
+  on `/v1/<resource>`, one mount per prefix in `routes/v1/index.ts`.
+  No grab-bag files (no `extras-*.ts`, no `marketing-*.ts`). Cross-prefix
+  routes (e.g. `/policies/{id}/transfer` lives with `/policies` even
+  though the underlying eBay endpoint is sell/account) are merged
+  into the owning resource's file.
+
 - **OSS code never imports `apps/docs/*`.** Docs site is closed; never
   reach into it from packages.
+
 - **Scraping is OSS, the vendor creds are env.** `@flipagent/ebay-scraper`
   ships pure parsers. The fetch path (vendor dispatcher) lives in
   `packages/api/src/services/ebay/scrape/` and is OSS too; the shared
@@ -148,30 +123,25 @@ get the same scoring without re-implementing it.
   drop an adapter at
   `packages/api/src/services/ebay/scrape/scraper-api/<vendor>.ts`
   plus a case in the dispatcher.
+
 - **SDK is a hand-rolled thin client.** `createFlipagentClient` returns
-  one client with ergonomic namespaces that internally call the
-  verbose `/v1/*` paths. Three groups:
-  marketplace passthrough (`listings`, `sold`, `buy.order`, `inventory`,
-  `fulfillment`, `finance`, `markets`, `forwarder`), flipagent
-  intelligence (`evaluate`, `discover`, `ship`, `expenses`), and
-  ops (`webhooks`, `capabilities`).
-  Namespace names don't map 1:1 to URL segments — e.g. `client.listings`
-  hits `/v1/buy/browse/*`, `client.sold` hits
-  `/v1/buy/marketplace_insights/item_sales/search`, `client.markets`
-  splits into `taxonomy` (→ `/v1/commerce/taxonomy/*`) and `policies`
-  (→ `/v1/sell/account/{fulfillment,payment,return}_policy`). No
-  vendored eBay client in the user-facing path — the SDK speaks HTTPS
-  to `api.flipagent.dev` directly. New endpoints get a typed namespace
-  on the SDK; the underlying `client.http.{get,post,...}` is the escape
-  hatch.
+  one client whose namespaces map one-to-one to the route resources
+  above (`client.items` → `/v1/items`, `client.listings` → `/v1/listings`,
+  `client.purchases` → `/v1/purchases`, `client.payouts` → `/v1/payouts`,
+  …). No vendored eBay client in the user-facing path — the SDK speaks
+  HTTPS to `api.flipagent.dev` directly. New endpoints get a typed
+  namespace on the SDK; the underlying `client.http.{get,post,...}`
+  is the escape hatch.
+
 - **Cents in code, dollar strings on the wire.** Internal Listing /
   margin / scoring use cents-denominated integers. eBay's API uses
-  string dollars on the wire; convert at the resource-service boundary
-  (e.g. `services/evaluate/adapter.ts`,
-  `services/observations/index.ts`,
-  `services/notifications/ebay-trading.ts`).
+  string dollars on the wire; the shared converters live in
+  `services/shared/money.ts` (`toCents`, `toDollarString`, `moneyFrom`,
+  `moneyFromOrZero`). Apply at the resource-service boundary.
+
 - **TypeBox for schemas.** Hono routes validate request bodies via
   `Value.Errors(Schema, body)`. Zod is banned in agent/tool surfaces.
+
 - **Auth is X-API-Key or Authorization: Bearer.** Plaintext shown once
   at creation; only the sha256 hash persists. Tier limits enforced per
   calendar month (UTC) via `usage_events` count.
@@ -183,54 +153,54 @@ get the same scoring without re-implementing it.
 `SCRAPER_API_VENDOR` (default `oxylabs`) plus `SCRAPER_API_USERNAME` /
 `SCRAPER_API_PASSWORD`. Without those the scrape paths still work for
 small-volume use but datacenter HTTP responses degrade quickly under
-sustained load. Stripe billing is
-opt-in: set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`STRIPE_PRICE_HOBBY`, `STRIPE_PRICE_STANDARD`, `STRIPE_PRICE_GROWTH`
-together or not at all — `/v1/billing/*` returns 503 when any are
-missing.
+sustained load. Stripe billing is opt-in: set `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_HOBBY`, `STRIPE_PRICE_STANDARD`,
+`STRIPE_PRICE_GROWTH` together or not at all — `/v1/billing/*`
+returns 503 when any are missing.
 
 eBay OAuth passthrough is opt-in too: set `EBAY_CLIENT_ID`,
 `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` together or not at all —
-`/v1/connect/ebay/*`, every `/sell/*`, and `/commerce/*` route returns
-503 when any are missing. Default `EBAY_BASE_URL=https://api.ebay.com`
-(swap to sandbox by setting `EBAY_BASE_URL` + `EBAY_AUTH_URL` to
-`*.sandbox.ebay.com`).
+`/v1/connect/ebay/*` and any sell-side route that needs user OAuth
+(listings, sales, payouts, transactions, transfers, policies, …)
+returns 503 when any are missing. Default
+`EBAY_BASE_URL=https://api.ebay.com` (swap to sandbox by setting
+`EBAY_BASE_URL` + `EBAY_AUTH_URL` to `*.sandbox.ebay.com`).
 
-`/v1/buy/order/*` (Buy Order API mirror) is single surface with two
-**first-class** transports — `rest` and `bridge`. Both produce the
-same eBay-shape `CheckoutSession` / `EbayPurchaseOrder` response;
-neither is a "fallback" for the other. `selectTransport` (in
-`services/shared/transport.ts`) picks one given the capability
-matrix + per-call `?transport=` override + env flags
+`/v1/purchases` is the single Buy Order surface with two **first-class**
+transports — `rest` and `bridge`. Both produce the same flipagent
+`Purchase` shape; neither is a "fallback" for the other.
+`selectTransport` (in `services/shared/transport.ts`) picks one given
+the capability matrix + per-call `?transport=` override + env flag
 (`EBAY_ORDER_API_APPROVED`). REST requires the env flag + the api
-key's eBay OAuth binding; bridge requires a paired Chrome
-extension. The 2-stage flow (`initiate` → `place_order`) is fully
-implemented in both transports. Multi-stage update endpoints
-(`shipping_address`, `payment_instrument`, `coupon`) only work in
-REST transport — bridge uses the buyer's stored eBay defaults so
-those return 412 with a clear pointer to switch transport.
+key's eBay OAuth binding; bridge requires a paired Chrome extension.
+The 2-stage flow (`initiate` → `place_order`) is fully implemented in
+both transports. Multi-stage update endpoints (`shipping_address`,
+`payment_instrument`, `coupon`) only work in REST transport — bridge
+uses the buyer's stored eBay defaults so those return 412 with a
+clear pointer to switch transport.
 
 **Bridge-driven non-buy ops have their own surface, not a generic
 `/v1/orders/*` queue.** Each source the bridge handles maps to a
 typed public surface:
 
-  - `/v1/buy/order/*` — eBay buy (REST + bridge transports, eBay shape)
+  - `/v1/purchases` — eBay buy (REST + bridge transports)
   - `/v1/forwarder/{provider}/*` — package forwarder ops (Planet
     Express today; used in both buy + sell flows so it sits at top
-    level, not under `/buy/` or `/sell/`)
+    level)
   - `/v1/browser/*` — synchronous DOM primitives (browser_op)
   - control / extension reload — internal admin only
 
 `/v1/bridge/*` and `/v1/browser/*` are NOT the same thing — different
 layers serving different audiences:
+
   - `/v1/bridge/*` = the wire protocol the Chrome extension uses to
     talk to flipagent (token issuance + longpoll + result reporting +
     login-status). Audience: the extension itself.
-  - `/v1/browser/*`, `/v1/buy/order/*`, `/v1/forwarder/*`, etc. =
+  - `/v1/browser/*`, `/v1/purchases`, `/v1/forwarder/*`, etc. =
     user-facing surfaces that internally queue work via the bridge.
     Audience: agents / SDK callers.
 
-The shared bridge queue infra lives in `services/bridge-jobs/queue.ts`.
+The shared bridge queue infra lives in `services/bridge-jobs.ts`.
 Each public surface calls `createBridgeJob` with its own `source` value;
 the bridge route maps source → task name via
 `services/ebay/bridge/tasks.ts`.
@@ -302,62 +272,68 @@ the bridge route maps source → task name via
 
 ## When extending
 
-- New eBay endpoint (any transport) → 1) add a one-line entry to
-  `RESOURCE_TRANSPORTS` in `services/shared/transport.ts` declaring
-  which transports the resource supports + their auth/task/call
-  needs. 2) add or extend a resource service under
-  `services/<resource>/*` that calls `selectTransport(...)` and
-  dispatches into the eBay provider folders below. 3) add a thin
-  route in `routes/v1/<resource>.ts`. 4) Schema in
-  `packages/types/src/ebay/{buy,sell}.ts`, SDK namespace, MCP tool
-  as needed.
-- **eBay REST passthrough (PATH_MAP).** When the resource is a thin
-  proxy to `api.ebay.com` REST, append a PATH_MAP entry in
-  `services/ebay/rest/client.ts` (one line, regex → eBay path
-  prefix) and have the route mount `ebayPassthroughUser` (user
-  OAuth) or `ebayPassthroughApp` (app credential). Cached
-  read-only resources go through the `cacheFirst` middleware from
-  `middleware/cache-first.ts`.
+- **New flipagent resource.**
+  1. Add a TypeBox schema file at `packages/types/src/<resource>.ts`
+     (request/response shapes + list query) and re-export from
+     `packages/types/src/index.ts`.
+  2. Add a service at `packages/api/src/services/<resource>/operations.ts`
+     (pure logic; takes a context object with `apiKeyId` + optional
+     `marketplace`, returns flipagent-shape objects). For
+     transport-pluggable resources, call `selectTransport(...)` from
+     `services/shared/transport.ts`.
+  3. Add a route at `packages/api/src/routes/v1/<resource>.ts` that
+     validates input via `tbBody` / `tbCoerce`, calls the service,
+     and renders headers via `renderResultHeaders` when applicable.
+     Mount it in `routes/v1/index.ts` exactly once.
+  4. Add an SDK namespace at `packages/sdk/src/<resource>.ts` and
+     wire it into `createFlipagentClient`.
+  5. Add a vitest in `packages/api/test/services/<resource>/`.
+
+- **eBay REST call.** Use the shared clients in
+  `services/ebay/rest/`: `sellRequest` (user OAuth) for sell-side
+  routes that act on the caller's eBay account, or `appRequest` (app
+  credential) for public marketplace reads. Both throw `EbayApiError`
+  on non-2xx so the route boundary maps both uniformly.
+
 - **eBay Trading API call (XML/SOAP).** Add a service in
   `services/ebay/trading/` (use `client.ts` helpers `tradingCall`,
-  `parseTrading`, `escapeXml`). Add a v1 route that wraps it as
-  JSON; wrap the handler in `withTradingAuth(...)` from
+  `parseTrading`, `escapeXml`). Add a v1 route that wraps it as JSON;
+  wrap the handler in `withTradingAuth(...)` from
   `middleware/with-trading-auth.ts` — it resolves user OAuth,
   surfaces 401 `ebay_account_not_connected`, maps `TradingApiError`
-  uniformly. See `routes/v1/{messages,best-offer,feedback}.ts`.
+  uniformly. See `routes/v1/{messages,offers,feedback}.ts`.
+
 - **eBay bridge task.** Add a constant to `BRIDGE_TASKS` in
   `services/ebay/bridge/tasks.ts`, declare bridge capability in
   `RESOURCE_TRANSPORTS`, and have the resource service queue the
-  task through the existing bridge queue (`services/bridge-jobs/queue`).
+  task through the existing bridge queue (`services/bridge-jobs.ts`).
   The Chrome extension picks it up via `/v1/bridge/poll`.
-- **Service-result envelope.** Every resource service returns
-  `FlipagentResult<T> = { body, source, fromCache, cachedAt? }` from
-  `services/shared/result.ts`. `source` is one of
+
+- **Service-result envelope (transport-pluggable resources).** When a
+  resource has multiple transports (rest + scrape + bridge + trading),
+  the service returns `FlipagentResult<T> = { body, source, fromCache,
+  cachedAt? }` from `services/shared/result.ts`. `source` is one of
   `"rest" | "scrape" | "bridge" | "trading" | "llm"` — the data
-  origin, never `"cache:..."` (cache hits flip `fromCache`).
-  Routes call `renderResultHeaders(c, result)` from
-  `services/shared/headers.ts` to set `X-Flipagent-Source` +
-  `X-Flipagent-From-Cache` + `X-Flipagent-Cached-At`. Wrap upstream
+  origin, never `"cache:..."` (cache hits flip `fromCache`). Routes
+  call `renderResultHeaders(c, result)` to set `X-Flipagent-Source`
+  + `X-Flipagent-From-Cache` + `X-Flipagent-Cached-At`. Wrap upstream
   calls in `withCache(args, fetcher)` from
   `services/shared/with-cache.ts` — one canonical cache-or-fetch
-  flow with built-in upstream timeout. Pure-passthrough cached
-  reads (taxonomy, catalog, sell-metadata) use the `cacheFirst()`
-  middleware from `middleware/cache-first.ts`, which itself
-  delegates to `withCache` so internals stay aligned.
-- New flipagent-specific endpoint → put it under `/v1/`. Schema in
-  `packages/types/src/` — `evaluate.ts` / `discover.ts` / `ship.ts` /
-  `expenses.ts` for the intelligence layer, `flipagent.ts` for
-  account/ops, or a new file matching the route namespace.
-- New scoring algorithm → goes to `packages/api/src/services/quant/`
-  (low-level stats, scoring, margin) or `forwarder/` (shipping rates).
-  Pure functions, no I/O, cents-denominated. Add a vitest in
-  `packages/api/test/services/`.
-- New scraper helper → goes to `@flipagent/ebay-scraper` only if it's
-  pure parsing. Anything that talks to a vendor scraper or DB belongs
-  in `packages/api/src/services/ebay/scrape/`.
-- New marketplace adapter (Amazon, Mercari, etc.) → *future*; siblings
-  of `services/ebay/`, e.g. `services/amazon/`, `services/mercari/`,
-  with their own provider folders + capability matrix entries in
-  `services/shared/transport.ts`. Register routes under the existing
-  marketplace-mirror surface (`/v1/buy/*`, `/v1/sell/*`, etc.) with a
-  `marketplace` parameter, not new path prefixes.
+  flow with built-in upstream timeout.
+
+- **New scoring algorithm** → goes to
+  `packages/api/src/services/quant/` (low-level stats, scoring,
+  margin) or `forwarder/` (shipping rates). Pure functions, no I/O,
+  cents-denominated. Add a vitest in
+  `packages/api/test/services/<area>/`.
+
+- **New scraper helper** → goes to `@flipagent/ebay-scraper` only if
+  it's pure parsing. Anything that talks to a vendor scraper or DB
+  belongs in `packages/api/src/services/ebay/scrape/`.
+
+- **New marketplace adapter (Amazon, Mercari, etc.)** → *future*;
+  siblings of `services/ebay/`, e.g. `services/amazon/`,
+  `services/mercari/`, with their own provider folders + capability
+  matrix entries in `services/shared/transport.ts`. Existing routes
+  pick the right provider via the `marketplace` parameter — no new
+  path prefixes.

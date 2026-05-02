@@ -12,7 +12,7 @@ export const expensesSummaryInput = Type.Object(
 );
 
 export const expensesSummaryDescription =
-	"Aggregated cost-side metrics for the window. Calls GET /v1/expenses/summary. Returns counts + costs (acquisition + forwarder + expense). For full P&L combine with /v1/sell/finances/transaction (eBay Finances mirror). Aggregates across every API key belonging to the same owner.";
+	"Aggregated cost-side metrics for the window. Calls GET /v1/expenses/summary. Returns counts + costs (acquisition + forwarder + expense). For full P&L combine with /v1/transactions (eBay Finances normalized). Aggregates across every API key belonging to the same owner.";
 
 export async function expensesSummaryExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const client = getClient(config);

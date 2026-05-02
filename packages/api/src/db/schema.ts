@@ -23,7 +23,7 @@ export const takedownStatusEnum = pgEnum("takedown_status", ["pending", "approve
  * closes the P&L loop without polling eBay Finances.
  */
 export const expenseEventKindEnum = pgEnum("expense_event_kind", ["purchased", "forwarder_fee", "expense", "sold"]);
-export const computeJobKindEnum = pgEnum("compute_job_kind", ["evaluate", "discover"]);
+export const computeJobKindEnum = pgEnum("compute_job_kind", ["evaluate"]);
 export const computeJobStatusEnum = pgEnum("compute_job_status", [
 	"queued",
 	"running",
@@ -243,10 +243,11 @@ export const priceHistory = pgTable(
 );
 
 /**
- * Cached eBay-compat proxy responses. Distinct from `listingsCache`
- * (the per-listing structured cache) — this stores the full envelope that
- * a `/buy/browse/v1/*` endpoint returned, so a repeat call within TTL can
- * be served verbatim. Key by (path, queryHash).
+ * Cached upstream response envelopes for read-heavy resources (items,
+ * categories, products). Anti-thundering-herd, not archival —
+ * `withCache` reads/writes here keyed by (path, queryHash) with a
+ * short TTL. Distinct from `listingsCache`, which holds the
+ * per-listing structured cache.
  */
 export const proxyResponseCache = pgTable(
 	"proxy_response_cache",
@@ -266,10 +267,10 @@ export const proxyResponseCache = pgTable(
 );
 
 /**
- * Operator opt-out requests for the eBay-compat proxy. ToS hygiene.
- * Sellers (or anyone else) can ask us to stop serving cached / scraped
- * data for a specific itemId. Status starts pending; manual review
- * promotes to approved (cache flushed, blocklisted) or rejected.
+ * Operator opt-out requests. ToS hygiene. Sellers (or anyone else)
+ * can ask us to stop serving cached / scraped data for a specific
+ * itemId. Status starts pending; manual review promotes to approved
+ * (cache flushed, blocklisted) or rejected.
  */
 export const takedownRequests = pgTable(
 	"takedown_requests",
@@ -447,8 +448,8 @@ export const userEbayOauth = pgTable(
  * expenses (packaging, supplies, off-platform ad spend). All amounts
  * are positive magnitudes; kind disambiguates.
  *
- * Sales / refunds / eBay fees live in eBay's ledger — read via the
- * existing `/v1/sell/finances/*` mirror. A future `/v1/portfolio/pnl`
+ * Sales / refunds / eBay fees live in eBay's ledger — read via
+ * `/v1/payouts` + `/v1/transactions`. A future `/v1/portfolio/pnl`
  * endpoint will join the two server-side for full P&L; for now
  * `/v1/expenses/summary` returns only the cost side.
  *
@@ -523,7 +524,7 @@ export const marketplaceNotifications = pgTable(
  * Bridge-job queue. One row per unit of work the bridge client (today:
  * the flipagent Chrome extension) executes inside the user's real
  * browser session. `source` discriminates the surface: `ebay` for
- * `/v1/buy/order/*` purchases, `planetexpress` for forwarder ops,
+ * `/v1/purchases` buys, `planetexpress` for forwarder ops,
  * `browser` for `/v1/browser/*` DOM queries, `control` for extension-
  * reload jobs. Lifecycle: API queues a row → bridge client claims via
  * /v1/bridge/poll → executes → reports outcome via /v1/bridge/result.
@@ -536,10 +537,10 @@ export const marketplaceNotifications = pgTable(
  * starts the lease — if no result lands within `BRIDGE_LEASE_SECONDS` the
  * job becomes claimable again.
  *
- * Naming: when `source = 'ebay'` this row IS an eBay purchase order, and
- * `/v1/buy/order/*` renders it via `EbayPurchaseOrder` shape — that's why
- * the linked column on `buy_checkout_sessions` is still
- * `purchase_order_id` (the link is purchase-order-specific by context).
+ * Naming: when `source = 'ebay'` this row IS a purchase order, surfaced
+ * via the `Purchase` shape from `/v1/purchases/*`. The linked column
+ * on `buy_checkout_sessions` is still `purchase_order_id` (the link
+ * is purchase-order-specific by context).
  */
 export const bridgeJobs = pgTable(
 	"bridge_jobs",
@@ -583,8 +584,8 @@ export const bridgeJobs = pgTable(
 );
 
 /**
- * Buy Order checkout sessions — the bridge-implementation backing for
- * `/v1/buy/order/checkout_session/*` when EBAY_ORDER_API_APPROVED=0.
+ * Buy Order checkout sessions — bridge-implementation backing for the
+ * pre-place_order stage of `/v1/purchases` when EBAY_ORDER_API_APPROVED=0.
  *
  * eBay's Buy Order REST API has a 2-step flow: `initiate` creates a
  * session (no execution); `place_order` triggers the actual purchase.
@@ -790,9 +791,9 @@ export const webhookDeliveries = pgTable(
 );
 
 /**
- * Server-side compute job queue. Backs `/v1/evaluate/jobs/*` and
- * `/v1/discover/jobs/*` so a tab close mid-run doesn't lose the result
- * and the user can cancel cooperatively. Distinct from `bridge_jobs`
+ * Server-side compute job queue. Backs `/v1/evaluate/jobs/*` so a tab
+ * close mid-run doesn't lose the result and the user can cancel
+ * cooperatively. Distinct from `bridge_jobs`
  * (which targets the user's Chrome extension); these run inside a
  * dedicated worker container against eBay scrape + LLM filter, with
  * intermediate trace events accumulated in `trace` so a /stream

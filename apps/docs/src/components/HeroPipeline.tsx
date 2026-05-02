@@ -1,17 +1,16 @@
 /**
- * Landing-hero pipeline. Five outer tabs (Discover · Evaluate · Buy ·
- * List · Ship) wrapped in the same `ComposeCard` shell as the
- * `/dashboard` playground. Discover and Evaluate render the real
- * playground panels — when the visitor is signed in they hit the live
- * API; when logged out the panels run a canned mock pipeline that
- * traces and renders identically.
+ * Landing-hero pipeline. Four outer tabs (Evaluate · Buy · List ·
+ * Ship) wrapped in the same `ComposeCard` shell as the `/dashboard`
+ * playground. Evaluate renders the real playground panel — when the
+ * visitor is signed in it hits the live API; when logged out the
+ * panel runs a canned mock pipeline that traces and renders
+ * identically.
  *
  * Buy / List / Ship are landing-only scripted demos (the real
  * bridge/forwarder flows live in the agent / extension). They reuse
  * the same primitives — ComposeInput, ComposeFilters with FilterPills,
- * ComposeOutput, Trace, and `pg-result-*` classes — so the five tabs
- * feel like one product surface, not three "real" panels glued to
- * three "demo" panels.
+ * ComposeOutput, Trace, and `pg-result-*` classes — so the four tabs
+ * feel like one product surface.
  */
 
 import { motion } from "motion/react";
@@ -26,13 +25,13 @@ import {
 	type ComposeTab,
 } from "./compose/ComposeCard";
 import { FilterPill, type SelectOption } from "./compose/FilterPill";
-import { PlaygroundDiscover } from "./playground/PlaygroundDiscover";
 import { PlaygroundEvaluate } from "./playground/PlaygroundEvaluate";
 import { initialSteps } from "./playground/pipelines";
+import { PlaygroundSourcing } from "./playground/PlaygroundSourcing";
 import { Trace } from "./playground/Trace";
 import type { Step } from "./playground/types";
 
-type TabId = "discover" | "evaluate" | "buy" | "list" | "ship";
+type TabId = "sourcing" | "evaluate" | "buy" | "list" | "ship";
 
 const ITEM_PHOTO = "/demo/canon-50-1.png";
 const ITEM_TITLE = "Canon EF 50mm f/1.8 STM · used · with caps";
@@ -41,10 +40,14 @@ const ITEM_ID = "v1|377151909505|0";
 
 /* ------------------------------- icons ------------------------------- */
 
-const IconCompass = (
+const IconTree = (
 	<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-		<circle cx="12" cy="12" r="9" />
-		<path d="M12 5l3 7-3 7-3-7z" />
+		<circle cx="5" cy="5" r="1.5" />
+		<path d="M5 6.5v11" />
+		<path d="M5 12h7" />
+		<path d="M5 18h7" />
+		<circle cx="14" cy="12" r="1.5" />
+		<circle cx="14" cy="18" r="1.5" />
 	</svg>
 );
 const IconGauge = (
@@ -124,7 +127,7 @@ const IconShield = (
 );
 
 const TABS: ReadonlyArray<ComposeTab<TabId>> = [
-	{ id: "discover", label: "Discover", icon: IconCompass },
+	{ id: "sourcing", label: "Sourcing", icon: IconTree },
 	{ id: "evaluate", label: "Evaluate", icon: IconGauge },
 	{ id: "buy", label: "Buy", icon: IconBuy },
 	{ id: "list", label: "List", icon: IconList },
@@ -137,28 +140,18 @@ export default function HeroPipeline() {
 	const session = useSession();
 	const mockMode = !session.data?.user;
 
-	const [active, setActive] = useState<TabId>("discover");
-	const [evaluateSeed, setEvaluateSeed] = useState<string | null>(null);
+	const [active, setActive] = useState<TabId>("sourcing");
 
 	const tabsProps = useMemo(
 		() => ({ tabs: TABS, active, onChange: setActive }),
 		[active],
 	);
 
-	if (active === "discover") {
-		return (
-			<PlaygroundDiscover
-				tabsProps={tabsProps}
-				mockMode={mockMode}
-				onEvaluate={(itemId) => {
-					setEvaluateSeed(itemId);
-					setActive("evaluate");
-				}}
-			/>
-		);
+	if (active === "sourcing") {
+		return <PlaygroundSourcing tabsProps={tabsProps} mockMode={mockMode} compact />;
 	}
 	if (active === "evaluate") {
-		return <PlaygroundEvaluate tabsProps={tabsProps} mockMode={mockMode} seed={evaluateSeed} />;
+		return <PlaygroundEvaluate tabsProps={tabsProps} mockMode={mockMode} seed={null} />;
 	}
 	if (active === "buy") return <BuyStage tabsProps={tabsProps} />;
 	if (active === "list") return <ListStage tabsProps={tabsProps} />;
@@ -308,7 +301,7 @@ function Recommendation({
 
 /**
  * Sits between the outer tab strip and the input on the demo-only
- * stages (Buy / Sell / Ship). The Discover and Evaluate tabs are real
+ * stages (Buy / Sell / Ship). The Search and Evaluate tabs are real
  * — these three are scripted previews until bridge order execution,
  * publish, and forwarder dispatch ship.
  */
@@ -430,7 +423,7 @@ function BuyStage({ tabsProps }: { tabsProps: TabsProps }) {
 			{
 				key: "detail",
 				label: "Look up the listing",
-				call: { method: "GET", path: `/v1/buy/browse/item/${encodeURIComponent(ITEM_ID)}` },
+				call: { method: "GET", path: `/v1/items/${encodeURIComponent(ITEM_ID)}` },
 				result: {
 					itemId: ITEM_ID,
 					title: ITEM_TITLE,
@@ -452,10 +445,10 @@ function BuyStage({ tabsProps }: { tabsProps: TabsProps }) {
 			{
 				key: "offer",
 				label: "Place offer (auto-accept)",
-				call: { method: "POST", path: "/v1/sell/fulfillment/order" },
+				call: { method: "POST", path: "/v1/purchases" },
 				result: {
-					orderId: "ord_buy_8x21q",
-					status: "submitted",
+					id: "15-12345-67890",
+					status: "queued",
 					offerCents: 4000,
 					maxBidCents: ceiling,
 					autoAccept: autoAccept === "on",
@@ -464,12 +457,11 @@ function BuyStage({ tabsProps }: { tabsProps: TabsProps }) {
 			{
 				key: "payment",
 				label: "Confirm payment",
-				call: { method: "POST", path: "/v1/sell/finances/payments" },
+				call: { method: "POST", path: "/v1/purchases/15-12345-67890/payment" },
 				result: {
-					paymentId: "pay_ftq42",
+					paymentMethodType: "WALLET",
+					paymentMethodBrand: "PAYPAL",
 					chargedCents: 4000,
-					method: "stored_card",
-					processor: "stripe",
 				},
 			},
 			{
@@ -601,7 +593,7 @@ function ListStage({ tabsProps }: { tabsProps: TabsProps }) {
 			{
 				key: "sold",
 				label: "Find recent sales",
-				call: { method: "GET", path: "/v1/buy/marketplace_insights/item_sales/search?q=canon+ef+50mm+1.8&limit=200" },
+				call: { method: "GET", path: "/v1/items/search?status=sold?q=canon+ef+50mm+1.8&limit=200" },
 				result: {
 					itemSales: [],
 					total: 247,
@@ -624,7 +616,7 @@ function ListStage({ tabsProps }: { tabsProps: TabsProps }) {
 			{
 				key: "publish",
 				label: "Publish listing",
-				call: { method: "POST", path: "/v1/sell/inventory/inventory_item/{sku}" },
+				call: { method: "POST", path: "/v1/listings/{sku}" },
 				result: {
 					listingId: "lst_d24fa",
 					marketplace,

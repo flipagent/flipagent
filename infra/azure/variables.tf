@@ -150,8 +150,9 @@ variable "stripe_price_growth" {
   default = ""
 }
 
-# --- eBay OAuth — leave empty to ship with /sell/*, /commerce/*, /v1/connect/ebay --
-# returning 503 not_configured.
+# --- eBay OAuth — leave empty to ship with /v1/connect/ebay + every
+# sell-side route (/v1/listings, /v1/sales, /v1/payouts, /v1/transactions,
+# /v1/policies, /v1/disputes, …) returning 503 not_configured.
 
 variable "ebay_client_id" {
   description = "eBay App keyset client_id. Empty disables every OAuth-passthrough route."
@@ -190,25 +191,25 @@ variable "ebay_scopes" {
 }
 
 variable "ebay_order_api_approved" {
-  description = "Set true ONLY after eBay approves flipagent's tenant for the Buy Order API. Until then /buy/order/v1/* and /v1/* return 501."
+  description = "Set true ONLY after eBay approves flipagent's tenant for the Buy Order API. Until then /v1/purchases REST transport returns 501; bridge transport still works."
   type        = bool
   default     = false
 }
 
 variable "ebay_insights_approved" {
-  description = "Set true ONLY after eBay approves the tenant for the Marketplace Insights program (sold-listing history via REST). Without it, /v1/buy/marketplace_insights/item_sales/search falls back to scraping. Apply at developer.ebay.com → Marketplace Insights."
+  description = "Set true ONLY after eBay approves the tenant for the Marketplace Insights program (sold-listing history via REST). Without it, /v1/items/search?status=sold falls back to scraping. Apply at developer.ebay.com → Marketplace Insights."
   type        = bool
   default     = false
 }
 
 variable "ebay_catalog_approved" {
-  description = "Set true ONLY after eBay approves the tenant for the Commerce Catalog API. Without it, /v1/commerce/catalog/product/{epid} falls back to scraping /p/{epid} + a representative listing. eBay denies most apps."
+  description = "Set true ONLY after eBay approves the tenant for the Commerce Catalog API. Without it, /v1/products/{epid} falls back to scraping /p/{epid} + a representative listing. eBay denies most apps."
   type        = bool
   default     = false
 }
 
 variable "observation_enabled" {
-  description = "When true, every /v1/buy/browse/* and /v1/buy/marketplace_insights/item_sales/* response writes a row to listing_observations for long-tail historical depth + matcher fingerprinting + cross-user seller reputation. Hosted-only; self-host typically leaves off."
+  description = "When true, every /v1/items/* response writes a row to listing_observations for long-tail historical depth + matcher fingerprinting + cross-user seller reputation. Hosted-only; self-host typically leaves off."
   type        = bool
   default     = false
 }
@@ -284,13 +285,15 @@ variable "email_from" {
   default     = "flipagent <noreply@flipagent.dev>"
 }
 
-# --- LLM provider for /v1/match — leave empty to ship with /v1/match returning 503. --
-# `llm_provider` explicitly selects one of: anthropic | openai | google. With it
-# empty, the matcher picks the first provider whose API key is set
+# --- LLM provider for the same-product matcher used by /v1/evaluate. Leave
+# empty to ship with the matcher's LLM step disabled (every other route still
+# works; the composite endpoint falls back to unfiltered sold + active pools).
+# `llm_provider` explicitly selects one of: anthropic | openai | google. With
+# it empty, the matcher picks the first provider whose API key is set
 # (anthropic → openai → google).
 
 variable "llm_provider" {
-  description = "Explicit LLM selection for /v1/match. anthropic | openai | google | empty (auto)."
+  description = "Explicit LLM selection for the /v1/evaluate matcher. anthropic | openai | google | empty (auto)."
   type        = string
   default     = ""
 }
@@ -303,7 +306,7 @@ variable "anthropic_api_key" {
 }
 
 variable "anthropic_model" {
-  description = "Anthropic model ID for /v1/match (e.g. claude-haiku-4-5)."
+  description = "Anthropic model ID for the /v1/evaluate matcher (e.g. claude-haiku-4-5)."
   type        = string
   default     = ""
 }
@@ -316,7 +319,7 @@ variable "openai_api_key" {
 }
 
 variable "openai_model" {
-  description = "OpenAI model ID for /v1/match (e.g. gpt-5.4-mini)."
+  description = "OpenAI model ID for the /v1/evaluate matcher (e.g. gpt-5.4-mini)."
   type        = string
   default     = ""
 }
@@ -329,13 +332,13 @@ variable "google_api_key" {
 }
 
 variable "google_model" {
-  description = "Gemini model ID for /v1/match (e.g. gemini-2.5-flash)."
+  description = "Gemini model ID for the /v1/evaluate matcher (e.g. gemini-2.5-flash)."
   type        = string
   default     = ""
 }
 
 variable "llm_max_concurrent" {
-  description = "Per-process LLM concurrency cap. matchPool fans out N×K verify chunks under multi-cluster discover; without a cap they all hit the provider at once and the slowest queue at provider side. Set to your tier's safe in-flight limit. Default 8."
+  description = "Per-process LLM concurrency cap. matchPool fans out N×K verify chunks per evaluate call; without a cap they all hit the provider at once and the slowest queue at provider side. Set to your tier's safe in-flight limit. Default 8."
   type        = number
   default     = 8
 }

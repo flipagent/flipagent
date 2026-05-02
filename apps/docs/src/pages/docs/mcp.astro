@@ -44,33 +44,31 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<table class="api">
 					<thead><tr><th>Tool</th><th>Backed by</th></tr></thead>
 					<tbody>
-						<tr><td colspan="2"><strong>Discovery</strong></td></tr>
-						<tr><td><code>ebay_search</code></td><td><code>GET /v1/buy/browse/item_summary/search</code></td></tr>
-						<tr><td><code>ebay_item_detail</code></td><td><code>GET /v1/buy/browse/item/&#123;itemId&#125;</code></td></tr>
-						<tr><td><code>ebay_sold_search</code></td><td><code>GET /v1/buy/marketplace_insights/item_sales/search</code></td></tr>
-						<tr><td><code>ebay_taxonomy_default_id</code></td><td><code>GET /v1/commerce/taxonomy/get_default_category_tree_id</code></td></tr>
-						<tr><td><code>ebay_taxonomy_suggest</code></td><td><code>GET /v1/commerce/taxonomy/category_tree/&#123;id&#125;/get_category_suggestions</code></td></tr>
-						<tr><td><code>ebay_taxonomy_aspects</code></td><td><code>GET /v1/commerce/taxonomy/category_tree/&#123;id&#125;/get_item_aspects_for_category</code></td></tr>
+						<tr><td colspan="2"><strong>Marketplace data</strong></td></tr>
+						<tr><td><code>ebay_search</code></td><td><code>GET /v1/items/search</code></td></tr>
+						<tr><td><code>ebay_item_detail</code></td><td><code>GET /v1/items/&#123;id&#125;</code></td></tr>
+						<tr><td><code>ebay_sold_search</code></td><td><code>GET /v1/items/search?status=sold</code></td></tr>
+						<tr><td><code>ebay_taxonomy_default_id</code></td><td><code>GET /v1/categories</code></td></tr>
+						<tr><td><code>ebay_taxonomy_suggest</code></td><td><code>GET /v1/categories/suggest</code></td></tr>
+						<tr><td><code>ebay_taxonomy_aspects</code></td><td><code>GET /v1/categories/&#123;id&#125;/aspects</code></td></tr>
 						<tr><td colspan="2"><strong>Decisions</strong></td></tr>
 						<tr><td><code>evaluate_listing</code></td><td><code>POST /v1/evaluate</code> &mdash; composite (search + LLM same-product filter + score)</td></tr>
-						<tr><td colspan="2"><strong>Overnight</strong></td></tr>
-						<tr><td><code>discover_deals</code></td><td><code>POST /v1/discover</code> &mdash; query-driven deal ranking</td></tr>
 						<tr><td colspan="2"><strong>Operations</strong></td></tr>
 						<tr><td><code>ship_quote</code></td><td><code>POST /v1/ship/quote</code></td></tr>
 						<tr><td><code>ship_providers</code></td><td><code>GET /v1/ship/providers</code></td></tr>
 						<tr><td colspan="2"><strong>Sell-side</strong> (eBay OAuth required via <code>/v1/connect/ebay</code>)</td></tr>
 						<tr><td><code>flipagent_connect_status</code></td><td><code>GET /v1/connect/ebay/status</code></td></tr>
-						<tr><td><code>ebay_create_inventory_item</code></td><td><code>PUT /v1/sell/inventory/inventory_item/&#123;sku&#125;</code></td></tr>
-						<tr><td><code>ebay_create_offer</code></td><td><code>POST /v1/sell/inventory/offer</code></td></tr>
-						<tr><td><code>ebay_publish_offer</code></td><td><code>POST /v1/sell/inventory/offer/&#123;offerId&#125;/publish</code></td></tr>
-						<tr><td><code>ebay_list_orders</code></td><td><code>GET /v1/sell/fulfillment/order</code></td></tr>
-						<tr><td><code>ebay_mark_shipped</code></td><td><code>POST /v1/sell/fulfillment/order/&#123;orderId&#125;/shipping_fulfillment</code></td></tr>
-						<tr><td><code>ebay_list_payouts</code></td><td><code>GET /v1/sell/finances/payout</code></td></tr>
+						<tr><td><code>ebay_create_inventory_item</code></td><td><code>PUT /v1/listings/&#123;sku&#125;</code></td></tr>
+						<tr><td><code>ebay_create_offer</code></td><td><code>POST /v1/listings</code></td></tr>
+						<tr><td><code>ebay_publish_offer</code></td><td><code>POST /v1/listings/&#123;sku&#125;/relist</code></td></tr>
+						<tr><td><code>ebay_list_orders</code></td><td><code>GET /v1/sales</code></td></tr>
+						<tr><td><code>ebay_mark_shipped</code></td><td><code>POST /v1/sales/&#123;id&#125;/ship</code></td></tr>
+						<tr><td><code>ebay_list_payouts</code></td><td><code>GET /v1/payouts</code></td></tr>
 					</tbody>
 				</table>
 
 				<h2>Compose your own logic</h2>
-				<p>Tools are typed and orthogonal. <code>evaluate_listing</code> and <code>discover_deals</code> are composite — server-side they fetch the item, search sold + active, run an LLM same-product filter, and score in a single call. Agents can also chain low-level tools (<code>ebay_search</code> → <code>ebay_sold_search</code> → <code>discover_deals</code> → <code>ship_quote</code>) to assemble custom reselling workflows. See the <a href="/docs/api/">API reference</a> for request shapes.</p>
+				<p>Tools are typed and orthogonal. <code>evaluate_listing</code> is composite — server-side it fetches the item, searches sold + active, runs an LLM same-product filter, and scores in a single call. Agents can also chain low-level tools (<code>ebay_search</code> → <code>ebay_sold_search</code> → <code>evaluate_listing</code> → <code>ship_quote</code>) to assemble custom reselling workflows. See the <a href="/docs/api/">API reference</a> for request shapes.</p>
 			</article>
 		</div>
 	</div>

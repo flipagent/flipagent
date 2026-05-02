@@ -3,8 +3,7 @@
  *
  * Composite endpoint: caller passes `itemId`, the server fetches the
  * detail, searches sold + active listings of the same product, runs
- * the LLM same-product filter, and scores. Mirrors `/v1/discover`
- * (the query-driven sibling) — both share `EvaluateOpts` for tunables.
+ * the LLM same-product filter, and scores.
  */
 
 import { type Static, Type } from "@sinclair/typebox";
@@ -13,7 +12,7 @@ import { ForwarderInput } from "./ship.js";
 
 /* ----------------------------- shared meta ----------------------------- */
 
-/** Transport that served an upstream lookup. Mirrors `services/listings/search`. */
+/** Transport that served an upstream lookup. Mirrors `services/items/search`. */
 export const TransportSource = Type.Union([Type.Literal("rest"), Type.Literal("scrape"), Type.Literal("bridge")], {
 	$id: "TransportSource",
 });
@@ -70,11 +69,11 @@ export type MarketStats = Static<typeof MarketStats>;
 /* ------------------------------- options ------------------------------- */
 
 /**
- * Public tunables for `/v1/evaluate` and `/v1/discover`. The sold +
- * active pools are not part of the public surface — both composite
- * endpoints derive them server-side. The internal service-layer
- * options (`packages/api/src/services/evaluate/types.ts`) carry the
- * pools for the underlying `evaluate()` function.
+ * Public tunables for `/v1/evaluate`. The sold + active pools are not
+ * part of the public surface — the composite endpoint derives them
+ * server-side. The internal service-layer options
+ * (`packages/api/src/services/evaluate/types.ts`) carry the pools for
+ * the underlying `evaluate()` function.
  */
 export const EvaluateOpts = Type.Object(
 	{
@@ -275,6 +274,15 @@ export const EvaluateResponse = Type.Object(
 		rejectedSoldPool: Type.Array(ItemSummary),
 		/** Active listings the same-product filter rejected. Same purpose as `rejectedSoldPool` but on the asks side. */
 		rejectedActivePool: Type.Array(ItemSummary),
+		/**
+		 * Per-itemId LLM reason string for every rejected listing — keyed
+		 * by `ItemSummary.itemId` of items in `rejectedSoldPool` ∪
+		 * `rejectedActivePool`. Empty object when the LLM filter didn't
+		 * run (no provider configured) or when nothing was rejected. UIs
+		 * surface these as audit text under each rejected row so the
+		 * matcher's judgement is legible.
+		 */
+		rejectionReasons: Type.Record(Type.String(), Type.String()),
 		/** Distribution stats over `soldPool` (median, IQR, salesPerDay, meanDaysToSell, …). */
 		market: MarketStats,
 		evaluation: Evaluation,
@@ -312,3 +320,32 @@ export const EvaluateJob = Type.Intersect(
 	{ $id: "EvaluateJob" },
 );
 export type EvaluateJob = Static<typeof EvaluateJob>;
+
+/* ---------------------- featured (showcase) ---------------------- */
+
+/**
+ * One row in the platform-wide "Try one" showcase. Sourced from real
+ * recent successful evaluate jobs (any user) that have meaningful sold
+ * depth. Exposed verbatim with `itemWebUrl` so click-through stays
+ * ToS-compliant; takedown'd itemIds are excluded server-side.
+ */
+export const FeaturedEvaluation = Type.Object(
+	{
+		itemId: Type.String(),
+		title: Type.String(),
+		itemWebUrl: Type.String({ format: "uri" }),
+		image: Type.Optional(Type.String({ format: "uri" })),
+		/** ISO timestamp of the underlying compute job's completion. */
+		completedAt: Type.String({ format: "date-time" }),
+	},
+	{ $id: "FeaturedEvaluation" },
+);
+export type FeaturedEvaluation = Static<typeof FeaturedEvaluation>;
+
+export const FeaturedEvaluationsResponse = Type.Object(
+	{
+		items: Type.Array(FeaturedEvaluation),
+	},
+	{ $id: "FeaturedEvaluationsResponse" },
+);
+export type FeaturedEvaluationsResponse = Static<typeof FeaturedEvaluationsResponse>;

@@ -89,7 +89,7 @@ async function onCancelAndClose(): Promise<{ ok: boolean; error?: string }> {
 		// 1. cancel via API. eBay's Buy Order REST has no cancel endpoint;
 		//    the route is bridge-transport only and force-bridge is fine
 		//    here because the extension is itself the bridge.
-		await apiCall(cfg, `/v1/buy/order/purchase_order/${encodeURIComponent(inFlight.id)}/cancel`, {
+		await apiCall(cfg, `/v1/purchases/${encodeURIComponent(inFlight.id)}/cancel`, {
 			method: "POST",
 			auth: "apiKey",
 			timeoutMs: 10_000,

@@ -1,12 +1,11 @@
 /**
  * Internal flipagent `BridgeJob` schema — the bridge queue's job
- * envelope, also serialized as the payload of outbound order-event
+ * envelope, also serialized as the payload of outbound purchase-event
  * webhooks. NOT a public REST surface: the user-facing buy surface is
- * `/v1/buy/order/*` (eBay-shape `EbayPurchaseOrder`, REST + bridge
- * transports).
+ * `/v1/purchases` (REST + bridge transports).
  *
- * The bridge-job queue (`services/bridge-jobs/queue.ts`) backs every
- * bridge-driven public surface — `/v1/buy/order/*` (when REST is
+ * The bridge-job queue (`services/bridge-jobs.ts`) backs every
+ * bridge-driven public surface — `/v1/purchases` (when REST is
  * unapproved), `/v1/forwarder/{provider}/*`, `/v1/browser/*`. Each
  * source enqueues a `BridgeJob` row; the extension claims via
  * `/v1/bridge/poll` and reports via `/v1/bridge/result`.
@@ -24,7 +23,7 @@ import { type Static, Type } from "@sinclair/typebox";
  * Identifies which service this bridge job targets. The bridge client
  * dispatches to per-service content-script handlers based on this value.
  *
- *   ebay         — buy-side BIN/checkout flow (`/v1/buy/order/*`).
+ *   ebay         — buy-side BIN/checkout flow (`/v1/purchases`).
  *   planetexpress — package-forwarder ops (`/v1/forwarder/*`).
  *   control      — meta tasks against the extension itself
  *                  (e.g. `chrome.runtime.reload()`).

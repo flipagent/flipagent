@@ -1,9 +1,9 @@
 /**
- * Map a pipeline error code (any thrown by `runEvaluatePipeline` /
- * `runDiscoverPipeline` — `EvaluateError` codes + `ListingsError`
- * codes — to the right HTTP status for sync routes. Async routes
- * surface the error code/message verbatim on the job row; only sync
- * mode needs to compress that down to a status code.
+ * Map a pipeline error code (any thrown by `runEvaluatePipeline` —
+ * `EvaluateError` codes + `ListingsError` codes — to the right HTTP
+ * status for sync routes. Async routes surface the error code/message
+ * verbatim on the job row; only sync mode needs to compress that down
+ * to a status code.
  */
 export function httpStatusForPipelineError(code: string): 400 | 404 | 422 | 500 | 502 | 503 {
 	switch (code) {

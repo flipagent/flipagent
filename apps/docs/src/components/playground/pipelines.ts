@@ -1,24 +1,20 @@
 /**
- * Playground orchestration. Two pipelines, both single composite calls:
+ * Playground orchestration. Single composite call:
  *
  *   runEvaluate({ itemId })   → POST /v1/evaluate → { item, evaluation, meta }
- *   runDiscover({ q, ... })   → POST /v1/discover → { deals, meta }
  *
- * The server runs the full pipeline (detail/search → sold + active →
- * same-product filter → score/rank) and returns a `meta` block
- * describing what was fetched. The playground synthesizes a 4-step
- * trace from `meta` so the UI still tells the story (lookup → search
- * → filter → decision) without the client re-implementing the chain.
+ * The server runs the full pipeline (detail → sold + active →
+ * same-product filter → score) and returns a `meta` block describing
+ * what was fetched. The playground synthesizes a 4-step trace from
+ * `meta` so the UI still tells the story (lookup → search → filter →
+ * decision) without the client re-implementing the chain.
  */
 
 import { apiBase } from "../../lib/authClient";
 import { playgroundApi, type ApiPlan, type ApiResponse } from "./api";
-import { mockDiscoverFixture, mockEvaluateFixture } from "./mockData";
+import { mockEvaluateFixture } from "./mockData";
 import type {
 	BrowseSearchResponse,
-	DealCluster,
-	DiscoverMeta,
-	DiscoverResponse,
 	EvaluateMeta,
 	EvaluateResponse,
 	ItemDetail,
@@ -119,8 +115,7 @@ export const EVALUATE_STEPS: ReadonlyArray<{ key: string; label: string; parent?
 	// `search` is a synthetic parent that groups the parallel
 	// `search.sold` + `search.active` pair. Without it, the two would
 	// render as consecutive top-level rows that look sequential. The
-	// shared parent stacks them under a vertical guide line — same
-	// visual treatment discover uses for its per-cluster batches.
+	// shared parent stacks them under a vertical guide line.
 	{ key: "search", label: "Search market" },
 	{ key: "search.sold", label: "Find recent sales", parent: "search" },
 	{ key: "search.active", label: "Find competing listings", parent: "search" },
@@ -134,6 +129,7 @@ export interface EvaluateOutcome {
 	activePool: ItemSummary[];
 	rejectedSoldPool: ItemSummary[];
 	rejectedActivePool: ItemSummary[];
+	rejectionReasons: Record<string, string>;
 	market: EvaluateResponse["market"];
 	evaluation: EvaluateResponse["evaluation"];
 	returns: EvaluateResponse["returns"];
@@ -158,13 +154,12 @@ export interface EvaluateInputs {
 }
 
 /**
- * Discriminated union over server-emitted step events. Step lifecycle
- * events (`started` / `succeeded` / `failed`) always carry `key`;
- * cluster events carry their own payload shape. Splitting these makes
- * `evt.key` narrow correctly inside `if (evt.kind === "started")` etc.
- * without us having to non-null assert at every call site.
+ * Server-emitted step lifecycle events (`started` / `succeeded` /
+ * `failed`) always carry `key`. Splitting this from the wire envelope
+ * makes `evt.key` narrow correctly inside `if (evt.kind === "started")`
+ * etc. without us having to non-null assert at every call site.
  */
-interface ServerStepLifecycleEvent {
+interface ServerStepEvent {
 	kind: "started" | "succeeded" | "failed";
 	key: string;
 	label?: string;
@@ -180,31 +175,18 @@ interface ServerStepLifecycleEvent {
 	source?: "rest" | "scrape" | "bridge";
 }
 
-interface ServerClusterIdentifiedEvent {
-	kind: "cluster.identified";
-	clusters: ReadonlyArray<{ idx: number; canonical: string; source: "epid" | "gtin" | "singleton"; itemCount: number }>;
-}
-
-interface ServerClusterReadyEvent {
-	kind: "cluster.ready";
-	idx: number;
-	cluster: DealCluster;
-}
-
-type ServerStepEvent = ServerStepLifecycleEvent | ServerClusterIdentifiedEvent | ServerClusterReadyEvent;
-
 /* ------------------------- compute-job helpers ------------------------- */
 
 /**
- * Compute-job pipelines (evaluate / discover) all run through the same
- * shape: POST /jobs to create + start the worker, GET /jobs/{id}/stream
+ * Compute-job pipelines (today: evaluate) run through the same shape:
+ * POST /jobs to create + start the worker, GET /jobs/{id}/stream
  * to watch trace events, POST /jobs/{id}/cancel to bail out. Tabs that
  * close mid-run leave the pipeline running server-side; reopening
  * resubscribes to /stream and replays accumulated trace from the row's
  * `trace` column before resuming live.
  */
 
-export type ComputeJobKind = "evaluate" | "discover";
+export type ComputeJobKind = "evaluate";
 
 export interface ComputeJobAck {
 	id: string;
@@ -292,10 +274,10 @@ function pickEvaluateOpts(params: EvaluateInputs): Record<string, unknown> | und
 }
 
 /**
- * Subscribe to GET /v1/{evaluate,discover}/jobs/{id}/stream. Yields each
- * SSE event as `{ event, data }`. The server replays accumulated trace
- * events from the `trace` column first, then live-streams new events
- * until terminal (`done` / `cancelled` / `error`).
+ * Subscribe to GET /v1/evaluate/jobs/{id}/stream. Yields each SSE event
+ * as `{ event, data }`. The server replays accumulated trace events
+ * from the `trace` column first, then live-streams new events until
+ * terminal (`done` / `cancelled` / `error`).
  *
  * Pass `signal` to drop the connection on unmount; the server keeps the
  * worker running regardless and a fresh subscriber can resume by
@@ -305,7 +287,7 @@ async function* subscribeJobStream(
 	kind: ComputeJobKind,
 	jobId: string,
 	signal?: AbortSignal,
-): AsyncGenerator<{ event: string; data: ServerStepEvent | EvaluateResponse | DiscoverResponse | { error?: string; message?: string } }> {
+): AsyncGenerator<{ event: string; data: ServerStepEvent | EvaluateResponse | { error?: string; message?: string } }> {
 	const res = await fetch(`${apiBase}/v1/${kind}/jobs/${encodeURIComponent(jobId)}/stream`, {
 		credentials: "include",
 		headers: { Accept: "text/event-stream" },
@@ -606,280 +588,11 @@ async function consumeEvaluateStream(
 			activePool: final.activePool ?? [],
 			rejectedSoldPool: final.rejectedSoldPool ?? [],
 			rejectedActivePool: final.rejectedActivePool ?? [],
+			rejectionReasons: final.rejectionReasons ?? {},
 			market: final.market,
 			evaluation: final.evaluation,
 			returns: final.returns ?? null,
 			meta: final.meta,
-		},
-	};
-}
-
-/* ------------------------- discover pipeline ------------------------- */
-
-export const DISCOVER_STEPS: ReadonlyArray<{ key: string; label: string; parent?: string }> = [
-	{ key: "search.candidates", label: "Find candidate pool" },
-	{ key: "cluster", label: "Group products" },
-	{ key: "partition", label: "Split by variant" },
-	// `detail`, `search.sold`, `filter`, `evaluate` are parents — children
-	// (one per variant cluster) stream in dynamically. Server emits child
-	// step keys as `<parent>.<idx>` with `parent` set to the matching
-	// top-level key. Same per-variant primitives as `/v1/evaluate` (just
-	// run K times in parallel instead of once) so the trace UI looks
-	// identical for both pipelines.
-	{ key: "detail", label: "Look up representatives" },
-	{ key: "search.sold", label: "Find recent sales" },
-	{ key: "filter", label: "Filter same product" },
-	{ key: "evaluate", label: "Score variants" },
-];
-
-export interface DiscoverInputs {
-	q: string;
-	categoryId?: string;
-	minPriceCents?: number;
-	maxPriceCents?: number;
-	/** Canonical eBay condition ids (1000, 1500, 2010, …). OR'd in the filter expression. */
-	conditionIds?: string[];
-	/** ISO country code, or "EU" for the European Union region, or undefined for any. */
-	shipsFrom?: string;
-	sort?: string;
-	limit?: number;
-	// Decision-floor opts forwarded to per-deal evaluate().
-	minNetCents?: number;
-	maxDaysToSell?: number;
-	outboundShippingCents?: number;
-}
-
-export interface DiscoverOutcome {
-	clusters: DealCluster[];
-	meta: DiscoverMeta;
-}
-
-/**
- * Translate the form's high-level fields into eBay's filter expression.
- * Spec: https://developer.ebay.com/api-docs/buy/static/ref-buy-browse-filters.html
- *   - `conditionIds:{a|b|c}` — OR of canonical condition ids
- *   - `price:[lo..hi],priceCurrency:USD` — range filter, either bound optional
- *   - `itemLocationCountry:CC` — exact ISO country
- *   - `itemLocationRegion:{REGION}` — eBay region (e.g. EUROPEAN_UNION)
- */
-function buildSearchFilter(inputs: DiscoverInputs): string | undefined {
-	const parts: string[] = [];
-	if (inputs.conditionIds && inputs.conditionIds.length > 0) {
-		parts.push(`conditionIds:{${inputs.conditionIds.join("|")}}`);
-	}
-	if (inputs.minPriceCents != null || inputs.maxPriceCents != null) {
-		const lo = inputs.minPriceCents != null ? (inputs.minPriceCents / 100).toFixed(2) : "";
-		const hi = inputs.maxPriceCents != null ? (inputs.maxPriceCents / 100).toFixed(2) : "";
-		parts.push(`price:[${lo}..${hi}],priceCurrency:USD`);
-	}
-	if (inputs.shipsFrom === "EU") parts.push("itemLocationRegion:{EUROPEAN_UNION}");
-	else if (inputs.shipsFrom) parts.push(`itemLocationCountry:${inputs.shipsFrom}`);
-	return parts.length > 0 ? parts.join(",") : undefined;
-}
-
-export async function createDiscoverJob(params: DiscoverInputs): Promise<ComputeJobAck> {
-	return postJson<ComputeJobAck>("/v1/discover/jobs", {
-		q: params.q,
-		categoryId: params.categoryId,
-		filter: buildSearchFilter(params) || undefined,
-		limit: params.limit ? Math.min(params.limit, 50) : undefined,
-		opts: pickDiscoverOpts(params),
-	});
-}
-
-function pickDiscoverOpts(params: DiscoverInputs): Record<string, unknown> | undefined {
-	const opts: Record<string, unknown> = {};
-	if (params.minNetCents != null) opts.minNetCents = params.minNetCents;
-	if (params.outboundShippingCents != null) opts.outboundShippingCents = params.outboundShippingCents;
-	if (params.maxDaysToSell != null) opts.maxDaysToSell = params.maxDaysToSell;
-	return Object.keys(opts).length > 0 ? opts : undefined;
-}
-
-export interface RunDiscoverCallbacks {
-	onStep: StepUpdate;
-	onPartial?: (patch: Partial<DiscoverOutcome>) => void;
-	onJobCreated?: (jobId: string) => void;
-}
-
-export async function runDiscover(
-	inputs: DiscoverInputs,
-	callbacks: RunDiscoverCallbacks,
-	signal?: AbortSignal,
-): Promise<StreamOutcome<DiscoverOutcome>> {
-	const ack = await createDiscoverJob(inputs);
-	callbacks.onJobCreated?.(ack.id);
-	return consumeDiscoverStream(subscribeJobStream("discover", ack.id, signal), callbacks);
-}
-
-/**
- * Reopen a saved discover job — same uniform behaviour as
- * `reopenEvaluate`. The server's `/jobs/{id}/stream` route replays the
- * accumulated trace (incl. per-cluster `cluster.identified` /
- * `cluster.ready` events) and emits the appropriate terminal event,
- * regardless of whether the job is still running or already done.
- */
-export async function reopenDiscover(
-	jobId: string,
-	callbacks: RunDiscoverCallbacks,
-	signal?: AbortSignal,
-): Promise<StreamOutcome<DiscoverOutcome>> {
-	return consumeDiscoverStream(subscribeJobStream("discover", jobId, signal), callbacks);
-}
-
-async function consumeDiscoverStream(
-	stream: AsyncIterable<{ event: string; data: unknown }>,
-	cb: RunDiscoverCallbacks,
-): Promise<StreamOutcome<DiscoverOutcome>> {
-	const { onStep, onPartial } = cb;
-
-	// Progressive outcome accumulator. Each `cluster.identified` seeds a
-	// placeholder DealCluster (loading row); `cluster.ready` replaces it
-	// with the full Evaluate-shape payload. UI sees rows fill in one by
-	// one without waiting for the final `done`.
-	const partialClusters = new Map<number, DealCluster>();
-	const flushPartial = () => {
-		if (!onPartial) return;
-		const ordered = [...partialClusters.entries()].sort(([a], [b]) => a - b);
-		const clusters = ordered.map(([, c]) => c);
-		// Sort by representative's $/day so the partial UI shows ranking
-		// even before all clusters land. Same sort the final `done` does.
-		clusters.sort((a, b) => {
-			const ya = a.evaluation.recommendedExit?.dollarsPerDay ?? Number.NEGATIVE_INFINITY;
-			const yb = b.evaluation.recommendedExit?.dollarsPerDay ?? Number.NEGATIVE_INFINITY;
-			return yb - ya;
-		});
-		onPartial({ clusters });
-	};
-
-	let final: DiscoverResponse | null = null;
-	try {
-		for await (const { event, data } of stream) {
-			if (event === "cancelled") {
-				return { kind: "cancelled" };
-			}
-			if (event === "done") {
-				final = data as DiscoverResponse;
-				continue;
-			}
-			if (event === "error") {
-				// Pipeline-level error — bubble up; panel handles the
-				// banner + freezing of running step rows.
-				const e = data as { error?: string; message?: string };
-				const message = e.message ?? e.error ?? "stream error";
-				return { kind: "failed", message, ...(e.error ? { code: e.error } : {}) };
-			}
-			const evt = data as ServerStepEvent;
-			if (evt.kind === "cluster.identified") {
-				// K placeholder cluster rows — render skeletons so the user
-				// sees structure before any cluster's data lands. Real
-				// payload arrives via `cluster.ready` and replaces wholesale.
-				if (evt.clusters && onPartial) {
-					for (const c of evt.clusters) {
-						if (!partialClusters.has(c.idx)) {
-							partialClusters.set(c.idx, makePlaceholderCluster(c.canonical, c.source, c.itemCount));
-						}
-					}
-					flushPartial();
-				}
-			} else if (evt.kind === "cluster.ready") {
-				if (evt.idx != null && evt.cluster) {
-					partialClusters.set(evt.idx, evt.cluster);
-					flushPartial();
-				}
-			} else if (evt.kind === "started") {
-				if (evt.key) {
-					onStep(evt.key, {
-						status: "running",
-						label: evt.label,
-						parent: evt.parent,
-						call: evt.request ? { method: evt.request.method, path: evt.request.path } : undefined,
-						requestBody: evt.request?.body,
-					});
-				}
-			} else if (evt.kind === "succeeded") {
-				if (evt.key) {
-					onStep(evt.key, { status: "ok", result: evt.result, durationMs: evt.durationMs });
-				}
-			} else if (evt.kind === "failed") {
-				if (evt.key) {
-					onStep(evt.key, {
-						status: "error",
-						error: evt.error,
-						httpStatus: evt.httpStatus,
-						...(evt.errorBody !== undefined ? { result: evt.errorBody } : {}),
-						durationMs: evt.durationMs,
-					});
-				}
-			}
-		}
-	} catch (err) {
-		if ((err as Error).name === "AbortError") return { kind: "cancelled" };
-		const message = err instanceof Error ? err.message : String(err);
-		return { kind: "failed", message };
-	}
-
-	if (!final) return { kind: "failed", message: "stream ended without a result" };
-	return {
-		kind: "success",
-		value: {
-			clusters: final.clusters ?? [],
-			meta: final.meta,
-		},
-	};
-}
-
-/**
- * Stand-in DealCluster for the `cluster.identified` placeholder row —
- * carries the canonical name + source + count so the UI can show
- * "loading: <SKU> (<N> listings)" but no scoring fields. UI checks
- * `meta.soldCount === 0 && evaluation.recommendedExit == null` (or the
- * `__placeholder` flag) to render the loading state. Replaced wholesale
- * by the real `cluster.ready` payload.
- */
-function makePlaceholderCluster(
-	canonical: string,
-	source: DealCluster["source"],
-	itemCount: number,
-): DealCluster {
-	return {
-		canonical,
-		source,
-		count: itemCount,
-		// Synthetic minimal ItemDetail — UI's hero skeleton reads only
-		// title + image, so empty fields are safe.
-		item: {
-			itemId: `placeholder-${canonical}`,
-			title: canonical,
-			itemWebUrl: "",
-		} as unknown as ItemDetail,
-		soldPool: [],
-		activePool: [],
-		rejectedSoldPool: [],
-		rejectedActivePool: [],
-		market: {
-			keyword: canonical,
-			marketplace: "EBAY_US",
-			windowDays: 0,
-			meanCents: 0,
-			stdDevCents: 0,
-			medianCents: 0,
-			p25Cents: 0,
-			p75Cents: 0,
-			nObservations: 0,
-			salesPerDay: 0,
-		},
-		evaluation: {},
-		returns: null,
-		meta: {
-			itemSource: "rest",
-			soldCount: 0,
-			soldSource: null,
-			activeCount: 0,
-			activeSource: null,
-			soldKept: 0,
-			soldRejected: 0,
-			activeKept: 0,
-			activeRejected: 0,
 		},
 	};
 }
@@ -910,7 +623,7 @@ const MOCK_STEP_DELAY_MS = 320;
  * fires. Without this, the mock pipeline ignores the user's cancel
  * click and runs every step to completion — the Run button never flips
  * back, the trace keeps animating, and the cancel is a lie. Threaded
- * through every awaited delay in runDiscoverMock / runEvaluateMock.
+ * through every awaited delay in runEvaluateMock.
  */
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
 	if (signal?.aborted) return Promise.reject(makeAbortError());
@@ -957,152 +670,6 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 }
 
 /**
- * Mock the discover pipeline for the logged-out hero. Walks the same
- * trace shape as the real SSE pipeline (search → cluster → partition →
- * per-variant Evaluate sub-flow) and emits cluster.identified +
- * cluster.ready partials, against canned MOCK_DISCOVER fixtures.
- *
- * Honours `signal` — every awaited delay rejects with AbortError when
- * the user clicks Cancel, and the catch wrapper returns
- * `{ kind: "cancelled" }` so the panel's run() handler tears the trace
- * + button state down the same way the real path does.
- */
-export async function runDiscoverMock(
-	inputs: DiscoverInputs,
-	callbacks: RunDiscoverCallbacks,
-	signal?: AbortSignal,
-): Promise<StreamOutcome<DiscoverOutcome>> {
-	const { onStep, onPartial } = callbacks;
-	const fixture = mockDiscoverFixture({ q: inputs.q, categoryId: inputs.categoryId });
-	const search = fixture.search;
-	const findStep = (key: string): { key: string; label: string; parent?: string } => {
-		const s = DISCOVER_STEPS.find((step) => step.key === key);
-		if (!s) throw new Error(`unknown mock discover step ${key}`);
-		return s;
-	};
-	const filter = buildSearchFilter(inputs);
-	const limit = Math.min(inputs.limit ?? 20, 50);
-
-	try {
-		// 1. broad active search
-		await mockStep<BrowseSearchResponse>(
-			findStep("search.candidates"),
-			onStep,
-			{
-				method: "GET",
-				path: `/v1/buy/browse/item_summary/search${buildQuery({
-					q: inputs.q,
-					category_ids: inputs.categoryId,
-					filter,
-					limit,
-				})}`,
-			},
-			search,
-			undefined,
-			signal,
-		);
-
-		// 2. deterministic bucket — synthetic
-		const clusterStep = findStep("cluster");
-		onStep(clusterStep.key, { status: "running", label: clusterStep.label });
-		await delay(MOCK_STEP_DELAY_MS, signal);
-		onStep(clusterStep.key, {
-			status: "ok",
-			result: { count: fixture.clusters.length },
-			durationMs: MOCK_STEP_DELAY_MS,
-		});
-
-		// 3. variant partition — synthetic (mock fixtures are 1 variant per cluster)
-		const partitionStep = findStep("partition");
-		onStep(partitionStep.key, { status: "running", label: partitionStep.label });
-		await delay(MOCK_STEP_DELAY_MS, signal);
-		onStep(partitionStep.key, {
-			status: "ok",
-			result: { variantCount: fixture.clusters.length },
-			durationMs: MOCK_STEP_DELAY_MS,
-		});
-
-		// emit cluster.identified placeholders so the UI fills in skeleton rows
-		const placeholders = fixture.clusters.map((c, idx) => ({
-			idx,
-			canonical: c.canonical,
-			source: c.source,
-			itemCount: c.activePool.length,
-		}));
-		onPartial?.({
-			clusters: placeholders.map((p) => ({
-				canonical: p.canonical,
-				source: p.source,
-				count: p.itemCount,
-				item: { itemId: `placeholder-${p.canonical}`, title: p.canonical, itemWebUrl: "" } as unknown as ItemDetail,
-				soldPool: [],
-				activePool: [],
-				rejectedSoldPool: [],
-				rejectedActivePool: [],
-				market: {
-					keyword: p.canonical,
-					marketplace: "EBAY_US",
-					windowDays: 0,
-					meanCents: 0,
-					stdDevCents: 0,
-					medianCents: 0,
-					p25Cents: 0,
-					p75Cents: 0,
-					nObservations: 0,
-					salesPerDay: 0,
-				},
-				evaluation: {},
-				returns: null,
-				meta: {
-					itemSource: "rest",
-					soldCount: 0,
-					soldSource: null,
-					activeCount: 0,
-					activeSource: null,
-					soldKept: 0,
-					soldRejected: 0,
-					activeKept: 0,
-					activeRejected: 0,
-				},
-			})),
-		});
-
-		// per-variant sub-flow steps (parent rows)
-		for (const key of ["detail", "search.sold", "filter", "evaluate"] as const) {
-			const s = findStep(key);
-			onStep(s.key, { status: "running", label: s.label });
-		}
-
-		// 4. fill in clusters one by one — synthetic timing
-		const ready: DealCluster[] = [];
-		for (let idx = 0; idx < fixture.clusters.length; idx++) {
-			await delay(MOCK_STEP_DELAY_MS, signal);
-			ready.push(fixture.clusters[idx]!);
-			onPartial?.({ clusters: [...ready] });
-		}
-
-		for (const key of ["detail", "search.sold", "filter", "evaluate"] as const) {
-			const s = findStep(key);
-			onStep(s.key, { status: "ok", result: { clusters: ready.length }, durationMs: MOCK_STEP_DELAY_MS });
-		}
-
-		const totalSold = ready.reduce((s, c) => s + c.soldPool.length, 0);
-		const meta: DiscoverMeta = {
-			activeCount: search.itemSummaries?.length ?? 0,
-			activeSource: "scrape",
-			soldCount: totalSold,
-			soldSource: "scrape",
-			clusterCount: ready.length,
-		};
-
-		return { kind: "success", value: { clusters: ready, meta } };
-	} catch (err) {
-		if ((err as Error).name === "AbortError") return { kind: "cancelled" };
-		throw err;
-	}
-}
-
-/**
  * Mock evaluator for the logged-out hero. Mirrors the SSE pipeline's
  * step ordering — detail → search (sold + active in parallel) → filter
  * → evaluate — but with canned data and synthetic timing.
@@ -1129,7 +696,7 @@ export async function runEvaluateMock(
 		await mockStep<ItemDetail>(
 			findStep("detail"),
 			onStep,
-			{ method: "GET", path: `/v1/buy/browse/item/${encodeURIComponent(inputs.itemId)}` },
+			{ method: "GET", path: `/v1/items/${encodeURIComponent(inputs.itemId)}` },
 			fixture.detail,
 			undefined,
 			signal,
@@ -1143,7 +710,7 @@ export async function runEvaluateMock(
 			onStep,
 			{
 				method: "GET",
-				path: `/v1/buy/marketplace_insights/item_sales/search${buildQuery({ q, limit: soldLimit, filter: `lastSoldDate:[${since}..]` })}`,
+				path: `/v1/items/search?status=sold${buildQuery({ q, limit: soldLimit, filter: `lastSoldDate:[${since}..]` })}`,
 			},
 			{ itemSales: fixture.soldPool, total: fixture.soldPool.length },
 			undefined,
@@ -1155,7 +722,7 @@ export async function runEvaluateMock(
 		const activeChild = mockStep<BrowseSearchResponse>(
 			findStep("search.active"),
 			onStep,
-			{ method: "GET", path: `/v1/buy/browse/item_summary/search${buildQuery({ q, limit: 50 })}` },
+			{ method: "GET", path: `/v1/items/search${buildQuery({ q, limit: 50 })}` },
 			{ itemSummaries: fixture.activePool, total: fixture.activePool.length },
 			undefined,
 			signal,
@@ -1199,6 +766,7 @@ export async function runEvaluateMock(
 			activePool: fixture.activePool,
 			rejectedSoldPool: [],
 			rejectedActivePool: [],
+			rejectionReasons: {},
 			market: fixture.marketSummary.market,
 			evaluation: fixture.evaluation,
 			returns: fixture.returns ?? null,
@@ -1221,6 +789,7 @@ export async function runEvaluateMock(
 				activePool: fixture.activePool,
 				rejectedSoldPool: [],
 				rejectedActivePool: [],
+				rejectionReasons: {},
 				market: fixture.marketSummary.market,
 				evaluation: fixture.evaluation,
 				returns: fixture.returns ?? null,

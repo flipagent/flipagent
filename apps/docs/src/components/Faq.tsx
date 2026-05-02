@@ -43,15 +43,13 @@ const GROUPS: Group[] = [
 				q: "Do I need an eBay developer account?",
 				a: (
 					<>
-						For the sourcing side, no. <code>/v1/buy/browse/*</code>,{" "}
-						<code>/v1/buy/marketplace_insights/*</code>, <code>/v1/evaluate</code>, and{" "}
-						<code>/v1/discover</code> all work with just your flipagent key. For the selling
-						side, you connect your own eBay account once via OAuth at{" "}
-						<code>/v1/connect/ebay</code> and flipagent passes calls through to{" "}
-						<code>/v1/sell/inventory/*</code>, <code>/v1/sell/fulfillment/*</code>,{" "}
-						<code>/v1/sell/finances/*</code>, <code>/v1/sell/account/*</code>, and{" "}
-						<code>/v1/commerce/*</code>. We never hold eBay developer credentials on your
-						behalf.
+						For the sourcing side, no. <code>/v1/items</code>, <code>/v1/categories</code>,{" "}
+						<code>/v1/products</code>, and <code>/v1/evaluate</code> all work with just your
+						flipagent key. For the selling side, you connect your own eBay account once via
+						OAuth at <code>/v1/connect/ebay</code> and flipagent backs{" "}
+						<code>/v1/listings</code>, <code>/v1/sales</code>, <code>/v1/payouts</code>,{" "}
+						<code>/v1/transactions</code>, <code>/v1/policies</code>, etc. with your token.
+						We never hold eBay developer credentials on your behalf.
 					</>
 				),
 			},
@@ -100,13 +98,11 @@ const GROUPS: Group[] = [
 				a: (
 					<>
 						We charge for what runs on our infrastructure. Sourcing reads against
-						eBay's catalog (<code>/v1/buy/browse</code>,{" "}
-						<code>/v1/buy/marketplace_insights</code>, <code>/v1/commerce/catalog</code>,{" "}
-						<code>/v1/search</code>, <code>/v1/trends</code>) cost 1 credit each;{" "}
-						<code>/v1/evaluate</code> is 50 (scrape + AI scoring);{" "}
-						<code>/v1/discover</code> is 250 (multi-source scrape + AI). Everything
-						that runs on your own connected accounts — listing, fulfilling, messaging,
-						buying through your browser, taxonomy lookups, shipping math — is free.
+						eBay's catalog (<code>/v1/items</code>, <code>/v1/categories</code>,{" "}
+						<code>/v1/products</code>, <code>/v1/trends</code>) cost 1 credit each;{" "}
+						<code>/v1/evaluate</code> is 50 (scrape + AI scoring). Everything that runs
+						on your own connected accounts — listing, fulfilling, messaging, buying
+						through your browser, taxonomy lookups, shipping math — is free.
 						Burst rate-limits still apply. See{" "}
 						<a href="/pricing/#api-credits">the pricing table</a> for the full breakdown.
 					</>
@@ -167,14 +163,13 @@ const GROUPS: Group[] = [
 				a: (
 					<>
 						The full reseller cycle under <code>/v1/*</code>. The sourcing side runs without an
-						eBay account: <code>/v1/buy/browse/item_summary/search</code> for active listings,{" "}
-						<code>/v1/buy/marketplace_insights/item_sales/search</code> for completed sales, and{" "}
-						<code>/v1/evaluate</code> / <code>/v1/discover</code> for server-side scoring (composite —
-						the server searches sold + active and ranks). The selling side
-						passes through to eBay over OAuth once you connect your account:{" "}
-						<code>/v1/sell/inventory</code>, <code>/v1/sell/fulfillment</code>, <code>/v1/sell/finances</code>,
-						and <code>/v1/commerce/taxonomy</code>. Shipping intelligence sits at{" "}
-						<code>/v1/ship/providers</code> (forwarder catalog) and{" "}
+						eBay account: <code>/v1/items/search</code> for active or sold listings,{" "}
+						<code>/v1/categories</code> for taxonomy + suggestions, and <code>/v1/evaluate</code>{" "}
+						for server-side scoring (composite — the server searches sold + active and ranks).
+						The selling side runs against your eBay account once you connect via OAuth:{" "}
+						<code>/v1/listings</code>, <code>/v1/sales</code>, <code>/v1/payouts</code>,{" "}
+						<code>/v1/transactions</code>, <code>/v1/policies</code>. Shipping intelligence
+						sits at <code>/v1/ship/providers</code> (forwarder catalog) and{" "}
 						<code>/v1/ship/quote</code> (rate quotes). Full reference at{" "}
 						<a href="/docs/api/">/docs/api</a>.
 					</>
@@ -201,7 +196,7 @@ const GROUPS: Group[] = [
 						TypeScript we ship a typed <code>@flipagent/sdk</code> that wraps the unified
 						surface in marketplace passthrough namespaces (<code>listings</code>,{" "}
 						<code>sold</code>, <code>orders</code>, <code>inventory</code>) and intelligence
-						namespaces (<code>evaluate</code>, <code>discover</code>, <code>ship</code>,{" "}
+						namespaces (<code>evaluate</code>, <code>ship</code>,{" "}
 						<code>market</code>).
 					</>
 				),
@@ -236,7 +231,7 @@ const GROUPS: Group[] = [
 						No host-LLM prompts, no opaque telemetry. We log the API call (path,
 						status, latency, SHA-256 prefix of your API key for rate-limit accounting)
 						and the marketplace data we cache for the takedown channel. Nothing else.
-						See <a href="/docs/legal/privacy/">/docs/legal/privacy</a>.
+						See <a href="/legal/privacy/">/legal/privacy</a>.
 					</>
 				),
 			},

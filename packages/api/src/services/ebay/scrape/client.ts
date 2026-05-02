@@ -1,34 +1,49 @@
 /**
- * Scrape backend for the eBay-compat surface. Uses **only** the Oxylabs
- * Web Scraper API. We POST a URL, they return rendered HTML. Reliable
- * for eBay. Whatever rendering / IP rotation / JavaScript execution
- * Oxylabs does on their side is their product; we are just an HTTPS
- * client. flipagent's own code path runs no UA rotation logic, no
- * browser fingerprinting, and no scrape retry policies — anything of
- * that nature would be on Oxylabs's infrastructure, under their ToS
- * with the upstream marketplace.
+ * Scrape backend for eBay-shape reads — Browse search/detail,
+ * Marketplace Insights sold, Commerce Catalog. Returns the same
+ * `BrowseSearchResponse` / `ItemDetail` / `CatalogProduct` shapes as
+ * the REST transports so resource services don't care which transport
+ * answered.
  *
- * Self-hosters who don't want this dependency should set
+ * Uses **only** the Oxylabs Web Scraper API: we POST a URL, they
+ * return rendered HTML. Whatever rendering / IP rotation / JavaScript
+ * execution Oxylabs does on their side is their product; we are just
+ * an HTTPS client. flipagent's own code path runs no UA rotation
+ * logic, no browser fingerprinting, and no scrape retry policies —
+ * anything of that nature is on Oxylabs's infrastructure, under their
+ * ToS with the upstream marketplace.
+ *
+ * Self-hosters who don't want this dependency can set
  * `EBAY_LISTINGS_SOURCE=bridge` (free, uses the user's extension) or
  * `EBAY_LISTINGS_SOURCE=rest` (Browse REST, 5000 calls/day quota).
  */
 
 import {
+	buildBrowseLayoutUrl,
 	buildEbayUrl,
 	type EbaySearchParams,
+	parseEbayBrowseLayoutHtml,
 	parseEbayDetailHtml,
 	parseEbaySearchHtml,
 	parseResultCount,
 } from "@flipagent/ebay-scraper";
 import type { BrowseSearchResponse, ItemDetail } from "@flipagent/types/ebay/buy";
 import { JSDOM } from "jsdom";
-import { ebayDetailToBrowse } from "../../listings/transform.js";
+import { ebayDetailToBrowse } from "./normalize.js";
 import { fetchHtmlViaScraperApi } from "./scraper-api/index.js";
 
 const domFactory = (html: string) => new JSDOM(html).window.document as unknown as ParentNode;
 
 export interface ScrapeSearchInput {
-	q: string;
+	/**
+	 * Keyword query. Optional when `categoryIds` is set — empty `q` +
+	 * `categoryIds` triggers the browse-layout path
+	 * (`/b/_/<categoryId>`), which is the canonical way to do
+	 * category-only browse on the new (May 2026) eBay web layout. The
+	 * old `/sch/<id>/i.html?_nkw=` route returns a results-less shell
+	 * for empty keywords on the new layout.
+	 */
+	q?: string;
 	soldOnly?: boolean;
 	auctionOnly?: boolean;
 	binOnly?: boolean;
@@ -121,6 +136,41 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 			? { itemSales: [], total: 0, offset, limit: input.limit ?? 0 }
 			: { itemSummaries: [], total: 0, offset, limit: input.limit ?? 0 };
 	}
+
+	// Category-only browse — no keyword, just a categoryId. Sourcing's
+	// main flow. Resolves to `/b/<slug>/<categoryId>` whose hydration
+	// JSON parses 1:1 to REST `item_summary/search` shape. Pagination,
+	// sort, and condition / BIN-Auction filters all forward as URL
+	// params on the same path.
+	if ((!input.q || !input.q.trim()) && input.categoryIds && !input.soldOnly) {
+		// `/b/<slug>/<id>/` is single-leaf-scoped on the web side, so
+		// only the first id of a pipe-joined list wins. The remainder
+		// is still recorded on the demand-pulse archive at the resource-
+		// service layer.
+		const [leafCategory, ...restCategories] = input.categoryIds.split("|");
+		if (leafCategory) {
+			const offset = Math.max(0, input.offset ?? 0);
+			const page = Math.floor(offset / EBAY_SRP_PAGE_SIZE) + 1;
+			const sliceStart = offset % EBAY_SRP_PAGE_SIZE;
+			const url = buildBrowseLayoutUrl(leafCategory, {
+				page,
+				...(input.sort ? { sort: input.sort } : {}),
+				...(input.binOnly ? { binOnly: input.binOnly } : {}),
+				...(input.auctionOnly ? { auctionOnly: input.auctionOnly } : {}),
+				...(input.conditionIds && input.conditionIds.length > 0 ? { conditionIds: input.conditionIds } : {}),
+				...(restCategories[0] ? { subCategoryId: restCategories[0] } : {}),
+			});
+			const html = await fetchHtmlViaScraperApi(url);
+			const items = parseEbayBrowseLayoutHtml(html);
+			const sliced = items.slice(sliceStart, input.limit ? sliceStart + input.limit : undefined);
+			return {
+				itemSummaries: sliced,
+				total: items.length,
+				offset,
+				limit: input.limit ?? sliced.length,
+			};
+		}
+	}
 	const ebayPage = Math.floor(offset / EBAY_SRP_PAGE_SIZE) + 1;
 	const sliceStart = offset % EBAY_SRP_PAGE_SIZE;
 	// Translate eBay-spec mirror params to web-SRP equivalents.
@@ -143,7 +193,7 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 	const aspect = input.aspectFilter ? parseAspectFilter(input.aspectFilter) : null;
 	const categoryId = aspect?.categoryId ?? input.categoryIds?.split("|")[0] ?? undefined;
 	const params: EbaySearchParams = {
-		keyword: input.q,
+		keyword: input.q ?? "",
 		soldOnly: input.soldOnly,
 		auctionOnly: input.auctionOnly,
 		binOnly: input.binOnly,

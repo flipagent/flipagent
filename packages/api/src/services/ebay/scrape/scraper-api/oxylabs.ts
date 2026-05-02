@@ -5,11 +5,11 @@
  * Basic-auth credentials.
  *
  * In-process concurrency cap: Oxylabs Realtime enforces a parallel-
- * request limit per account ("Total Dynamic" 429 when exceeded). With
- * the multi-cluster discover pipeline we can fan out 20+ scrape calls
- * at once, easily tripping it. The adapter holds a semaphore that
- * limits the entire process to `MAX_CONCURRENT` in-flight Oxylabs
- * requests; excess callers queue and dispatch FIFO.
+ * request limit per account ("Total Dynamic" 429 when exceeded). A
+ * batched evaluate run (or any caller doing search/detail fan-out)
+ * can issue 20+ scrape calls at once, easily tripping it. The adapter
+ * holds a semaphore that limits the entire process to `MAX_CONCURRENT`
+ * in-flight Oxylabs requests; excess callers queue and dispatch FIFO.
  */
 
 import { config } from "../../../../config.js";
@@ -34,7 +34,7 @@ const TIMEOUT_MS = 90_000;
  * via `scripts/scraper-concurrency-probe.ts`: 48 in-flight succeed
  * with zero 429s; p95 latency at 48 is 84s and crowds the 90s timeout.
  * Set to 40 — full throughput with a comfortable timeout margin.
- * Discover fans many detail/sold/active calls in parallel per request;
+ * Evaluate fans many detail/sold/active calls in parallel per request;
  * this is the sole gate for the whole process, regardless of which
  * user fired them. Re-probe and bump if the plan tier changes.
  */
@@ -57,7 +57,7 @@ export async function fetchHtmlViaOxylabs(targetUrl: string): Promise<string> {
  * retry. We do that retry HERE: transient upstream codes (5xx, 408, 429,
  * Cloudflare 52x, 613 "faulty job") get up to 2 backoff retries before
  * surfacing. Without this, one flaky scrape silently drops a whole
- * cluster from a multi-cluster discover run.
+ * sold/active pool from a batched run.
  */
 const RETRYABLE_UPSTREAM = new Set([408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 613]);
 const MAX_ATTEMPTS = 3;

@@ -39,7 +39,7 @@ describe("parseJsonArray (matcher)", () => {
 	});
 
 	it("ignores trailing prose after the array", () => {
-		const text = '[{"i":0}]\n\nThat\'s the cluster decisions.';
+		const text = '[{"i":0}]\n\nThat\'s the group decisions.';
 		expect(parseJsonArray<{ i: number }>(text)).toEqual([{ i: 0 }]);
 	});
 

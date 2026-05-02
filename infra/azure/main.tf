@@ -263,8 +263,9 @@ resource "azurerm_container_app" "api" {
   }
 
   # LLM provider keys + eBay DevID — declared dynamically so empty values are
-  # silently skipped. Azure rejects secrets with empty `value`, and /v1/match +
-  # /v1/notifications already handle a missing env (the provider self-disables).
+  # silently skipped. Azure rejects secrets with empty `value`, and the
+  # /v1/evaluate matcher + /v1/notifications already handle a missing env
+  # (the provider self-disables).
   dynamic "secret" {
     for_each = var.anthropic_api_key == "" ? [] : [1]
     content {
@@ -448,8 +449,9 @@ resource "azurerm_container_app" "api" {
         value = var.email_from
       }
 
-      # LLM provider for /v1/match. Each secret-backed env mirrors its `dynamic
-      # secret` above — only emitted when the corresponding key is set.
+      # LLM provider for the /v1/evaluate matcher. Each secret-backed env
+      # mirrors its `dynamic secret` above — only emitted when the
+      # corresponding key is set.
       env {
         name  = "LLM_PROVIDER"
         value = var.llm_provider

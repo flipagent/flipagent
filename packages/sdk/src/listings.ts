@@ -1,49 +1,28 @@
 /**
- * `client.listings.*` — search and detail lookups across the unified
- * marketplace surface. Today: eBay only. Future Amazon / Mercari
- * adapters reuse the same paths with a `marketplace` parameter.
+ * `client.listings.*` — my for-sale stock (sell-side, write).
+ * Wraps `/v1/listings/*` — one-shot create compresses eBay's three-step
+ * inventory_item → offer → publish dance.
  */
 
-import type { BrowseSearchResponse, ItemDetail } from "@flipagent/types/ebay/buy";
+import type { Listing, ListingCreate, ListingsListQuery, ListingsListResponse, ListingUpdate } from "@flipagent/types";
 import type { FlipagentHttp } from "./http.js";
 
-export interface ListingSearchParams {
-	q: string;
-	filter?: string;
-	sort?: string;
-	limit?: number;
-	offset?: number;
-	category_ids?: string;
-	marketplace?: string;
-	/**
-	 * eBay-spec optional params, forwarded as-is to the mirror URL.
-	 * Names stay snake_case to match eBay's docs verbatim. Only `gtin`,
-	 * `epid`, and `aspect_filter` are widely useful for resellers — the
-	 * rest mirror eBay's surface for callers who need exact parity.
-	 */
-	aspect_filter?: string;
-	gtin?: string;
-	epid?: string;
-	fieldgroups?: string;
-	auto_correct?: string;
-	compatibility_filter?: string;
-	charity_ids?: string;
-}
-
 export interface ListingsClient {
-	search(params: ListingSearchParams): Promise<BrowseSearchResponse>;
-	get(itemId: string, fieldgroups?: string): Promise<ItemDetail>;
-	byIds(itemIds: string[], fieldgroups?: string): Promise<{ items?: ItemDetail[] }>;
-	byGroup(itemGroupId: string): Promise<{ items?: ItemDetail[] }>;
+	create(body: ListingCreate): Promise<Listing>;
+	list(params?: ListingsListQuery): Promise<ListingsListResponse>;
+	get(sku: string): Promise<Listing>;
+	update(sku: string, patch: ListingUpdate): Promise<Listing>;
+	end(sku: string): Promise<Listing>;
+	relist(sku: string): Promise<Listing>;
 }
 
 export function createListingsClient(http: FlipagentHttp): ListingsClient {
 	return {
-		search: (params) => http.get("/v1/buy/browse/item_summary/search", { ...params }),
-		get: (itemId, fieldgroups) =>
-			http.get(`/v1/buy/browse/item/${encodeURIComponent(itemId)}`, fieldgroups ? { fieldgroups } : undefined),
-		byIds: (itemIds, fieldgroups) =>
-			http.get("/v1/buy/browse/item/get_items", { item_ids: itemIds.join(","), fieldgroups }),
-		byGroup: (itemGroupId) => http.get("/v1/buy/browse/item/get_items_by_item_group", { item_group_id: itemGroupId }),
+		create: (body) => http.post("/v1/listings", body),
+		list: (params) => http.get("/v1/listings", params as Record<string, string | number | undefined> | undefined),
+		get: (sku) => http.get(`/v1/listings/${encodeURIComponent(sku)}`),
+		update: (sku, patch) => http.patch(`/v1/listings/${encodeURIComponent(sku)}`, patch),
+		end: (sku) => http.delete(`/v1/listings/${encodeURIComponent(sku)}`),
+		relist: (sku) => http.post(`/v1/listings/${encodeURIComponent(sku)}/relist`),
 	};
 }

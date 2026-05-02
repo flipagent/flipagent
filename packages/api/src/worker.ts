@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * flipagent worker — long-running background process that claims and
- * executes compute jobs (`evaluate`, `discover`) from the
+ * executes compute jobs (`evaluate`) from the
  * `compute_jobs` queue. Runs in its own container; the API container
  * only enqueues. Same image, separate entrypoint — the worker
  * Container App's `command` is `["node", "dist/worker.js"]`.
@@ -39,7 +39,6 @@ import {
 	transitionToFailed,
 } from "./services/compute-jobs/queue.js";
 import { runEvaluatePipeline } from "./services/evaluate/run.js";
-import { runDiscoverPipeline } from "./services/evaluate/run-discover.js";
 
 const WORKER_LEASE_MS = Number.parseInt(process.env.WORKER_LEASE_MS ?? "300000", 10); // 5min
 const WORKER_HEARTBEAT_MS = Number.parseInt(process.env.WORKER_HEARTBEAT_MS ?? "30000", 10); // 30s
@@ -63,16 +62,6 @@ async function fetchApiKey(id: string): Promise<ApiKey | null> {
 
 interface EvaluateParams {
 	itemId: string;
-	lookbackDays?: number;
-	soldLimit?: number;
-	opts?: Record<string, unknown>;
-}
-
-interface DiscoverParams {
-	q: string;
-	categoryId?: string;
-	filter?: string;
-	limit?: number;
 	lookbackDays?: number;
 	soldLimit?: number;
 	opts?: Record<string, unknown>;
@@ -121,25 +110,6 @@ async function runOneJob(job: ComputeJob): Promise<void> {
 				run: (onStep, cancelCheck) =>
 					runEvaluatePipeline({
 						itemId: params.itemId,
-						lookbackDays: params.lookbackDays,
-						soldLimit: params.soldLimit,
-						apiKey,
-						opts: params.opts as never,
-						onStep: (event) => void onStep(event),
-						cancelCheck,
-					}),
-			});
-		} else if (job.kind === "discover") {
-			const params = job.params as DiscoverParams;
-			await runJob({
-				job,
-				workerId,
-				run: (onStep, cancelCheck) =>
-					runDiscoverPipeline({
-						q: params.q,
-						categoryId: params.categoryId,
-						filter: params.filter,
-						limit: params.limit,
 						lookbackDays: params.lookbackDays,
 						soldLimit: params.soldLimit,
 						apiKey,

@@ -9,7 +9,7 @@
  * is a no-op (prints "no observations to fit").
  */
 
-import { fitCategoryBeta } from "../services/calibration/beta-fit.js";
+import { fitCategoryBeta } from "../services/calibration.js";
 
 async function main() {
 	console.log("[fit-beta] starting category β fit...");

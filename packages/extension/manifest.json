@@ -2,7 +2,7 @@
 	"manifest_version": 3,
 	"name": "flipagent",
 	"version": "0.0.1",
-	"description": "Local executor for flipagent's bridge surfaces — eBay buy/order, package-forwarder ops, and browser DOM queries — running inside your real Chrome session.",
+	"description": "Local executor for flipagent's bridge surfaces — eBay purchases, package-forwarder ops, and browser DOM queries — running inside your real Chrome session.",
 	"icons": {
 		"16": "icons/icon-16.png",
 		"32": "icons/icon-32.png",

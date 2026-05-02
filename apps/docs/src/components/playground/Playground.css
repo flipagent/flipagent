@@ -352,6 +352,57 @@
 	outline: none;
 }
 
+/* ---------- no-matches banner ---------- */
+
+/* Sits between the hero and the empty market rows when the LLM matcher
+ * rejected every candidate. Soft warn tone (not red — the run succeeded,
+ * the conclusion is just "nothing matched"). The icon + title + sub copy
+ * mirror PaneError's restraint so the banner reads as an outcome, not an
+ * alert. */
+.pg-result-no-matches {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	margin: 14px 0 0;
+	padding: 12px 14px;
+	border: 1px solid var(--border-faint);
+	border-left: 2px solid var(--brand);
+	border-radius: 6px;
+	background: color-mix(in oklab, var(--brand-soft) 60%, var(--surface));
+}
+
+.pg-result-no-matches-icon {
+	color: var(--brand);
+	flex-shrink: 0;
+	margin-top: 2px;
+}
+
+.pg-result-no-matches-body {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+
+.pg-result-no-matches-title {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.pg-result-no-matches-sub {
+	margin: 0;
+	font-size: 12px;
+	color: var(--text-2);
+	line-height: 1.5;
+}
+
+.pg-result-no-matches-sub strong {
+	color: var(--text);
+	font-weight: 600;
+}
+
 /* ---------- facts (key-value rows) ---------- */
 
 .pg-result-facts {
@@ -668,6 +719,17 @@
 	line-height: 14px;
 }
 
+/* LLM verdict text under a rejected MatchRow's meta line — explains
+ * why this listing didn't make the matched pool. Quiet styling so it
+ * reads as audit annotation, not a callout. */
+.pg-result-matches-reason {
+	margin: 4px 0 0;
+	font-size: 11.5px;
+	line-height: 1.45;
+	color: var(--text-3);
+	font-style: italic;
+}
+
 /* ---------- comparison (usually vs this listing) ---------- */
 
 .pg-result-compare {
@@ -826,9 +888,17 @@
 	border-top: 1px solid var(--border-faint);
 }
 
-/* While the chain is still streaming, the trace is shown inline (not
-   tucked behind the "Show trace" toggle) so the user can watch each
-   step tick over. Same wrapper, no toggle row. */
+/* When the foot follows `.pg-result-facts` (which always carries its own
+ * border-bottom), suppress the foot's own border-top — otherwise the two
+ * stack into a double line. */
+.pg-result-facts + .pg-result-foot {
+	border-top: none;
+	margin-top: 0;
+}
+
+/* Used by SearchResult's per-row eval-running footer where there's no
+ * action row (just the trace ticking over) — matches the wrapper's own
+ * 18px top padding. */
 .pg-result-foot--running { padding-top: 18px; }
 
 .pg-result-foot-row {
@@ -836,6 +906,46 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 12px;
+}
+
+/* Left-side button group — Cancel/Re-run + Copy JSON sit together so the
+ * primary action and the export action group as one unit, balanced
+ * against the trace toggle on the right. */
+.pg-result-foot-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 12px;
+}
+
+/* Bordered Cancel/Re-run mirror the row drawer's eval footer so the two
+ * surfaces feel like one component. Same height, same radius, same
+ * tonal language: Cancel = danger-bordered, Re-run = neutral-bordered. */
+.pg-result-cancel,
+.pg-result-rerun {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 10px;
+	font-size: 11.5px;
+	font-weight: 500;
+	border-radius: 6px;
+	border: 1px solid var(--border-faint);
+	background: var(--surface);
+	color: var(--text-2);
+	cursor: pointer;
+	transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.pg-result-rerun:hover {
+	color: var(--text);
+	border-color: var(--border);
+	background: var(--bg-soft);
+}
+
+.pg-result-cancel {
+	color: var(--danger);
+	border-color: var(--danger);
 }
 
 /* Plain-text affordance, paired with `.pg-result-trace-toggle` on the
@@ -983,6 +1093,7 @@
 	text-transform: uppercase;
 }
 
+.pg-step-pill--pending { color: var(--text-4); border-color: var(--border-faint); }
 .pg-step-pill--running { color: var(--brand); border-color: var(--brand); }
 .pg-step-pill--ok { color: #2f8f3a; border-color: #6ab474; }
 .pg-step-pill--error { color: #c0392b; border-color: #d68b80; }
@@ -1055,249 +1166,6 @@
 	word-break: break-word;
 }
 
-/* ====================================================================
-   Discover deals — master-detail.
-
-   1. Cluster chip strip on top (filter the table).
-   2. Flat table sorted by $/day across all clusters; cluster column
-      shows a tiny chip per row so the SKU grouping is visible inline.
-   3. Click a row → grid switches to 2 columns; right column hosts an
-      Evaluate-style detail pane (hero · histogram · facts grid).
-      Parent ComposeCard widens via the `width="wide"` prop so the
-      table doesn't squish.
-   4. Trace footer (always at the bottom).
-
-   Pre-deal scaffolding renders skeleton table rows immediately on Run.
-   ==================================================================== */
-
-/* One-line dedup signal above the table — shows count, group count,
-   and sort key in a single mono-toned line. No chip strip / filter UI;
-   cluster identity surfaces in the side detail when a row opens. */
-.pg-discover-summary {
-	margin: 0 0 10px;
-	font-size: 12px;
-	color: var(--text-3);
-}
-
-.pg-discover-summary-loading {
-	color: var(--brand);
-	font-style: italic;
-}
-
-.pg-discover-empty {
-	font-size: 13px;
-	color: var(--text-3);
-	margin: 12px 0;
-}
-
-/* ---------- table ---------- */
-
-.pg-discover-table-wrap {
-	min-width: 0;
-	overflow-x: auto;
-}
-
-/* `table-layout: fixed` forces columns to obey explicit `<th>` widths
-   (without it, auto layout sizes columns to content and a long title
-   stretches the cell wider than the column header, defeating the
-   `text-overflow: ellipsis` on the inner span). The Listing column has
-   no explicit width so it absorbs the leftover space. */
-.pg-discover-table {
-	width: 100%;
-	table-layout: fixed;
-	border-collapse: collapse;
-	font-size: 12.5px;
-	color: var(--text);
-}
-
-.pg-discover-th {
-	text-align: left;
-	padding: 4px 6px 6px;
-	font-weight: 500;
-	font-size: 10.5px;
-	text-transform: uppercase;
-	letter-spacing: 0.06em;
-	color: var(--text-3);
-	border-bottom: 1px solid var(--border-faint);
-	background: transparent;
-}
-
-.pg-discover-th--num,
-.pg-discover-td--num {
-	text-align: right;
-	font-variant-numeric: tabular-nums;
-	white-space: nowrap;
-	width: 76px;
-}
-
-.pg-discover-th--img,
-.pg-discover-td--img {
-	width: 40px;
-	padding: 4px 0 4px 6px;
-}
-
-.pg-discover-tr {
-	border-bottom: 1px solid var(--border-faint);
-	cursor: pointer;
-	transition: background 100ms ease;
-}
-
-.pg-discover-tr:hover {
-	background: var(--surface-2);
-}
-
-.pg-discover-tr:focus-visible {
-	outline: none;
-	background: var(--surface-2);
-	box-shadow: inset 2px 0 0 var(--brand);
-}
-
-.pg-discover-tr[data-selected="true"] {
-	background: var(--brand-soft);
-	box-shadow: inset 2px 0 0 var(--brand);
-}
-
-.pg-discover-tr--skel {
-	cursor: default;
-}
-
-.pg-discover-tr--skel:hover {
-	background: transparent;
-}
-
-/* Tighter than the prior 8px — denser scan rhythm, closer to the
-   Evaluate facts grid (5px). Vertical alignment on `middle` so single-
-   line title + mono numbers + rating pill all sit on one line. */
-.pg-discover-td {
-	padding: 5px 6px;
-	vertical-align: middle;
-}
-
-.pg-discover-thumb {
-	width: 32px;
-	height: 32px;
-	border: 1px solid var(--border-faint);
-	border-radius: 4px;
-	overflow: hidden;
-	background: var(--surface);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	color: var(--text-4);
-}
-
-.pg-discover-thumb img {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-
-/* Single-line title with ellipsis. Trades long-title legibility for
-   row-height stability — every row is one line, so the table reads
-   as a clean ladder of opportunities. The full title is in the side
-   detail's hero. */
-.pg-discover-title-text {
-	display: block;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	min-width: 0;
-	color: var(--text);
-}
-
-/* Sub-line under the title — condition + active-count. Muted so the
-   title stays the focal point of the row. Reuses the global `·`
-   separator pseudo from the playground meta utilities. */
-.pg-discover-title-meta {
-	display: block;
-	margin-top: 2px;
-	font-size: 11.5px;
-	color: var(--text-4);
-	letter-spacing: -0.005em;
-}
-.pg-discover-title-meta > span + span::before {
-	content: "·";
-	margin: 0 6px;
-	color: var(--text-4);
-}
-
-.pg-discover-good { color: var(--success); }
-.pg-discover-warn { color: var(--danger); }
-
-/* ---------- detail drawer (right-side viewport overlay) ----------
-   Card stays at narrow width (Evaluate parity); drawer slides in from
-   the viewport's right edge so the table behind doesn't shift. Inside
-   the drawer body, content matches Evaluate's content width (~720px)
-   so the facts grid column ratio reads identically.
-
-   Closes on backdrop click, X button, or ESC. */
-
-.pg-discover-drawer-backdrop {
-	position: fixed;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.18);
-	z-index: 50;
-	cursor: pointer;
-}
-
-.pg-discover-drawer {
-	position: fixed;
-	top: 0;
-	right: 0;
-	bottom: 0;
-	width: min(760px, 92vw);
-	background: var(--surface);
-	border-left: 1px solid var(--border-faint);
-	box-shadow: -12px 0 36px rgba(0, 0, 0, 0.10);
-	z-index: 51;
-	overflow-y: auto;
-	display: flex;
-	flex-direction: column;
-}
-
-.pg-discover-drawer-body {
-	padding: 28px 32px 40px;
-	min-width: 0;
-}
-
-@media (max-width: 640px) {
-	.pg-discover-drawer-body {
-		padding: 20px 16px 32px;
-	}
-}
-
-.pg-discover-drawer-close {
-	position: absolute;
-	top: 14px;
-	right: 14px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 30px;
-	height: 30px;
-	padding: 0;
-	background: var(--surface);
-	border: 1px solid var(--border-faint);
-	border-radius: 4px;
-	color: var(--text-3);
-	cursor: pointer;
-	z-index: 1;
-	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
-}
-
-.pg-discover-drawer-close:hover {
-	background: var(--surface-2);
-	color: var(--text);
-	border-color: var(--border);
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.pg-discover-drawer,
-	.pg-discover-drawer-backdrop {
-		transition: none !important;
-	}
-}
-
 /* ---------- search panel result ---------- */
 
 .pg-result-search {
@@ -1333,16 +1201,6 @@
 	flex: 1;
 }
 
-.pg-result-search-source {
-	color: var(--text-3);
-	border: 1px solid var(--border-faint);
-	border-radius: 3px;
-	padding: 1px 6px;
-	font-size: 10px;
-	letter-spacing: 0.04em;
-	text-transform: lowercase;
-}
-
 .pg-result-search-empty {
 	font-size: 13px;
 	color: var(--text-3);
@@ -1374,13 +1232,39 @@
 /* ---------- search pager ---------- */
 
 .pg-result-search-pager {
-	display: flex;
+	/* 3-column grid: spacer | controls (centered) | range (right). The
+	 * spacer + range columns are equal-width 1fr so the controls stay
+	 * truly centered regardless of the range string's length. */
+	display: grid;
+	grid-template-columns: 1fr auto 1fr;
 	align-items: center;
-	justify-content: center;
-	gap: 18px;
-	padding: 14px 8px 4px;
+	gap: 12px;
+	padding: 10px 12px;
 	border-top: 1px solid var(--border-faint);
 	margin-top: 6px;
+	/* Stick to the bottom of the nearest scrolling ancestor so the pager
+	 * stays visible while a long list scrolls under it. */
+	position: sticky;
+	bottom: 0;
+	background: var(--surface);
+	z-index: 5;
+}
+
+.pg-result-search-pager-controls {
+	display: flex;
+	align-items: center;
+	gap: 18px;
+}
+
+.pg-result-search-pager-range {
+	font-size: 11px;
+	color: var(--text-3);
+	justify-self: end;
+	white-space: nowrap;
+}
+
+.pg-result-search-pager-side {
+	display: block;
 }
 
 .pg-result-search-pager-btn {
@@ -1417,3 +1301,669 @@
 	text-transform: uppercase;
 }
 
+
+/* ─────────── Row drawer (Search + Sourcing shared) ─────────── */
+
+/*
+ * Viewport-anchored slide-in: drawer floats over the page, backdrop dims
+ * the rest. Mounted via createPortal to document.body so it escapes the
+ * ComposeCard's stacking context. ESC + backdrop click + close button
+ * all dismiss; outer scroll is locked in JS while open.
+ */
+@keyframes row-drawer-fade-in {
+	from { opacity: 0; }
+	to   { opacity: 1; }
+}
+@keyframes row-drawer-slide-in {
+	from { transform: translateX(100%); }
+	to   { transform: translateX(0); }
+}
+
+.row-drawer-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 80;
+	background: rgba(15, 15, 15, 0.32);
+	backdrop-filter: blur(2px);
+	-webkit-backdrop-filter: blur(2px);
+	border: 0;
+	padding: 0;
+	cursor: default;
+	animation: row-drawer-fade-in 160ms ease-out;
+}
+
+.row-drawer {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 81;
+	width: min(560px, 92vw);
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	padding: 18px 20px 24px;
+	border-left: 1px solid var(--border);
+	background: var(--surface);
+	box-shadow: -16px 0 48px rgba(0, 0, 0, 0.12), -2px 0 8px rgba(0, 0, 0, 0.04);
+	overflow-y: auto;
+	animation: row-drawer-slide-in 220ms cubic-bezier(0.2, 0.85, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.row-drawer-backdrop,
+	.row-drawer {
+		animation: none;
+	}
+}
+
+.row-drawer-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.row-drawer-eyebrow {
+	margin: 0;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-3);
+}
+
+/* Plain icon-only close — no chrome, no border. The Item-detail eyebrow
+ * to its left already labels the panel; the close button just needs to
+ * register as an action affordance. Keeping it minimal keeps the head
+ * row from competing with the title underneath. */
+.row-drawer-close {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-3);
+	cursor: pointer;
+	transition: color 120ms ease, background 120ms ease;
+}
+
+.row-drawer-close:hover {
+	color: var(--text);
+	background: var(--bg-soft);
+}
+
+.row-drawer-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.row-drawer-run {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 10px;
+	font-size: 11.5px;
+	font-weight: 500;
+	border-radius: 6px;
+	color: white;
+	background: var(--brand);
+	border: 1px solid var(--brand);
+	cursor: pointer;
+	text-decoration: none;
+	transition: filter 120ms ease;
+}
+
+.row-drawer-run:hover {
+	filter: brightness(1.05);
+}
+
+/* ─────────── item card layout ─────────── *
+ *
+ * Type scale and column rhythm are matched across all sub-blocks so
+ * the card reads as one quiet surface, not a stack of competing UIs.
+ *
+ *   font-size    use
+ *   ─────────    ─────────────────────────────────────
+ *   17px mono    price headline (only place mono earns it)
+ *   13px sans    title
+ *   12px sans    every label + value in facts/specs/auction
+ *   11.5px sans  asides (seller feedback %, ship-from)
+ *   10.5px mono  eyebrow caps + spec-section header
+ *
+ * Single 130px first column from facts → specs so dt edges line up
+ * vertically through the whole card.
+ */
+
+.row-drawer-card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+/* ─────────── image gallery ─────────── */
+
+/* Wrapper hosts the strip + the prev/next chevron buttons (overlaid
+ * absolutely on the strip's edges). Thumbs scroll horizontally inside
+ * the strip; users primarily click the chevrons but the scroll itself
+ * still works as a touchpad / mobile fallback. */
+.row-drawer-gallery-wrap {
+	position: relative;
+}
+
+.row-drawer-gallery {
+	display: flex;
+	gap: 4px;
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+	-webkit-overflow-scrolling: touch;
+	scroll-behavior: smooth;
+}
+
+.row-drawer-gallery::-webkit-scrollbar {
+	display: none;
+}
+
+/* Chevron paging buttons — absolutely positioned on each edge of the
+ * strip, vertically centered. Soft circular surface with a subtle
+ * shadow so they read as floating over the thumbs without competing
+ * with them visually. Auto-hide handled in JSX based on scroll
+ * position. */
+.row-drawer-gallery-nav {
+	position: absolute;
+	top: 50%;
+	transform: translateY(-50%);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: 1px solid var(--border-faint);
+	border-radius: 50%;
+	background: var(--surface);
+	color: var(--text-2);
+	cursor: pointer;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+	transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+	z-index: 1;
+}
+
+.row-drawer-gallery-nav:hover {
+	color: var(--text);
+	border-color: var(--border);
+	background: var(--bg-soft);
+}
+
+.row-drawer-gallery-nav--prev {
+	left: 4px;
+}
+
+.row-drawer-gallery-nav--next {
+	right: 4px;
+}
+
+.row-drawer-gallery--empty {
+	min-height: 0;
+}
+
+.row-drawer-gallery-skel {
+	width: 100%;
+	height: 72px;
+	border-radius: 6px;
+}
+
+.row-drawer-gallery-thumb {
+	display: block;
+	flex-shrink: 0;
+	width: 72px;
+	height: 72px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	background: var(--bg-soft);
+	cursor: pointer;
+	overflow: hidden;
+	transition: border-color 120ms ease;
+}
+
+.row-drawer-gallery-thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.row-drawer-gallery-thumb:hover {
+	border-color: var(--border-faint);
+}
+
+/* ─────────── title row ─────────── */
+
+.row-drawer-title-block {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.row-drawer-title-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	min-width: 0;
+}
+
+.row-drawer-title {
+	flex: 1;
+	min-width: 0;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.4;
+	color: var(--text);
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.row-drawer-title-link {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 4px;
+	border: 0;
+	background: transparent;
+	color: var(--text-3);
+	transition: color 120ms ease, background 120ms ease;
+}
+
+.row-drawer-title-link:hover {
+	color: var(--text);
+	background: var(--bg-soft);
+}
+
+/* ─────────── trust chips strip ─────────── */
+
+.row-drawer-trust {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+/* Quieter chips — flat fill, no border, smaller text. The strip's
+ * job is "trust signals at a glance," not "look at me." */
+.row-drawer-trust-chip {
+	display: inline-flex;
+	align-items: center;
+	height: 20px;
+	padding: 0 7px;
+	border-radius: 4px;
+	font-size: 10.5px;
+	font-weight: 500;
+	background: var(--bg-soft);
+	color: var(--text-2);
+}
+
+.row-drawer-trust-chip--good {
+	color: var(--success);
+	background: color-mix(in srgb, var(--success) 10%, transparent);
+}
+
+.row-drawer-trust-chip--warn {
+	color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+/* ─────────── price strip ─────────── */
+
+/* Single divider above the price (separates price block from title
+ * + trust chips above). No bottom border — the Key facts section
+ * supplies its own visual structure via the first dt. */
+.row-drawer-price {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	padding-top: 12px;
+	border-top: 1px solid var(--border-faint);
+}
+
+.row-drawer-price-main {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.row-drawer-price-val {
+	font-size: 17px;
+	font-weight: 600;
+	color: var(--text);
+	font-family: var(--mono);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.01em;
+}
+
+.row-drawer-price-strike {
+	font-size: 12px;
+	color: var(--text-3);
+	text-decoration: line-through;
+	font-family: var(--mono);
+}
+
+.row-drawer-price-discount {
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--brand);
+}
+
+.row-drawer-price-modes {
+	display: inline-flex;
+	gap: 4px;
+	margin-left: 2px;
+}
+
+.row-drawer-price-mode {
+	display: inline-flex;
+	align-items: center;
+	height: 18px;
+	padding: 0 6px;
+	border-radius: 4px;
+	background: var(--bg-soft);
+	font-size: 10.5px;
+	font-weight: 500;
+	color: var(--text-2);
+}
+
+.row-drawer-price-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 4px;
+	font-size: 11.5px;
+	color: var(--text-3);
+}
+
+/* ─────────── auction info ─────────── */
+
+/* Quiet 2-cell row. No tinted background, no border — fits into the
+ * card's flat surface; the urgent label below carries the warning
+ * tone when needed. */
+.row-drawer-auction {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 12px;
+	padding-top: 4px;
+}
+
+.row-drawer-auction-cell {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.row-drawer-auction-label {
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-3);
+}
+
+.row-drawer-auction-val {
+	font-size: 12.5px;
+	font-weight: 500;
+	color: var(--text);
+}
+
+.row-drawer-auction-aside {
+	font-size: 11px;
+	color: var(--text-3);
+}
+
+.row-drawer-auction-urgent {
+	font-size: 10.5px;
+	font-weight: 500;
+	color: var(--danger);
+}
+
+/* ─────────── key facts grid ─────────── *
+ * Drawer-specific layout — drops .pg-result-facts's 15px-mono values
+ * (Evaluate uses those for $-figures) in favor of plain 12px sans
+ * matching the Specs table's tone the user liked. Same 130px first
+ * column from the Specs table so dt edges align top-to-bottom. */
+
+.row-drawer-facts {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.row-drawer-facts > div {
+	display: grid;
+	grid-template-columns: 130px 1fr;
+	align-items: baseline;
+	gap: 10px;
+	padding: 4px 0;
+	font-size: 12px;
+}
+
+.row-drawer-facts dt {
+	color: var(--text-3);
+	font-size: 12px;
+	margin: 0;
+	line-height: 1.5;
+}
+
+/* Override .pg-result-facts dd's 22px line-height — Evaluate uses
+ * that for fixed-height $-figure rows; the drawer's plain text rows
+ * should match the Specs table below (default 1.5) so the two
+ * sections share the same vertical rhythm. */
+.row-drawer-facts dd {
+	margin: 0;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px;
+	min-width: 0;
+	line-height: 1.5;
+}
+
+/* Sans, regular weight, smaller — matches Specs values. Reset the
+ * .pg-result-facts-val mono/15px/bold inheritance. */
+.row-drawer-facts .pg-result-facts-val {
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: 400;
+	color: var(--text);
+	letter-spacing: 0;
+}
+
+.row-drawer-facts .pg-result-facts-val--warn { color: var(--danger); }
+
+.row-drawer-facts .pg-result-facts-aside {
+	font-size: 11.5px;
+	color: var(--text-3);
+}
+
+/* Category breadcrumb — segments separated by chevron, smaller than
+ * the value text so the path doesn't dominate the row. */
+.row-drawer-breadcrumb {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0 6px;
+	font-size: 12px;
+	color: var(--text);
+	min-width: 0;
+}
+
+.row-drawer-breadcrumb-sep {
+	color: var(--text-3);
+	font-size: 11px;
+}
+
+/* ─────────── specs table ─────────── */
+
+.row-drawer-specs {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding-top: 12px;
+	border-top: 1px solid var(--border-faint);
+}
+
+.row-drawer-specs-head {
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-3);
+}
+
+.row-drawer-specs-table {
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.row-drawer-specs-row {
+	display: grid;
+	grid-template-columns: 130px 1fr;
+	gap: 10px;
+	padding: 4px 0;
+	font-size: 12px;
+}
+
+.row-drawer-specs-row dt {
+	color: var(--text-3);
+	margin: 0;
+}
+
+.row-drawer-specs-row dd {
+	color: var(--text);
+	margin: 0;
+	min-width: 0;
+	word-break: break-word;
+}
+
+/* ─────────── post-Run result block ─────────── */
+
+.row-drawer-error {
+	margin: 0;
+	font-size: 12px;
+	color: #c0392b;
+}
+
+/* The item card stays visible above this block — divider + label
+ * mark the seam so the market analysis reads as its own section
+ * instead of more facts about the item. Top padding pulls the label
+ * off the divider; the EvaluateResult itself follows. */
+.row-drawer-result {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-top: 0;
+	padding-top: 16px;
+	border-top: 1px solid var(--border-faint);
+}
+
+.row-drawer-section-label {
+	margin: 0;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-3);
+}
+
+/* Tighten the embedded EvaluateResult inside the drawer so the dense
+ * stats stack readably in a narrow column. */
+.row-drawer-result .pg-result {
+	padding: 0;
+}
+
+/* ─────────── Selectable row (when SearchResult opts in) ─────────── */
+
+.pg-result-matches-row[data-selectable="true"] {
+	cursor: pointer;
+}
+
+.pg-result-matches-row[data-selectable="true"]:hover {
+	background: var(--bg-soft);
+}
+
+.pg-result-matches-row[data-selected="true"] {
+	background: var(--brand-soft);
+}
+
+/* ─────────── Search row + per-row Eval ─────────── *
+ * SearchRow wraps each row in its own outer div so the inline eval
+ * summary (when running/complete) can sit under the row content
+ * without breaking the row's flex layout. The wrapper takes the
+ * separator border that .pg-result-matches-row used to own — so the
+ * row + eval inline read as one unit. */
+
+/* Right-side action group — Eval button + open-on-eBay icon link.
+ * Sits in the row grid's `auto` column, both buttons inline. */
+.pg-search-row-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.pg-search-row-eval-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 22px;
+	padding: 0 8px;
+	font-size: 11px;
+	font-weight: 500;
+	border-radius: 4px;
+	border: 1px solid var(--border-faint);
+	background: var(--surface);
+	color: var(--text-2);
+	cursor: pointer;
+	transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.pg-search-row-eval-btn:hover {
+	color: var(--text);
+	border-color: var(--border);
+	background: var(--bg-soft);
+}
+
+.pg-search-row-eval-btn--cancel {
+	color: var(--danger);
+	border-color: color-mix(in srgb, var(--danger) 35%, var(--border-faint));
+}
+
+.pg-search-row-eval-btn--view {
+	color: var(--brand);
+	border-color: color-mix(in srgb, var(--brand) 30%, var(--border-faint));
+}
+
+.pg-search-row-eval-spin {
+	animation: pg-search-row-spin 0.9s linear infinite;
+}
+
+@keyframes pg-search-row-spin {
+	to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pg-search-row-eval-spin { animation: none; }
+}

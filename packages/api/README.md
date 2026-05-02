@@ -1,12 +1,12 @@
 # @flipagent/api
 
 Hono backend that hosts `api.flipagent.dev`. ONE unified API for the
-online reselling cycle — discovery, evaluation, forwarder quoting,
+online reselling cycle — search, evaluation, forwarder quoting,
 buying, listing, fulfillment, finance — all under `/v1/*`.
 
 The product is the convenience: one flipagent API key handles auth,
 metering, response cache, server-side scoring math, eBay OAuth
-plumbing, and outbound calls (REST passthrough, Trading XML, the
+plumbing, and outbound calls (eBay REST, Trading XML, the
 Chrome-extension bridge, or a managed Web Scraper API depending on
 the resource).
 
@@ -24,26 +24,31 @@ packages/api/
 │   ├── config.ts             env validation (TypeBox)
 │   ├── db/
 │   │   ├── client.ts         postgres-js + drizzle handle
-│   │   ├── schema.ts         api_keys, usage_events, response_cache,
-│   │   │                     purchase_orders, takedown_requests, …
+│   │   ├── schema.ts         api_keys, usage_events, listings_cache,
+│   │   │                     proxy_response_cache, listing_observations,
+│   │   │                     bridge_jobs, compute_jobs, takedown_requests, …
 │   │   └── migrate.ts        `npm run db:migrate`
 │   ├── auth/                 keys, bridge tokens, better-auth, key cipher
 │   ├── billing/              Stripe Checkout + webhooks
-│   ├── middleware/           requireApiKey, cache-first, with-trading-auth, …
+│   ├── middleware/           auth (requireApiKey/Session/Admin),
+│   │                         bridge-auth, with-trading-auth
 │   ├── services/
 │   │   ├── ebay/
-│   │   │   ├── rest/         api.ebay.com REST passthrough (Buy + Sell + Commerce)
+│   │   │   ├── rest/         user-client + app-client (api.ebay.com REST)
 │   │   │   ├── scrape/       managed Web Scraper API dispatcher
 │   │   │   ├── bridge/       Chrome-extension task names
 │   │   │   └── trading/      eBay Trading XML/SOAP wrappers
 │   │   ├── shared/           selectTransport, withCache, FlipagentResult, …
-│   │   ├── orders/           bridge-job queue + state machine
-│   │   ├── buy/              checkout-session orchestration
-│   │   ├── listings/         resource service (rest | scrape | bridge)
-│   │   ├── match | evaluate | discover | research | draft | reprice | ship | expenses
-│   │   ├── scoring | quant   deal-finding math (cents-denominated, no I/O)
+│   │   ├── bridge.ts         bridge token + login-status
+│   │   ├── bridge-jobs.ts    bridge-job queue + state machine
+│   │   ├── compute-jobs/     async /v1/evaluate/jobs queue + dispatcher
+│   │   ├── purchases/        REST + bridge transports
+│   │   ├── listings/         resource service (rest + Trading XML)
+│   │   ├── sales/, money/, disputes/, marketing/, marketplace-meta/
+│   │   ├── items/, evaluate/, match/
+│   │   ├── quant/            scoring math (cents-denominated, no I/O)
 │   │   ├── forwarder/        Planet Express rate tables, dim-weight calc
-│   │   └── notifications | webhooks | observations | trends
+│   │   └── notifications/, webhooks.ts, observations.ts, trends.ts
 │   └── routes/v1/            one file per resource — validates input,
 │                             calls the resource service, renders headers
 └── drizzle/                  generated migrations
@@ -112,14 +117,13 @@ Override defaults via env: `PORT=4001 TUNNEL_HOSTNAME=other.example.dev npm run 
 | Connect | `/v1/connect/ebay/*` | API key | eBay OAuth handshake |
 | Billing | `POST /v1/billing/{checkout,portal,webhook}` | mixed | Stripe-driven |
 | Dashboard | `GET /v1/me/*` | session | Dashboard backend |
-| **Discovery** | `GET /v1/buy/browse/*`, `GET /v1/buy/marketplace_insights/item_sales/search` | API key | scraped or app-token passthrough |
+| **Marketplace data** | `GET /v1/items/*`, `GET /v1/items/search?status=sold` | API key | scrape or app-token REST (selectTransport) |
 | **Decisions** | `POST /v1/evaluate` (sync) + `/v1/evaluate/jobs/*` (async + SSE + cancel) | API key | composite — detail + sold/active search + LLM same-product filter + score |
-| **Discover** | `POST /v1/discover` (sync) + `/v1/discover/jobs/*` (async + SSE + cancel) | API key | composite — query → ranked deals |
 | **Operations** | `POST /v1/ship/quote`, `GET /v1/ship/providers` | API key | forwarder math |
-| Buy-side | `/v1/buy/order/*`, `/v1/buy/feed/*`, `/v1/buy/deal/*`, `/v1/buy/offer/*` | API key + (eBay OAuth where applicable) | passthrough + bridge transports |
-| Sell-side | `/v1/sell/{inventory,fulfillment,finances,account,marketing,negotiation,analytics,compliance,recommendation,logistics,stores,feed,metadata}/*` | API key + eBay OAuth | passthrough to api.ebay.com |
-| Commerce | `/v1/commerce/{taxonomy,catalog,identity,translation}/*` | API key + eBay OAuth (where applicable) | cross-cutting marketplace data |
-| Post-order | `/v1/post-order/*` | API key + eBay OAuth | returns/cases/cancellations/inquiries/issues |
+| Buy-side | `/v1/purchases/*`, `/v1/featured`, `/v1/bids/*`, `/v1/feeds/*` | API key + (eBay OAuth where applicable) | rest + bridge transports |
+| Sell-side write | `/v1/listings/*`, `/v1/listings/bulk/*`, `/v1/listing-groups/*`, `/v1/locations/*`, `/v1/sales/*`, `/v1/offers/*`, `/v1/promotions/*`, `/v1/markdowns/*`, `/v1/ads/*`, `/v1/store/*`, `/v1/labels/*` | API key + eBay OAuth | rest + Trading XML |
+| Money + comms | `/v1/payouts/*`, `/v1/transactions/*`, `/v1/transfers/*`, `/v1/messages`, `/v1/feedback`, `/v1/disputes/*`, `/v1/violations/*`, `/v1/policies/*`, `/v1/recommendations`, `/v1/marketplaces`, `/v1/me/seller/*` | API key + eBay OAuth | normalized — cents-int Money + lifecycle status |
+| Marketplace meta | `/v1/categories/*`, `/v1/products/*`, `/v1/charities`, `/v1/media/*`, `/v1/translate`, `/v1/analytics/*`, `/v1/feeds/*`, `/v1/saved-searches`, `/v1/watching` | API key (eBay OAuth on writes) | cross-cutting marketplace data |
 
 Authenticated endpoints accept either header:
 
@@ -133,24 +137,30 @@ Each metered call sets `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
 
 ## Tiers
 
-| Tier | Calls / month | Notes |
-|---|---|---|
-| `free` | 100 | Sign up via dashboard, key issued once |
-| `hobby` | 5,000 | Stripe upgrade |
-| `pro` | 50,000 | Stripe upgrade |
-| `business` | unlimited | Custom contract |
+| Tier | Credits | Refill | Notes |
+|---|---|---|---|
+| `free` | 500 | one-time (lifetime grant) | Sign up via dashboard, key issued once |
+| `hobby` | 3,000 | monthly (UTC) | Stripe upgrade |
+| `standard` | 100,000 | monthly (UTC) | Stripe upgrade |
+| `growth` | 500,000 | monthly (UTC) | Stripe upgrade |
 
 ## Backend chain
 
-Each marketplace request goes through:
+Each `/v1/*` request flows through:
 
-1. **Postgres response cache** (`proxy_response_cache`). TTL: 60min for
-   active searches, 4h for item detail, 12h for sold prices.
-2. **Scrape via @flipagent/ebay-scraper** (when `EBAY_CLIENT_ID` unset)
-   **or OAuth passthrough to api.ebay.com** (when set). The passthrough
-   layer rewrites our `/v1/<group>/<resource>/...` to eBay's
-   `/<group>/<resource>/v1/...` shape via the `PATH_MAP` in
-   `services/ebay/rest/client.ts`.
+1. **Auth + metering** (`middleware/auth.ts`) — API key or session,
+   then `usage_events` insert.
+2. **Resource service** (`services/<resource>/*`) — flipagent-native
+   logic that picks a transport via `selectTransport(...)` from
+   `services/shared/transport.ts` (rest / scrape / bridge / trading).
+3. **Response cache** (`services/shared/with-cache.ts` →
+   `proxy_response_cache`). TTL: 60min for active searches, 4h for
+   item detail, 12h for sold prices. Cache hits flip `fromCache`;
+   they do not change the `source`.
+4. **Provider call** under `services/ebay/{rest,scrape,bridge,trading}/`
+   — `rest/{user,app}-client.ts` for eBay REST, the scrape vendor
+   dispatcher (Oxylabs today) for HTML, the bridge queue for
+   extension-driven ops, or `trading/*` for XML/SOAP.
 
 Every response carries `X-Flipagent-Source` (`scrape`, `rest`,
 `bridge`, `trading`, …) plus `X-Flipagent-From-Cache` and

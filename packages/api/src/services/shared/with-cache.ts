@@ -63,9 +63,9 @@ export function timeoutMsForSource(source: "rest" | "scrape" | "bridge"): number
 			// — that's what actually bounds an individual upstream call.
 			// This outer deadline is just a safety net wrapping the whole
 			// fetcher (which includes the in-process semaphore queue). The
-			// queue wait is variable: discover with K=19 clusters fans out
-			// ~200 scrape calls, throttled by the 12-slot semaphore, and a
-			// long-tail caller can wait minutes for its slot. We don't
+			// queue wait is variable: a broad evaluate run can fan out
+			// dozens of scrape calls, throttled by the 12-slot semaphore,
+			// and a long-tail caller can wait minutes for its slot. We don't
 			// want THAT wait to count against a fixed budget — the inner
 			// 90s HTTP cap already guarantees no single call hangs. So the
 			// outer is a generous 10-minute upper bound: "if the whole

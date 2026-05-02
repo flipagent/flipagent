@@ -1,106 +1,102 @@
 /**
- * `/v1/messages/*` — buyer ↔ seller messages. eBay never built a
- * REST messaging surface, so we wrap the legacy Trading API
- * (`GetMyMessages` for read, `AddMemberMessageRTQ` for reply).
- *
- *   GET  /v1/messages           — list inbox messages (paginated)
- *   POST /v1/messages/reply     — reply to a buyer's question on a listing
- *
- * Auth: `Authorization: Bearer fa_…`. `withTradingAuth` resolves the
- * api key's connected eBay refresh token, mints an access token, and
- * hands it to the handler. Trading API errors are mapped uniformly
- * to 502 by the middleware — handlers stay focused on shaping.
+ * `/v1/messages/*` — buyer ↔ seller messages, normalized.
+ * Wraps Trading API XML internally; caller sees flipagent `Message` shape.
  */
 
-import { type Static, Type } from "@sinclair/typebox";
+import { type Message, type MessageCreate, MessagesListQuery, MessagesListResponse } from "@flipagent/types";
+import { Type } from "@sinclair/typebox";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { withTradingAuth } from "../../middleware/with-trading-auth.js";
-import { getMyMessages, replyToBuyer } from "../../services/ebay/trading/messages.js";
-import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
+import { getMyMessages, type MyMessage, replyToBuyer } from "../../services/ebay/trading/messages.js";
+import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
+
+function tradingMessageToMessage(m: MyMessage, myUsername: string | undefined): Message {
+	const direction: Message["direction"] = myUsername && m.sender === myUsername ? "outgoing" : "incoming";
+	return {
+		id: m.messageId,
+		marketplace: "ebay",
+		direction,
+		from: m.sender ?? "",
+		to: m.recipient ?? "",
+		body: m.text ?? "",
+		...(m.subject ? { subject: m.subject } : {}),
+		...(m.itemId ? { listingId: m.itemId } : {}),
+		...(m.read != null ? { read: m.read } : {}),
+		createdAt: m.receiveDate ?? "",
+	};
+}
 
 export const messagesRoute = new Hono();
 
-const MyMessage = Type.Object(
+const MessageCreateSchema = Type.Object(
 	{
-		messageId: Type.String(),
-		externalMessageId: Type.Union([Type.String(), Type.Null()]),
-		sender: Type.Union([Type.String(), Type.Null()]),
-		recipient: Type.Union([Type.String(), Type.Null()]),
-		subject: Type.Union([Type.String(), Type.Null()]),
-		text: Type.Union([Type.String(), Type.Null()]),
-		receiveDate: Type.Union([Type.String(), Type.Null()]),
-		expirationDate: Type.Union([Type.String(), Type.Null()]),
-		read: Type.Union([Type.Boolean(), Type.Null()]),
-		replied: Type.Union([Type.Boolean(), Type.Null()]),
-		flagged: Type.Union([Type.Boolean(), Type.Null()]),
-		itemId: Type.Union([Type.String(), Type.Null()]),
-		folderId: Type.Union([Type.String(), Type.Null()]),
-		messageType: Type.Union([Type.String(), Type.Null()]),
+		to: Type.String(),
+		body: Type.String({ minLength: 1, maxLength: 2000 }),
+		subject: Type.Optional(Type.String()),
+		listingId: Type.Optional(Type.String()),
+		replyTo: Type.Optional(Type.String()),
 	},
-	{ $id: "MyMessage" },
+	{ $id: "MessageCreate" },
 );
-
-const ListResponse = Type.Object({ messages: Type.Array(MyMessage) }, { $id: "MessagesListResponse" });
-
-const ReplyRequest = Type.Object(
-	{
-		itemId: Type.String(),
-		recipientUserId: Type.String(),
-		parentMessageId: Type.String(),
-		subject: Type.String(),
-		body: Type.String(),
-		emailCopyToSender: Type.Optional(Type.Boolean()),
-	},
-	{ $id: "MessageReplyRequest" },
-);
-
-const AckResponse = Type.Object({ ack: Type.String() }, { $id: "MessageReplyResponse" });
 
 messagesRoute.get(
 	"/",
 	describeRoute({
 		tags: ["Messages"],
-		summary: "List inbox messages (Trading GetMyMessages)",
+		summary: "List messages",
+		parameters: paramsFor("query", MessagesListQuery),
 		responses: {
-			200: jsonResponse("Inbox slice.", ListResponse),
-			401: errorResponse("API key missing or eBay account not connected."),
-			502: errorResponse("Trading API call failed."),
+			200: jsonResponse("Messages page.", MessagesListResponse),
+			401: errorResponse("Auth missing."),
+			502: errorResponse("Trading API failed."),
 		},
 	}),
 	requireApiKey,
+	tbCoerce("query", MessagesListQuery),
 	withTradingAuth(async (c, accessToken) => {
-		const messages = await getMyMessages({
-			accessToken,
-			folderId: c.req.query("folderId") ? Number(c.req.query("folderId")) : undefined,
-			pageNumber: c.req.query("page") ? Number(c.req.query("page")) : undefined,
-			entriesPerPage: c.req.query("limit") ? Number(c.req.query("limit")) : undefined,
-		});
-		return c.json({ messages });
+		const limit = Number(c.req.query("limit") ?? 50);
+		const direction = c.req.query("direction") as "incoming" | "outgoing" | undefined;
+		const raw = await getMyMessages({ accessToken, entriesPerPage: limit, pageNumber: 1 });
+		const myUsername = c.var.apiKey.userId ?? undefined;
+		const messages = raw.map((m) => tradingMessageToMessage(m, myUsername));
+		const filtered = direction ? messages.filter((m) => m.direction === direction) : messages;
+		return c.json({ messages: filtered, limit, offset: 0, source: "trading" as const });
 	}),
 );
 
 messagesRoute.post(
-	"/reply",
+	"/",
 	describeRoute({
 		tags: ["Messages"],
-		summary: "Reply to a buyer question on a listing (Trading AddMemberMessageRTQ)",
+		summary: "Send / reply to a message",
 		responses: {
-			200: jsonResponse("Acknowledged.", AckResponse),
+			200: jsonResponse("Acknowledged.", Type.Object({ ack: Type.String() })),
 			400: errorResponse("Validation failed."),
-			401: errorResponse("API key missing or eBay account not connected."),
-			502: errorResponse("Trading API call failed."),
 		},
 	}),
 	requireApiKey,
-	tbBody(ReplyRequest),
+	tbBody(MessageCreateSchema),
 	withTradingAuth(async (c, accessToken) => {
-		// `tbBody(ReplyRequest)` validated upstream; read parsed body
-		// fresh because Hono's chain doesn't surface validator types
-		// through the wrapping middleware.
-		const body = (await c.req.json()) as Static<typeof ReplyRequest>;
-		const result = await replyToBuyer({ accessToken, ...body });
+		const body = (await c.req.json()) as MessageCreate;
+		if (!body.replyTo || !body.listingId) {
+			return c.json(
+				{
+					error: "missing_reply_context",
+					message: "replyTo + listingId are required for now (Trading AddMemberMessageRTQ).",
+				},
+				400,
+			);
+		}
+		const result = await replyToBuyer({
+			accessToken,
+			itemId: body.listingId,
+			recipientUserId: body.to,
+			parentMessageId: body.replyTo,
+			subject: body.subject ?? "Re:",
+			body: body.body,
+		});
 		return c.json(result);
 	}),
 );

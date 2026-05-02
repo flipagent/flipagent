@@ -48,21 +48,19 @@ const Schema = Type.Object({
 			"https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
 		].join(" "),
 	}),
-	// Order API is Limited Release. Set to `1` only after eBay approves
-	// flipagent's tenant — otherwise /v1/buy/order/* uses the bridge
-	// transport (REST returns 501 without approval).
+	// Buy Order API is Limited Release. Set to `1` only after eBay approves
+	// flipagent's tenant — `/v1/purchases` then uses REST transport
+	// (synchronous BIN). Without it the orchestrator routes to the bridge
+	// transport (Chrome extension), and multi-stage updates 412.
 	EBAY_ORDER_API_APPROVED: Type.Boolean({ default: false }),
-	// Marketplace Insights program approval (sold-listing history). Set to
-	// `1` only after eBay grants Insights access to the tenant. With this
-	// flag, /v1/buy/marketplace_insights/item_sales/search hits
-	// api.ebay.com/buy/marketplace_insights/v1_beta/... using the app
-	// token; without it, the route falls back to scraping.
+	// Marketplace Insights program approval (sold-listing history). With
+	// this flag, `/v1/items/search?status=sold` hits Marketplace Insights
+	// REST; without it the route falls back to scraping.
 	EBAY_INSIGHTS_APPROVED: Type.Boolean({ default: false }),
 	// Commerce Catalog API program approval (canonical product master by
-	// EPID). Set to `1` only after eBay approves the tenant. With this
-	// flag, /v1/commerce/catalog/product/{epid} hits Catalog REST; without
-	// it (the default — eBay denies most apps) the route falls back to
-	// scraping /p/{epid} + a representative listing and emits the same
+	// EPID). With this flag, `/v1/products/{epid}` hits Catalog REST;
+	// without it (the default — eBay denies most apps) it falls back to
+	// scraping `/p/{epid}` + a representative listing and emits the same
 	// `Product` shape.
 	EBAY_CATALOG_APPROVED: Type.Boolean({ default: false }),
 	// Better-Auth + GitHub OAuth. All three required to enable session auth
@@ -112,8 +110,7 @@ const Schema = Type.Object({
 	STRIPE_PRICE_HOBBY: Type.Optional(Type.String()),
 	STRIPE_PRICE_STANDARD: Type.Optional(Type.String()),
 	STRIPE_PRICE_GROWTH: Type.Optional(Type.String()),
-	// LLM provider — gates same-product matcher used by composite
-	// intelligence endpoints (/v1/discover, /v1/evaluate).
+	// LLM provider — gates same-product matcher used by /v1/evaluate.
 	// Pick one explicitly via `LLM_PROVIDER`, otherwise the first key
 	// set wins (anthropic → openai → google). Without any key the
 	// matcher returns a graceful fallback (raw search results, no
@@ -127,11 +124,11 @@ const Schema = Type.Object({
 	GOOGLE_MODEL: Type.Optional(Type.String()),
 	// Per-process LLM concurrency cap. Each provider tier has its own
 	// rate-limit window (Anthropic tier-1: 4 concurrent; tier-4: 50+).
-	// matchPool fans out N×K verify chunks under multi-cluster discover —
-	// without a cap they all hit the provider at once and queue at the
-	// provider side, where stuck requests pin downstream steps. Set this
-	// to your provider tier's safe concurrency. Default 8 (covers most
-	// paid tiers without provoking rate-limit errors).
+	// matchPool fans out N×K verify chunks per evaluate call — without a
+	// cap they all hit the provider at once and queue at the provider
+	// side, where stuck requests pin downstream steps. Set this to your
+	// provider tier's safe concurrency. Default 8 (covers most paid
+	// tiers without provoking rate-limit errors).
 	LLM_MAX_CONCURRENT: Type.Optional(Type.Integer({ minimum: 1, maximum: 64 })),
 	// Per-listing observation archive — hosted-only feature. Each search
 	// / detail response writes one row to `listing_observations` for

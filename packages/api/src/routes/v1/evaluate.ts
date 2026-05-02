@@ -25,7 +25,13 @@
  * Maps to the Decisions pillar on the marketing site (#01).
  */
 
-import { ComputeJobAck, EvaluateJob, EvaluateRequest, EvaluateResponse } from "@flipagent/types";
+import {
+	ComputeJobAck,
+	EvaluateJob,
+	EvaluateRequest,
+	EvaluateResponse,
+	FeaturedEvaluationsResponse,
+} from "@flipagent/types";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { describeRoute } from "hono-openapi";
@@ -34,6 +40,7 @@ import { requireApiKey } from "../../middleware/auth.js";
 import { httpStatusForPipelineError } from "../../services/compute-jobs/error-mapping.js";
 import { awaitTerminal, cancelJob, createJob, getJob } from "../../services/compute-jobs/queue.js";
 import { streamComputeJobEvents } from "../../services/compute-jobs/sse-stream.js";
+import { listFeaturedEvaluations } from "../../services/evaluate/featured.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const evaluateRoute = new Hono();
@@ -101,6 +108,29 @@ evaluateRoute.post(
 		const code = final.errorCode ?? "internal";
 		const message = final.errorMessage ?? "evaluation failed";
 		return c.json({ error: code, message }, httpStatusForPipelineError(code));
+	},
+);
+
+/* ----------------------------- featured ----------------------------- */
+
+evaluateRoute.get(
+	"/featured",
+	describeRoute({
+		tags: ["Evaluate"],
+		summary: "List recently-evaluated listings as showcase examples",
+		description:
+			"Server-curated \"Try one\" pool. Returns up to `limit` recent successful evaluate jobs (any caller, last 14 days, sold-pool ≥ 8) deduped by itemId, with takedown'd items excluded. Click-through hits the cached evaluate result so demo runs do not re-spend credits. Powers the playground's preset chips.",
+		responses: {
+			200: jsonResponse("Featured evaluation examples.", FeaturedEvaluationsResponse),
+			401: errorResponse("Missing or invalid API key."),
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const limitRaw = Number.parseInt(c.req.query("limit") ?? "", 10);
+		const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : undefined;
+		const items = await listFeaturedEvaluations({ limit });
+		return c.json({ items });
 	},
 );
 

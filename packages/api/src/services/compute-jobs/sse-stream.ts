@@ -1,6 +1,6 @@
 /**
  * SSE streaming helper for compute_jobs. Owns the full client-facing
- * stream lifecycle for `/v1/{evaluate,discover}/jobs/{id}/stream`:
+ * stream lifecycle for `/v1/evaluate/jobs/{id}/stream`:
  *
  *   1. Replay events accumulated in the row's `trace` column so a
  *      late subscriber sees the full progress.

@@ -1,7 +1,7 @@
 /**
- * Two read-side taxonomy tools: get the default category tree id for a
- * marketplace, then get suggested categories or item aspects for that tree.
- * Backed by app-credential token at api.flipagent.dev (no user OAuth needed).
+ * Read-side taxonomy tools — backed by `/v1/categories/*`.
+ * Single category-tree concept (flipagent picks the marketplace tree
+ * automatically); caller doesn't pass categoryTreeId.
  */
 
 import { Type } from "@sinclair/typebox";
@@ -9,57 +9,58 @@ import { getClient, toApiCallError } from "../client.js";
 import type { Config } from "../config.js";
 
 export const ebayTaxonomyDefaultIdInput = Type.Object({
-	marketplaceId: Type.String({ default: "EBAY_US", description: "e.g. EBAY_US, EBAY_GB, EBAY_DE." }),
+	marketplace: Type.Optional(Type.String({ default: "ebay" })),
 });
 
 export const ebayTaxonomyDefaultIdDescription =
-	"Get the default category tree id for an eBay marketplace (call this first before any other taxonomy method).";
+	"List top-level categories for the marketplace. Calls GET /v1/categories. flipagent auto-resolves the underlying eBay tree id.";
 
 export async function ebayTaxonomyDefaultIdExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
-		return await client.markets.taxonomy.defaultCategoryTreeId((args.marketplaceId as string) ?? "EBAY_US");
+		return await client.categories.list({
+			marketplace: args.marketplace as never,
+		});
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/commerce/taxonomy/get_default_category_tree_id");
+		const e = toApiCallError(err, "/v1/categories");
 		return { error: "taxonomy_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
 
 export const ebayTaxonomySuggestInput = Type.Object({
-	categoryTreeId: Type.String(),
-	q: Type.String({ description: "Free-text item description; eBay returns top category matches." }),
+	title: Type.String({ description: "Free-text item description; flipagent returns top category matches." }),
+	marketplace: Type.Optional(Type.String({ default: "ebay" })),
 });
 
 export const ebayTaxonomySuggestDescription =
-	"Suggest the most likely eBay categories for a free-text query. Use this to pick a leaf category before creating a listing.";
+	"Suggest the most likely category for a free-text title. Calls GET /v1/categories/suggest. Use to pick a leaf category before creating a listing.";
 
 export async function ebayTaxonomySuggestExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
-		return await client.markets.taxonomy.getCategorySuggestions(args.categoryTreeId as string, args.q as string);
+		return await client.categories.suggest({
+			title: args.title as string,
+			marketplace: args.marketplace as never,
+		});
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/commerce/taxonomy/category_tree/{id}/get_category_suggestions");
+		const e = toApiCallError(err, "/v1/categories/suggest");
 		return { error: "taxonomy_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
 
 export const ebayTaxonomyAspectsInput = Type.Object({
-	categoryTreeId: Type.String(),
 	categoryId: Type.String(),
 });
 
 export const ebayTaxonomyAspectsDescription =
-	"Get the required + recommended aspects for a leaf category — needed when building an inventory item before publish.";
+	"Get required + recommended aspects (item specifics) for a leaf category. Calls GET /v1/categories/{id}/aspects. Needed before creating a listing.";
 
 export async function ebayTaxonomyAspectsExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
-		return await client.markets.taxonomy.getItemAspectsForCategory(
-			args.categoryTreeId as string,
-			args.categoryId as string,
-		);
+		return await client.categories.aspects(args.categoryId as string);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/commerce/taxonomy/category_tree/{id}/get_item_aspects_for_category");
+		const e = toApiCallError(err, "/v1/categories/{id}/aspects");
 		return { error: "taxonomy_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

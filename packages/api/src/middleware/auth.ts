@@ -48,7 +48,8 @@ async function resolveSessionKey(headers: Headers): Promise<ApiKey | null> {
 	if (!auth) return null;
 	const result = await auth.api.getSession({ headers }).catch(() => null);
 	if (!result?.user) return null;
-	const userEmail = (result.user as { email?: string }).email;
+	const sessionUser = result.user as { id?: string; email?: string };
+	const userEmail = sessionUser.email;
 	if (!userEmail) return null;
 	const rows = await db
 		.select()
@@ -56,7 +57,19 @@ async function resolveSessionKey(headers: Headers): Promise<ApiKey | null> {
 		.where(and(eq(apiKeys.ownerEmail, userEmail), isNull(apiKeys.revokedAt)))
 		.orderBy(desc(apiKeys.createdAt))
 		.limit(1);
-	return (rows[0] as ApiKey | undefined) ?? null;
+	const row = (rows[0] as ApiKey | undefined) ?? null;
+	if (!row) return null;
+	// Backfill user_id on legacy/script-issued keys. Without this, recordUsage
+	// writes null user_id and snapshotUsage's userId-scoped filter undercounts
+	// to zero. Best-effort — failure here doesn't block the request.
+	if (!row.userId && sessionUser.id) {
+		row.userId = sessionUser.id;
+		db.update(apiKeys)
+			.set({ userId: sessionUser.id })
+			.where(eq(apiKeys.id, row.id))
+			.catch((err) => console.error("[auth] backfill apiKeys.user_id failed:", err));
+	}
+	return row;
 }
 
 export const requireApiKey = createMiddleware(async (c, next) => {

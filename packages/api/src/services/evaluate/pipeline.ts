@@ -1,7 +1,6 @@
 /**
- * Shared building blocks for the composite intelligence pipelines
- * (`runEvaluatePipeline`, `runDiscoverPipeline`). Each pipeline is its
- * own end-to-end function — what they share lives here:
+ * Shared building blocks for the composite intelligence pipeline
+ * (`runEvaluatePipeline`):
  *
  *   - `StepEvent` / `StepRequestInfo`  — wire types for trace events
  *   - `EvaluateError`                  — typed throw for HTTP mapping
@@ -14,7 +13,7 @@
 
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import type { ApiKey } from "../../db/schema.js";
-import { detailFetcherFor } from "../listings/detail.js";
+import { detailFetcherFor } from "../items/detail.js";
 import { MatchUnavailableError, matchPool } from "../match/index.js";
 import { partitionMatched } from "../match/partition.js";
 import type { MatchOptions } from "../match/types.js";
@@ -29,11 +28,10 @@ export interface StepRequestInfo {
 
 /**
  * Step keys are pipeline-specific strings, so the wire union takes
- * `string` instead of a closed enum. Each pipeline defines its own
- * keyspace (e.g. evaluate uses "detail" / "search.sold" / "search.active"
- * / "filter" / "evaluate"; discover uses "search.active" / "search.sold"
- * / "filter" / "evaluate"). Keys are passed through to clients verbatim
- * so trace UIs can group, label, and order steps.
+ * `string` instead of a closed enum. The evaluate pipeline uses
+ * "detail" / "search.sold" / "search.active" / "filter" / "evaluate".
+ * Keys are passed through to clients verbatim so trace UIs can group,
+ * label, and order steps.
  */
 export type StepEvent =
 	| { kind: "started"; key: string; label: string; parent?: string; request?: StepRequestInfo }
@@ -53,37 +51,6 @@ export type StepEvent =
 			/** Upstream response body when available — typically eBay's parsed error envelope. The trace UI renders it under Response so users see *what* failed, not just "eBay 429". */
 			errorBody?: unknown;
 			durationMs: number;
-	  }
-	/**
-	 * Discover-only: emitted right after `cluster` step succeeds. Carries
-	 * the cluster headers (canonical name + source + active count) so the
-	 * UI can render section placeholders BEFORE per-cluster data arrives.
-	 * No deals yet — those flow as `cluster.ready` events one-by-one.
-	 */
-	| {
-			kind: "cluster.identified";
-			clusters: ReadonlyArray<{
-				idx: number;
-				canonical: string;
-				source: "epid" | "gtin" | "singleton";
-				itemCount: number;
-			}>;
-	  }
-	/**
-	 * Discover-only: per-cluster completion. Emitted as soon as ONE
-	 * variant cluster finishes its full Evaluate sub-flow, regardless of
-	 * whether the other clusters are still running. The UI splices this
-	 * into its partial outcome so each row fills in independently. `idx`
-	 * matches the index in the preceding `cluster.identified` event.
-	 *
-	 * `cluster` carries the full Evaluate-shape payload (item, soldPool,
-	 * activePool, market, evaluation, returns, meta) — the row IS one
-	 * Evaluate result for this variant.
-	 */
-	| {
-			kind: "cluster.ready";
-			idx: number;
-			cluster: import("@flipagent/types").DealCluster;
 	  };
 
 /** Optional per-step listener supplied by the route layer (no-op for collapsed JSON, SSE-write for the streaming route). */
@@ -203,6 +170,10 @@ export interface MatchFilterResult {
 	matchedActive: ItemSummary[];
 	rejectedSold: ItemSummary[];
 	rejectedActive: ItemSummary[];
+	/** Per-itemId LLM reason string for every rejected listing. Keyed by
+	 *  `itemId`. Empty when `llmRan === false` (no provider configured)
+	 *  or when the matcher rejected nothing. */
+	rejectionReasons: Record<string, string>;
 	/** True iff the LLM actually ran. False on graceful fallback. */
 	llmRan: boolean;
 }
@@ -230,6 +201,7 @@ export async function runMatchFilter(
 
 	let matched: ItemSummary[] = dedupedPool;
 	let rejected: ItemSummary[] = [];
+	const rejectionReasons: Record<string, string> = {};
 	let llmRan = false;
 	try {
 		// Caller-bound detail fetcher = the `DetailFetcher` port the
@@ -238,6 +210,12 @@ export async function runMatchFilter(
 		const result = await matchPool(seed, dedupedPool, matchOptions, detailFetcherFor(apiKey));
 		matched = result.body.match.map((m) => m.item);
 		rejected = result.body.reject.map((m) => m.item);
+		// Capture per-listing reject reasons so the UI can surface them
+		// inline under each rejected row instead of forcing the user to
+		// drill into the trace / DB.
+		for (const r of result.body.reject) {
+			if (r.reason) rejectionReasons[r.item.itemId] = r.reason;
+		}
 		llmRan = true;
 	} catch (err) {
 		if (!(err instanceof MatchUnavailableError)) throw err;
@@ -251,6 +229,7 @@ export async function runMatchFilter(
 		matchedActive: kept.active,
 		rejectedSold: rej.sold,
 		rejectedActive: rej.active,
+		rejectionReasons,
 		llmRan,
 	};
 }
@@ -264,5 +243,7 @@ export function buildPath(base: string, params: Record<string, string | number |
 		if (v !== undefined && v !== "") search.set(k, String(v));
 	}
 	const qs = search.toString();
-	return qs ? `${base}?${qs}` : base;
+	if (!qs) return base;
+	const sep = base.includes("?") ? "&" : "?";
+	return `${base}${sep}${qs}`;
 }

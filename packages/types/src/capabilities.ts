@@ -49,17 +49,17 @@ export type ForwarderId = Static<typeof ForwarderId>;
 
 export const MarketplaceCapabilities = Type.Object(
 	{
-		/** Active-listing search (`/v1/buy/browse/item_summary/search`). */
+		/** Active-listing search (`/v1/items/search`). */
 		search: CapabilityStatus,
-		/** Sold-listing search (`/v1/buy/marketplace_insights/item_sales/search`). For eBay, scrape transport when Marketplace Insights REST unapproved. */
+		/** Sold-listing search (`/v1/items/search?status=sold`). For eBay, scrape transport when Marketplace Insights REST unapproved. */
 		sold: CapabilityStatus,
-		/** Single-listing detail (`/v1/buy/browse/item/{itemId}`). */
+		/** Single-listing detail (`/v1/items/{id}`). */
 		detail: CapabilityStatus,
 		/** Score one listing (`/v1/evaluate`). */
 		evaluate: CapabilityStatus,
-		/** Buyer-side checkout (`/v1/buy/order/checkout_session/*`). REST or bridge transport. */
+		/** Buyer-side checkout (`/v1/purchases`). REST or bridge transport. */
 		buy: CapabilityStatus,
-		/** Sell-side passthrough (`/v1/sell/*`, `/v1/commerce/*`, `/v1/post-order/*`). Requires seller OAuth. */
+		/** Sell-side ops (`/v1/listings`, `/v1/sales`, `/v1/payouts`, `/v1/policies`, …). Requires seller OAuth. */
 		sell: CapabilityStatus,
 	},
 	{ $id: "MarketplaceCapabilities" },

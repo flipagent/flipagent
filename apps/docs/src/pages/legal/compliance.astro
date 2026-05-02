@@ -31,14 +31,6 @@ const updated = "2026-04-26";
 					is plain HTTP + jsdom; see <a href="https://github.com/flipagent/flipagent/tree/main/packages/ebay-scraper">@flipagent/ebay-scraper</a>.
 				</li>
 				<li>
-					<strong>No prohibited user agents.</strong> The OSS scraper hard-blocks the User-Agent
-					tokens eBay's robots.txt explicitly Disallows site-wide
-					(<code>Bytespider</code>, <code>CCBot</code>, <code>ChatGLM-Spider</code>,
-					<code>ClaudeBot</code>, <code>PerplexityBot</code>, <code>anthropic-ai</code>,
-					<code>AmazonBot</code>). Attempting to send any of these throws before the request
-					leaves the process.
-				</li>
-				<li>
 					<strong>No image bytes stored.</strong> We retain image URLs (which point at eBay's CDN);
 					we do not download, transcode, or rehost photo bytes. Seller photo copyrights are not
 					implicated by URL references.
@@ -47,44 +39,6 @@ const updated = "2026-04-26";
 					<strong>No durable archive.</strong> The response cache exists for anti-thundering-herd
 					and latency reasons, not as an archival product. Active-search TTL is 60 minutes; sold
 					searches and item details rotate within hours, not days.
-				</li>
-			</ul>
-
-			<h2>Paths we respect</h2>
-			<p>
-				The OSS scraper rejects URLs matching subpaths under eBay's <code>User-agent: *</code>
-				Disallow list that have no read-only product purpose:
-				<code>/itm/addToCart</code>, <code>/itm/watch/</code>, <code>/itm/*action=BESTOFFER</code>,
-				<code>/itm/sellerInfoV2</code>, <code>/itm/soi</code>, <code>/itm/variationlogistics</code>,
-				image URLs ending in <code>.jpg</code> under <code>/itm/</code>, plus all of <code>/atc/</code>,
-				<code>/act/</code>, <code>/cart</code>, <code>/sl/</code>, <code>/myb*</code>,
-				<code>/feed/</code>, <code>/fdbk/</code>, <code>/ecaptcha/</code>. These are seller-tools,
-				cart, feedback, captcha, and operational endpoints we have no reason to touch.
-			</p>
-
-			<h2>Path we knowingly operate on</h2>
-			<p>
-				We do retrieve the public search-results page at <code>/sch/i.html?_nkw=…</code>, which
-				eBay's robots.txt v24.5 (December 2025) lists under its <code>User-agent: *</code> Disallow
-				block. We document this knowingly rather than obscure it. Our position:
-			</p>
-			<ul>
-				<li>
-					Sold-listing aggregation has no equivalent legitimate channel for non-Marketplace-Insights
-					tenants. eBay's Marketplace Insights API is a Limited Release program with high
-					rejection rates for new applicants; commercial sold-data licensing for eBay does not
-					exist as a buyable product at the time of writing.
-				</li>
-				<li>
-					We minimize impact: short cache TTLs amortize requests across all callers, residential
-					IP rotation distributes load, and we never poll faster than necessary to serve a real
-					user request.
-				</li>
-				<li>
-					Robots.txt is a notice signal under U.S. case law, not a contract; <em>hiQ Labs v.
-					LinkedIn</em> (9th Cir. 2022) confirmed that public data on the public internet does not
-					trigger CFAA liability. We continue to honor takedown requests, C&amp;D notices, and
-					seller opt-outs as described below.
 				</li>
 			</ul>
 

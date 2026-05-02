@@ -22,6 +22,8 @@ export type Money = Static<typeof Money>;
 export const Image = Type.Object(
 	{
 		imageUrl: Type.String(),
+		width: Type.Optional(Type.Integer()),
+		height: Type.Optional(Type.Integer()),
 	},
 	{ $id: "Image" },
 );
@@ -30,8 +32,230 @@ export const ShippingOption = Type.Object(
 	{
 		shippingCost: Type.Optional(Money),
 		shippingCostType: Type.Optional(Type.String()),
+		/** eBay-defined service slug ("USPSPriority", "eBay shipping to authenticator, then to you", …). */
+		shippingServiceCode: Type.Optional(Type.String()),
+		/** Carrier label ("USPS", "FedEx", "PSA" for Authenticity Guarantee routing, …). */
+		shippingCarrierCode: Type.Optional(Type.String()),
+		/** Free-text type label eBay shows in the shipping table ("Standard Shipping", "Expedited"). */
+		type: Type.Optional(Type.String()),
+		/** Quantity the displayed cost was computed for (eBay caps at 1 for most BIN listings). */
+		quantityUsedForEstimate: Type.Optional(Type.Integer()),
+		/** ISO 8601 — earliest delivery date eBay's calculator predicts. */
+		minEstimatedDeliveryDate: Type.Optional(Type.String()),
+		/** ISO 8601 — latest delivery date eBay's calculator predicts. */
+		maxEstimatedDeliveryDate: Type.Optional(Type.String()),
 	},
 	{ $id: "ShippingOption" },
+);
+
+/**
+ * One region entry inside `shipToLocations.regionIncluded` /
+ * `regionExcluded`. eBay uses three region types — `WORLDWIDE`,
+ * `WORLD_REGION`, `COUNTRY`, `COUNTRY_REGION` (e.g. "Alaska/Hawaii"),
+ * `STATE_OR_PROVINCE` — and identifies them with ISO-3166 codes for
+ * `COUNTRY` and proprietary ids otherwise.
+ */
+export const ShipToRegion = Type.Object(
+	{
+		regionName: Type.Optional(Type.String()),
+		regionType: Type.Optional(Type.String()),
+		regionId: Type.Optional(Type.String()),
+	},
+	{ $id: "ShipToRegion" },
+);
+
+/**
+ * Cross-border shipping eligibility. `regionIncluded` lists where the
+ * seller will ship; `regionExcluded` overrides individual countries
+ * inside an included region. To decide if a buyer's country is
+ * reachable, walk both arrays — included match minus excluded match.
+ */
+export const ShipToLocations = Type.Object(
+	{
+		regionIncluded: Type.Optional(Type.Array(ShipToRegion)),
+		regionExcluded: Type.Optional(Type.Array(ShipToRegion)),
+	},
+	{ $id: "ShipToLocations" },
+);
+
+/**
+ * Return policy mirror — Browse REST `getItem.returnTerms`. `returnPeriod`
+ * is an absolute window the buyer has to initiate a return;
+ * `returnShippingCostPayer` decides who eats the return label. eBay
+ * additionally returns `refundMethod` ("MONEY_BACK") and
+ * `returnMethod` ("REPLACEMENT" | "EXCHANGE" | "MONEY_BACK") on some
+ * categories — kept optional.
+ */
+export const ReturnTerms = Type.Object(
+	{
+		returnsAccepted: Type.Optional(Type.Boolean()),
+		returnPeriod: Type.Optional(
+			Type.Object({
+				value: Type.Integer(),
+				unit: Type.String(),
+			}),
+		),
+		returnShippingCostPayer: Type.Optional(Type.String()),
+		refundMethod: Type.Optional(Type.String()),
+		returnMethod: Type.Optional(Type.String()),
+	},
+	{ $id: "ReturnTerms" },
+);
+
+/**
+ * One element of `paymentMethods[]` on `ItemDetail`. eBay groups card
+ * brands under `CREDIT_CARD` / `WALLET` types — the `paymentMethodBrands`
+ * array carries individual brand entries (VISA, MASTERCARD, PAYPAL, …).
+ */
+export const PaymentMethodBrand = Type.Object(
+	{
+		paymentMethodBrandType: Type.Optional(Type.String()),
+		logoImage: Type.Optional(Image),
+	},
+	{ $id: "PaymentMethodBrand" },
+);
+
+export const PaymentMethod = Type.Object(
+	{
+		paymentMethodType: Type.Optional(Type.String()),
+		paymentMethodBrands: Type.Optional(Type.Array(PaymentMethodBrand)),
+	},
+	{ $id: "PaymentMethod" },
+);
+export type PaymentMethod = Static<typeof PaymentMethod>;
+export type ShipToLocations = Static<typeof ShipToLocations>;
+export type ReturnTerms = Static<typeof ReturnTerms>;
+export type PrimaryItemGroup = Static<typeof PrimaryItemGroup>;
+
+/**
+ * Multi-variation parent metadata. Detail responses for a SKU of a
+ * variation listing carry the full group metadata so the caller can
+ * jump to siblings without an extra `getItemsByItemGroup` call.
+ */
+export const PrimaryItemGroup = Type.Object(
+	{
+		itemGroupId: Type.Optional(Type.String()),
+		itemGroupType: Type.Optional(Type.String()),
+		itemGroupHref: Type.Optional(Type.String()),
+		itemGroupTitle: Type.Optional(Type.String()),
+		itemGroupImage: Type.Optional(Image),
+		itemGroupAdditionalImages: Type.Optional(Type.Array(Image)),
+	},
+	{ $id: "PrimaryItemGroup" },
+);
+
+/**
+ * One row of the `taxes[]` array. eBay collects-and-remits sales tax
+ * on most US destinations — each row carries the jurisdiction, the
+ * tax type, and whether shipping/handling was taxed.
+ */
+export const TaxJurisdiction = Type.Object(
+	{
+		region: Type.Optional(
+			Type.Object({
+				regionName: Type.Optional(Type.String()),
+				regionType: Type.Optional(Type.String()),
+			}),
+		),
+		taxJurisdictionId: Type.Optional(Type.String()),
+	},
+	{ $id: "TaxJurisdiction" },
+);
+
+export const Tax = Type.Object(
+	{
+		taxJurisdiction: Type.Optional(TaxJurisdiction),
+		taxType: Type.Optional(Type.String()),
+		shippingAndHandlingTaxed: Type.Optional(Type.Boolean()),
+		includedInPrice: Type.Optional(Type.Boolean()),
+		ebayCollectAndRemitTax: Type.Optional(Type.Boolean()),
+		taxPercentage: Type.Optional(Type.String()),
+	},
+	{ $id: "Tax" },
+);
+
+/**
+ * Marketing price block — Browse REST `getItem.marketingPrice`. eBay
+ * surfaces this when the seller advertises a discount: original (struck-
+ * through) price plus the resulting discount amount and percentage.
+ * `priceTreatment` is eBay's enum (`MINIMUM_ADVERTISED_PRICE`,
+ * `LIST_PRICE`, `STRIKETHROUGH`, `MARKDOWN`, …) describing how the
+ * "compare-at" price is justified.
+ */
+export const MarketingPrice = Type.Object(
+	{
+		originalPrice: Type.Optional(Money),
+		discountAmount: Type.Optional(Money),
+		discountPercentage: Type.Optional(Type.String()),
+		priceTreatment: Type.Optional(Type.String()),
+	},
+	{ $id: "MarketingPrice" },
+);
+
+/**
+ * Structured condition descriptor row — Browse REST exposes these under
+ * `conditionDescriptors[]` for graded categories (PSA grade, BGS rating,
+ * professional grader, certification number) and a few other condition-
+ * heavy verticals (CPU brand on used computers, etc.). Generic
+ * `name + values[].content` pairs.
+ */
+export const ConditionDescriptor = Type.Object(
+	{
+		name: Type.Optional(Type.String()),
+		values: Type.Optional(
+			Type.Array(
+				Type.Object({
+					content: Type.Optional(Type.String()),
+				}),
+			),
+		),
+	},
+	{ $id: "ConditionDescriptor" },
+);
+
+/**
+ * Catalog product review aggregate — Browse REST
+ * `primaryProductReviewRating`. Present when the listing is linked to an
+ * eBay catalog product (ePID) and the product has community reviews.
+ */
+export const ProductReviewRating = Type.Object(
+	{
+		reviewCount: Type.Optional(Type.Integer()),
+		averageRating: Type.Optional(Type.String()),
+		ratingHistograms: Type.Optional(
+			Type.Array(
+				Type.Object({
+					rating: Type.String(),
+					count: Type.Integer(),
+				}),
+			),
+		),
+	},
+	{ $id: "ProductReviewRating" },
+);
+
+/**
+ * One element of `warnings[]` — Browse REST emits these for soft errors
+ * (couldn't compute shipping cost, calculator timed out, etc.) without
+ * failing the whole response. Same shape eBay uses for its top-level
+ * `errors[]` envelope so callers can reuse error-handling code.
+ */
+export const Warning = Type.Object(
+	{
+		errorId: Type.Optional(Type.Integer()),
+		domain: Type.Optional(Type.String()),
+		category: Type.Optional(Type.String()),
+		message: Type.Optional(Type.String()),
+		parameters: Type.Optional(
+			Type.Array(
+				Type.Object({
+					name: Type.Optional(Type.String()),
+					value: Type.Optional(Type.String()),
+				}),
+			),
+		),
+	},
+	{ $id: "Warning" },
 );
 
 export const Seller = Type.Object(
@@ -138,10 +362,12 @@ export type ItemSummary = Static<typeof ItemSummary>;
  * sold (Marketplace Insights) populate `itemSales`. Same shape, different field.
  *
  * `source` mirrors the `X-Flipagent-Source` header so consumers reading the
- * JSON body don't have to inspect headers. `"scrape"` = HTML parser path,
- * `"rest"` = eBay REST passthrough (Insights-approved tenants), `"cache:*"`
- * = served from the response cache. Optional for forward compatibility with
- * pre-source-field clients; fresh responses always set it.
+ * JSON body don't have to inspect headers. `"scrape"` = vendor-fetched page
+ * parsed by `@flipagent/ebay-scraper` (keyword SRP HTML or category-browse
+ * hydration JSON, depending on the call); `"rest"` = eBay REST passthrough
+ * (Insights-approved tenants); `"cache:*"` = served from the response cache.
+ * Optional for forward compatibility with pre-source-field clients; fresh
+ * responses always set it.
  */
 export const BrowseSearchSource = Type.Union(
 	[
@@ -176,6 +402,8 @@ export const EstimatedAvailability = Type.Object(
 		estimatedAvailableQuantity: Type.Optional(Type.Integer()),
 		estimatedSoldQuantity: Type.Optional(Type.Integer()),
 		estimatedRemainingQuantity: Type.Optional(Type.Integer()),
+		/** "SHIP_TO_HOME", "PICKUP_DROP_OFF", "DIGITAL_DELIVERY", … */
+		deliveryOptions: Type.Optional(Type.Array(Type.String())),
 	},
 	{ $id: "EstimatedAvailability" },
 );
@@ -237,12 +465,91 @@ export const ItemDetail = Type.Object(
 		localizedAspects: Type.Optional(Type.Array(LocalizedAspect)),
 		/** Top-level promotion of `localizedAspects` "Brand". Browse REST exposes both. */
 		brand: Type.Optional(Type.String()),
+		/** Top-level promotion of `localizedAspects` "Color". Browse REST exposes both. */
+		color: Type.Optional(Type.String()),
+		/** Top-level promotion of `localizedAspects` "Size". Browse REST exposes both. */
+		size: Type.Optional(Type.String()),
+		/** Top-level promotion of `localizedAspects` "Pattern". Browse REST exposes both. */
+		pattern: Type.Optional(Type.String()),
+		/** Top-level promotion of `localizedAspects` "Material". Browse REST exposes both. */
+		material: Type.Optional(Type.String()),
+		/** Top-level promotion of `localizedAspects` "Size Type" ("Regular", "Big & Tall"). */
+		sizeType: Type.Optional(Type.String()),
+		/** Top-level promotion of `localizedAspects` "MPN" — Manufacturer Part Number. */
+		mpn: Type.Optional(Type.String()),
 		/** Top-level promotion of `localizedAspects` "UPC" / "EAN" / "ISBN". */
 		gtin: Type.Optional(Type.String()),
+		/** eBay catalog product id (ePID) — same identifier carried on `ItemSummary`. */
+		epid: Type.Optional(Type.String()),
+		/**
+		 * Number of physical items in the listing — eBay treats this as a
+		 * top-level field separate from quantity. `0` is the default
+		 * REST emits for non-lot listings; we stay narrow on scrape and
+		 * leave it absent unless a "Lot" aspect surfaces.
+		 */
+		lotSize: Type.Optional(Type.Integer()),
+		/** Per-buyer purchase limit eBay enforces at checkout. */
+		quantityLimitPerBuyer: Type.Optional(Type.Integer()),
+		/** Long-form condition note from the seller (above-and-beyond `condition`). */
+		conditionDescription: Type.Optional(Type.String()),
+		/** Structured condition descriptor rows — graded card grade, certification number, etc. */
+		conditionDescriptors: Type.Optional(Type.Array(ConditionDescriptor)),
+		/** Strikethrough / list price + discount metadata when the listing advertises a markdown. */
+		marketingPrice: Type.Optional(MarketingPrice),
+		/** Catalog product review aggregate (ePID-linked listings). */
+		primaryProductReviewRating: Type.Optional(ProductReviewRating),
+		/** Soft errors eBay tagged on the response (shipping calculator failures, etc.). */
+		warnings: Type.Optional(Type.Array(Warning)),
 		topRatedBuyingExperience: Type.Optional(Type.Boolean()),
+		/**
+		 * eBay programs the listing qualifies for —
+		 * `"AUTHENTICITY_GUARANTEE"`, `"EBAY_REFURBISHED"`, `"EBAY_PLUS"`, etc.
+		 * Browse REST emits this on detail (not on item_summary cards), so
+		 * scoring that wants to split AG vs non-AG comps has to enrich at
+		 * detail level. Mirrored 1:1 from eBay.
+		 */
+		qualifiedPrograms: Type.Optional(Type.Array(Type.String())),
+		/**
+		 * Authenticity Guarantee block — present on listings where eBay
+		 * routes the item through a third-party authenticator before
+		 * delivery. Sneakers, handbags, watches, trading cards, fine
+		 * jewelry. Mirror of Browse REST `getItem.authenticityGuarantee`.
+		 */
+		authenticityGuarantee: Type.Optional(
+			Type.Object({
+				termsWebUrl: Type.Optional(Type.String()),
+				description: Type.Optional(Type.String()),
+			}),
+		),
+		/** Paid-placement boost flag (Promoted Listings). Browse REST detail-only. */
+		priorityListing: Type.Optional(Type.Boolean()),
 		image: Type.Optional(Image),
 		additionalImages: Type.Optional(Type.Array(Image)),
 		estimatedAvailabilities: Type.Optional(Type.Array(EstimatedAvailability)),
+		/** Cross-border eligibility — used by buyers / forwarders to filter at search time. */
+		shipToLocations: Type.Optional(ShipToLocations),
+		/** Return policy in eBay shape. Both REST and scrape populate this; SDK consumers read it directly. */
+		returnTerms: Type.Optional(ReturnTerms),
+		/** State-by-state collect-and-remit tax rows (US destinations). */
+		taxes: Type.Optional(Type.Array(Tax)),
+		/** Accepted payment instruments — drives the Buy Order eligibility prompt. */
+		paymentMethods: Type.Optional(Type.Array(PaymentMethod)),
+		/** Buyer must pay immediately on Buy It Now (no checkout cart hold). */
+		immediatePay: Type.Optional(Type.Boolean()),
+		/** Eligible for guest checkout (no eBay account required to buy). */
+		enabledForGuestCheckout: Type.Optional(Type.Boolean()),
+		/** Eligible for the in-line BIN button (vs. classic two-step checkout). */
+		eligibleForInlineCheckout: Type.Optional(Type.Boolean()),
+		/** Restricted to adult buyers — same flag eBay surfaces on summary cards. */
+		adultOnly: Type.Optional(Type.Boolean()),
+		/** At least one coupon offer is active against the listing. */
+		availableCoupons: Type.Optional(Type.Boolean()),
+		/** Multi-variation parent metadata — group id, type, title, hero images. */
+		primaryItemGroup: Type.Optional(PrimaryItemGroup),
+		/** Per-unit price ("$0.50 / Fl Oz") for grocery / supplement listings. */
+		unitPrice: Type.Optional(Money),
+		/** Unit label paired with `unitPrice` ("Unit", "Fl Oz", "Count"). */
+		unitPricingMeasure: Type.Optional(Type.String()),
 	},
 	{ $id: "ItemDetail" },
 );
@@ -253,26 +560,27 @@ export type ItemDetail = Static<typeof ItemDetail>;
 /**
  * Query parameters for /buy/browse/v1/item_summary/search.
  *
- * `category_ids` is exposed to honour the same shape eBay Browse REST
- * accepts (pipe-joined Browse category id list, e.g. `15709|175672`).
- * The REST source forwards it directly; the bridge source forwards it
- * to the extension. The scrape source today **does not** honour it —
- * eBay is migrating category SRP from the `s-item__*` layout (which our
- * parser targets) to a JS-driven `brwrvr__item-card-*` browse layout
- * served at `/b/<slug>/<id>/...`, and empty-keyword + `_sacat=<id>`
- * triggers a 301 to that lazy-loaded layout. `q` therefore stays
- * required so the keyword SRP path always works. `category_ids` is
- * still recorded on the anonymized query pulse regardless of source so
- * `/v1/trends/categories` can rank demand by category once enough data
- * accrues.
+ * Per eBay's spec, the request must carry **at least one** of `q`,
+ * `category_ids`, `gtin`, or `epid` (or any combination). The route
+ * layer enforces that rule explicitly so the error message is helpful;
+ * the schema itself marks all four optional.
+ *
+ * `category_ids` (and the other identifiers) feed the anonymized query
+ * pulse on every call regardless of source, so `/v1/trends/categories`
+ * can rank demand once enough data accrues.
  */
 export const BrowseSearchQuery = Type.Object(
 	{
-		q: Type.String({ description: "Search keywords. Required across all sources today." }),
+		q: Type.Optional(
+			Type.String({
+				description:
+					"Search keywords. Optional when category_ids / gtin / epid is provided (eBay requires at least one).",
+			}),
+		),
 		category_ids: Type.Optional(
 			Type.String({
 				description:
-					"Pipe-joined Browse category ids, e.g. '15709|175672'. Forwarded verbatim by the REST source; ignored by the scrape source (keyword SRP only); fed into the demand-pulse archive in all cases.",
+					"Pipe-joined Browse category ids, e.g. '15709|175672'. Forwarded verbatim to all sources; recorded on the demand-pulse archive in all cases.",
 			}),
 		),
 		filter: Type.Optional(
@@ -377,21 +685,17 @@ export const ItemDetailParams = Type.Object(
 );
 export type ItemDetailParams = Static<typeof ItemDetailParams>;
 
-/** Backwards-compat alias kept for any external import. */
-export const SearchQuery = BrowseSearchQuery;
-export type SearchQuery = BrowseSearchQuery;
-
 /* ============================================================
- * Buy Order API shapes — the public `/v1/buy/order/*` surface
+ * Buy Order API shapes — eBay-side wire shapes for the buy flow.
  *
- * Mirrors eBay's Buy Order API (Limited Release on REST). Same
- * surface is served two ways:
+ * Mirrors eBay's Buy Order API (Limited Release on REST). Used
+ * internally by the `/v1/purchases` resource service to model the
+ * upstream wire payload; both transports produce these shapes:
  *
  *   1. EBAY_ORDER_API_APPROVED=1 → REST passthrough to api.ebay.com
  *   2. otherwise → flipagent's bridge implementation (Chrome
  *      extension watches the BIN flow and records the resulting order
- *      id; the user clicks BIN + Confirm-and-pay themselves — status
- *      mapped to eBay shape)
+ *      id; the user clicks BIN + Confirm-and-pay themselves)
  *
  * Multi-stage update endpoints (shipping_address, payment_instrument,
  * coupon) only work in mode 1; bridge mode returns 412 because the

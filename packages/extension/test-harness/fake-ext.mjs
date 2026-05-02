@@ -19,9 +19,8 @@
  *     result <jobId> <outcome> [--ebayOrderId X] [--reason X]
  *                        POST /v1/bridge/result         (bridge-token auth)
  *     queue <itemId> [--max <cents>]
- *                        POST /v1/buy/order/checkout_session/initiate
- *                        + POST /.../{sessionId}/place_order        (api-key auth) — convenience
- *     status <orderId>   GET  /v1/buy/order/purchase_order/{id}     (api-key auth) — convenience
+ *                        POST /v1/purchases                          (api-key auth) — convenience
+ *     status <orderId>   GET  /v1/purchases/{id}                     (api-key auth) — convenience
  *     show               print harness state
  *     reset              wipe harness state
  *
@@ -148,28 +147,19 @@ async function queue(args) {
 	if (!KEY) die("FLIPAGENT_API_KEY not set.");
 	const [itemId] = args;
 	if (!itemId) die("usage: queue <itemId> [--max <cents>]");
-	// `--max` was a flipagent-side cap; the eBay-shape surface has no
-	// equivalent (the bridge enforces cap from the original metadata,
-	// not a passthrough field), so it's accepted-and-ignored here.
-	const auth = { Authorization: `Bearer ${KEY}` };
-	const initiate = await http("POST", "/v1/buy/order/checkout_session/initiate", {
-		headers: auth,
-		body: { lineItems: [{ itemId, quantity: 1 }] },
+	// `--max` was a flipagent-side cap; the bridge enforces caps from the
+	// original metadata, not a passthrough field, so it's accepted-and-
+	// ignored here.
+	const r = await http("POST", "/v1/purchases", {
+		headers: { Authorization: `Bearer ${KEY}` },
+		body: { items: [{ itemId, quantity: 1 }] },
 	});
-	if (initiate.status !== 200)
-		die(`initiate failed: HTTP ${initiate.status} ${JSON.stringify(initiate.body)}`);
-	const sessionId = initiate.body.checkoutSessionId;
-	const place = await http("POST", `/v1/buy/order/checkout_session/${encodeURIComponent(sessionId)}/place_order`, {
-		headers: auth,
-		body: {},
-	});
-	if (place.status !== 200) die(`place_order failed: HTTP ${place.status} ${JSON.stringify(place.body)}`);
+	if (r.status !== 200 && r.status !== 201)
+		die(`purchases create failed: HTTP ${r.status} ${JSON.stringify(r.body)}`);
 	const state = loadState();
-	state.lastOrderId = place.body.purchaseOrderId;
+	state.lastOrderId = r.body.id;
 	saveState(state);
-	console.log(
-		`[fake-ext] queued. purchaseOrderId=${place.body.purchaseOrderId} status=${place.body.purchaseOrderStatus}`,
-	);
+	console.log(`[fake-ext] queued. id=${r.body.id} status=${r.body.status}`);
 }
 
 async function status(args) {
@@ -177,7 +167,7 @@ async function status(args) {
 	const [orderId] = args;
 	const id = orderId ?? loadState().lastOrderId;
 	if (!id) die("usage: status <orderId> (or run `queue` first to set lastOrderId)");
-	const r = await http("GET", `/v1/buy/order/purchase_order/${encodeURIComponent(id)}`, {
+	const r = await http("GET", `/v1/purchases/${encodeURIComponent(id)}`, {
 		headers: { Authorization: `Bearer ${KEY}` },
 	});
 	if (r.status !== 200) die(`status failed: HTTP ${r.status} ${JSON.stringify(r.body)}`);
