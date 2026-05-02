@@ -12,6 +12,14 @@ vi.mock("../../../src/services/ebay/oauth.js", () => ({
 	getUserAccessToken: vi.fn().mockResolvedValue("test_token"),
 }));
 
+// `sellRequest` short-circuits with 503 when EBAY_CLIENT_ID/SECRET/RU_NAME
+// are unset (CI case). The whole point of this suite is to mock the eBay
+// HTTP layer, so override the env probe to always succeed.
+vi.mock("../../../src/config.js", async (importOriginal) => {
+	const actual = (await importOriginal()) as Record<string, unknown>;
+	return { ...actual, isEbayOAuthConfigured: () => true };
+});
+
 const fetchRetryMock = vi.fn();
 vi.mock("../../../src/utils/fetch-retry.js", () => ({
 	fetchRetry: (...args: unknown[]) => fetchRetryMock(...args),
