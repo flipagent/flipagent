@@ -48,7 +48,7 @@
 
 ## Quick Start
 
-> **Want to try it before installing anything?** Run Sourcing, Evaluate, and Buy live in the [playground](https://flipagent.dev/playground) right now.
+> **Want to try it before installing anything?** Run Sourcing and Evaluate live in the [playground](https://flipagent.dev/playground) right now.
 
 1. Sign up at [flipagent.dev](https://flipagent.dev/signup) for an API key (500 credits, no card).
 2. Install the MCP server in your AI client (Claude Code and others):
