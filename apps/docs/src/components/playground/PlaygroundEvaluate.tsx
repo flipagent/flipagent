@@ -106,7 +106,7 @@ function shortenTitle(title: string): string {
 // Min profit / Sell within / Shipping option arrays + the More-panel
 // component live in ./EvaluateSettings — Evaluate-only scoring inputs.
 
-export function PlaygroundEvaluate<TabId extends string = "discover" | "evaluate">({
+export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate">({
 	tabsProps,
 	seed,
 	mockMode = false,

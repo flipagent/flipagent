@@ -326,7 +326,7 @@ export function ChartSkeleton() {
 	return <div className="pg-result-chart-skel pg-result-skel" />;
 }
 
-/** Hero accepts any item with the visual subset Evaluate + Discover share.
+/** Hero accepts any item with the visual subset Evaluate + Sourcing share.
  *  ItemDetail extends ItemSummary, so both shapes satisfy this. */
 type HeroItem = ItemSummary & { brand?: string };
 

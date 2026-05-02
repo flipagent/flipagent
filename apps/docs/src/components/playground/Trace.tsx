@@ -1,7 +1,7 @@
 /**
  * Collapsible step list for both playground panels. Each step shows its
  * status pill, the API call it executed, and (when expanded) the parsed
- * response. Identical UI for evaluate and discover so users learn it once.
+ * response. Same UI shell across the playground panels so users learn it once.
  */
 
 import { useEffect, useState } from "react";

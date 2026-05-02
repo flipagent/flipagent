@@ -1,7 +1,7 @@
 /**
  * Shared "compose card" primitive — the rounded card that frames a
  * tabbed chat-style demo. Same shell on landing (HeroPipeline) and
- * inside the playground (Discover / Evaluate). Composition over a
+ * inside the playground (Sourcing / Evaluate). Composition over a
  * monolithic component: caller assembles `Tabs → Input → Filters? →
  * Output` as siblings inside `ComposeCard`.
  *
@@ -26,7 +26,7 @@ export function ComposeCard({
 	children: ReactNode;
 	className?: string;
 	/** "narrow" (default, ~760px — Evaluate / Hero) or "wide" (~1180px —
-	 *  Discover with the side-detail panel open). Animates between states. */
+	 *  Sourcing with the side-detail panel open). Animates between states. */
 	width?: "narrow" | "wide";
 }) {
 	const widthClass = width === "wide" ? "max-w-[1320px]" : "max-w-[760px]";

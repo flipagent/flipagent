@@ -35,7 +35,7 @@ import {
 } from "./SearchFilters";
 import type { BrowseSearchResponse, ItemSummary, Step } from "./types";
 
-export function PlaygroundSearch<TabId extends string = "search" | "discover" | "evaluate">({
+export function PlaygroundSearch<TabId extends string = "search" | "sourcing" | "evaluate">({
 	tabsProps,
 }: {
 	tabsProps: {
