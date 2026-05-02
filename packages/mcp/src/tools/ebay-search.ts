@@ -16,7 +16,7 @@ export async function ebaySearchExecute(config: Config, args: Record<string, unk
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/items/search");
 		return {
-			error: "listings_search_failed",
+			error: "items_search_failed",
 			status: e.status,
 			url: e.url,
 			message: e.message,

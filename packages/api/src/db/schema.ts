@@ -641,7 +641,7 @@ export const buyCheckoutSessionStatusEnum = pgEnum("buy_checkout_session_status"
  *
  * Created so the sold-event handler can find the packageId for a
  * sku without the agent threading the linkage by hand. The
- * `linkSku` flow (called after `ebay_publish_offer`) populates
+ * `linkSku` flow (called after `flipagent_listings_relist`) populates
  * `sku` + `ebayOfferId`; the `item.sold` notification looks the
  * row up by sku and queues an outbound dispatch automatically.
  */

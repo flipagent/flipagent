@@ -150,8 +150,9 @@ to your language's codegen (e.g. `openapi-python-client`,
 Run exactly one call to confirm the wiring is alive. Pick by runtime:
 
 **MCP** (3a): Tell the user to ask their AI client "search eBay for
-canon ef 50mm using flipagent". The `ebay_search` tool should fire and
-return results. If the tool doesn't appear, the client wasn't restarted.
+canon ef 50mm using flipagent". The `flipagent_items_search` tool should
+fire and return results. If the tool doesn't appear, the client wasn't
+restarted.
 
 **SDK** (3b):
 ```ts

@@ -13,6 +13,16 @@
  *   flipagent evaluate <itemId>          Score one listing (composite — server fetches detail + sold + active)
  *   flipagent ship providers             List supported forwarders
  *   flipagent ship quote --item <id> --weight <g> --dest <state>
+ *   flipagent buy <itemId>               One-shot BIN through /v1/purchases
+ *   flipagent sales list                 Orders received (filterable by --status)
+ *   flipagent sales ship <orderId>       Mark shipped + tracking
+ *   flipagent payouts list               Payouts history
+ *   flipagent transactions list          Per-event finance (sale|refund|fee|adjustment)
+ *   flipagent messages list [--unread]   Buyer ↔ seller messages
+ *   flipagent messages send …            Reply to buyer
+ *   flipagent offers list                Best Offers (incoming|outgoing)
+ *   flipagent disputes list              Returns / cases / cancellations
+ *   flipagent feedback awaiting          Transactions still owed feedback
  *
  *   flipagent init --mcp                 Wire up Claude Desktop / Cursor / etc.
  *   flipagent --help
@@ -386,6 +396,143 @@ async function runEvaluate(args: ParsedArgs): Promise<void> {
 	printJson(evaluation);
 }
 
+async function runSales(args: ParsedArgs): Promise<void> {
+	const sub = args.positional[0];
+	const opts = clientOpts(args);
+	if (sub === "list") {
+		const params = new URLSearchParams();
+		if (args.values.status) params.set("status", args.values.status);
+		if (args.values.limit) params.set("limit", args.values.limit);
+		const out = await api("GET", `/v1/sales${params.toString() ? `?${params}` : ""}`, undefined, opts);
+		printJson(out);
+		return;
+	}
+	if (sub === "ship") {
+		const orderId = args.positional[1];
+		const tracking = args.values.tracking ?? args.values.trackingNumber;
+		const carrier = args.values.carrier;
+		if (!orderId || !tracking || !carrier) {
+			throw new Error("Usage: flipagent sales ship <orderId> --tracking <num> --carrier <name>");
+		}
+		const out = await api(
+			"POST",
+			`/v1/sales/${encodeURIComponent(orderId)}/ship`,
+			{ trackingNumber: tracking, carrier },
+			opts,
+		);
+		printJson(out);
+		return;
+	}
+	throw new Error("Usage: flipagent sales <list | ship ...>");
+}
+
+async function runPayouts(args: ParsedArgs): Promise<void> {
+	const sub = args.positional[0] ?? "list";
+	if (sub !== "list") throw new Error("Usage: flipagent payouts list [--limit N]");
+	const opts = clientOpts(args);
+	const params = new URLSearchParams();
+	if (args.values.limit) params.set("limit", args.values.limit);
+	const out = await api("GET", `/v1/payouts${params.toString() ? `?${params}` : ""}`, undefined, opts);
+	printJson(out);
+}
+
+async function runTransactions(args: ParsedArgs): Promise<void> {
+	const sub = args.positional[0] ?? "list";
+	if (sub !== "list") {
+		throw new Error("Usage: flipagent transactions list [--type <sale|refund|fee|adjustment>] [--limit N]");
+	}
+	const opts = clientOpts(args);
+	const params = new URLSearchParams();
+	if (args.values.type) params.set("type", args.values.type);
+	if (args.values.limit) params.set("limit", args.values.limit);
+	if (args.values.payoutId) params.set("payoutId", args.values.payoutId);
+	const out = await api("GET", `/v1/transactions${params.toString() ? `?${params}` : ""}`, undefined, opts);
+	printJson(out);
+}
+
+async function runMessages(args: ParsedArgs): Promise<void> {
+	const sub = args.positional[0];
+	const opts = clientOpts(args);
+	if (sub === "list") {
+		const params = new URLSearchParams();
+		if (args.flags.has("--unread")) params.set("unreadOnly", "true");
+		if (args.values.direction) params.set("direction", args.values.direction);
+		if (args.values.limit) params.set("limit", args.values.limit);
+		const out = await api("GET", `/v1/messages${params.toString() ? `?${params}` : ""}`, undefined, opts);
+		printJson(out);
+		return;
+	}
+	if (sub === "send") {
+		const to = args.values.to ?? args.values.recipient;
+		const subject = args.values.subject;
+		const body = args.values.body;
+		if (!to || !subject || !body) {
+			throw new Error("Usage: flipagent messages send --to <userId> --subject <s> --body <text>");
+		}
+		const out = await api("POST", "/v1/messages", { recipient: to, subject, body }, opts);
+		printJson(out);
+		return;
+	}
+	throw new Error("Usage: flipagent messages <list [--unread] | send ...>");
+}
+
+async function runOffers(args: ParsedArgs): Promise<void> {
+	const sub = args.positional[0] ?? "list";
+	if (sub !== "list") throw new Error("Usage: flipagent offers list [--direction <in|out>] [--status <s>]");
+	const opts = clientOpts(args);
+	const params = new URLSearchParams();
+	if (args.values.direction) params.set("direction", args.values.direction);
+	if (args.values.status) params.set("status", args.values.status);
+	if (args.values.limit) params.set("limit", args.values.limit);
+	const out = await api("GET", `/v1/offers${params.toString() ? `?${params}` : ""}`, undefined, opts);
+	printJson(out);
+}
+
+async function runDisputes(args: ParsedArgs): Promise<void> {
+	const sub = args.positional[0] ?? "list";
+	if (sub !== "list") throw new Error("Usage: flipagent disputes list [--status <s>] [--type <t>]");
+	const opts = clientOpts(args);
+	const params = new URLSearchParams();
+	if (args.values.status) params.set("status", args.values.status);
+	if (args.values.type) params.set("type", args.values.type);
+	if (args.values.limit) params.set("limit", args.values.limit);
+	const out = await api("GET", `/v1/disputes${params.toString() ? `?${params}` : ""}`, undefined, opts);
+	printJson(out);
+}
+
+async function runFeedback(args: ParsedArgs): Promise<void> {
+	const sub = args.positional[0];
+	const opts = clientOpts(args);
+	if (sub === "awaiting") {
+		const out = await api("GET", "/v1/feedback/awaiting", undefined, opts);
+		printJson(out);
+		return;
+	}
+	if (sub === "list") {
+		const params = new URLSearchParams();
+		if (args.values.role) params.set("role", args.values.role);
+		if (args.values.rating) params.set("rating", args.values.rating);
+		if (args.values.limit) params.set("limit", args.values.limit);
+		const out = await api("GET", `/v1/feedback${params.toString() ? `?${params}` : ""}`, undefined, opts);
+		printJson(out);
+		return;
+	}
+	throw new Error("Usage: flipagent feedback <awaiting | list ...>");
+}
+
+async function runBuy(args: ParsedArgs): Promise<void> {
+	const itemId = args.positional[0];
+	if (!itemId) throw new Error("Usage: flipagent buy <itemId> [--quantity N] [--variation <id>]");
+	const opts = clientOpts(args);
+	const quantity = args.values.quantity ? Number.parseInt(args.values.quantity, 10) : 1;
+	const item: Record<string, unknown> = { itemId, quantity };
+	if (args.values.variation ?? args.values.variationId) {
+		item.variationId = args.values.variation ?? args.values.variationId;
+	}
+	const out = await api("POST", "/v1/purchases", { items: [item] }, opts);
+	printJson(out);
+}
+
 async function runShip(args: ParsedArgs): Promise<void> {
 	const sub = args.positional[0];
 	const opts = clientOpts(args);
@@ -550,12 +697,29 @@ Auth:
   flipagent doctor                    Diagnose the host (which features are wired)
                                       + your key (which scopes you can call).
 
-Data (uses stored key, env, or --key):
+Data — sourcing + decisions (uses stored key, env, or --key):
   flipagent search <query> [--limit N] [--filter <expr>] [--sort <key>]
   flipagent sold <query> [--limit N]
   flipagent evaluate <itemId> [--lookback-days N] [--sold-limit N] [--min-net <cents>]
   flipagent ship providers
   flipagent ship quote --item <id> --weight <g> --dest <state> [--provider <id>]
+
+Buy:
+  flipagent buy <itemId> [--quantity N] [--variation <id>]
+
+Sell + finance:
+  flipagent sales list [--status paid|shipped|delivered|refunded|cancelled] [--limit N]
+  flipagent sales ship <orderId> --tracking <num> --carrier <name>
+  flipagent payouts list [--limit N]
+  flipagent transactions list [--type sale|refund|fee|adjustment] [--payout-id <id>] [--limit N]
+
+Buyer comms + post-sale:
+  flipagent messages list [--unread] [--direction incoming|outgoing] [--limit N]
+  flipagent messages send --to <userId> --subject <s> --body <text>
+  flipagent offers list [--direction incoming|outgoing] [--status pending|accepted|...]
+  flipagent disputes list [--status open|awaiting_seller|...] [--type return|cancellation|inr|snad|inquiry]
+  flipagent feedback awaiting
+  flipagent feedback list [--role buyer|seller] [--rating positive|neutral|negative]
 
 Setup:
   flipagent init [--mcp] [--keys] [--key <value>]
@@ -609,6 +773,30 @@ async function main(): Promise<void> {
 			return;
 		case "ship":
 			await runShip(args);
+			return;
+		case "buy":
+			await runBuy(args);
+			return;
+		case "sales":
+			await runSales(args);
+			return;
+		case "payouts":
+			await runPayouts(args);
+			return;
+		case "transactions":
+			await runTransactions(args);
+			return;
+		case "messages":
+			await runMessages(args);
+			return;
+		case "offers":
+			await runOffers(args);
+			return;
+		case "disputes":
+			await runDisputes(args);
+			return;
+		case "feedback":
+			await runFeedback(args);
 			return;
 		case "init":
 			await runInit(args);

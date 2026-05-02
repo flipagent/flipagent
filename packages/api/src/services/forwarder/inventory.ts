@@ -114,7 +114,7 @@ export interface LinkSkuInput {
 
 /**
  * Mark this package as listed against a marketplace sku. Called
- * after `ebay_publish_offer` succeeds. The sold-event handler
+ * after `flipagent_listings_relist` succeeds. The sold-event handler
  * looks up by sku to find the package.
  */
 export async function linkSku(input: LinkSkuInput): Promise<ForwarderInventory | null> {

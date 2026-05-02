@@ -26,7 +26,7 @@
  *
  *   Account / ops:
  *     keys, billing, connect, capabilities, takedown, webhooks,
- *     notifications, forwarder
+ *     notifications, forwarder, browser
  *
  *   Escape hatch:
  *     http — typed get/post/put/patch/delete for endpoints not yet wrapped
@@ -36,6 +36,7 @@ import { type AdsClient, createAdsClient } from "./ads.js";
 import { type AnalyticsClient, createAnalyticsClient } from "./analytics.js";
 import { type BidsClient, createBidsClient } from "./bids.js";
 import { type BillingClient, createBillingClient } from "./billing.js";
+import { type BrowserClient, createBrowserClient } from "./browser.js";
 import { type CapabilitiesClient, createCapabilitiesClient } from "./capabilities.js";
 import { type CategoriesClient, createCategoriesClient } from "./categories.js";
 import { type CharitiesClient, createCharitiesClient } from "./charities.js";
@@ -147,6 +148,7 @@ export interface FlipagentClient {
 	webhooks: WebhooksClient;
 	notifications: NotificationsClient;
 	forwarder: ForwarderClient;
+	browser: BrowserClient;
 
 	// Escape hatch
 	http: FlipagentHttp;
@@ -214,6 +216,7 @@ export function createFlipagentClient(opts: FlipagentClientOptions): FlipagentCl
 		webhooks: createWebhooksClient(http),
 		notifications: createNotificationsClient(http),
 		forwarder: createForwarderClient(http),
+		browser: createBrowserClient(http),
 
 		http,
 	};
@@ -223,6 +226,7 @@ export type { AdsClient } from "./ads.js";
 export type { AnalyticsClient } from "./analytics.js";
 export type { BidsClient } from "./bids.js";
 export type { BillingClient } from "./billing.js";
+export type { BrowserClient } from "./browser.js";
 export type { CapabilitiesClient } from "./capabilities.js";
 export type { CategoriesClient } from "./categories.js";
 export type { CharitiesClient } from "./charities.js";

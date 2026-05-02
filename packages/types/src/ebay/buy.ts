@@ -678,7 +678,7 @@ export type SoldSearchQuery = Static<typeof SoldSearchQuery>;
 export const ItemDetailParams = Type.Object(
 	{
 		itemId: Type.String({
-			description: "eBay item id, e.g. 'v1|123456789|0'. Returned by ebay_search results.",
+			description: "eBay item id, e.g. 'v1|123456789|0'. Returned by flipagent_items_search results.",
 		}),
 	},
 	{ $id: "ItemDetailParams" },

@@ -25,53 +25,61 @@ const mockConfig: Config = {
 };
 
 describe("tool execute (mock mode)", () => {
-	it("ebay_search returns canned SearchPagedCollection when mock=true", async () => {
+	it("flipagent_items_search returns canned SearchPagedCollection when mock=true", async () => {
 		const result = (await ebaySearchExecute(mockConfig, { q: "canon" })) as { itemSummaries: unknown[] };
 		expect(Array.isArray(result.itemSummaries)).toBe(true);
 		expect(result.itemSummaries.length).toBeGreaterThan(0);
 	});
 
-	it("ebay_sold_search returns canned itemSales when mock=true", async () => {
+	it("flipagent_items_search_sold returns canned itemSales when mock=true", async () => {
 		const result = (await ebaySoldSearchExecute(mockConfig, { q: "canon" })) as { itemSales: unknown[] };
 		expect(Array.isArray(result.itemSales)).toBe(true);
 		expect(result.itemSales.length).toBeGreaterThan(0);
 	});
 
-	it("ebay_item_detail echoes itemId in mock response", async () => {
+	it("flipagent_items_get echoes itemId in mock response", async () => {
 		const result = (await ebayItemDetailExecute(mockConfig, { itemId: "v1|MOCK01|0" })) as { itemId: string };
 		expect(result.itemId).toBe("v1|MOCK01|0");
 	});
 });
 
 describe("tools registry", () => {
-	it("registers all 29 tools", () => {
-		expect(tools).toHaveLength(29);
+	it("registers all 108 tools", () => {
+		expect(tools).toHaveLength(108);
 	});
 
-	it("covers eBay read/sell + flipagent evaluate/ship", () => {
+	it("uses the flipagent_<resource>_<verb> naming scheme uniformly", () => {
+		for (const t of tools) {
+			expect(t.name).toMatch(/^flipagent_/);
+			expect(t.name).toMatch(/^[a-z0-9_]+$/);
+		}
+	});
+
+	it("covers read/sell + flipagent evaluate/ship", () => {
 		const names = tools.map((t) => t.name);
 		expect(names).toEqual(
 			expect.arrayContaining([
-				// eBay read
-				"ebay_search",
-				"ebay_item_detail",
-				"ebay_sold_search",
-				"ebay_taxonomy_default_id",
-				"ebay_taxonomy_suggest",
-				"ebay_taxonomy_aspects",
+				// marketplace data — read
+				"flipagent_items_search",
+				"flipagent_items_get",
+				"flipagent_items_search_sold",
+				"flipagent_categories_list",
+				"flipagent_categories_suggest",
+				"flipagent_categories_aspects",
 				// flipagent management
-				"flipagent_connect_status",
-				// eBay sell
-				"ebay_create_inventory_item",
-				"ebay_create_offer",
-				"ebay_publish_offer",
-				"ebay_list_orders",
-				"ebay_mark_shipped",
-				"ebay_list_payouts",
+				"flipagent_capabilities",
+				"flipagent_connect_ebay_status",
+				// sell-side
+				"flipagent_listings_create",
+				"flipagent_listings_update",
+				"flipagent_listings_relist",
+				"flipagent_sales_list",
+				"flipagent_sales_ship",
+				"flipagent_payouts_list",
 				// flipagent value-add (Decisions / Operations pillars)
-				"evaluate_listing",
-				"ship_quote",
-				"ship_providers",
+				"flipagent_evaluate",
+				"flipagent_ship_quote",
+				"flipagent_ship_providers",
 			]),
 		);
 	});

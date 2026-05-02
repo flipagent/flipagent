@@ -59,7 +59,7 @@ async function pollUntilTerminal(id) {
 const final = await pollUntilTerminal(order.id);
 console.log(final.status, final.marketplaceOrderId);`}</code></pre>
 				</div>
-				<p>From Claude Desktop / Cursor via MCP, the same flow runs through the <code>ebay_buy_item</code> + <code>ebay_order_status</code> tools.</p>
+				<p>From Claude Desktop / Cursor via MCP, the same flow runs through the <code>flipagent_purchases_create</code> + <code>flipagent_purchases_get</code> tools.</p>
 
 				<h2>Status states</h2>
 				<p>Internal extension states (visible in the popup + bridge logs). The public API surfaces the simplified flipagent <code>status</code> mapping shown in the right column.</p>

@@ -27,7 +27,7 @@ export async function ebayListOrdersExecute(config: Config, args: Record<string,
 		});
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/sales");
-		return { error: "list_orders_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "sales_list_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
 
@@ -42,6 +42,6 @@ export async function ebayMarkShippedExecute(config: Config, args: Record<string
 		return await client.sales.ship(String(orderId), body as unknown as Parameters<typeof client.sales.ship>[1]);
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/sales/{id}/ship");
-		return { error: "mark_shipped_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "sales_ship_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

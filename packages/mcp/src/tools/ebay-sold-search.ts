@@ -26,6 +26,6 @@ export async function ebaySoldSearchExecute(config: Config, args: Record<string,
 		});
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/items/search");
-		return { error: "sold_search_failed", status: e.status, message: e.message, url: e.url };
+		return { error: "items_search_sold_failed", status: e.status, message: e.message, url: e.url };
 	}
 }

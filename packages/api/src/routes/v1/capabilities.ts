@@ -5,8 +5,8 @@
  *   capability map plus the bridge-client (Chrome extension) state.
  *
  * Agents call this once at session start, decide which tools are even
- * worth attempting (e.g. don't fire `ebay_buy_item` when
- * `marketplaces.ebay.buy === "needs_signin"`), and surface clear
+ * worth attempting (e.g. don't fire `flipagent_purchases_create`
+ * when `marketplaces.ebay.buy === "needs_signin"`), and surface clear
  * remediation to the user when something is missing.
  */
 

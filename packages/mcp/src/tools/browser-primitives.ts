@@ -1,5 +1,5 @@
 /**
- * `browser_query` — generic DOM querySelectorAll on the user's active
+ * `flipagent_browser_query` — generic DOM querySelectorAll on the user's active
  * tab via the bridge protocol. Sync, returns inline.
  *
  * Use cases:
@@ -29,7 +29,7 @@ export const browserQueryDescription =
 export async function browserQueryExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
-		return await client.http.post("/v1/browser/query", args);
+		return await client.browser.query(args as unknown as Parameters<typeof client.browser.query>[0]);
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/browser/query");
 		return {

@@ -24,6 +24,6 @@ export async function ebayListPayoutsExecute(config: Config, args: Record<string
 		});
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/payouts");
-		return { error: "list_payouts_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "payouts_list_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

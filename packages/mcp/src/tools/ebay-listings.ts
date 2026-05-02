@@ -20,7 +20,7 @@ export async function ebayCreateInventoryItemExecute(config: Config, args: Recor
 		return await client.listings.create(args as unknown as Parameters<typeof client.listings.create>[0]);
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/listings");
-		return { error: "listing_create_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "listings_create_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
 
@@ -40,7 +40,7 @@ export async function ebayCreateOfferExecute(config: Config, args: Record<string
 		return await client.listings.update(sku, patch as unknown as Parameters<typeof client.listings.update>[1]);
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/listings/{sku}");
-		return { error: "listing_update_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "listings_update_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
 
@@ -57,6 +57,6 @@ export async function ebayPublishOfferExecute(config: Config, args: Record<strin
 		return await client.listings.relist(args.sku as string);
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/listings/{sku}/relist");
-		return { error: "listing_relist_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "listings_relist_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

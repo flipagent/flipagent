@@ -5,7 +5,7 @@
  * tools are even worth attempting and surface the right remediation
  * (sign in, OAuth handshake, install extension) when something is missing.
  *
- * Replaces the narrower `flipagent_connect_status` for new code; that
+ * Replaces the narrower `flipagent_connect_ebay_status` for new code; that
  * tool stays for back-compat but its description points here.
  */
 
@@ -16,7 +16,7 @@ import type { Config } from "../config.js";
 export const flipagentCapabilitiesInput = Type.Object({});
 
 export const flipagentCapabilitiesDescription =
-	'Read what works for the configured api key right now. Returns `client.extensionPaired`, `client.lastSeenAt`, and a `marketplaces` map keyed by marketplace id; each has `search`, `sold`, `detail`, `evaluate`, `buy`, `sell` with statuses `ok | needs_signin | needs_oauth | approval_pending | scrape | unavailable`. Call this first; choose subsequent tools based on what\'s `ok`. When `marketplaces.ebay.buy === "needs_signin"`, ask the user to install the flipagent Chrome extension and sign into eBay before calling `ebay_buy_item`.';
+	'Read what works for the configured api key right now. Returns `client.extensionPaired`, `client.lastSeenAt`, and a `marketplaces` map keyed by marketplace id; each has `search`, `sold`, `detail`, `evaluate`, `buy`, `sell` with statuses `ok | needs_signin | needs_oauth | approval_pending | scrape | unavailable`. Call this first; choose subsequent tools based on what\'s `ok`. When `marketplaces.ebay.buy === "needs_signin"`, ask the user to install the flipagent Chrome extension and sign into eBay before calling `flipagent_purchases_create`.';
 
 export async function flipagentCapabilitiesExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {

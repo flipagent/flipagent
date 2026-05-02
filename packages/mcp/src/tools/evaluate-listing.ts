@@ -13,6 +13,6 @@ export async function evaluateListingExecute(config: Config, args: Record<string
 		return await client.evaluate.listing(args as unknown as EvaluateRequest);
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/evaluate");
-		return { error: "evaluate_listing_failed", status: e.status, message: e.message, url: e.url };
+		return { error: "evaluate_failed", status: e.status, message: e.message, url: e.url };
 	}
 }

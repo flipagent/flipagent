@@ -1,0 +1,148 @@
+#cloud-config
+# One-shot bootstrap for the Channels VM. Runs once on first boot, never
+# again (terraform's lifecycle ignores custom_data so apply doesn't re-fire
+# this). Re-bootstrap is `make rebuild` which taints the VM.
+
+package_update: true
+package_upgrade: false
+packages:
+   - git
+   - curl
+   - tmux
+   - build-essential
+   - ca-certificates
+   - jq
+
+write_files:
+   # `defer: true` runs these in modules-final, AFTER Azure's waagent has
+   # created the admin user. Without it, owner=${admin_username} fails with
+   # "Unknown user" because write_files runs before the user exists on
+   # Azure Linux VMs.
+   #
+   # Env file the systemd unit reads. Empty on first boot — fill in via SSH
+   # before `sudo systemctl enable --now flipagent-channels`.
+   - path: /etc/flipagent-channels.env
+     permissions: '0600'
+     owner: ${admin_username}:${admin_username}
+     defer: true
+     content: |
+        # Filled in via SSH after first boot. Then:
+        #   sudo systemctl enable --now flipagent-channels
+        #   sudo systemctl status flipagent-channels
+        #   sudo journalctl -u flipagent-channels -f
+        ANTHROPIC_API_KEY=
+        FLIPAGENT_API_KEY=
+        FLIPAGENT_BASE_URL=https://api.flipagent.dev
+        DISCORD_BOT_TOKEN=
+        DISCORD_CHANNEL_ID=
+        DISCORD_ALLOWED_USER_IDS=
+
+   # Wrapper script the systemd unit runs inside tmux. Centralises the
+   # `claude --channels` invocation so we can swap to a fallback Discord
+   # bot if the Channels research-preview command isn't shipped in the
+   # installed Claude Code version.
+   - path: /home/${admin_username}/run-channels.sh
+     permissions: '0755'
+     owner: ${admin_username}:${admin_username}
+     defer: true
+     content: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        cd "$HOME/flipagent"
+
+        if ! command -v claude >/dev/null 2>&1; then
+           echo "claude CLI not on PATH — bootstrap may not have finished."
+           echo "Tail /var/log/cloud-init-output.log for the install step."
+           exit 1
+        fi
+
+        # `claude --channels` is the official Discord integration (research
+        # preview). If your installed version doesn't have it, the command
+        # exits non-zero and systemd surfaces the error in journalctl.
+        exec claude --channels
+
+   # systemd unit. Runs `claude --channels` inside a detached tmux session
+   # so you can `tmux attach -t channels` over SSH to inspect the live UI.
+   - path: /etc/systemd/system/flipagent-channels.service
+     permissions: '0644'
+     owner: root:root
+     defer: true
+     content: |
+        [Unit]
+        Description=Claude Code Channels — flipagent
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=forking
+        User=${admin_username}
+        Group=${admin_username}
+        WorkingDirectory=/home/${admin_username}/flipagent
+        EnvironmentFile=/etc/flipagent-channels.env
+        ExecStartPre=/usr/bin/tmux kill-session -t channels
+        ExecStart=/usr/bin/tmux new-session -d -s channels '/home/${admin_username}/run-channels.sh'
+        ExecStop=/usr/bin/tmux kill-session -t channels
+        Restart=on-failure
+        RestartSec=10
+        # tmux exits cleanly when ExecStartPre finds no existing session;
+        # don't fail the unit on that.
+        SuccessExitStatus=1
+
+        [Install]
+        WantedBy=multi-user.target
+
+   # Bootstrap script — heavy lifting moved out of cloud-config to keep
+   # error handling sane. cloud-init runs this once via runcmd.
+   - path: /home/${admin_username}/bootstrap.sh
+     permissions: '0755'
+     owner: ${admin_username}:${admin_username}
+     defer: true
+     content: |
+        #!/usr/bin/env bash
+        set -euxo pipefail
+        cd "$HOME"
+
+        # Node 22 LTS — Claude Code + flipagent both target Node ≥20. NodeSource
+        # script handles apt key + repo + install in one step.
+        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+        sudo apt-get install -y nodejs
+
+        # Claude Code CLI, globally. The npm package name is the documented
+        # install path; matches what `claude /upgrade` self-installs as.
+        sudo npm install -g @anthropic-ai/claude-code
+
+        # Clone the repo (idempotent — bootstrap.sh might be re-run via
+        # `make rebuild`).
+        if [ ! -d flipagent ]; then
+           git clone "${flipagent_repo}" flipagent
+        fi
+        cd flipagent
+        git fetch --all --prune
+        git checkout "${flipagent_branch}"
+        git pull --ff-only
+
+        # Build everything. flipagent-mcp depends on @flipagent/types + sdk
+        # being built first; the root `npm run build` handles ordering.
+        npm install
+        npm run build
+
+        # Register the local flipagent-mcp under Claude Code's user scope.
+        # --scope user puts it in ~/.claude/settings.json so it's available
+        # to every session, including the systemd-launched Channels one.
+        # The wrapper script below ensures FLIPAGENT_API_KEY is sourced
+        # from the env file at run time.
+        claude mcp remove flipagent --scope user 2>/dev/null || true
+        claude mcp add flipagent --scope user -- node "$HOME/flipagent/packages/mcp/dist/index.js"
+
+        touch "$HOME/.bootstrap.done"
+
+runcmd:
+   - sudo -i -u ${admin_username} bash /home/${admin_username}/bootstrap.sh
+
+final_message: |
+   flipagent-channels VM bootstrapped.
+   Next steps (SSH in):
+     1. sudoedit /etc/flipagent-channels.env  # fill keys + Discord IDs
+     2. claude /login                          # one-time interactive Anthropic login
+     3. sudo systemctl enable --now flipagent-channels
+     4. sudo journalctl -u flipagent-channels -f

@@ -40,35 +40,80 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 					</tbody>
 				</table>
 
-				<h2>Tools exposed</h2>
+				<h2>Tools exposed (108)</h2>
+				<p>Tool names follow <code>flipagent_&lt;resource&gt;_&lt;verb&gt;</code>, mirroring <code>/v1/&lt;resource&gt;/&lt;verb&gt;</code> and the <code>client.&lt;resource&gt;.&lt;verb&gt;()</code> SDK shape (dots become underscores). Marketplace stays a parameter — the same tools work as Amazon and Mercari adapters land.</p>
+
 				<table class="api">
 					<thead><tr><th>Tool</th><th>Backed by</th></tr></thead>
 					<tbody>
-						<tr><td colspan="2"><strong>Marketplace data</strong></td></tr>
-						<tr><td><code>ebay_search</code></td><td><code>GET /v1/items/search</code></td></tr>
-						<tr><td><code>ebay_item_detail</code></td><td><code>GET /v1/items/&#123;id&#125;</code></td></tr>
-						<tr><td><code>ebay_sold_search</code></td><td><code>GET /v1/items/search?status=sold</code></td></tr>
-						<tr><td><code>ebay_taxonomy_default_id</code></td><td><code>GET /v1/categories</code></td></tr>
-						<tr><td><code>ebay_taxonomy_suggest</code></td><td><code>GET /v1/categories/suggest</code></td></tr>
-						<tr><td><code>ebay_taxonomy_aspects</code></td><td><code>GET /v1/categories/&#123;id&#125;/aspects</code></td></tr>
+						<tr><td colspan="2"><strong>Marketplace data &mdash; read</strong></td></tr>
+						<tr><td><code>flipagent_items_search</code></td><td><code>GET /v1/items/search</code></td></tr>
+						<tr><td><code>flipagent_items_get</code></td><td><code>GET /v1/items/&#123;id&#125;</code></td></tr>
+						<tr><td><code>flipagent_items_search_sold</code></td><td><code>GET /v1/items/search?status=sold</code></td></tr>
+						<tr><td><code>flipagent_categories_list</code></td><td><code>GET /v1/categories?parentId=&#123;?&#125;</code></td></tr>
+						<tr><td><code>flipagent_categories_suggest</code></td><td><code>GET /v1/categories/suggest</code></td></tr>
+						<tr><td><code>flipagent_categories_aspects</code></td><td><code>GET /v1/categories/&#123;id&#125;/aspects</code></td></tr>
+
 						<tr><td colspan="2"><strong>Decisions</strong></td></tr>
-						<tr><td><code>evaluate_listing</code></td><td><code>POST /v1/evaluate</code> &mdash; composite (search + LLM same-product filter + score)</td></tr>
-						<tr><td colspan="2"><strong>Operations</strong></td></tr>
-						<tr><td><code>ship_quote</code></td><td><code>POST /v1/ship/quote</code></td></tr>
-						<tr><td><code>ship_providers</code></td><td><code>GET /v1/ship/providers</code></td></tr>
+						<tr><td><code>flipagent_evaluate</code></td><td><code>POST /v1/evaluate</code> &mdash; composite (search + LLM same-product filter + score)</td></tr>
+
+						<tr><td colspan="2"><strong>Operations</strong> (ship + expenses + forwarder)</td></tr>
+						<tr><td><code>flipagent_ship_quote</code> / <code>_providers</code></td><td><code>POST /v1/ship/quote</code> &middot; <code>GET /v1/ship/providers</code></td></tr>
+						<tr><td><code>flipagent_expenses_record</code> / <code>_summary</code></td><td><code>POST /v1/expenses/record</code> &middot; <code>GET /v1/expenses/summary</code></td></tr>
+						<tr><td><code>flipagent_forwarder_refresh</code> / <code>_packages_photos</code> / <code>_packages_dispatch</code> / <code>_packages_link</code> / <code>_inventory_list</code> / <code>_jobs_get</code></td><td><code>/v1/forwarder/&#123;provider&#125;/*</code> (Planet Express today)</td></tr>
+
+						<tr><td colspan="2"><strong>Buy</strong> (REST or bridge)</td></tr>
+						<tr><td><code>flipagent_purchases_create</code> / <code>_get</code> / <code>_cancel</code></td><td><code>/v1/purchases/*</code></td></tr>
+
+						<tr><td colspan="2"><strong>Listing prerequisites</strong> (run these before <code>listings_create</code>)</td></tr>
+						<tr><td><code>flipagent_media_create_upload</code> / <code>_get</code></td><td><code>/v1/media/*</code></td></tr>
+						<tr><td><code>flipagent_policies_list</code> / <code>_list_by_type</code></td><td><code>/v1/policies/*</code></td></tr>
+						<tr><td><code>flipagent_locations_list</code> / <code>_get</code> / <code>_upsert</code> / <code>_delete</code> / <code>_enable</code> / <code>_disable</code></td><td><code>/v1/locations/*</code></td></tr>
+
 						<tr><td colspan="2"><strong>Sell-side</strong> (eBay OAuth required via <code>/v1/connect/ebay</code>)</td></tr>
-						<tr><td><code>flipagent_connect_status</code></td><td><code>GET /v1/connect/ebay/status</code></td></tr>
-						<tr><td><code>ebay_create_inventory_item</code></td><td><code>PUT /v1/listings/&#123;sku&#125;</code></td></tr>
-						<tr><td><code>ebay_create_offer</code></td><td><code>POST /v1/listings</code></td></tr>
-						<tr><td><code>ebay_publish_offer</code></td><td><code>POST /v1/listings/&#123;sku&#125;/relist</code></td></tr>
-						<tr><td><code>ebay_list_orders</code></td><td><code>GET /v1/sales</code></td></tr>
-						<tr><td><code>ebay_mark_shipped</code></td><td><code>POST /v1/sales/&#123;id&#125;/ship</code></td></tr>
-						<tr><td><code>ebay_list_payouts</code></td><td><code>GET /v1/payouts</code></td></tr>
+						<tr><td><code>flipagent_connect_ebay_status</code></td><td><code>GET /v1/connect/ebay/status</code></td></tr>
+						<tr><td><code>flipagent_listings_create</code> / <code>_update</code> / <code>_relist</code></td><td><code>/v1/listings/*</code></td></tr>
+						<tr><td><code>flipagent_listing_groups_get</code> / <code>_upsert</code> / <code>_delete</code></td><td><code>/v1/listing-groups/*</code></td></tr>
+						<tr><td><code>flipagent_listings_bulk_get_inventory</code> / <code>_get_offers</code> / <code>_update_prices</code> / <code>_upsert</code> / <code>_publish</code> / <code>_migrate</code></td><td><code>/v1/listings/bulk/*</code></td></tr>
+						<tr><td><code>flipagent_sales_list</code> / <code>_ship</code></td><td><code>/v1/sales/*</code></td></tr>
+						<tr><td><code>flipagent_payouts_list</code></td><td><code>GET /v1/payouts</code></td></tr>
+						<tr><td><code>flipagent_transactions_list</code></td><td><code>GET /v1/transactions</code></td></tr>
+
+						<tr><td colspan="2"><strong>Buyer comms + post-sale</strong></td></tr>
+						<tr><td><code>flipagent_messages_list</code> / <code>_send</code></td><td><code>/v1/messages</code></td></tr>
+						<tr><td><code>flipagent_offers_list</code> / <code>_create</code> / <code>_eligible_listings</code> / <code>_respond</code></td><td><code>/v1/offers/*</code> (Best Offer)</td></tr>
+						<tr><td><code>flipagent_disputes_list</code> / <code>_get</code> / <code>_respond</code></td><td><code>/v1/disputes/*</code></td></tr>
+						<tr><td><code>flipagent_feedback_list</code> / <code>_awaiting</code> / <code>_leave</code></td><td><code>/v1/feedback/*</code></td></tr>
+
+						<tr><td colspan="2"><strong>Sourcing radar + auctions</strong></td></tr>
+						<tr><td><code>flipagent_watching_list</code> / <code>_watch</code> / <code>_unwatch</code></td><td><code>/v1/watching/*</code></td></tr>
+						<tr><td><code>flipagent_saved_searches_list</code> / <code>_create</code> / <code>_delete</code></td><td><code>/v1/saved-searches/*</code></td></tr>
+						<tr><td><code>flipagent_trends_categories</code></td><td><code>GET /v1/trends/categories</code></td></tr>
+						<tr><td><code>flipagent_recommendations_list</code></td><td><code>GET /v1/recommendations</code></td></tr>
+						<tr><td><code>flipagent_bids_list</code> / <code>_place</code> / <code>_eligible_listings</code></td><td><code>/v1/bids/*</code></td></tr>
+
+						<tr><td colspan="2"><strong>Seller account</strong> (read-only)</td></tr>
+						<tr><td><code>flipagent_seller_eligibility</code> / <code>_privilege</code> / <code>_kyc</code> / <code>_subscription</code> / <code>_payments_program</code> / <code>_advertising_eligibility</code> / <code>_sales_tax</code></td><td><code>/v1/me/seller/*</code></td></tr>
+
+						<tr><td colspan="2"><strong>Marketing + storefront</strong></td></tr>
+						<tr><td><code>flipagent_promotions_list</code> / <code>_create</code> / <code>_reports_*</code></td><td><code>/v1/promotions/*</code></td></tr>
+						<tr><td><code>flipagent_markdowns_list</code> / <code>_create</code></td><td><code>/v1/markdowns</code></td></tr>
+						<tr><td><code>flipagent_ads_campaigns_*</code> / <code>_ads_list</code> / <code>_groups_*</code> / <code>_reports_*</code></td><td><code>/v1/ads/*</code> (Promoted Listings)</td></tr>
+						<tr><td><code>flipagent_store_categories</code> / <code>_categories_upsert</code></td><td><code>/v1/store/categories</code></td></tr>
+
+						<tr><td colspan="2"><strong>Setup</strong> (webhooks, notifications, key info, capabilities)</td></tr>
+						<tr><td><code>flipagent_capabilities</code></td><td><code>GET /v1/capabilities</code></td></tr>
+						<tr><td><code>flipagent_keys_me</code></td><td><code>GET /v1/keys/me</code></td></tr>
+						<tr><td><code>flipagent_webhooks_register</code> / <code>_list</code> / <code>_revoke</code></td><td><code>/v1/webhooks/*</code></td></tr>
+						<tr><td><code>flipagent_notifications_topics</code> / <code>_destinations</code> / <code>_subscriptions_*</code> / <code>_recent</code></td><td><code>/v1/notifications/*</code></td></tr>
+
+						<tr><td colspan="2"><strong>Generic browser primitives</strong></td></tr>
+						<tr><td><code>flipagent_browser_query</code></td><td><code>POST /v1/browser/query</code></td></tr>
 					</tbody>
 				</table>
 
 				<h2>Compose your own logic</h2>
-				<p>Tools are typed and orthogonal. <code>evaluate_listing</code> is composite — server-side it fetches the item, searches sold + active, runs an LLM same-product filter, and scores in a single call. Agents can also chain low-level tools (<code>ebay_search</code> → <code>ebay_sold_search</code> → <code>evaluate_listing</code> → <code>ship_quote</code>) to assemble custom reselling workflows. See the <a href="/docs/api/">API reference</a> for request shapes.</p>
+				<p>Tools are typed and orthogonal. <code>flipagent_evaluate</code> is composite — server-side it fetches the item, searches sold + active, runs an LLM same-product filter, and scores in a single call. Agents can also chain low-level tools (<code>flipagent_items_search</code> → <code>flipagent_items_search_sold</code> → <code>flipagent_evaluate</code> → <code>flipagent_ship_quote</code>) to assemble custom reselling workflows. See the <a href="/docs/api/">API reference</a> for request shapes.</p>
 			</article>
 		</div>
 	</div>

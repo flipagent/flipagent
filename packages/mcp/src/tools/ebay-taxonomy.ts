@@ -10,20 +10,27 @@ import type { Config } from "../config.js";
 
 export const ebayTaxonomyDefaultIdInput = Type.Object({
 	marketplace: Type.Optional(Type.String({ default: "ebay" })),
+	parentId: Type.Optional(
+		Type.String({
+			description:
+				"Return children of this category. Omit for top-level. Drill down by passing the parent's id; stop when nodes have isLeaf=true.",
+		}),
+	),
 });
 
 export const ebayTaxonomyDefaultIdDescription =
-	"List top-level categories for the marketplace. Calls GET /v1/categories. flipagent auto-resolves the underlying eBay tree id.";
+	"List categories for the marketplace. Calls GET /v1/categories. Without `parentId` returns top-level nodes; with `parentId` returns its children — call repeatedly to walk the tree until you hit `isLeaf=true`. flipagent auto-resolves the underlying eBay tree id.";
 
 export async function ebayTaxonomyDefaultIdExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.categories.list({
 			marketplace: args.marketplace as never,
+			parentId: args.parentId as string | undefined,
 		});
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/categories");
-		return { error: "taxonomy_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "categories_list_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
 
@@ -44,7 +51,7 @@ export async function ebayTaxonomySuggestExecute(config: Config, args: Record<st
 		});
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/categories/suggest");
-		return { error: "taxonomy_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "categories_suggest_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
 
@@ -61,6 +68,6 @@ export async function ebayTaxonomyAspectsExecute(config: Config, args: Record<st
 		return await client.categories.aspects(args.categoryId as string);
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/categories/{id}/aspects");
-		return { error: "taxonomy_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "categories_aspects_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

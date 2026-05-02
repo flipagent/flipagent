@@ -180,7 +180,7 @@ forwarderRoute.post(
 		tags: ["Forwarder"],
 		summary: "Link a forwarder package to a marketplace sku + offer",
 		description:
-			"Called after `ebay_publish_offer` succeeds. Stores `sku` (and optional `ebayOfferId`) on the inventory row so the sold-event handler can find the package without the agent threading the mapping by hand. Idempotent — re-linking the same sku is a no-op; re-linking a different sku overwrites.",
+			"Called after `flipagent_listings_relist` succeeds. Stores `sku` (and optional `ebayOfferId`) on the inventory row so the sold-event handler can find the package without the agent threading the mapping by hand. Idempotent — re-linking the same sku is a no-op; re-linking a different sku overwrites.",
 		parameters: paramsFor("path", ProviderPackageParam),
 		responses: {
 			200: jsonResponse("Linked.", ForwarderInventoryRow),

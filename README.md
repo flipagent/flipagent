@@ -30,6 +30,9 @@
     <a href="https://discord.gg/PUyURdjMtv">
       <img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord">
     </a>
+    <a href="https://x.com/flipagent_dev">
+      <img src="https://img.shields.io/badge/Follow%20%40flipagent__dev-000000?style=for-the-badge&logo=x&logoColor=white" alt="Follow @flipagent_dev">
+    </a>
     <a href="https://flipagent.dev/signup">
       <img src="https://img.shields.io/badge/Get%20a%20free%20key-000000?style=for-the-badge&logoColor=white" alt="Get a free key">
     </a>
@@ -54,13 +57,13 @@ const { evaluation } = await client.evaluate.listing({ itemId: "v1|123456789|0" 
 console.log(evaluation.expectedNetCents, evaluation.rating, evaluation.signals);
 ```
 
-> **Get a free key** (500 credits one-time, no card) at [flipagent.dev/signup](https://flipagent.dev/signup). Hop into [Discord](https://discord.gg/PUyURdjMtv) for questions, bugs, and build talk.
+> **Get a free key** (500 credits one-time, no card) at [flipagent.dev/signup](https://flipagent.dev/signup). Hop into [Discord](https://discord.gg/PUyURdjMtv) for questions, bugs, and build talk. Follow [@flipagent_dev](https://x.com/flipagent_dev) for ship notes.
 
 ---
 
 ## Why flipagent?
 
-- **Composite endpoints, not glue code.** `evaluate_listing` fetches the item, searches sold + active in parallel, runs an LLM same-product filter, and scores in a single call.
+- **Composite endpoints, not glue code.** `flipagent_evaluate` fetches the item, searches sold + active in parallel, runs an LLM same-product filter, and scores in a single call.
 - **Server-side scoring, one source of truth.** Median, IQR cleaning, brand-typo signals, landed cost — every client (TS / MCP / future Python / Go) gets the same math from `services/quant/`.
 - **Marketplace-agnostic, flipagent-native surface.** One `/v1/<resource>` shape across eBay (today) and Amazon / Mercari (next). Cents-int Money, ISO timestamps, lowercase status enums — read once, port nowhere.
 - **Bridge for the human-only steps.** A Chrome extension runs sensitive flows (BIN checkout, forwarder dashboards) inside *your* browser with *your* logins — flipagent never holds third-party credentials.
@@ -136,7 +139,7 @@ curl -X GET 'https://api.flipagent.dev/v1/items/search?q=canon%20ef%2050mm%201.8
 
 **MCP** (after setup below)
 ```
-ebay_search { "q": "canon ef 50mm 1.8", "limit": 50 }
+flipagent_items_search { "q": "canon ef 50mm 1.8", "limit": 50 }
 ```
 </details>
 
@@ -199,7 +202,7 @@ Or one-command setup that detects your installed clients:
 npx -y flipagent-cli init --mcp
 ```
 
-`evaluate_listing` is **composite** — server-side it fetches the item, searches sold + active in parallel, runs an LLM same-product filter (Anthropic / OpenAI / Google), and scores in a single call. Set one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` on the API server to enable; without a key the composite endpoints fall back to the unfiltered sold + active pools (looser, evaluations still run).
+`flipagent_evaluate` is **composite** — server-side it fetches the item, searches sold + active in parallel, runs an LLM same-product filter (Anthropic / OpenAI / Google), and scores in a single call. Set one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` on the API server to enable; without a key the composite endpoints fall back to the unfiltered sold + active pools (looser, evaluations still run).
 
 ### SDK
 

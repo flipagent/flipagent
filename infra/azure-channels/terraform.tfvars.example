@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is gitignored.
+
+# Path to your SSH public key. The VM will accept logins signed by the
+# matching private key. Required.
+ssh_pubkey_path = "~/.ssh/id_ed25519.pub"
+
+# CIDR allowed to reach SSH. STRONGLY recommend setting this to your IP/32
+# or your VPN range. The default below is open to the world.
+# Look up your IP: curl ifconfig.me
+ssh_source_cidr = "0.0.0.0/0"
+
+# Optional overrides (defaults usually fine):
+# environment      = "main"
+# location         = "eastus2"
+# vm_size          = "Standard_B2s"   # ~$1/day on, ~$3/mo deallocated
+# os_disk_gb       = 64
+# admin_username   = "flipagent"
+# flipagent_repo   = "https://github.com/flipagent/flipagent.git"
+# flipagent_branch = "main"

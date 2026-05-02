@@ -1,21 +1,25 @@
 #!/usr/bin/env node
 /**
- * flipagent-mcp — MCP server exposing eBay's REST surface as MCP tools.
+ * flipagent-mcp — MCP server exposing flipagent's `/v1/*` surface as MCP tools.
  *
  * Speaks the Model Context Protocol over stdio. Drop into Claude Desktop,
  * Cursor, Cline, Zed, Continue, Windsurf, etc. via the standard MCP config
- * (see README). All tools mirror eBay path/method/body verbatim through
- * flipagent's unified `/v1/*` surface — point `FLIPAGENT_BASE_URL` at a
- * non-default host for self-host / staging.
+ * (see README). All tools wrap flipagent's marketplace-agnostic `/v1/*`
+ * surface — point `FLIPAGENT_BASE_URL` at a non-default host for self-host
+ * / staging.
  *
- * Tools split into three groups:
- *   - **Read** (anonymous app token): ebay_search, ebay_item_detail,
- *     ebay_sold_search, ebay_taxonomy_default_id, ebay_taxonomy_suggest,
- *     ebay_taxonomy_aspects.
+ * Tool naming: `flipagent_<resource>_<verb>`, mirroring `/v1/<resource>/<verb>`.
+ * Marketplace stays a parameter, never part of the tool name. Groups:
+ *   - **Read** (anonymous app token): flipagent_items_search,
+ *     flipagent_items_get, flipagent_items_search_sold,
+ *     flipagent_categories_list / _suggest / _aspects.
  *   - **Sell** (user OAuth, requires /v1/connect/ebay binding):
- *     ebay_create_inventory_item, ebay_create_offer, ebay_publish_offer,
- *     ebay_list_orders, ebay_mark_shipped, ebay_list_payouts.
- *   - **Mgmt**: flipagent_connect_status — check if the api key is bound.
+ *     flipagent_listings_create / _update / _relist,
+ *     flipagent_sales_list / _ship, flipagent_payouts_list.
+ *   - **Mgmt**: flipagent_capabilities (preferred) / flipagent_connect_ebay_status.
+ *   - **Decisions**: flipagent_evaluate.
+ *   - **Operations**: flipagent_ship_quote / _providers, flipagent_expenses_*,
+ *     flipagent_forwarder_*, flipagent_purchases_*, flipagent_browser_query.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";

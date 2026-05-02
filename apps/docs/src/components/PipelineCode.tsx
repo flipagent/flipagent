@@ -144,7 +144,7 @@ const STEPS: Step[] = [
 				<>{"  "}-d {STR(`'{"itemId": "v1|123456789|0"}'`)}</>,
 			],
 			cli: [
-				<>{FN("evaluate_listing")}({"{"} itemId {"}"})</>,
+				<>{FN("flipagent_evaluate")}({"{"} itemId {"}"})</>,
 			],
 		},
 		plain: {
@@ -152,7 +152,7 @@ const STEPS: Step[] = [
 				'r = requests.post(\n  "https://api.flipagent.dev/v1/evaluate",\n  json={"itemId": itemId},\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const evaluation = await client.evaluate.listing({\n  itemId,\n  opts: { forwarder: { destState: "NY", weightG: 500 } },\n});',
 			curl: 'curl -X POST https://api.flipagent.dev/v1/evaluate \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"itemId": "v1|123456789|0"}\'',
-			cli: 'evaluate_listing({ itemId })',
+			cli: 'flipagent_evaluate({ itemId })',
 		},
 		result: [
 			<>{"{"}</>,
@@ -193,7 +193,7 @@ const STEPS: Step[] = [
 				<>{"  "}-d {STR(`'{"items":[{"itemId":"v1|3852…|0"}],"shipTo":{"country":"US","postalCode":"97230"}}'`)}</>,
 			],
 			cli: [
-				<>{FN("flipagent_buy_item")}({"{"} itemId {"}"})</>,
+				<>{FN("flipagent_purchases_create")}({"{"} itemId {"}"})</>,
 			],
 		},
 		plain: {
@@ -201,7 +201,7 @@ const STEPS: Step[] = [
 				'r = requests.post(\n  "https://api.flipagent.dev/v1/purchases",\n  json={\n    "items": [{"itemId": "v1|3852…|0", "quantity": 1}],\n    "shipTo": {"country": "US", "postalCode": "97230"},\n  },\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const purchase = await client.purchases.create({\n  items: [{ itemId: "v1|3852…|0", quantity: 1 }],\n  shipTo: { country: "US", postalCode: "97230" },\n});',
 			curl: 'curl -X POST https://api.flipagent.dev/v1/purchases \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"items":[{"itemId":"v1|3852…|0"}],"shipTo":{"country":"US","postalCode":"97230"}}\'',
-			cli: 'flipagent_buy_item({ itemId })',
+			cli: 'flipagent_purchases_create({ itemId })',
 		},
 		result: [
 			<>{"{"}</>,
@@ -248,7 +248,7 @@ const STEPS: Step[] = [
 				<>{"  "}-d {STR(`'{"sku":"canon_…","marketplace":"ebay_us","priceCents":9999,…}'`)}</>,
 			],
 			cli: [
-				<>{FN("flipagent_publish_listing")}({"{"} sku, marketplace: {STR('"ebay_us"')}, priceCents {"}"})</>,
+				<>{FN("flipagent_listings_create")}({"{"} sku, marketplace: {STR('"ebay_us"')}, priceCents {"}"})</>,
 			],
 		},
 		plain: {
@@ -256,7 +256,7 @@ const STEPS: Step[] = [
 				'r = requests.post(\n  "https://api.flipagent.dev/v1/listings/{sku}",\n  json={\n    "sku": "canon_ef_50mm_001", "marketplace": "ebay_us",\n    "title": "Canon EF 50mm f/1.8 STM Lens",\n    "priceCents": 9999, "condition": "USED_GOOD",\n    "photos": ["https://cdn.flipagent.dev/canon.jpg"],\n  },\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const { listingId, url } = await client.items.publish({\n  sku: "canon_ef_50mm_001", marketplace: "ebay_us",\n  title: "Canon EF 50mm f/1.8 STM Lens",\n  priceCents: 9999, condition: "USED_GOOD",\n  photos: ["https://cdn.flipagent.dev/canon.jpg"],\n});',
 			curl: 'curl -X POST https://api.flipagent.dev/v1/listings/{sku} \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"sku":"canon_…","marketplace":"ebay_us","priceCents":9999,…}\'',
-			cli: 'flipagent_publish_listing({ sku, marketplace: "ebay_us", priceCents })',
+			cli: 'flipagent_listings_create({ sku, marketplace: "ebay_us", priceCents })',
 		},
 		result: [
 			<>{"{"}</>,
@@ -291,7 +291,7 @@ const STEPS: Step[] = [
 				<>{"  "}-H {STR('"X-API-Key: fa_…"')}</>,
 			],
 			cli: [
-				<>{FN("ebay_list_orders")}({"{"} status: {STR('"paid"')} {"}"})</>,
+				<>{FN("flipagent_sales_list")}({"{"} status: {STR('"paid"')} {"}"})</>,
 			],
 		},
 		plain: {
@@ -299,7 +299,7 @@ const STEPS: Step[] = [
 				'r = requests.get(\n  "https://api.flipagent.dev/v1/sales",\n  params={"status": "paid", "limit": 50},\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const { sales } = await client.sales.list({\n  status: "paid", limit: 50,\n});',
 			curl: 'curl "https://api.flipagent.dev/v1/sales?status=paid&limit=50" \\\n  -H "X-API-Key: fa_…"',
-			cli: 'ebay_list_orders({ status: "paid" })',
+			cli: 'flipagent_sales_list({ status: "paid" })',
 		},
 		result: [
 			<>{"{"}</>,

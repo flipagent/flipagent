@@ -1,12 +1,13 @@
 /**
- * `ebay_buy_item` / `ebay_order_status` / `ebay_order_cancel` — buy-side
+ * `flipagent_purchases_create` / `_get` / `_cancel` — buy-side
  * tools backed by `/v1/purchases`. Auto-picks the REST transport when
  * `EBAY_ORDER_API_APPROVED=1`; otherwise drives the user's paired
  * Chrome extension (the "bridge client") to BIN inside their real
  * Chrome session.
  *
- * `ebay_buy_item` queues a purchase and returns immediately with the
- * `purchaseOrderId`. The agent should poll `ebay_order_status` until
+ * `flipagent_purchases_create` queues a purchase and returns immediately
+ * with the `purchaseOrderId`. The agent should poll
+ * `flipagent_purchases_get` until
  * it reports a terminal state — `completed`, `failed`, `cancelled`.
  * That keeps the MCP tool bounded (no minute-long blocking calls)
  * while the underlying transport works asynchronously.
@@ -21,7 +22,7 @@ import { Type } from "@sinclair/typebox";
 import { getClient, toApiCallError } from "../client.js";
 import type { Config } from "../config.js";
 
-/* ----------------------------- ebay_buy_item ----------------------------- */
+/* ------------------------ flipagent_purchases_create ------------------------ */
 
 export const ebayBuyItemInput = Type.Object(
 	{
@@ -33,7 +34,7 @@ export const ebayBuyItemInput = Type.Object(
 );
 
 export const ebayBuyItemDescription =
-	"Buy an item (one-shot). Calls POST /v1/purchases — flipagent's normalized buy surface, which compresses initiate + place_order into a single call. Returns a `Purchase` with status `queued`/`processing`/`completed`/`failed`/`cancelled`. Poll `ebay_order_status` until terminal. Auto-picks REST transport when `EBAY_ORDER_API_APPROVED=1`; otherwise the bridge transport drives the user's paired Chrome extension — install at https://flipagent.dev/docs/extension/.";
+	"Buy an item (one-shot). Calls POST /v1/purchases — flipagent's normalized buy surface, which compresses initiate + place_order into a single call. Returns a `Purchase` with status `queued`/`processing`/`completed`/`failed`/`cancelled`. Poll `flipagent_purchases_get` until terminal. Auto-picks REST transport when `EBAY_ORDER_API_APPROVED=1`; otherwise the bridge transport drives the user's paired Chrome extension — install at https://flipagent.dev/docs/extension/.";
 
 export async function ebayBuyItemExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
@@ -47,7 +48,7 @@ export async function ebayBuyItemExecute(config: Config, args: Record<string, un
 	} catch (err) {
 		const e = toApiCallError(err, "/v1/purchases");
 		return {
-			error: "buy_order_failed",
+			error: "purchases_create_failed",
 			status: e.status,
 			url: e.url,
 			message: e.message,
@@ -59,7 +60,7 @@ export async function ebayBuyItemExecute(config: Config, args: Record<string, un
 	}
 }
 
-/* --------------------------- ebay_order_status --------------------------- */
+/* -------------------------- flipagent_purchases_get -------------------------- */
 
 export const ebayOrderStatusInput = Type.Object(
 	{ purchaseOrderId: Type.String({ format: "uuid" }) },
@@ -76,11 +77,11 @@ export async function ebayOrderStatusExecute(config: Config, args: Record<string
 		return await client.purchases.get(id);
 	} catch (err) {
 		const e = toApiCallError(err, `/v1/purchases/${id}`);
-		return { error: "buy_order_status_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "purchases_get_failed", status: e.status, url: e.url, message: e.message };
 	}
 }
 
-/* --------------------------- ebay_order_cancel --------------------------- */
+/* ------------------------ flipagent_purchases_cancel ------------------------ */
 
 export const ebayOrderCancelInput = Type.Object(
 	{ purchaseOrderId: Type.String({ format: "uuid" }) },
@@ -97,6 +98,6 @@ export async function ebayOrderCancelExecute(config: Config, args: Record<string
 		return await client.purchases.cancel(id);
 	} catch (err) {
 		const e = toApiCallError(err, `/v1/purchases/${id}/cancel`);
-		return { error: "buy_order_cancel_failed", status: e.status, url: e.url, message: e.message };
+		return { error: "purchases_cancel_failed", status: e.status, url: e.url, message: e.message };
 	}
 }

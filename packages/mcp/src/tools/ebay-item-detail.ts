@@ -19,6 +19,6 @@ export async function ebayItemDetailExecute(config: Config, args: Record<string,
 		return await client.items.get(itemId, { status: args.status as "active" | "sold" | undefined });
 	} catch (err) {
 		const e = toApiCallError(err, `/v1/items/${itemId}`);
-		return { error: "listings_get_failed", status: e.status, message: e.message, url: e.url };
+		return { error: "items_get_failed", status: e.status, message: e.message, url: e.url };
 	}
 }
