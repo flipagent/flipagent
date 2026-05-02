@@ -16,6 +16,8 @@
 
 import {
 	ListingCreate,
+	ListingPreviewFeesRequest,
+	ListingPreviewFeesResponse,
 	ListingResponse,
 	ListingsListQuery,
 	ListingsListResponse,
@@ -32,7 +34,9 @@ import { EbayApiError } from "../../services/ebay/rest/user-client.js";
 import { createListing, MissingPrereqError, PublishFailedError } from "../../services/listings/create.js";
 import { getListing, listListings } from "../../services/listings/get.js";
 import { endListing, relistListing, updateListing } from "../../services/listings/lifecycle.js";
+import { previewListingFees } from "../../services/listings/preview-fees.js";
 import { verifyListing } from "../../services/listings/verify.js";
+import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
 export const listingsRoute = new Hono();
@@ -52,8 +56,14 @@ function mapEbayError(c: Context, err: unknown) {
 		return c.json({ error: "publish_failed", message: err.message, partial: err.partial }, 502);
 	}
 	if (err instanceof EbayApiError) {
+		const next_action = err.nextActionKind ? nextAction(c, err.nextActionKind) : undefined;
 		return c.json(
-			{ error: err.code, message: err.message, upstream: err.upstream },
+			{
+				error: err.code,
+				message: err.message,
+				upstream: err.upstream,
+				...(next_action ? { next_action } : {}),
+			},
 			err.status as 401 | 412 | 502 | 503,
 		);
 	}
@@ -234,6 +244,33 @@ listingsRoute.delete(
 				return c.json({ error: "listing_not_found", message: `No listing for SKU '${sku}'.` }, 404);
 			}
 			return c.json(listing);
+		} catch (err) {
+			const mapped = mapEbayError(c, err);
+			if (mapped) return mapped;
+			throw err;
+		}
+	},
+);
+
+listingsRoute.post(
+	"/preview-fees",
+	describeRoute({
+		tags: ["Listings"],
+		summary: "Preview eBay fees for unpublished offer drafts",
+		description:
+			"Wraps Sell Inventory `POST /offer/get_listing_fees`. Pass an array of UNPUBLISHED `offerId` values (errors with 25754 on published offers). Returns fees grouped by marketplace — eBay does not break out fees per offer. For 'estimate fees on a hypothetical listing I haven't drafted yet', use POST /v1/listings/verify instead.",
+		responses: {
+			200: jsonResponse("Fees grouped by marketplace.", ListingPreviewFeesResponse),
+			...COMMON_RESPONSES,
+		},
+	}),
+	requireApiKey,
+	tbBody(ListingPreviewFeesRequest),
+	async (c) => {
+		const body = (await c.req.json()) as ListingPreviewFeesRequest;
+		try {
+			const result = await previewListingFees({ apiKeyId: c.var.apiKey.id, offerIds: body.offerIds });
+			return c.json({ ...result, source: "rest" as const });
 		} catch (err) {
 			const mapped = mapEbayError(c, err);
 			if (mapped) return mapped;

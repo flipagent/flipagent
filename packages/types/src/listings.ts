@@ -298,3 +298,48 @@ export const ListingResponse = Type.Composite([Listing, Type.Object({ source: Ty
 	$id: "ListingResponse",
 });
 export type ListingResponse = Static<typeof ListingResponse>;
+
+/**
+ * Pre-publish fee preview — wraps eBay Sell Inventory
+ * `POST /offer/get_listing_fees`. Takes a list of UNPUBLISHED offer
+ * ids (caller must have already created the drafts via POST /v1/listings
+ * or the inventory APIs) and returns the fees eBay will charge per
+ * marketplace if those offers were published. For "estimate fees on a
+ * hypothetical listing I haven't drafted yet", use POST /v1/listings/verify
+ * (Trading VerifyAddItem) instead — it doesn't require a draft.
+ */
+export const ListingPreviewFeesRequest = Type.Object(
+	{
+		offerIds: Type.Array(Type.String(), { minItems: 1, maxItems: 250 }),
+	},
+	{ $id: "ListingPreviewFeesRequest" },
+);
+export type ListingPreviewFeesRequest = Static<typeof ListingPreviewFeesRequest>;
+
+export const ListingFeeLine = Type.Object(
+	{
+		feeType: Type.String({ description: "eBay fee category — InsertionFee, FinalValueFee, etc." }),
+		amount: Money,
+		promotionalDiscount: Type.Optional(Money),
+	},
+	{ $id: "ListingFeeLine" },
+);
+export type ListingFeeLine = Static<typeof ListingFeeLine>;
+
+export const ListingPreviewFeesResponse = Type.Object(
+	{
+		summaries: Type.Array(
+			Type.Object({
+				marketplaceId: Type.String(),
+				fees: Type.Array(ListingFeeLine),
+				totalCents: Type.Integer({ minimum: 0, description: "Sum of fee amounts (after promotional discounts)." }),
+				warnings: Type.Optional(
+					Type.Array(Type.Object({ message: Type.String(), errorId: Type.Optional(Type.Integer()) })),
+				),
+			}),
+		),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "ListingPreviewFeesResponse" },
+);
+export type ListingPreviewFeesResponse = Static<typeof ListingPreviewFeesResponse>;

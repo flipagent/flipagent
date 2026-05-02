@@ -4,7 +4,15 @@
  * inventory_item → offer → publish dance.
  */
 
-import type { Listing, ListingCreate, ListingsListQuery, ListingsListResponse, ListingUpdate } from "@flipagent/types";
+import type {
+	Listing,
+	ListingCreate,
+	ListingPreviewFeesRequest,
+	ListingPreviewFeesResponse,
+	ListingsListQuery,
+	ListingsListResponse,
+	ListingUpdate,
+} from "@flipagent/types";
 import type { FlipagentHttp } from "./http.js";
 
 export interface ListingsClient {
@@ -14,6 +22,7 @@ export interface ListingsClient {
 	update(sku: string, patch: ListingUpdate): Promise<Listing>;
 	end(sku: string): Promise<Listing>;
 	relist(sku: string): Promise<Listing>;
+	previewFees(body: ListingPreviewFeesRequest): Promise<ListingPreviewFeesResponse>;
 }
 
 export function createListingsClient(http: FlipagentHttp): ListingsClient {
@@ -24,5 +33,6 @@ export function createListingsClient(http: FlipagentHttp): ListingsClient {
 		update: (sku, patch) => http.patch(`/v1/listings/${encodeURIComponent(sku)}`, patch),
 		end: (sku) => http.delete(`/v1/listings/${encodeURIComponent(sku)}`),
 		relist: (sku) => http.post(`/v1/listings/${encodeURIComponent(sku)}/relist`),
+		previewFees: (body) => http.post("/v1/listings/preview-fees", body),
 	};
 }

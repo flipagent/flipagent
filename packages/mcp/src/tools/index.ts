@@ -184,6 +184,11 @@ import {
 	listingsBulkUpsertInput,
 } from "./listings-bulk.js";
 import {
+	listingsPreviewFeesDescription,
+	listingsPreviewFeesExecute,
+	listingsPreviewFeesInput,
+} from "./listings-fees.js";
+import {
 	locationsDeleteDescription,
 	locationsDeleteExecute,
 	locationsDeleteInput,
@@ -598,6 +603,13 @@ export const tools: Tool[] = [
 		description: ebayPublishOfferDescription,
 		inputSchema: ebayPublishOfferInput,
 		execute: ebayPublishOfferExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_preview_listing_fees",
+		description: listingsPreviewFeesDescription,
+		inputSchema: listingsPreviewFeesInput,
+		execute: listingsPreviewFeesExecute,
 		toolset: "core",
 	},
 
