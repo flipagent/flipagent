@@ -19,6 +19,7 @@ import { ListWebhooksResponse, RegisterWebhookRequest, RegisterWebhookResponse }
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
+import { encryptSecret } from "../../auth/secret-envelope.js";
 import { db } from "../../db/client.js";
 import { webhookEndpoints } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
@@ -45,13 +46,17 @@ webhooksRoute.post(
 	async (c) => {
 		const body = c.req.valid("json");
 		const secret = generateWebhookSecret();
+		// Webhook HMAC secret stored under the secrets envelope; the
+		// signing path decrypts at use. Plaintext is shown to the caller
+		// exactly once in this response — they're responsible for storing
+		// it on their receiver.
 		const [row] = await db
 			.insert(webhookEndpoints)
 			.values({
 				apiKeyId: c.var.apiKey.id,
 				userId: c.var.apiKey.userId,
 				url: body.url,
-				secret,
+				secret: encryptSecret(secret),
 				events: body.events,
 				description: body.description ?? null,
 			})

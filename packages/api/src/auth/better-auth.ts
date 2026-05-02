@@ -14,6 +14,8 @@ import { eq } from "drizzle-orm";
 import { config, isAdminEmail, isAuthConfigured, isEmailConfigured } from "../config.js";
 import { db } from "../db/client.js";
 import { account, session, user, verification } from "../db/schema.js";
+import { clientIpFromRequest } from "../utils/client-ip.js";
+import { TERMS_VERSION } from "./legal-versions.js";
 
 function createAuth() {
 	const socialProviders: Record<string, { clientId: string; clientSecret: string }> = {
@@ -84,6 +86,17 @@ function createAuth() {
 				stripeCustomerId: { type: "string", required: false, input: false },
 				stripeSubscriptionId: { type: "string", required: false, input: false },
 				subscriptionStatus: { type: "string", required: false, input: false },
+				/**
+				 * Clickwrap consent. The signup form posts the version of the
+				 * Terms the user just ticked the checkbox for. The after-hook
+				 * (below) folds it into termsAcceptedAt + termsAcceptedIp.
+				 * Social-OAuth users land here without a value (the OAuth
+				 * provider doesn't carry our checkbox); the dashboard
+				 * surfaces a re-consent modal that POSTs /v1/me/terms-acceptance.
+				 */
+				termsVersion: { type: "string", required: false, input: true },
+				termsAcceptedAt: { type: "date", required: false, input: false },
+				termsAcceptedIp: { type: "string", required: false, input: false },
 			},
 		},
 		// First-time sign-up (any provider) gets a "default" free-tier API key
@@ -95,7 +108,7 @@ function createAuth() {
 		databaseHooks: {
 			user: {
 				create: {
-					after: async (newUser) => {
+					after: async (newUser, ctx) => {
 						const userId = (newUser as { id?: string }).id;
 						try {
 							const { issueKey } = await import("./keys.js");
@@ -116,6 +129,27 @@ function createAuth() {
 								await db.update(user).set({ role: "admin" }).where(eq(user.id, userId));
 							} catch (err) {
 								console.error("[admin-promote] failed for", newUser.email, err);
+							}
+						}
+						// Clickwrap consent — record only when the signup form
+						// actually carried a `termsVersion`, which means the
+						// email/password form's checkbox was ticked. Social-
+						// OAuth signups don't get the field; the dashboard
+						// re-consent gate captures them post-sign-in.
+						const submittedVersion = (newUser as { termsVersion?: string | null }).termsVersion;
+						if (userId && submittedVersion === TERMS_VERSION) {
+							try {
+								const ip = clientIpFromRequest(ctx?.request);
+								await db
+									.update(user)
+									.set({
+										termsAcceptedAt: new Date(),
+										termsVersion: submittedVersion,
+										termsAcceptedIp: ip,
+									})
+									.where(eq(user.id, userId));
+							} catch (err) {
+								console.error("[terms-consent] persist failed for", newUser.email, err);
 							}
 						}
 					},

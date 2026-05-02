@@ -55,3 +55,14 @@ export async function createPortalSession(
 		return_url: `${config.APP_URL}/dashboard/`,
 	});
 }
+
+/**
+ * Best-effort customer close on account deletion. Detaches any active
+ * subscriptions and deletes the Stripe customer record so we don't keep
+ * billing relationships with departed users. Caller should swallow
+ * exceptions — Stripe failures must not block local data removal.
+ */
+export async function closeStripeCustomer(cfg: StripeConfig, customerId: string): Promise<void> {
+	const stripe = stripeClient(cfg);
+	await stripe.customers.del(customerId);
+}

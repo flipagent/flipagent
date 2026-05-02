@@ -236,6 +236,16 @@ resource "azurerm_container_app" "api" {
     value = var.keys_encryption_key
   }
 
+  # AES-256-GCM symmetric key (base64) for the secrets envelope —
+  # wraps eBay OAuth refresh tokens + webhook HMAC secrets at rest.
+  # Required in production; the api throws on boot without it. Kept
+  # separate from `keys-encryption-key` so the API-key blast radius
+  # stays smaller. Generate with `openssl rand -base64 32`.
+  secret {
+    name  = "secrets-encryption-key"
+    value = var.secrets_encryption_key
+  }
+
   # Better-Auth + GitHub/Google OAuth + email.
   secret {
     name  = "better-auth-secret"
@@ -407,6 +417,13 @@ resource "azurerm_container_app" "api" {
       env {
         name        = "KEYS_ENCRYPTION_KEY"
         secret_name = "keys-encryption-key"
+      }
+      # AES-256-GCM key for the secrets envelope — wraps eBay OAuth
+      # refresh tokens + webhook HMAC secrets at rest. Required in
+      # production; the api throws on boot without it.
+      env {
+        name        = "SECRETS_ENCRYPTION_KEY"
+        secret_name = "secrets-encryption-key"
       }
 
       # Better-Auth + GitHub/Google OAuth.
@@ -600,6 +617,20 @@ resource "azurerm_container_app" "worker" {
     name  = "ebay-client-secret"
     value = var.ebay_client_secret
   }
+  # Secrets envelope — same key as the api so any worker code path
+  # that reads encrypted columns (eBay user-OAuth refresh during
+  # pipeline runs, future cleanup jobs) can decrypt.
+  secret {
+    name  = "secrets-encryption-key"
+    value = var.secrets_encryption_key
+  }
+  # Resend — the maintenance sweeper's takedown SLA enforcer emails
+  # legal@ via sendOpsEmail. Without the key the sweeper still emits
+  # warn-logs but doesn't escalate; for production we want the email.
+  secret {
+    name  = "resend-api-key"
+    value = var.resend_api_key
+  }
 
   dynamic "secret" {
     for_each = var.anthropic_api_key == "" ? [] : [1]
@@ -671,6 +702,24 @@ resource "azurerm_container_app" "worker" {
       env {
         name        = "EBAY_CLIENT_SECRET"
         secret_name = "ebay-client-secret"
+      }
+      env {
+        name        = "SECRETS_ENCRYPTION_KEY"
+        secret_name = "secrets-encryption-key"
+      }
+      # Maintenance sweeper email path: Resend creds + sender + the
+      # APP_URL the SLA breach email links back to for triage.
+      env {
+        name        = "RESEND_API_KEY"
+        secret_name = "resend-api-key"
+      }
+      env {
+        name  = "EMAIL_FROM"
+        value = var.email_from
+      }
+      env {
+        name  = "APP_URL"
+        value = var.app_url
       }
       env {
         name  = "EBAY_BASE_URL"

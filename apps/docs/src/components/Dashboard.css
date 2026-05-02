@@ -709,6 +709,33 @@
 	margin-top: 4px;
 }
 
+/* Re-consent gate inside the dash modal — same shape as the auth-page
+ * consent box but lives on the dashboard surface. */
+.dash-consent {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+	padding: 10px 12px;
+	border-radius: 8px;
+	background: var(--surface-2);
+	border: 1px solid var(--border-faint);
+	font-size: 12.5px;
+	line-height: 1.5;
+	color: var(--text-2);
+	cursor: pointer;
+}
+.dash-consent input[type="checkbox"] {
+	margin-top: 2px;
+	flex-shrink: 0;
+	accent-color: var(--brand);
+	cursor: pointer;
+}
+.dash-consent a {
+	color: var(--brand);
+	text-decoration: underline;
+}
+.dash-consent a:hover { color: var(--brand-hover); }
+
 /* ───────── Bar + meta ───────── */
 
 .dash-bar {

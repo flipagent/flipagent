@@ -20,6 +20,7 @@ export * from "./flipagent.js";
 export * from "./forwarder.js";
 export * from "./items.js";
 export * from "./labels.js";
+export * from "./legal.js";
 export * from "./listings.js";
 export * from "./listings-bulk.js";
 export * from "./locations.js";

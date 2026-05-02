@@ -1,6 +1,6 @@
 ---
 import Layout from "../../layouts/Layout.astro";
-const updated = "2026-04-26";
+const updated = "2026-05-01";
 ---
 <Layout title="Compliance · flipagent">
 	<div class="cmw cmw-bordered">
@@ -14,7 +14,11 @@ const updated = "2026-04-26";
 				flipagent operates a hosted cache + parser for publicly accessible eBay listings. We aggregate
 				sold-listing data on behalf of resellers, deal-finding agents, and analytics tools. This page
 				documents the technical posture we maintain so partners, sellers, and platform operators can
-				see the limits of what we do.
+				see the limits of what we do. Outbound HTTP requests for public listing pages are issued through
+				a managed Web Scraper API (today: <a href="https://oxylabs.io/legal/privacy-policy">Oxylabs</a>);
+				the vendor's rendering infrastructure operates under its own upstream-marketplace terms.
+				flipagent's own code path is a normal HTTPS client and does not implement bot-detection bypass,
+				CAPTCHA solving, browser fingerprint spoofing, or any equivalent vendor-side concern.
 			</p>
 
 			<h2>What we do not do</h2>
@@ -72,7 +76,7 @@ const updated = "2026-04-26";
 				</li>
 			</ul>
 
-			<h2>DMCA-style notices</h2>
+			<h2>DMCA-style notices + counter-notices</h2>
 			<p>
 				flipagent is not currently registered with the U.S. Copyright Office's DMCA designated-agent
 				directory under 17 U.S.C. §512(c)(2). We do not, in this posture, claim §512(c) safe harbor;
@@ -97,6 +101,14 @@ const updated = "2026-04-26";
 				<li>
 					<strong>Triage SLA:</strong> 48 business hours. Approved notices flush the cache and
 					blocklist the itemId.
+				</li>
+				<li>
+					<strong>Counter-notice (§512(g) shape).</strong> If your listing was removed in response
+					to a takedown you believe is mistaken or misidentified, email
+					<a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a> with: your contact
+					information, the affected itemId, a statement under penalty of perjury that removal was
+					due to mistake or misidentification, and consent to jurisdiction in Wilmington, Delaware.
+					Approved counter-notices restore the listing to active queries.
 				</li>
 			</ul>
 

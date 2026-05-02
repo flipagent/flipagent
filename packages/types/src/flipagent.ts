@@ -259,10 +259,47 @@ export const MeProfile = Type.Object(
 		tier: Tier,
 		role: Role,
 		usage: Usage,
+		/**
+		 * Clickwrap consent state. `currentTermsVersion` is what /legal/terms
+		 * is at right now; `termsAcceptedVersion` is what the user actually
+		 * agreed to (null if never accepted, e.g. OAuth users created before
+		 * the gate landed). When the two differ — including null — the
+		 * dashboard surfaces a re-consent modal that POSTs to
+		 * /v1/me/terms-acceptance.
+		 */
+		currentTermsVersion: Type.String(),
+		termsAcceptedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+		termsAcceptedVersion: Type.Union([Type.String(), Type.Null()]),
 	},
 	{ $id: "MeProfile" },
 );
 export type MeProfile = Static<typeof MeProfile>;
+
+export const MeTermsAcceptRequest = Type.Object(
+	{
+		version: Type.String({ minLength: 4, maxLength: 32 }),
+	},
+	{ $id: "MeTermsAcceptRequest" },
+);
+export type MeTermsAcceptRequest = Static<typeof MeTermsAcceptRequest>;
+
+export const MeTermsAcceptResponse = Type.Object(
+	{
+		acceptedAt: Type.String({ format: "date-time" }),
+		version: Type.String(),
+	},
+	{ $id: "MeTermsAcceptResponse" },
+);
+export type MeTermsAcceptResponse = Static<typeof MeTermsAcceptResponse>;
+
+export const MeAccountDeleteResponse = Type.Object(
+	{
+		deletedAt: Type.String({ format: "date-time" }),
+		userId: Type.String(),
+	},
+	{ $id: "MeAccountDeleteResponse" },
+);
+export type MeAccountDeleteResponse = Static<typeof MeAccountDeleteResponse>;
 
 export const MeUsageResponse = Type.Object(Usage.properties, { $id: "MeUsageResponse" });
 export type MeUsageResponse = Static<typeof MeUsageResponse>;
@@ -401,3 +438,47 @@ export const TakedownResponse = Type.Object(
 	{ $id: "TakedownResponse" },
 );
 export type TakedownResponse = Static<typeof TakedownResponse>;
+
+/**
+ * 17 U.S.C. §512(g) counter-notice. Submitted when content was removed in
+ * response to a takedown the affected party believes was mistaken or
+ * misidentified. The four `agree*` fields are the statutory attestations;
+ * sending any of them as `false` is a 400. The flipagent endpoint forwards
+ * approved counter-notices to the original takedown's submitter and
+ * restores the listing observation by clearing `takedownAt`.
+ */
+export const CounterNoticeRequest = Type.Object(
+	{
+		itemId: Type.String({ minLength: 1 }),
+		contactName: Type.String({ minLength: 1, maxLength: 200 }),
+		contactEmail: Type.String({ format: "email" }),
+		contactAddress: Type.String({ minLength: 1, maxLength: 500 }),
+		contactPhone: Type.String({ minLength: 1, maxLength: 60 }),
+		signature: Type.String({ minLength: 1, maxLength: 200, description: "Typed legal name." }),
+		agreePenaltyOfPerjury: Type.Boolean({
+			description:
+				"I swear under penalty of perjury that I have a good-faith belief the material was removed as a result of mistake or misidentification.",
+		}),
+		agreeJurisdiction: Type.Boolean({
+			description:
+				"I consent to the jurisdiction of the U.S. District Court for the District of Delaware (Wilmington), or, if I am outside the U.S., to any judicial district where flipagent may be found.",
+		}),
+		agreeServiceOfProcess: Type.Boolean({
+			description:
+				"I will accept service of process from the person who submitted the original takedown notice (or their agent).",
+		}),
+		notes: Type.Optional(Type.String({ maxLength: 2000 })),
+	},
+	{ $id: "CounterNoticeRequest" },
+);
+export type CounterNoticeRequest = Static<typeof CounterNoticeRequest>;
+
+export const CounterNoticeResponse = Type.Object(
+	{
+		id: Type.String(),
+		status: Type.Literal("received"),
+		message: Type.String(),
+	},
+	{ $id: "CounterNoticeResponse" },
+);
+export type CounterNoticeResponse = Static<typeof CounterNoticeResponse>;

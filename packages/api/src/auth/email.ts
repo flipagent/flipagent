@@ -1,7 +1,14 @@
 /**
- * Outbound email via Resend. Used by Better-Auth for password reset and
- * (future) email verification. Returns null when RESEND_API_KEY is unset —
- * callers must check and surface the appropriate "not configured" error.
+ * Outbound email via Resend. Used by Better-Auth for password reset +
+ * email verification (HTML templates below) AND by ops surfaces — the
+ * maintenance sweeper's takedown SLA breach alerts and the admin's
+ * counter-notice approval — via the generic `sendOpsEmail` at the
+ * bottom of the file. One Resend client init, one config gate.
+ *
+ * Returns null/no-op when `RESEND_API_KEY` is unset; the auth helpers
+ * throw `email_not_configured` so the UI can surface it, while the ops
+ * helper silently no-ops because operators see the structured warn-log
+ * the caller emits regardless.
  *
  * Templates are intentionally plain HTML inline. No React Email dependency.
  */
@@ -115,4 +122,41 @@ export async function sendVerificationEmail(input: VerificationEmailInput): Prom
 		text,
 	});
 	if (error) throw new Error(`resend_failed: ${error.message ?? "unknown"}`);
+}
+
+export interface OpsEmailInput {
+	to: string | string[];
+	subject: string;
+	/** Plain-text body. Operations email is intentionally text-only — the
+	 *  audience is operators, not end users, so the HTML templating noise
+	 *  the auth helpers carry is gratuitous here. */
+	text: string;
+	/** Optional HTML body. Falls back to the text body wrapped in a `<pre>` */
+	html?: string;
+}
+
+/**
+ * Generic Resend send for operations + admin surfaces (sweeper SLA
+ * breach alerts, admin counter-notice approval, future incident
+ * notifications). Silently no-ops when Resend is unconfigured — callers
+ * always emit a parallel structured warn-log so an operator scanning
+ * Container Apps logs sees the event regardless of email reachability.
+ */
+export async function sendOpsEmail(input: OpsEmailInput): Promise<void> {
+	const resend = getResend();
+	if (!resend) return;
+	const { error } = await resend.emails.send({
+		from: config.EMAIL_FROM,
+		to: input.to,
+		subject: input.subject,
+		text: input.text,
+		html:
+			input.html ??
+			`<pre style="font:13px ui-monospace,monospace;white-space:pre-wrap;">${escapeHtml(input.text)}</pre>`,
+	});
+	if (error) throw new Error(`resend_failed: ${error.message ?? "unknown"}`);
+}
+
+function escapeHtml(s: string): string {
+	return s.replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[m] ?? m);
 }

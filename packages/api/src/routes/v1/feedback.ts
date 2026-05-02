@@ -15,6 +15,7 @@ import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { withTradingAuth } from "../../middleware/with-trading-auth.js";
 import { type FeedbackEntry, getFeedback, leaveFeedback } from "../../services/ebay/trading/feedback.js";
+import { scrubMessageBody } from "../../services/ebay/trading/message-hygiene.js";
 import { fetchAwaitingFeedback } from "../../services/feedback.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
@@ -104,14 +105,32 @@ feedbackRoute.post(
 			rating: keyof typeof RATING_TO;
 			comment: string;
 		};
+		// Off-eBay contact strip — same hygiene as messages. Feedback comments
+		// are public on the seller's profile so the policy stakes are higher.
+		const hygiene = scrubMessageBody(body.comment);
+		const forceSend = c.req.query("force_send") === "1";
+		if (hygiene.redactions.length > 0 && !forceSend) {
+			return c.json(
+				{
+					error: "off_ebay_contact_info" as const,
+					message:
+						"Feedback comment contains contact info eBay's User Agreement prohibits: " +
+						hygiene.redactions.map((r) => `${r.kind} (${r.original})`).join(", ") +
+						". Edit and retry, or pass `?force_send=1` to ship the redacted version.",
+					redactions: hygiene.redactions,
+					redactedComment: hygiene.cleanBody,
+				},
+				422,
+			);
+		}
 		const result = await leaveFeedback({
 			accessToken,
 			itemId: body.orderId,
 			transactionId: body.orderId,
 			targetUser: body.toUser,
 			rating: RATING_TO[body.rating],
-			commentText: body.comment,
+			commentText: hygiene.cleanBody,
 		});
-		return c.json(result);
+		return c.json({ ...result, redactions: hygiene.redactions });
 	}),
 );

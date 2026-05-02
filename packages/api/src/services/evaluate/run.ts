@@ -195,7 +195,11 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 
 	// 3. filter ----------------------------------------------------------
 	const filtered = await withStep({ key: "filter", label: LABELS.filter, onStep, cancelCheck }, async () => {
-		const f = await runMatchFilter(detail.body, soldPool, activePool, apiKey);
+		const f = await runMatchFilter(detail.body, soldPool, activePool, apiKey, undefined, {
+			seed: detail.source ?? null,
+			sold: soldSource,
+			active: activeSource,
+		});
 		return {
 			value: f,
 			result: {

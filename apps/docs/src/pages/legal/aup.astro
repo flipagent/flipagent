@@ -1,0 +1,93 @@
+---
+import Layout from "../../layouts/Layout.astro";
+const updated = "2026-05-01";
+---
+<Layout title="Acceptable Use Policy · flipagent">
+	<div class="cmw cmw-bordered">
+		<article class="docs-content" style="max-width:720px;margin:64px auto;">
+			<h1>Acceptable Use Policy</h1>
+			<p class="lead">
+				Operational rules for using flipagent against eBay (and, in future, other marketplaces). Incorporated into the <a href="/legal/terms/">Terms of Service</a> by reference. Last updated {updated}.
+			</p>
+
+			<h2>Marketplace terms govern your activity</h2>
+			<p>flipagent is a tool you point at a marketplace. When you use it against eBay, eBay's <a href="https://www.ebay.com/help/policies/member-behaviour-policies/user-agreement?id=4259">User Agreement</a>, <a href="https://developer.ebay.com/api-license-agreement">Developer Program License Agreement</a>, and seller policies govern what you may do. flipagent does not, and cannot, override or relax those rules. If a flipagent feature would let you do something eBay prohibits, you may not do it. If eBay amends its terms, the new terms apply to your activity from their effective date even if flipagent has not yet updated this page.</p>
+
+			<h2>Your account standing</h2>
+			<ul>
+				<li>You may only connect an eBay account that you own or are authorized to operate.</li>
+				<li>The account must be in good standing — no active suspension, no open MC011 / selling-limit hold whose terms would be violated by the automation you intend to run.</li>
+				<li>If eBay restricts or suspends your account while connected to flipagent, you must disconnect at the dashboard and not reconnect until the restriction is lifted.</li>
+				<li>You must not use flipagent to evade an eBay enforcement action — for example, by routing activity through a second seller account.</li>
+			</ul>
+
+			<h2>Listing content + intellectual property</h2>
+			<ul>
+				<li>You are responsible for the listings flipagent creates, edits, or publishes on your behalf, including titles, descriptions, photos, category, condition, item specifics, and price.</li>
+				<li>You must have the rights to sell every item you list and the rights to use every image and description you upload.</li>
+				<li>Don't list items that violate eBay's <a href="https://pages.ebay.com/seller-center/listing-and-marketing/verified-rights-owner-program.html">VeRO</a> program, the <a href="https://www.ebay.com/help/policies/prohibited-restricted-items/prohibited-restricted-items?id=4207">prohibited-and-restricted-items policy</a>, or any equivalent third-party intellectual-property rule.</li>
+				<li>Don't use AI-generated descriptions, comp data, or evaluation outputs to materially misrepresent the item's condition, authenticity, or provenance.</li>
+			</ul>
+
+			<h2>Buy-side automation requires human review</h2>
+			<p>eBay's User Agreement (effective Feb 20, 2026) prohibits "buy-for-me agents, LLM-driven bots, or any end-to-end flow that attempts to place orders without human review." flipagent's <code>/v1/purchases</code> surface gives you two transports, both of which must satisfy this rule:</p>
+			<ul>
+				<li><strong>Bridge transport.</strong> The Chrome extension drives your own logged-in eBay session. Each <code>place_order</code> step must be confirmed by a human in your browser before submission. Don't build a wrapper that auto-clicks the confirmation. A reasonable rate-of-one-per-minute, attended workflow is in scope; a headless thousand-orders-per-hour pipeline is not.</li>
+				<li><strong>REST transport.</strong> Requires eBay Order API approval, granted by eBay through the Partner Network application. Without that approval the REST transport is disabled by default and any attempt to enable it is a violation of this policy.</li>
+			</ul>
+			<p>Listing, messaging, fulfillment, and finance actions on the sell side are not subject to the human-review requirement, but the volume + content rules below apply.</p>
+
+			<h2>Volume + automation hygiene</h2>
+			<ul>
+				<li>Stay within your tier's monthly allowance. We throttle, but a sustained burst aimed at flooding a marketplace will get your account suspended on our side first.</li>
+				<li>Don't use flipagent to send unsolicited messages, leave inauthentic feedback, or manipulate search ranking through repeated edits, relistings, or keyword stuffing.</li>
+				<li>Don't include off-eBay contact information (phone numbers, email addresses, external URLs other than eBay's) in messages or listing content sent through flipagent. eBay's policy and ours both prohibit this.</li>
+				<li>Don't condition feedback or buyer ratings on anything not in the original listing.</li>
+				<li>If you operate flipagent as part of a larger pipeline (a bot, an LLM agent, a back-office tool), you are responsible for the rate, content, and intent of the activity it produces.</li>
+			</ul>
+
+			<h2>Don't train AI on eBay REST data</h2>
+			<p>eBay's Developer Program License Agreement (June 24, 2025 amendment) prohibits using Restricted API data to train, fine-tune, or otherwise condition generative AI models. flipagent passes that obligation through:</p>
+			<ul>
+				<li>If you receive responses from <code>/v1/items</code>, <code>/v1/products</code>, <code>/v1/categories</code>, <code>/v1/trends</code>, <code>/v1/me/seller</code>, or any other surface where the active transport is <code>rest</code> (visible in the <code>X-Flipagent-Source</code> response header), you may not feed those responses into model training, fine-tuning, embedding generation for retrieval-augmented generation, or any analogous AI conditioning step.</li>
+				<li>Using LLMs to draft listing copy, evaluate margins, or summarize results from your own product data is fine — that is inference, not training.</li>
+				<li>If your use case requires LLM ingestion of marketplace data, route through the <code>scrape</code> transport (set per-request via <code>?transport=scrape</code> where supported, or via your account's default), which is not bound by the DPLA.</li>
+			</ul>
+
+			<h2>Bridge / extension</h2>
+			<ul>
+				<li>The flipagent Chrome extension acts as a remote-control surface for your own logged-in browser. The activity it performs is your activity under eBay's User Agreement.</li>
+				<li>Don't install the extension into a browser profile that belongs to someone else without their authorization.</li>
+				<li>Don't use the bridge to access an eBay account you are not the rightful owner or authorized operator of.</li>
+			</ul>
+
+			<h2>Data + redistribution</h2>
+			<ul>
+				<li>Cached eBay listing data flipagent returns to you is for your own resale, sourcing, and analytics use. Don't redistribute raw titles, descriptions, photos, or seller details divorced from the original <code>ebay.com/itm/...</code> URL.</li>
+				<li>Don't build a derivative dataset or competing marketplace feed for resale outside the eBay context.</li>
+				<li>If a seller submits a takedown via <a href="/legal/takedown/">/legal/takedown</a>, the affected itemId is blocklisted; you must not re-fetch it through any other route.</li>
+			</ul>
+
+			<h2>Security + key hygiene</h2>
+			<ul>
+				<li>Treat flipagent API keys like passwords. Don't commit them to public repos, paste them in shared chats, or embed them in client-side code.</li>
+				<li>One account per person or organization. Don't share keys across multiple businesses on the same plan.</li>
+				<li>Rotate keys at the dashboard if you suspect a leak; report incidents to <a href="mailto:security@flipagent.dev">security@flipagent.dev</a>.</li>
+			</ul>
+
+			<h2>Reporting + cooperation</h2>
+			<ul>
+				<li>If eBay or a rights holder contacts you about activity that originated through flipagent, email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a> within 5 business days so we can review the affected itemIds and apply blocklists if appropriate.</li>
+				<li>If you receive a court order, subpoena, or government request that names flipagent or our infrastructure, forward it promptly.</li>
+				<li>If your listing was removed from flipagent's cache in response to a takedown that you believe is mistaken, email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a> with a counter-notice in the 17 U.S.C. §512(g) shape (your contact info, identification of the affected itemId, statement under penalty of perjury that removal was due to mistake or misidentification, consent to jurisdiction in Wilmington, Delaware). Approved counter-notices restore the listing to active queries.</li>
+			</ul>
+
+			<h2>Enforcement</h2>
+			<p>We may suspend or terminate accounts that violate this policy. For severe or repeated violations — VeRO infringement, account-evasion, automation against a suspended account, abuse of the takedown channel — we will suspend immediately and explain after the fact. For ambiguous cases we will reach out before acting.</p>
+
+			<p style="color:var(--text-3);font-size:0.875rem;margin-top:48px;">
+				Questions: <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>. Legal notices: <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a>.
+			</p>
+		</article>
+	</div>
+</Layout>

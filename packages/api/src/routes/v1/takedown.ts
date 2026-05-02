@@ -18,7 +18,7 @@
  * Unauthenticated by design — requesters should not need an API key.
  */
 
-import { TakedownRequest, TakedownResponse } from "@flipagent/types";
+import { CounterNoticeRequest, CounterNoticeResponse, TakedownRequest, TakedownResponse } from "@flipagent/types";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
@@ -94,5 +94,70 @@ takedownRoute.post(
 			console.error("[takedown] observation flag failed:", err);
 		}
 		return c.json({ id: row?.id ?? "", status: "pending" as const, slaHours: SLA_HOURS }, 201);
+	},
+);
+
+takedownRoute.post(
+	"/counter-notice",
+	describeRoute({
+		tags: ["Compliance"],
+		summary: "DMCA §512(g) counter-notice",
+		description:
+			"Submit a counter-notice to restore content that was removed in response to a takedown you believe was mistaken or misidentified. Requires the four §512(g) attestations + a typed signature + contact info. Triage is operator-driven and follows the same 48-business-hour SLA. Approved counter-notices clear `takedownAt` on the affected listing-observations rows; the original requester is notified per §512(g)(2)(B).",
+		security: [],
+		responses: {
+			201: jsonResponse("Counter-notice recorded.", CounterNoticeResponse),
+			400: errorResponse("Validation failed (missing attestation or contact field)."),
+		},
+	}),
+	tbBody(CounterNoticeRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		// All four §512(g) attestations must be true; the endpoint exists to
+		// record an enforceable counter-notice, not to capture a half-formed
+		// complaint. A `false` value gets a 400 explaining what's missing.
+		if (!body.agreePenaltyOfPerjury || !body.agreeJurisdiction || !body.agreeServiceOfProcess) {
+			return c.json(
+				{
+					error: "validation_failed" as const,
+					message:
+						"All three attestations (penalty of perjury, jurisdiction consent, service of process) must be true. See 17 U.S.C. §512(g)(3) for the statutory shape.",
+				},
+				400,
+			);
+		}
+		// Persist into the existing `takedown_requests` table with the kind
+		// encoded into the reason field (matches the takedown row format),
+		// so a single audit table covers both directions of the §512 flow.
+		// Operator triage queue picks up counter-notices via the [counter_notice]
+		// prefix; on approval they clear `takedownAt` on matching rows and
+		// notify the original takedown submitter. We do not auto-restore.
+		const summary = [
+			"[counter_notice]",
+			`name=${body.contactName}`,
+			`addr=${body.contactAddress}`,
+			`phone=${body.contactPhone}`,
+			`sig=${body.signature}`,
+		];
+		if (body.notes) summary.push(`notes=${body.notes}`);
+		const [row] = await db
+			.insert(takedownRequests)
+			.values({
+				itemId: body.itemId,
+				reason: summary.join(" "),
+				contactEmail: body.contactEmail,
+			})
+			.returning();
+		return c.json(
+			{
+				id: row?.id ?? "",
+				status: "received" as const,
+				message:
+					"Counter-notice received. Operator will review within " +
+					SLA_HOURS +
+					" business hours and, if approved, restore the listing and forward the notice to the original takedown submitter per 17 U.S.C. §512(g)(2)(B).",
+			},
+			201,
+		);
 	},
 );

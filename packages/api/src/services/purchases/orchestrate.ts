@@ -37,8 +37,43 @@ export interface PurchaseContext {
 	bridgePaired?: boolean;
 }
 
+/**
+ * Maximum age of a `humanReviewedAt` attestation accepted by createPurchase.
+ * eBay's User Agreement requires "human review" of each order before
+ * placement; we operationalise that with a fresh-attestation requirement
+ * so a caller can't grandfather an indefinite "I always confirm" flag.
+ * Five minutes is enough to cover legitimate confirm-then-submit lag
+ * (network, two-factor, slow extension) without admitting unattended
+ * pipelines.
+ */
+const HUMAN_REVIEW_MAX_AGE_MS = 5 * 60 * 1000;
+
 export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext): Promise<FlipagentResult<Purchase>> {
 	const transport = pickTransport(input, ctx);
+
+	// eBay UA Feb-2026 buy-bot ban — bridge transport requires per-order
+	// human-review attestation; REST requires it unless the developer
+	// account holds Order API approval (in which case the attestation is
+	// satisfied at the eBay-relationship level, not per call).
+	const humanReviewRequired = transport === "bridge" || !config.EBAY_ORDER_API_APPROVED;
+	if (humanReviewRequired) {
+		const ts = input.humanReviewedAt ? Date.parse(input.humanReviewedAt) : NaN;
+		if (!Number.isFinite(ts)) {
+			throw new PurchaseError(
+				"human_review_required",
+				412,
+				"`/v1/purchases` requires a fresh `humanReviewedAt` ISO timestamp on every call. eBay's User Agreement (effective Feb 20, 2026) prohibits placing orders without human review; this field is your attestation that a human in your interface confirmed THIS specific order. Apply for eBay Order API approval to satisfy the requirement at the developer-account level instead.",
+			);
+		}
+		const age = Date.now() - ts;
+		if (age < 0 || age > HUMAN_REVIEW_MAX_AGE_MS) {
+			throw new PurchaseError(
+				"human_review_stale",
+				412,
+				`\`humanReviewedAt\` must be within the last ${HUMAN_REVIEW_MAX_AGE_MS / 1000} seconds. Re-confirm the order in your UI and resubmit.`,
+			);
+		}
+	}
 
 	if (input.shipTo && transport === "bridge") {
 		throw new PurchaseError(

@@ -12,10 +12,13 @@
 import {
 	KeyCreateResponse,
 	KeyRevokeResponse,
+	MeAccountDeleteResponse,
 	MeKeyCreateRequest,
 	MeKeyList,
 	MeKeyRevealResponse,
 	MeProfile,
+	MeTermsAcceptRequest,
+	MeTermsAcceptResponse,
 	MeUsageResponse,
 	PermissionsResponse,
 } from "@flipagent/types";
@@ -24,11 +27,13 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { decryptKeyPlaintext, isKeyRevealConfigured } from "../../auth/key-cipher.js";
 import { issueKey, revokeKey, type Tier } from "../../auth/keys.js";
+import { TERMS_VERSION } from "../../auth/legal-versions.js";
 import { snapshotUsage, usageToWire } from "../../auth/limits.js";
 import { computePermissionsForUser } from "../../auth/permissions.js";
 import { db } from "../../db/client.js";
-import { apiKeys, usageEvents } from "../../db/schema.js";
+import { apiKeys, usageEvents, user as userTable } from "../../db/schema.js";
 import { requireSession } from "../../middleware/session.js";
+import { clientIpFromRequest } from "../../utils/client-ip.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 import { meEbayRoute } from "./me-ebay.js";
 import { meOverviewRoute } from "./me-overview.js";
@@ -59,6 +64,12 @@ meRoute.get(
 		const user = c.var.user;
 		const tier = user.tier as Tier;
 		const usage = await snapshotUsage({ apiKeyId: "", userId: user.id }, tier);
+		const consent = user as { termsAcceptedAt?: Date | string | null; termsVersion?: string | null };
+		const acceptedAt = consent.termsAcceptedAt
+			? typeof consent.termsAcceptedAt === "string"
+				? consent.termsAcceptedAt
+				: consent.termsAcceptedAt.toISOString()
+			: null;
 		return c.json({
 			id: user.id,
 			email: user.email,
@@ -68,7 +79,89 @@ meRoute.get(
 			tier,
 			role: user.role,
 			usage: usageToWire(usage),
+			currentTermsVersion: TERMS_VERSION,
+			termsAcceptedAt: acceptedAt,
+			termsAcceptedVersion: consent.termsVersion ?? null,
 		});
+	},
+);
+
+meRoute.post(
+	"/terms-acceptance",
+	describeRoute({
+		tags: ["Keys"],
+		summary: "Record clickwrap acceptance of the current Terms version",
+		description:
+			"Persists termsAcceptedAt = now, termsVersion = the version posted, termsAcceptedIp from the request. Used by the signup flow (immediately after autoSignIn) and by the dashboard's re-consent gate (for OAuth users + version bumps).",
+		responses: {
+			200: jsonResponse("Acceptance recorded.", MeTermsAcceptResponse),
+			400: errorResponse("Posted version does not match current Terms version."),
+			401: errorResponse("Not signed in."),
+		},
+	}),
+	tbBody(MeTermsAcceptRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		if (body.version !== TERMS_VERSION) {
+			return c.json(
+				{
+					error: "version_mismatch" as const,
+					message: `Current Terms version is ${TERMS_VERSION}; received ${body.version}. Reload the page and try again.`,
+				},
+				400,
+			);
+		}
+		const user = c.var.user;
+		const acceptedAt = new Date();
+		await db
+			.update(userTable)
+			.set({
+				termsAcceptedAt: acceptedAt,
+				termsVersion: body.version,
+				termsAcceptedIp: clientIpFromRequest(c.req.raw),
+			})
+			.where(eq(userTable.id, user.id));
+		return c.json({ acceptedAt: acceptedAt.toISOString(), version: body.version });
+	},
+);
+
+meRoute.delete(
+	"/account",
+	describeRoute({
+		tags: ["Keys"],
+		summary: "Delete the current user account",
+		description:
+			"Permanently deletes the signed-in user. Cascades through user-owned tables (sessions, accounts, API keys, eBay OAuth, bridge tokens, forwarder inventory, expense events, webhook endpoints). Audit-trail rows (usage_events, marketplace_notifications, listing_observations) are preserved per the Privacy Policy with userId/apiKeyId set to null. Stripe customer is closed best-effort if present. Per-item cache removal goes via /v1/takedown.",
+		responses: {
+			200: jsonResponse("Account deleted.", MeAccountDeleteResponse),
+			401: errorResponse("Not signed in."),
+		},
+	}),
+	async (c) => {
+		const user = c.var.user;
+		// Stripe close is best-effort — never block deletion on an upstream
+		// failure. The customer ID is denormalised from the user row before
+		// we delete it; a failed close still detaches the subscription on
+		// our side because the user row is gone.
+		const stripeCustomerId = (user as { stripeCustomerId?: string | null }).stripeCustomerId ?? null;
+		if (stripeCustomerId) {
+			try {
+				const { closeStripeCustomer } = await import("../../billing/checkout.js");
+				const { readStripeConfig } = await import("../../billing/stripe.js");
+				const cfg = readStripeConfig();
+				if (cfg) await closeStripeCustomer(cfg, stripeCustomerId);
+			} catch (err) {
+				console.error("[account-delete] stripe close failed for", user.email, err);
+			}
+		}
+		const deletedAt = new Date();
+		// FK cascades cover sessions/accounts/api keys/eBay OAuth/bridge tokens/
+		// forwarder inventory/expense events/webhook endpoints (see schema
+		// onDelete: cascade). Audit-trail tables use onDelete: set null on
+		// userId/apiKeyId so historical rows remain for billing + compliance
+		// review while losing the user's identity.
+		await db.delete(userTable).where(eq(userTable.id, user.id));
+		return c.json({ deletedAt: deletedAt.toISOString(), userId: user.id });
 	},
 );
 

@@ -1,6 +1,6 @@
 ---
 import Layout from "../../layouts/Layout.astro";
-const updated = "2026-04-26";
+const updated = "2026-05-01";
 ---
 <Layout title="Privacy Policy · flipagent">
 	<div class="cmw cmw-bordered">
@@ -14,53 +14,71 @@ const updated = "2026-04-26";
 			<ul>
 				<li><strong>Account.</strong> Email, name, and avatar URL from your GitHub or Google sign-in. If you sign up with email and password we store the email and a bcrypt-hashed password.</li>
 				<li><strong>API keys.</strong> For each key we store an sha-256 hash, the first 12 plaintext characters (for display), the tier, and a name you give it. The plaintext is shown to you exactly once at creation.</li>
-				<li><strong>Usage events.</strong> For each metered API call we record the endpoint, status code, and response latency. Used for tier-limit accounting and debugging. We do not store request bodies.</li>
-				<li><strong>eBay tokens.</strong> When you connect an eBay account at <code>/v1/connect/ebay</code>, we store the refresh and access tokens needed to proxy your sell-side calls. They live only in our database and are never shared with third parties.</li>
-				<li><strong>Cached eBay responses.</strong> Public listing data we pull on your behalf. Cache TTL is short (60 min on active, 12h on sold, 4h on detail). We never redistribute raw listing content divorced from the original <code>ebay.com/itm/...</code> URL.</li>
+				<li><strong>Usage events.</strong> For each metered API call we record the endpoint, status code, response latency, and credit cost. Used for tier-limit accounting and debugging. We do not store request or response bodies.</li>
+				<li><strong>eBay OAuth tokens.</strong> When you connect an eBay account at <code>/v1/connect/ebay</code>, we store the refresh and access tokens needed to proxy your sell-side calls, plus the granted scope list. The scopes we request are <code>api_scope</code>, <code>sell.inventory</code>, <code>sell.fulfillment</code>, <code>sell.finances</code>, <code>sell.account</code>, and <code>commerce.identity.readonly</code> — together they let flipagent read and write listings, orders, payouts, and policies on your behalf. Refresh tokens are valid for up to 18 months under eBay's standard issuance.</li>
+				<li><strong>Bridge tokens + extension session info.</strong> If you install the flipagent Chrome extension, we issue a long-lived bridge token (sha-256 hash stored), and the extension reports its eBay login state (logged-in yes/no, eBay username) so the dashboard can show "bridge ready." The extension reads cookies from your own Chrome profile to act under your existing eBay session; it does not transmit your eBay password.</li>
+				<li><strong>Cached marketplace data.</strong> Public listing data we pull on your behalf — see "If you're an eBay seller" below for fields and TTLs.</li>
+				<li><strong>Listing observations.</strong> A longer-retention archive of listings flipagent has seen, used for cross-query market context (price history, comp-set construction). Sellers can opt out per item via <a href="/legal/takedown/">/legal/takedown</a>; approved takedowns hide the item from queries.</li>
+				<li><strong>Forwarder inventory.</strong> If you use the Planet Express forwarder integration, we cache package metadata (intake photos as URLs, weights, dimensions, tracking numbers). Recipient addresses transit to the forwarder at dispatch and are not stored locally.</li>
+				<li><strong>Webhook delivery records.</strong> If you register webhooks, we log delivery attempts (endpoint, event type, response code) and the payload sent, for retry and audit. Retained 30 days.</li>
 				<li><strong>Cookies.</strong> One Better-Auth session cookie scoped to <code>flipagent.dev</code>. No analytics cookies, no advertising cookies.</li>
 			</ul>
 
 			<h2>What we don't collect</h2>
 			<ul>
 				<li>Your browsing history outside flipagent's API surface.</li>
-				<li>Payment card numbers. Stripe handles those, we only see customer IDs and subscription status.</li>
+				<li>Your eBay password or any other marketplace password.</li>
+				<li>Payment card numbers. Stripe handles those; we only see customer IDs and subscription status.</li>
 				<li>Anything from your eBay buyer history beyond what you explicitly ask the API to fetch.</li>
+				<li>Biometric data, precise geolocation, or other CCPA-defined "sensitive personal information."</li>
 			</ul>
 
 			<h2>Where data lives</h2>
-			<p>Postgres on Azure (US region). Backups are encrypted at rest. Application servers are in the same region.</p>
+			<p>Postgres on Azure (US region). Backups are encrypted at rest. Application servers are in the same region. If you are in the EU or UK, your account data, eBay tokens, and usage records are transferred to the US for processing; we rely on the EU Standard Contractual Clauses (Decision 2021/914) where required, and on the legitimate-interests basis described below for indirect collection from public listings.</p>
 
-			<h2>Third parties</h2>
+			<h2>Sub-processors</h2>
+			<p>The third parties that process data on our behalf, with what they receive:</p>
 			<ul>
-				<li><a href="https://stripe.com/privacy">Stripe</a> for billing.</li>
-				<li><a href="https://resend.com/legal/privacy-policy">Resend</a> for outbound email (verification, password reset).</li>
-				<li><a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a> and <a href="https://policies.google.com/privacy">Google</a> for OAuth sign-in (we receive your public profile and email).</li>
-				<li><a href="https://www.ebay.com/help/policies/member-behaviour-policies/user-privacy-notice?id=4260">eBay</a>: when you connect an eBay account, we hold the OAuth tokens and proxy your calls to <code>api.ebay.com</code>.</li>
-				<li><a href="https://oxylabs.io/legal/privacy-policy">Oxylabs</a> Web Scraper API for outbound eBay requests. Configurable via the <code>SCRAPER_API_VENDOR</code> env; only Oxylabs is wired today.</li>
+				<li><a href="https://stripe.com/privacy">Stripe</a> — billing. Receives email, name, subscription tier, payment-method data (handled directly by Stripe, never touches our servers).</li>
+				<li><a href="https://resend.com/legal/privacy-policy">Resend</a> — outbound email (verification, password reset, account notices). Receives email + message body.</li>
+				<li><a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a> and <a href="https://policies.google.com/privacy">Google</a> — OAuth sign-in. We receive your public profile and email.</li>
+				<li><a href="https://www.ebay.com/help/policies/member-behaviour-policies/user-privacy-notice?id=4260">eBay</a> — when you connect an eBay account, we hold the OAuth tokens and proxy your calls to <code>api.ebay.com</code> and the eBay Trading endpoint.</li>
+				<li><a href="https://oxylabs.io/legal/privacy-policy">Oxylabs</a> — managed Web Scraper API for fetching public eBay listing pages. We send target URLs; Oxylabs returns rendered HTML. Configurable via the <code>SCRAPER_API_VENDOR</code> env; only Oxylabs is wired today.</li>
+				<li><a href="https://www.anthropic.com/legal/privacy">Anthropic</a>, <a href="https://openai.com/policies/privacy-policy/">OpenAI</a>, and/or <a href="https://policies.google.com/privacy">Google</a> — large-language-model providers used for product matching (<code>/v1/evaluate</code>) and the LLM-assisted parts of listing creation. We send candidate listing fields (title, condition, item specifics, image URLs); we do not send your account email, OAuth tokens, or buyer PII. The active provider is set by the <code>LLM_PROVIDER</code> env. Provider data-retention and training opt-outs follow each provider's policy; flipagent does not consent to its data being used to train provider models.</li>
+				<li><a href="https://www.planetexpress.com/privacy-policy">Planet Express</a> — when you use the forwarder integration, package metadata and recipient addresses (at dispatch) flow to PE for fulfillment.</li>
 			</ul>
+			<p>If we change sub-processors materially we will update this list at least 14 days before the change takes effect.</p>
 
 			<h2>Your rights</h2>
 			<ul>
-				<li><strong>Export.</strong> Every row keyed to your account is reachable via <code>/v1/me/*</code>. Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a> for a full data export.</li>
+				<li><strong>Access + export.</strong> Every row keyed to your account is reachable via <code>/v1/me/*</code>. Email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a> for a full data export (delivered within 30 days).</li>
+				<li><strong>Correction.</strong> Email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a> for any correction request.</li>
 				<li><strong>Revoke API keys.</strong> From the dashboard or <code>DELETE /v1/me/keys/:id</code>.</li>
-				<li><strong>Disconnect eBay.</strong> From the dashboard or <code>DELETE /v1/me/ebay/connect</code>. Tokens are removed from our database immediately. To revoke at eBay's end, use eBay's "Account → Permissions" page.</li>
-				<li><strong>Delete account.</strong> Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>. We remove your user, sessions, accounts, api keys, eBay tokens, and usage events. Stripe customer is closed via API.</li>
+				<li><strong>Disconnect eBay.</strong> From the dashboard or <code>DELETE /v1/me/ebay/connect</code>. Tokens are removed from our database immediately. To revoke at eBay's end, also visit eBay's "Account → Permissions" page.</li>
+				<li><strong>Delete account.</strong> Email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a>. Within 30 days we remove your user, sessions, accounts, API keys, eBay tokens, bridge tokens, forwarder inventory, expense ledger, webhook endpoints, and usage events. Stripe customer is closed via API. We retain anonymized aggregates and minimal billing/tax records as required by law (typically 7 years). Listing observations and marketplace notifications are detached from your identity but kept for marketplace-data integrity; per-item removal goes via <a href="/legal/takedown/">/legal/takedown</a>.</li>
+				<li><strong>Authorized agent.</strong> If you ask another person to submit a request on your behalf, we will require written authorization plus verification of your identity.</li>
+				<li><strong>Non-discrimination.</strong> We will not deny service, charge different prices, or provide a different level of service because you exercised a privacy right.</li>
 			</ul>
+
+			<h2>California privacy rights (CCPA / CPRA)</h2>
+			<p>For California residents, the categories above map to CCPA categories: identifiers (account email, eBay username, IP), commercial information (subscription tier, usage events), internet activity (API call logs), professional information (eBay seller status), and inferences (margin / sell-through scoring outputs). Sources: directly from you, your eBay OAuth grant, and public eBay listings. Business purpose: operating the service, billing, fraud prevention, and product improvement.</p>
+			<p><strong>Do Not Sell or Share My Personal Information.</strong> flipagent does not sell personal information and does not share personal information for cross-context behavioral advertising. We have no signal to honor for opt-out because there is nothing to opt out of. If our practice ever changes we will update this section and provide a clear opt-out before any sale or share begins.</p>
+			<p>To exercise CCPA rights — know, delete, correct, limit use of sensitive PI, or appeal a denial — email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a>. We respond within 45 days (with one 45-day extension if needed). We do not collect sensitive PI and do not run automated decision-making with legal or similarly significant effects.</p>
 
 			<h2>If you're an eBay seller (indirect collection notice)</h2>
 			<p>This section covers data we hold about you that you didn't give us directly: information that appears in your public eBay listings and gets cached when one of our customers queries flipagent for your item. This is our GDPR Art. 14 and CCPA notice for indirect collection.</p>
 			<ul>
-				<li><strong>What we hold.</strong> itemId, title, price, condition, end time, your eBay <em>username</em> (the public seller handle, not your real name), seller feedback score, listing location (city, region, country), shipping policy, and category. We store image <em>URLs</em> back to <code>i.ebayimg.com</code>, not image binaries. We do not store seller feedback comments.</li>
+				<li><strong>What we hold.</strong> itemId, title, price, condition, end time, your eBay <em>username</em> (the public seller handle, not your real name), seller feedback score and percentage, listing location (city, region, country), shipping policy, category, and item specifics. We store image <em>URLs</em> back to <code>i.ebayimg.com</code>, not image binaries. We do not store seller feedback comments.</li>
 				<li><strong>Source.</strong> Your public eBay listing pages at <code>www.ebay.com/itm/&#123;itemId&#125;</code>, fetched on demand when one of our API customers queries your item.</li>
 				<li><strong>Purpose.</strong> To operate an eBay reseller API for AI assistants and reseller tools. We do not profile sellers, do not enrich with third-party data, and do not sell seller-level data sets.</li>
-				<li><strong>Legal basis.</strong> GDPR Art. 6(1)(f) legitimate interests. Specifically: providing developers with low-latency access to publicly published commerce data, balanced against your reasonable expectation that data you've published as a public listing is consultable. We do not believe this processing meaningfully impacts your fundamental rights, but you can object at any time (see below).</li>
-				<li><strong>Retention.</strong> Short. Active-listing cache is 60 minutes; sold-listing cache is 12 hours; item-detail cache is 4 hours. After TTL the row is overwritten or evicted. We do not maintain an archival copy.</li>
-				<li><strong>Recipients.</strong> flipagent's API customers with a valid key, only when they query your specific itemId. Sub-processors are listed under "Third parties" above.</li>
-				<li><strong>International transfers.</strong> flipagent's database is hosted in the US (Azure US region). If you're in the EU or UK, transfer is justified under Art. 6(1)(f) legitimate interests for the limited public-data fields above. For higher-sensitivity scenarios our standard remedy is deletion via takedown rather than transfer safeguards.</li>
+				<li><strong>Legal basis (GDPR).</strong> Art. 6(1)(f) legitimate interests — providing developers with low-latency access to publicly published commerce data, balanced against your reasonable expectation that data you've published as a public listing is consultable. CCPA: information that you have lawfully made publicly available falls outside CCPA's "personal information" definition under Cal. Civ. Code §1798.140(v)(2); we honor takedowns regardless.</li>
+				<li><strong>Retention.</strong> Active-listing cache 60 minutes; sold-listing cache 12 hours; item-detail cache 4 hours. After TTL the row is overwritten or evicted from the live cache. The longer-retention listing-observations archive (used for market context) accepts seller opt-outs via takedown.</li>
+				<li><strong>Recipients.</strong> flipagent's API customers with a valid key, only when they query your specific itemId. Sub-processors are listed above.</li>
+				<li><strong>International transfers.</strong> US (Azure US region). For EU/UK subjects we rely on Art. 6(1)(f) for the limited public fields above and on the EU SCCs where required.</li>
 				<li>
 					<strong>Your rights.</strong> You may:
 					<ul>
-						<li><strong>Access</strong> what we hold about a specific itemId. Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a> with the itemId. (GDPR Art. 15.)</li>
+						<li><strong>Access</strong> what we hold about a specific itemId. Email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a> with the itemId. (GDPR Art. 15.)</li>
 						<li><strong>Erase or object.</strong> Submit the itemId at <a href="/legal/takedown/">/legal/takedown</a>. Approved takedowns flush our cache for that item immediately and add it to a blocklist that prevents future re-fetches. (GDPR Art. 17 and Art. 21; CCPA right to delete.)</li>
 						<li><strong>Lodge a complaint</strong> with your local data protection authority. EU residents: the supervisory authority of your country of residence. UK residents: the ICO.</li>
 					</ul>
@@ -69,11 +87,17 @@ const updated = "2026-04-26";
 				<li><strong>Provision of the data.</strong> Not a statutory or contractual requirement. You publish your listing on eBay; we cache pieces of it as described above.</li>
 			</ul>
 
+			<h2>Security</h2>
+			<p>Transport encryption (TLS) for all traffic. Encryption at rest for backups. Plaintext API keys are shown to you exactly once and stored as sha-256 hash + (optionally, when configured) AES-256-GCM ciphertext. We are working on envelope-encrypting eBay OAuth tokens with a managed key service; this is a known v1 limitation and is tracked publicly. If we discover a security incident affecting your data, we will notify you without undue delay and within 72 hours of becoming aware where required by GDPR Art. 33–34, with the information available at the time and updates as we learn more.</p>
+
+			<h2>Children</h2>
+			<p>The service is not directed at children under 13 (or under 16 in the EU/UK) and we do not knowingly collect personal information from them. If you believe a child has provided us with information, email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a> and we will delete it.</p>
+
 			<h2>Changes</h2>
-			<p>We'll update this page when we change anything material. The "Last updated" date at the top tracks revisions.</p>
+			<p>We'll update this page when we change anything material and notify your account email at least 14 days before the change takes effect. The "Last updated" date at the top tracks revisions.</p>
 
 			<h2>Contact</h2>
-			<p><a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>.</p>
+			<p>General: <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>. Privacy + DSAR: <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a>. Security: <a href="mailto:security@flipagent.dev">security@flipagent.dev</a>.</p>
 		</article>
 	</div>
 </Layout>

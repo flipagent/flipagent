@@ -195,6 +195,7 @@ export async function runMatchFilter(
 	rawActive: ReadonlyArray<ItemSummary>,
 	apiKey: ApiKey | undefined,
 	matchOptions: MatchOptions = {},
+	sources: { seed?: string | null; sold?: string | null; active?: string | null } = {},
 ): Promise<MatchFilterResult> {
 	const soldIds = new Set(rawSold.map((s) => s.itemId));
 	const dedupedPool: ItemSummary[] = [...rawSold, ...rawActive.filter((a) => !soldIds.has(a.itemId))];
@@ -203,6 +204,29 @@ export async function runMatchFilter(
 	let rejected: ItemSummary[] = [];
 	const rejectionReasons: Record<string, string> = {};
 	let llmRan = false;
+	// DPLA gate. eBay's Developer Program License Agreement (June 2025
+	// amendment) prohibits ingesting Restricted API responses into
+	// generative AI models. We pass that obligation through: if any of
+	// the inputs to the matcher were sourced from REST transport, we
+	// silently fall back to the un-LLM-filtered pool. Operators who want
+	// LLM matching should keep their listing/sold transports on `scrape`
+	// (the default — see project_sourcing_transport_priority memory).
+	const restSourced = [sources.seed, sources.sold, sources.active].filter((s) => s === "rest");
+	if (restSourced.length > 0) {
+		console.warn("[match] skipping LLM matcher — input sourced from eBay REST (DPLA AI-training prohibition).", {
+			seed: sources.seed,
+			sold: sources.sold,
+			active: sources.active,
+		});
+		return {
+			matchedSold: [...rawSold],
+			matchedActive: [...rawActive],
+			rejectedSold: [],
+			rejectedActive: [],
+			rejectionReasons: {},
+			llmRan: false,
+		};
+	}
 	try {
 		// Caller-bound detail fetcher = the `DetailFetcher` port the
 		// matcher expects. apiKey stays at this layer; the matcher

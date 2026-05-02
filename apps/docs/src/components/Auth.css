@@ -167,6 +167,38 @@
 .auth-cta:hover:not(:disabled) { background: var(--brand-hover); }
 .auth-cta:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* Clickwrap consent — sentence + checkbox sits directly above the CTA so
+ * the user reads it at the moment of action (Meyer v. Uber posture). Links
+ * use the brand accent + underline so they pop against surrounding text
+ * (Berman v. Freedom Financial avoidance). */
+.auth-consent {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+	margin-top: 4px;
+	padding: 10px 12px;
+	border-radius: 8px;
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	font-size: 12.5px;
+	line-height: 1.5;
+	color: var(--text-2);
+}
+.auth-consent input[type="checkbox"] {
+	margin-top: 2px;
+	flex-shrink: 0;
+	accent-color: var(--brand);
+	cursor: pointer;
+}
+.auth-consent label {
+	cursor: pointer;
+}
+.auth-consent a {
+	color: var(--brand);
+	text-decoration: underline;
+}
+.auth-consent a:hover { color: var(--brand-hover); }
+
 /* ─── Pill chips below CTA ───────────────────────────────────────────── */
 
 .auth-pills {

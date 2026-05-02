@@ -1,6 +1,6 @@
 ---
 import Layout from "../../layouts/Layout.astro";
-const updated = "2026-04-26";
+const updated = "2026-05-01";
 ---
 <Layout title="Terms of Service · flipagent">
 	<div class="cmw cmw-bordered">
@@ -17,53 +17,90 @@ const updated = "2026-04-26";
 			<ul>
 				<li>You're responsible for keeping API keys + your eBay account credentials secure. Revoke at the dashboard immediately if you suspect a leak.</li>
 				<li>One account per person or organization. Don't share keys across multiple businesses on the same plan.</li>
-				<li>You must be 18+ and able to enter into binding agreements.</li>
+				<li>You must be 18 or older and able to enter into binding agreements. The service is not directed at children under 13 and we do not knowingly collect data from them.</li>
+				<li>You represent that you, your organization, and your end users are not on a U.S. or other applicable sanctions list (OFAC SDN, EU consolidated, UK HMT) and that you will not use the service in a sanctioned jurisdiction.</li>
 			</ul>
 
 			<h2>Acceptable use</h2>
-			<p>Don't use flipagent to:</p>
+			<p>The detailed operational rules — listing content, account hygiene, buy-side automation, volume, redistribution — live in the <a href="/legal/aup/">Acceptable Use Policy</a>, which is incorporated into these terms by reference. A material AUP violation is a material breach of these terms. The headline rules:</p>
 			<ul>
-				<li>Generate volume that exceeds your tier's monthly allowance (we throttle).</li>
-				<li>Redistribute raw eBay listing content (titles, descriptions, photos, seller details) divorced from the original <code>ebay.com/itm/...</code> URL.</li>
-				<li>Build derivative datasets for resale outside the eBay context.</li>
-				<li>Circumvent eBay's seller opt-out. If a seller submits a takedown via <a href="/legal/takedown/">/legal/takedown</a>, that itemId is blocklisted.</li>
-				<li>Place a load on eBay that violates eBay's own developer terms; we proxy through residential IPs in part to avoid concentrating load on a single source.</li>
-				<li>Resell raw access to <code>api.flipagent.dev</code> as your own service.</li>
+				<li>Stay within your tier's monthly allowance; we throttle.</li>
+				<li>Don't redistribute raw eBay listing content (titles, descriptions, photos, seller details) divorced from the original <code>ebay.com/itm/...</code> URL.</li>
+				<li>Don't build derivative datasets for resale outside the eBay context.</li>
+				<li>Don't ingest eBay REST API responses (returned via flipagent's <code>transport=rest</code> path) into any generative AI model for training, fine-tuning, embedding, or retrieval-augmented generation. eBay's Developer Program License Agreement reserves this right; we pass the obligation through. The scrape transport is not subject to this restriction.</li>
+				<li>Buy-side actions (<code>/v1/purchases</code>) must include human review of each order before placement, unless your eBay developer account holds Order API approval. eBay's User Agreement (effective Feb 20, 2026) prohibits "buy-for-me agents, LLM-driven bots, or any end-to-end flow that attempts to place orders without human review."</li>
+				<li>Don't list items that violate eBay's Verified Rights Owner (VeRO) program, prohibited-and-restricted-items policy, or any equivalent intellectual-property or marketplace-integrity rule.</li>
+				<li>Don't operate an eBay account that is currently suspended or under an open enforcement action whose terms would be violated by automated activity.</li>
+				<li>Don't resell raw access to <code>api.flipagent.dev</code> as your own service.</li>
 			</ul>
 
 			<h2>Tier limits + billing</h2>
 			<ul>
-				<li>Tier allowances reset monthly (UTC calendar month) and are counted by metered API call against the marketplace and intelligence endpoints under <code>/v1/*</code> (items, categories, products, evaluate, ship). Management routes (<code>/v1/me/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/health</code>) are free.</li>
-				<li>Stripe handles payment. Subscription changes take effect immediately for upgrades and at the end of the billing period for downgrades.</li>
+				<li>Tier allowances reset monthly (UTC calendar month) and are counted by metered API call against the marketplace and intelligence endpoints under <code>/v1/*</code> (items, categories, products, evaluate, ship). Management routes (<code>/v1/me/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/health</code>) are free. The free tier provides a one-time, lifetime credit allowance, not a monthly reset.</li>
+				<li>Stripe handles payment. Subscription changes take effect immediately for upgrades and at the end of the billing period for downgrades. Subscriptions auto-renew at the cadence selected at checkout until cancelled; you can cancel at any time from the dashboard or the Stripe customer portal.</li>
 				<li>Refunds: pro-rated on cancellation only when the cause is a service-side outage or material breach of these terms. Email <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>.</li>
 			</ul>
 
 			<h2>Open-source packages</h2>
-			<p>The MIT-licensed packages (<code>@flipagent/sdk</code>, <code>flipagent-mcp</code>, <code>flipagent-cli</code>, <code>@flipagent/ebay-scraper</code>, <code>@flipagent/types/ebay</code>, <code>@flipagent/types</code>, and the <code>@flipagent/api</code> backend source) are governed by their own LICENSE files, not these terms. You can use them with or without an account here.</p>
+			<p>The MIT-licensed packages (<code>@flipagent/sdk</code>, <code>flipagent-mcp</code>, <code>flipagent-cli</code>, <code>@flipagent/ebay-scraper</code>, <code>@flipagent/types/ebay</code>, <code>@flipagent/types</code>) and the FSL-licensed <code>@flipagent/api</code> backend source are governed by their own LICENSE files, not these terms. You can use them with or without an account here. The warranty disclaimer below applies only to the hosted service; the OSS packages are distributed without warranty under their own license terms.</p>
 
 			<h2>Connected eBay account</h2>
-			<p>When you connect an eBay account at <code>/v1/connect/ebay</code>, you authorize flipagent to act on your sell-side resources (listings, sales, payouts, transactions, policies) and — when REST transport is approved — your purchases, using the OAuth refresh token you grant. Tokens stay in our database; we don't share them with third parties. Disconnect any time at the dashboard.</p>
+			<p>When you connect an eBay account at <code>/v1/connect/ebay</code>, you authorize flipagent to act on your sell-side resources (listings, sales, payouts, transactions, policies) and — when REST transport is approved — your purchases, using the OAuth refresh token you grant. Refresh tokens are valid for up to 18 months under eBay's standard issuance. Disconnecting at flipagent removes the token from our database; to revoke flipagent's access at eBay's end, also visit eBay's "Account → Permissions" page.</p>
+			<p><strong>Your eBay account is your responsibility.</strong> You represent that the eBay account you connect is yours (or one you are authorized to operate), in good standing, and not subject to a suspension, MC011 restriction, selling-limit appeal, or other open enforcement action that would be violated by automated activity. You agree that any action flipagent takes against eBay under your OAuth grant — listing, buying, messaging, refunding, fulfilling — counts as your action under eBay's User Agreement, and that you are solely responsible for compliance with eBay's terms, policies, and seller protections in connection with that activity.</p>
+			<p><strong>Bridge transport — your own browser, your own session.</strong> When you install the flipagent Chrome extension and use bridge transport, jobs execute inside your already-logged-in eBay tab using your own cookies and session. flipagent does not store your eBay password and never logs into eBay on your behalf. The bridge is a remote-control surface for software you are running locally; the activity it performs is your activity for purposes of eBay's User Agreement and any applicable law.</p>
+			<p><strong>Account actions by eBay are not flipagent's liability.</strong> eBay may, at its sole discretion, restrict, suspend, or close accounts that engage in automated activity, exceed selling limits, list against VeRO, or otherwise violate its policies — whether or not the activity originated from flipagent. To the maximum extent permitted by law, flipagent is not liable for lost sales, lost listings, withheld payouts, or any other harm caused by an eBay-side enforcement action against your account.</p>
 
 			<h2>Service availability</h2>
-			<p>We aim for 99.5% monthly uptime on the hosted API. We don't currently offer a contractual SLA. Status updates go on <a href="https://github.com/flipagent/flipagent">our GitHub</a> until a status page is live.</p>
+			<p>We aim for 99.5% monthly uptime on the hosted API. We don't currently offer a contractual SLA. The service depends on third-party marketplaces (today eBay; later others) whose APIs, web surfaces, anti-automation measures, and user agreements may change without notice. flipagent makes no warranty that the service will continue to function with any third-party marketplace, and we may modify, suspend, or discontinue any feature at any time to remain compliant with upstream terms.</p>
+
+			<h2>Indemnification</h2>
+			<p>You will defend, indemnify, and hold flipagent and its officers, directors, employees, and contractors harmless from and against any third-party claim, demand, loss, or expense (including reasonable attorneys' fees) arising out of or related to: (a) your use of the service in violation of these terms or the <a href="/legal/aup/">Acceptable Use Policy</a>; (b) your breach of any third-party marketplace's terms of service (including eBay's User Agreement, Developer Program License Agreement, or seller policies); (c) listings, content, or instructions you submit through flipagent, including any claim that they infringe intellectual property, violate consumer-protection law, or describe restricted items; (d) any action taken under your API key, OAuth grant, or bridge token, whether or not authorized by you, except where flipagent is at fault; and (e) your violation of any law applicable to your activity. flipagent will give you prompt notice of any claim and reasonable cooperation; you control the defense and any settlement, but may not settle in a way that admits flipagent's liability or imposes obligations on flipagent without our prior written consent. This indemnity does not extend to flipagent's own gross negligence or willful misconduct, to the extent that exclusion is required by Cal. Civ. Code §2782(a) or equivalent law.</p>
+
+			<h2>Disclaimer of warranties</h2>
+			<p style="text-transform:uppercase;"><strong>The service and the open-source packages are provided "as is" and "as available" without warranty of any kind, express or implied, including without limitation any implied warranty of merchantability, fitness for a particular purpose, title, non-infringement, accuracy, or any warranty arising from course of dealing or usage of trade. flipagent does not warrant that the service will be uninterrupted, error-free, or free of harmful components, that any data returned will be accurate, current, or complete, or that the service will continue to interoperate with any third-party marketplace.</strong></p>
+			<p><strong>flipagent is not affiliated with, endorsed by, or sponsored by eBay Inc. "eBay" is a trademark of eBay Inc.; we use it only to describe interoperability.</strong></p>
+
+			<h2>Limitation of liability</h2>
+			<p style="text-transform:uppercase;"><strong>To the maximum extent permitted by law, in no event will flipagent or its officers, directors, employees, or contractors be liable for any indirect, incidental, special, consequential, exemplary, or punitive damages, or for loss of profits, revenue, goodwill, data, or business opportunity, however caused and on any theory of liability, whether in contract, tort, strict liability, or otherwise, even if flipagent has been advised of the possibility of such damages.</strong></p>
+			<p style="text-transform:uppercase;"><strong>flipagent's aggregate liability for all claims arising out of or related to these terms or the service will not exceed the greater of (a) the fees you paid to flipagent for the service in the twelve months immediately preceding the event giving rise to the claim, or (b) one hundred U.S. dollars (USD $100).</strong></p>
+			<p>The cap and the exclusions above do not apply to: (i) your indemnification obligations above; (ii) your unpaid fees; (iii) either party's liability for fraud, gross negligence, or willful misconduct; or (iv) any liability that cannot be limited or excluded under applicable law.</p>
+
+			<h2>Dispute resolution — arbitration + class waiver</h2>
+			<p style="text-transform:uppercase;"><strong>Please read this section carefully. It requires that most disputes between you and flipagent be resolved through binding individual arbitration rather than in court, and waives your right to participate in a class action.</strong></p>
+			<p>Any dispute, claim, or controversy arising out of or relating to these terms or the service ("Dispute") will be resolved by final and binding individual arbitration administered by JAMS under its Streamlined Arbitration Rules then in effect. The arbitration will be conducted in English, by a single arbitrator, seated in Wilmington, Delaware (you may appear remotely). Judgment on the award may be entered in any court of competent jurisdiction. The arbitrator, not any federal, state, or local court, has exclusive authority to resolve Disputes about the scope, enforceability, or formation of this arbitration agreement, except that a court may decide whether a claim falls within the carve-outs below.</p>
+			<p><strong>Class-action waiver.</strong> You and flipagent each agree that Disputes will be brought only in your or our individual capacity, and not as a plaintiff or class member in any purported class, collective, consolidated, or representative proceeding. The arbitrator may not consolidate more than one party's claims and may not preside over any class or representative proceeding.</p>
+			<p><strong>Carve-outs.</strong> Either party may (a) bring an individual action in small-claims court for any Dispute within that court's jurisdiction, in lieu of arbitration; and (b) seek temporary or preliminary injunctive relief in any court of competent jurisdiction to protect intellectual-property rights, confidential information, or to enforce the AUP. These carve-outs do not waive the class-action waiver above.</p>
+			<p><strong>30-day opt-out.</strong> You may opt out of this arbitration agreement by emailing <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a> within 30 days of first accepting these terms, with your account email and the words "ARBITRATION OPT-OUT" in the subject. Opting out does not affect any other provision.</p>
+			<p><strong>EU and UK consumers.</strong> If you are a consumer resident in the EU or UK, the arbitration agreement and class-action waiver above do not apply to the extent prohibited by mandatory local consumer law; you may bring claims in the courts of your country of residence.</p>
+
+			<h2>Governing law + venue</h2>
+			<p>These terms are governed by the laws of the State of Delaware, USA, without regard to conflict-of-laws rules. For Disputes carved out of arbitration above, the state and federal courts located in Wilmington, Delaware have exclusive jurisdiction; you and flipagent each waive any objection to that venue and any right to a jury trial. Any claim must be brought within one (1) year after it accrues, or it is permanently barred, except where a longer period is required by mandatory local law.</p>
+
+			<h2>DMCA + IP notices</h2>
+			<p>flipagent is not registered with the U.S. Copyright Office's DMCA designated-agent directory under 17 U.S.C. §512(c)(2). The bulk of our infrastructure is a cache + scraper rather than a UGC host, so the §512(c) safe harbor does not naturally apply to our model. We do operate a private takedown channel that accepts notices in the §512(c)(3) shape so rights holders have a clean path that does not require a lawsuit; submit at <a href="/legal/takedown/">/legal/takedown</a> or email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a>. If your content was removed in response to a takedown that you believe is mistaken or wrongful, email <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a> with a counter-notice in the §512(g) shape; approved counter-notices restore the content. See <a href="/legal/compliance/">/legal/compliance</a> for the full operational picture.</p>
 
 			<h2>Termination</h2>
-			<p>You can close your account anytime by emailing <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>. We may suspend or terminate accounts that violate the acceptable-use rules above; we'll explain why and give you a chance to rectify unless the breach is severe (e.g. abuse, fraud, court order).</p>
-
-			<h2>Disclaimer</h2>
-			<p>flipagent is provided "as is" without warranty. We don't guarantee deal-finding accuracy, sale prices, or eBay's underlying API behavior. <strong>NOT AFFILIATED WITH EBAY INC.</strong></p>
-
-			<h2>Liability</h2>
-			<p>To the maximum extent permitted by law, our aggregate liability for any claim is limited to the amount you've paid us in the prior 12 months.</p>
-
-			<h2>Governing law</h2>
-			<p>These terms are governed by the laws of the State of Delaware, USA. Disputes go to the state and federal courts located in Wilmington, Delaware.</p>
+			<p>You can close your account anytime by emailing <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a> or, when available, via the dashboard's account-deletion path. We may suspend or terminate accounts that violate these terms or the AUP; we'll explain why and give you a chance to rectify unless the breach is severe (abuse, fraud, IP infringement, court order, or upstream-marketplace enforcement requiring immediate action). Sections that by their nature should survive termination — Acceptable Use, Indemnification, Disclaimer, Limitation of Liability, Dispute Resolution, Governing Law, DMCA, and General — survive.</p>
 
 			<h2>Changes</h2>
-			<p>If we change these terms materially, we'll send a heads-up to your account email at least 14 days before the change takes effect.</p>
+			<p>If we change these terms materially, we'll send a heads-up to your account email at least 30 days before the change takes effect, except where a shorter period is required by upstream-marketplace amendments (in which case we'll match the shortest period eBay or another upstream gives us). Continuing to use the service after the effective date means you accept the new terms; if you don't, close your account before the effective date.</p>
+
+			<h2>General</h2>
+			<ul>
+				<li><strong>Entire agreement.</strong> These terms, the Acceptable Use Policy, the Privacy Policy, and any order form or DPA you separately sign, are the entire agreement between you and flipagent on this subject and supersede prior discussions.</li>
+				<li><strong>Severability.</strong> If any provision is held unenforceable, the rest stays in force and the offending provision is reformed to the minimum extent necessary.</li>
+				<li><strong>No waiver.</strong> Failure to enforce a provision is not a waiver of the right to do so later.</li>
+				<li><strong>No agency.</strong> The parties are independent contractors. Nothing here creates a partnership, agency, joint venture, employment, or fiduciary relationship. flipagent has no authority to bind eBay Inc. or any other marketplace.</li>
+				<li><strong>Assignment.</strong> You may not assign these terms without our prior written consent. flipagent may assign in connection with a merger, acquisition, or sale of substantially all assets.</li>
+				<li><strong>Force majeure.</strong> Neither party is liable for delay or failure caused by events outside reasonable control, including upstream-marketplace outages, denial of service, government action, or natural disaster.</li>
+				<li><strong>No third-party beneficiaries.</strong> These terms create rights only between you and flipagent.</li>
+				<li><strong>Notices.</strong> We send notices to your account email; you send notices to <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a> (legal) or <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a> (other).</li>
+				<li><strong>Electronic acceptance.</strong> Clicking to accept, generating an API key, or continuing to use the service constitutes acceptance of these terms in electronic form, with the legal effect of a signature.</li>
+				<li><strong>Headings</strong> are for convenience and do not affect interpretation.</li>
+			</ul>
 
 			<h2>Contact</h2>
-			<p><a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>.</p>
+			<p>General: <a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a>. Legal notices, DMCA, arbitration opt-out: <a href="mailto:legal@flipagent.dev">legal@flipagent.dev</a>. Security incidents: <a href="mailto:security@flipagent.dev">security@flipagent.dev</a>.</p>
 		</article>
 	</div>
 </Layout>

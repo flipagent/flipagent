@@ -9,9 +9,11 @@
  * borders. The borders intersect to form `+` marks at the rail edges.
  */
 
+import { PENDING_CONSENT_KEY, TERMS_VERSION } from "@flipagent/types";
 import { useEffect, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { authClient } from "../lib/authClient";
+import { ConsentCheckbox } from "./legal/ConsentCheckbox";
 
 type Tab = "login" | "signup";
 type Provider = "email" | "google" | "github" | "sso" | "forgot";
@@ -25,6 +27,11 @@ export default function Auth() {
 	const [name, setName] = useState("");
 	const [pending, setPending] = useState<Provider | null>(null);
 	const [lastUsed, setLastUsed] = useState<Provider | null>(null);
+	// Clickwrap state. Required to enable any signup action (email submit
+	// OR social OAuth). Login does not gate on this — existing users
+	// already accepted at signup; if their acceptance is stale (terms
+	// bumped since), the dashboard surfaces a re-consent modal.
+	const [agreedTerms, setAgreedTerms] = useState(false);
 	// When email + password sign-up succeeds with `requireEmailVerification`
 	// the API returns no session token; when sign-in is attempted on an
 	// unverified account we get a 403 EMAIL_NOT_VERIFIED. Both cases swap
@@ -84,6 +91,10 @@ export default function Auth() {
 
 	async function handleEmail(e: React.FormEvent) {
 		e.preventDefault();
+		if (tab === "signup" && !agreedTerms) {
+			toast.error("Please agree to the Terms, Privacy Policy, and Acceptable Use Policy.");
+			return;
+		}
 		setPending("email");
 		try {
 			const dest = postAuthDestination();
@@ -92,18 +103,24 @@ export default function Auth() {
 			if (tab === "login") {
 				result = await authClient.signIn.email({ email, password, callbackURL });
 			} else {
+				// `termsVersion` is read by the Better-Auth user.create.after
+				// hook and folded into termsAcceptedAt + termsAcceptedIp on
+				// the user row. Cast through additional-fields shape; the
+				// runtime ignores unknown keys.
 				result = await authClient.signUp.email({
 					email,
 					password,
 					name: name.trim() || email.split("@")[0],
 					callbackURL,
-				});
+					termsVersion: TERMS_VERSION,
+				} as Parameters<typeof authClient.signUp.email>[0]);
 			}
 			// Better-Auth's react client returns `{data, error}` rather than throwing.
 			// EMAIL_NOT_VERIFIED on sign-in (403) and a null token on sign-up both
 			// mean "we sent a link, finish in your inbox".
 			if (isEmailNotVerified(result?.error)) {
 				rememberLastUsed("email");
+				if (tab === "signup") stashPendingConsent();
 				setAwaitingVerify(email);
 				setPending(null);
 				return;
@@ -113,15 +130,20 @@ export default function Auth() {
 			}
 			if (tab === "signup" && !result?.data?.token) {
 				rememberLastUsed("email");
+				stashPendingConsent();
 				setAwaitingVerify(email);
 				setPending(null);
 				return;
 			}
 			rememberLastUsed("email");
+			// Belt-and-suspenders: stash for the dashboard's re-consent gate
+			// in case the after-hook persistence raced or failed silently.
+			if (tab === "signup") stashPendingConsent();
 			window.location.href = dest;
 		} catch (err) {
 			if (isEmailNotVerified(err)) {
 				rememberLastUsed("email");
+				if (tab === "signup") stashPendingConsent();
 				setAwaitingVerify(email);
 				setPending(null);
 				return;
@@ -148,11 +170,20 @@ export default function Auth() {
 	}
 
 	async function handleSocial(provider: "google" | "github") {
+		if (tab === "signup" && !agreedTerms) {
+			toast.error("Please agree to the Terms, Privacy Policy, and Acceptable Use Policy.");
+			return;
+		}
 		// `signIn.social` triggers a window.location redirect to the OAuth
 		// provider, so anything *after* the await never runs. Remember first.
 		// (Trade-off: if the user cancels at the provider, we still recorded
 		// it as "last used" — acceptable for a hint badge.)
 		rememberLastUsed(provider);
+		// Stash consent so the dashboard can replay it post-callback. We
+		// stash on the signup tab only — login doesn't re-consent. The
+		// stash is harmless if the user is actually signing in to an
+		// existing account (the dashboard's gate will see no-op state).
+		if (tab === "signup") stashPendingConsent();
 		setPending(provider);
 		try {
 			await authClient.signIn.social({
@@ -294,7 +325,20 @@ export default function Auth() {
 							/>
 						</label>
 
-						<button type="submit" className="auth-cta" disabled={pending !== null}>
+						{tab === "signup" && (
+							<ConsentCheckbox
+								variant="auth"
+								inputId="auth-terms"
+								checked={agreedTerms}
+								onChange={setAgreedTerms}
+							/>
+						)}
+
+						<button
+							type="submit"
+							className="auth-cta"
+							disabled={pending !== null || (tab === "signup" && !agreedTerms)}
+						>
 							{pending === "email" ? "Working…" : cta}
 						</button>
 					</form>
@@ -319,7 +363,7 @@ export default function Auth() {
 							type="button"
 							className="auth-social"
 							onClick={() => handleSocial("google")}
-							disabled={pending !== null}
+							disabled={pending !== null || (tab === "signup" && !agreedTerms)}
 						>
 							<span className="auth-social-icon" aria-hidden="true">
 								<svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
@@ -352,7 +396,7 @@ export default function Auth() {
 							type="button"
 							className="auth-social"
 							onClick={() => handleSocial("github")}
-							disabled={pending !== null}
+							disabled={pending !== null || (tab === "signup" && !agreedTerms)}
 						>
 							<span className="auth-social-icon" aria-hidden="true">
 								<svg width="16" height="16" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
@@ -396,6 +440,25 @@ export default function Auth() {
  * 403 / `EMAIL_NOT_VERIFIED` and silently re-send the verification email.
  * Both the returned `{error}` shape and any thrown variant flow through here.
  */
+/**
+ * Mark the current visitor as having ticked the clickwrap checkbox at
+ * version `TERMS_VERSION`, so the dashboard can replay the acceptance
+ * via POST /v1/me/terms-acceptance once a session is in hand. Used for
+ * social-OAuth (the OAuth round-trip drops us back on the dashboard
+ * with no chance to post mid-flight) and as a belt-and-suspenders for
+ * the email/password path. Best-effort; quota errors don't block auth.
+ */
+function stashPendingConsent() {
+	try {
+		localStorage.setItem(
+			PENDING_CONSENT_KEY,
+			JSON.stringify({ version: TERMS_VERSION, at: Date.now() }),
+		);
+	} catch {
+		/* no-op */
+	}
+}
+
 function isEmailNotVerified(err: unknown): boolean {
 	if (!err || typeof err !== "object") return false;
 	const e = err as { code?: unknown; status?: unknown; message?: unknown };

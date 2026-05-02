@@ -33,14 +33,24 @@ import {
 	KeyRevokeResponse,
 } from "@flipagent/types";
 import { Type } from "@sinclair/typebox";
-import { and, count, desc, eq, gte, ilike, inArray, isNull, max, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, max, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
+import { sendOpsEmail } from "../../auth/email.js";
 import { issueKey, revokeKey, type Tier } from "../../auth/keys.js";
 import { snapshotUsage, sumActiveCreditGrants, TIER_LIMITS, usageToWire } from "../../auth/limits.js";
+import { config } from "../../config.js";
 import { db } from "../../db/client.js";
-import { apiKeys, creditGrants, usageEvents, user as userTable } from "../../db/schema.js";
+import {
+	apiKeys,
+	creditGrants,
+	listingObservations,
+	takedownRequests,
+	usageEvents,
+	user as userTable,
+} from "../../db/schema.js";
 import { requireAdmin } from "../../middleware/session.js";
+import { legacyFromV1 } from "../../utils/item-id.js";
 import { errorResponse, jsonResponse, tbBody, tbCoerce } from "../../utils/openapi.js";
 
 export const adminRoute = new Hono();
@@ -455,6 +465,102 @@ adminRoute.delete(
 		if (!row) return c.json({ error: "not_found" as const, message: "Key not found." }, 404);
 		await revokeKey(id);
 		return c.json({ id, revoked: true });
+	},
+);
+
+/* ---------------------------- /takedowns/:id/* (admin triage) ----------- */
+
+adminRoute.post(
+	"/takedowns/:id/approve-counter",
+	describeRoute({
+		tags: ["Admin"],
+		summary: "Approve a §512(g) counter-notice + restore the listing",
+		description:
+			"Operator approval of a counter-notice. Clears `takedownAt` on every listing_observations row matching the affected itemId, marks the counter-notice request as `approved`, and emails the original takedown submitter per 17 U.S.C. §512(g)(2)(B). Resend wiring is best-effort; the restore happens regardless.",
+		responses: {
+			200: { description: "Counter-notice approved + listing restored." },
+			401: errorResponse("Not signed in."),
+			403: errorResponse("Admin role required."),
+			404: errorResponse("Counter-notice not found."),
+		},
+	}),
+	async (c) => {
+		const id = c.req.param("id");
+		const [counter] = await db
+			.select({
+				id: takedownRequests.id,
+				itemId: takedownRequests.itemId,
+				reason: takedownRequests.reason,
+				contactEmail: takedownRequests.contactEmail,
+				status: takedownRequests.status,
+			})
+			.from(takedownRequests)
+			.where(eq(takedownRequests.id, id))
+			.limit(1);
+		if (!counter) return c.json({ error: "not_found" as const, message: "Counter-notice not found." }, 404);
+		if (!counter.reason?.startsWith("[counter_notice]")) {
+			return c.json(
+				{ error: "not_a_counter_notice" as const, message: "This row is not a counter-notice (kind mismatch)." },
+				400,
+			);
+		}
+		// Find the original takedown(s) for the same itemId so we know
+		// who to forward §512(g)(2)(B) notice to. The first non-counter
+		// row is the canonical original.
+		const originals = await db
+			.select({
+				id: takedownRequests.id,
+				contactEmail: takedownRequests.contactEmail,
+				createdAt: takedownRequests.createdAt,
+				reason: takedownRequests.reason,
+			})
+			.from(takedownRequests)
+			.where(eq(takedownRequests.itemId, counter.itemId))
+			.orderBy(asc(takedownRequests.createdAt));
+		const original = originals.find((o) => !o.reason?.startsWith("[counter_notice]")) ?? null;
+
+		const legacyId = legacyFromV1(counter.itemId) ?? counter.itemId;
+		// Restore the listing observations: clear takedownAt on every
+		// matching legacyItemId row. Audit trail (the counter-notice + the
+		// original takedown rows themselves) stays.
+		await db
+			.update(listingObservations)
+			.set({ takedownAt: null })
+			.where(eq(listingObservations.legacyItemId, legacyId));
+		await db
+			.update(takedownRequests)
+			.set({ status: "approved", processedAt: new Date() })
+			.where(eq(takedownRequests.id, id));
+
+		// §512(g)(2)(B): forward the counter-notice to the original
+		// submitter and notify them the material will be restored within
+		// 10–14 business days unless they file a court action. Resend
+		// silently no-ops when unconfigured so we report `notifiedOriginal`
+		// only when both the contact email and a wired email backend exist.
+		const willNotify = Boolean(original?.contactEmail && config.RESEND_API_KEY);
+		if (original?.contactEmail) {
+			try {
+				await sendOpsEmail({
+					to: original.contactEmail,
+					subject: `[flipagent] Counter-notice received — ${counter.itemId}`,
+					text:
+						`A counter-notice has been filed for itemId ${counter.itemId}, which you previously requested removed.\n\n` +
+						`Per 17 U.S.C. §512(g)(2)(B), the material will be restored on flipagent's cache within 10 business days unless you file a court action seeking a restraining order against the counter-notifier and provide flipagent with notice of that filing.\n\n` +
+						`Counter-notice contact: ${counter.contactEmail}\n` +
+						`Counter-notice details: ${counter.reason}\n\n` +
+						`If you believe the counter-notice is invalid or fraudulent, reply to this email or write legal@flipagent.dev within 10 business days.\n`,
+				});
+			} catch (err) {
+				console.warn(`[admin/takedowns] §512(g) notice email failed for counter ${id}:`, err);
+			}
+		}
+
+		return c.json({
+			id,
+			status: "approved" as const,
+			restored: { legacyItemId: legacyId },
+			notifiedOriginal: willNotify,
+		});
 	},
 );
 

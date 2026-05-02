@@ -12,12 +12,15 @@
  *   billing   → upgrade buttons + Stripe portal
  */
 
+import { EBAY_CONNECT_DISCLAIMER_VERSION, PENDING_CONSENT_KEY } from "@flipagent/types";
 import * as RxPopover from "@radix-ui/react-popover";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { CHANGELOG, type ChangelogEntry, type ChangelogTag } from "../data/changelog";
 import { apiBase, apiFetch, authClient, signOut } from "../lib/authClient";
 import type { ComposeTab } from "./compose/ComposeCard";
+import { EbayConnectConsentModal } from "./dashboard/EbayConnectConsentModal";
+import { TermsConsentModal } from "./dashboard/TermsConsentModal";
 import { PlaygroundEvaluate } from "./playground/PlaygroundEvaluate";
 import { PlaygroundSearch } from "./playground/PlaygroundSearch";
 import { PlaygroundSourcing } from "./playground/PlaygroundSourcing";
@@ -54,7 +57,30 @@ type Profile = {
 		// Null for Free (one-time grant); ISO timestamp for paid (monthly refill).
 		resetAt: string | null;
 	};
+	currentTermsVersion: string;
+	termsAcceptedAt: string | null;
+	termsAcceptedVersion: string | null;
 };
+
+function readPendingConsent(): { version: string; at: number } | null {
+	try {
+		const raw = localStorage.getItem(PENDING_CONSENT_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw);
+		if (parsed && typeof parsed.version === "string" && typeof parsed.at === "number") return parsed;
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+function clearPendingConsent() {
+	try {
+		localStorage.removeItem(PENDING_CONSENT_KEY);
+	} catch {
+		/* no-op */
+	}
+}
 type KeyRow = {
 	id: string;
 	name: string | null;
@@ -204,6 +230,26 @@ export default function Dashboard() {
 			try {
 				const me = await apiFetch<Profile>("/v1/me");
 				setProfile(me);
+				// Replay pending clickwrap from social-OAuth or email-verify
+				// round-trip if the user hasn't already been recorded as
+				// accepting the current Terms version.
+				if (me.termsAcceptedVersion !== me.currentTermsVersion) {
+					const pending = readPendingConsent();
+					if (pending && pending.version === me.currentTermsVersion) {
+						try {
+							await apiFetch("/v1/me/terms-acceptance", {
+								method: "POST",
+								body: JSON.stringify({ version: me.currentTermsVersion }),
+								headers: { "Content-Type": "application/json" },
+							});
+							clearPendingConsent();
+							const refreshed = await apiFetch<Profile>("/v1/me");
+							setProfile(refreshed);
+						} catch {
+							/* fall through to the modal — user must click again */
+						}
+					}
+				}
 				await Promise.all([refreshKeys(), refreshEbay(), refreshPermissions()]);
 			} catch (err) {
 				const status = (err as { status?: number }).status;
@@ -243,8 +289,20 @@ export default function Dashboard() {
 		return <div className="dash-loading"><p>Loading…</p></div>;
 	}
 
+	const needsConsent = profile.termsAcceptedVersion !== profile.currentTermsVersion;
+
 	return (
 		<div className={`dash-app ${collapsed ? "dash-app--collapsed" : ""}`}>
+			{needsConsent && (
+				<TermsConsentModal
+					version={profile.currentTermsVersion}
+					accepted={profile.termsAcceptedVersion}
+					onAccepted={async () => {
+						const refreshed = await apiFetch<Profile>("/v1/me");
+						setProfile(refreshed);
+					}}
+				/>
+			)}
 			<Sidebar
 				view={view}
 				setView={setView}
@@ -1973,6 +2031,8 @@ function SettingsPanel({
 	const [pwModalOpen, setPwModalOpen] = useState(false);
 	const [pendingResend, setPendingResend] = useState(false);
 	const [ebayBusy, setEbayBusy] = useState(false);
+	const [ebayConsentOpen, setEbayConsentOpen] = useState(false);
+	const [ebayConsentAgreed, setEbayConsentAgreed] = useState(false);
 	const [billingBusy, setBillingBusy] = useState<string | null>(null);
 
 	async function resendVerify() {
@@ -1991,7 +2051,18 @@ function SettingsPanel({
 	}
 
 	function ebayConnect() {
-		window.location.href = `${apiBase}/v1/me/ebay/connect?redirect=${encodeURIComponent(window.location.origin + "/dashboard/")}`;
+		// JIT consent gate. The backend `?ack=` param mirrors the
+		// EBAY_CONNECT_DISCLAIMER_VERSION constant on the api side; bumping
+		// either requires bumping both. The modal copy reflects the same
+		// three-line disclosure that lives in /legal/terms#connected-ebay-account.
+		setEbayConsentAgreed(false);
+		setEbayConsentOpen(true);
+	}
+	function ebayConnectConfirmed() {
+		setEbayConsentOpen(false);
+		const ack = EBAY_CONNECT_DISCLAIMER_VERSION;
+		const redirect = encodeURIComponent(window.location.origin + "/dashboard/");
+		window.location.href = `${apiBase}/v1/me/ebay/connect?ack=${ack}&redirect=${redirect}`;
 	}
 	async function ebayDisconnect() {
 		if (!confirm("Disconnect eBay? Tokens removed locally; eBay-side authorization stays (revoke at eBay if needed).")) return;
@@ -2188,6 +2259,14 @@ function SettingsPanel({
 					</>
 				)}
 			</div>
+
+			<EbayConnectConsentModal
+				open={ebayConsentOpen}
+				agreed={ebayConsentAgreed}
+				onAgreedChange={setEbayConsentAgreed}
+				onCancel={() => setEbayConsentOpen(false)}
+				onConfirm={ebayConnectConfirmed}
+			/>
 		</>
 	);
 }

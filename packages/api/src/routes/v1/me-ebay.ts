@@ -17,10 +17,12 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
+import { EBAY_CONNECT_DISCLAIMER_VERSION } from "../../auth/legal-versions.js";
 import { isEbayOAuthConfigured } from "../../config.js";
 import { db } from "../../db/client.js";
-import { apiKeys, userEbayOauth } from "../../db/schema.js";
+import { apiKeys } from "../../db/schema.js";
 import { ebayConnectStatusForUser } from "../../services/bridge.js";
+import { disconnectEbayBinding } from "../../services/ebay/oauth.js";
 import { buildEbayAuthorizeUrl, rememberState, safeRedirectTarget } from "../../services/ebay/oauth-state.js";
 import { errorResponse } from "../../utils/openapi.js";
 
@@ -69,8 +71,27 @@ meEbayRoute.get(
 				400,
 			);
 		}
+		// JIT consent gate — same disclosure version as the API-key flow.
+		// The dashboard surfaces a modal that POSTs the user through with
+		// `?ack=<version>`; programmatic callers should do the same.
+		const ack = c.req.query("ack");
+		if (ack !== EBAY_CONNECT_DISCLAIMER_VERSION) {
+			return c.json(
+				{
+					error: "disclaimer_not_acknowledged" as const,
+					message:
+						"Acknowledge the eBay-connect disclosure before proceeding. Re-issue this request with `?ack=" +
+						EBAY_CONNECT_DISCLAIMER_VERSION +
+						"`.",
+					disclosureVersion: EBAY_CONNECT_DISCLAIMER_VERSION,
+				},
+				412,
+			);
+		}
 		const requestedRedirect = c.req.query("redirect");
-		const state = rememberState(apiKeyId, safeRedirectTarget(requestedRedirect));
+		const state = rememberState(apiKeyId, safeRedirectTarget(requestedRedirect), {
+			version: EBAY_CONNECT_DISCLAIMER_VERSION,
+		});
 		return c.redirect(buildEbayAuthorizeUrl(state));
 	},
 );
@@ -111,14 +132,13 @@ meEbayRoute.delete(
 		if (ids.length === 0) {
 			return c.json({ status: "disconnected" as const, removed: 0 });
 		}
-		// Drop one at a time — drizzle's `inArray` import is overkill for this size.
+		// One snapshot+delete+revoke per binding via the shared helper, so
+		// the order + decryption boundary + best-effort upstream-revoke
+		// contract live in one place.
 		let removed = 0;
 		for (const id of ids) {
-			const result = (await db
-				.delete(userEbayOauth)
-				.where(eq(userEbayOauth.apiKeyId, id))
-				.returning({ id: userEbayOauth.id })) as { id: string }[];
-			removed += result.length;
+			const { revokeAttempted } = await disconnectEbayBinding(id);
+			if (revokeAttempted) removed += 1;
 		}
 		return c.json({ status: "disconnected" as const, removed });
 	},

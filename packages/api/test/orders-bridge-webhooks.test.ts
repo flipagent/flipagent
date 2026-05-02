@@ -52,10 +52,16 @@ afterAll(async () => {
 describe("/v1/purchases + /v1/bridge — happy path", () => {
 	/** Helper: one-shot create on /v1/purchases. */
 	async function quickCheckout(key: string, itemId: string, quantity = 1) {
+		// `humanReviewedAt` is required by the eBay-UA buy-bot ban gate
+		// (see services/purchases/orchestrate.ts). Use `now()` so the
+		// 5-minute freshness window always holds across slow CI runs.
 		const res = await call("/v1/purchases", {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-			body: JSON.stringify({ items: [{ itemId, quantity }] }),
+			body: JSON.stringify({
+				items: [{ itemId, quantity }],
+				humanReviewedAt: new Date().toISOString(),
+			}),
 		});
 		expect(res.status).toBe(201);
 		return readJson<{ id: string; status: string }>(res);
@@ -119,12 +125,18 @@ describe("/v1/purchases + /v1/bridge — happy path", () => {
 		const a = await call("/v1/purchases", {
 			method: "POST",
 			headers,
-			body: JSON.stringify({ items: [{ itemId: "v1|IDEMP|0", quantity: 1 }] }),
+			body: JSON.stringify({
+				items: [{ itemId: "v1|IDEMP|0", quantity: 1 }],
+				humanReviewedAt: new Date().toISOString(),
+			}),
 		});
 		const b = await call("/v1/purchases", {
 			method: "POST",
 			headers,
-			body: JSON.stringify({ items: [{ itemId: "v1|IDEMP|0", quantity: 1 }] }),
+			body: JSON.stringify({
+				items: [{ itemId: "v1|IDEMP|0", quantity: 1 }],
+				humanReviewedAt: new Date().toISOString(),
+			}),
 		});
 		const aBody = await readJson<{ id: string }>(a);
 		const bBody = await readJson<{ id: string }>(b);
@@ -188,7 +200,10 @@ describe("/v1/bridge — auth + ownership", () => {
 			await call("/v1/purchases", {
 				method: "POST",
 				headers: { "Content-Type": "application/json", Authorization: `Bearer ${keyA}` },
-				body: JSON.stringify({ items: [{ itemId: "v1|OWNER|0", quantity: 1 }] }),
+				body: JSON.stringify({
+					items: [{ itemId: "v1|OWNER|0", quantity: 1 }],
+					humanReviewedAt: new Date().toISOString(),
+				}),
 			}),
 		);
 		await call("/v1/bridge/poll", { headers: { Authorization: `Bearer ${tokA.token}` } });

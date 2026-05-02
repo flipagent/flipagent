@@ -15,15 +15,16 @@
  * state store via `services/ebay/oauth-state.ts`.
  */
 
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
+import { EBAY_CONNECT_DISCLAIMER_VERSION } from "../../auth/legal-versions.js";
+import { encryptSecret } from "../../auth/secret-envelope.js";
 import { config, isEbayOAuthConfigured } from "../../config.js";
 import { db } from "../../db/client.js";
 import { userEbayOauth } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { ebayConnectStatusForApiKey } from "../../services/bridge.js";
-import { exchangeCode, fetchEbayUserSummary } from "../../services/ebay/oauth.js";
+import { disconnectEbayBinding, exchangeCode, fetchEbayUserSummary } from "../../services/ebay/oauth.js";
 import {
 	buildEbayAuthorizeUrl,
 	consumeState,
@@ -51,9 +52,31 @@ connectRoute.get(
 		if (!isEbayOAuthConfigured()) {
 			return c.json({ error: "ebay_not_configured" as const, message: "EBAY_CLIENT_ID/SECRET/RU_NAME unset." }, 503);
 		}
+		// JIT consent gate. Programmatic callers must acknowledge the
+		// connect disclosure (scopes + 18-month refresh + disconnect-here-
+		// doesn't-revoke-at-eBay) by passing `?ack=<version>` matching the
+		// current EBAY_CONNECT_DISCLAIMER_VERSION. Without it we 412 with a
+		// JSON pointer to the disclosure copy. The dashboard does the same
+		// dance via /v1/me/ebay/connect.
+		const ack = c.req.query("ack");
+		if (ack !== EBAY_CONNECT_DISCLAIMER_VERSION) {
+			return c.json(
+				{
+					error: "disclaimer_not_acknowledged" as const,
+					message:
+						"Acknowledge the eBay-connect disclosure before proceeding. Re-issue this request with `?ack=" +
+						EBAY_CONNECT_DISCLAIMER_VERSION +
+						"` to confirm. Disclosure: https://flipagent.dev/legal/terms/#connected-ebay-account",
+					disclosureVersion: EBAY_CONNECT_DISCLAIMER_VERSION,
+				},
+				412,
+			);
+		}
 		const apiKey = c.get("apiKey");
 		const requestedRedirect = c.req.query("redirect");
-		const state = rememberState(apiKey.id, safeRedirectTarget(requestedRedirect));
+		const state = rememberState(apiKey.id, safeRedirectTarget(requestedRedirect), {
+			version: EBAY_CONNECT_DISCLAIMER_VERSION,
+		});
 		return c.redirect(buildEbayAuthorizeUrl(state));
 	},
 );
@@ -106,17 +129,25 @@ connectRoute.get(
 
 		const summary = await fetchEbayUserSummary(tokens.access_token).catch(() => null);
 
+		// Tokens stored under the secrets envelope (AES-256-GCM gated on
+		// SECRETS_ENCRYPTION_KEY). Format `enc:v1:<iv>:<ct+tag>` is
+		// migration-safe: read paths use `decryptIfEncrypted` which
+		// tolerates legacy plaintext rows during the rollout window.
+		const accessCt = encryptSecret(tokens.access_token);
+		const refreshCt = encryptSecret(tokens.refresh_token);
 		await db
 			.insert(userEbayOauth)
 			.values({
 				apiKeyId: pending.apiKeyId,
 				ebayUserId: summary?.userId ?? null,
 				ebayUserName: summary?.username ?? null,
-				accessToken: tokens.access_token,
+				accessToken: accessCt,
 				accessTokenExpiresAt,
-				refreshToken: tokens.refresh_token,
+				refreshToken: refreshCt,
 				refreshTokenExpiresAt,
 				scopes: config.EBAY_SCOPES,
+				disclaimerAcceptedAt: pending.disclaimerAcceptedAt,
+				disclaimerVersion: pending.disclaimerVersion,
 				updatedAt: new Date(),
 			})
 			.onConflictDoUpdate({
@@ -124,11 +155,13 @@ connectRoute.get(
 				set: {
 					ebayUserId: summary?.userId ?? null,
 					ebayUserName: summary?.username ?? null,
-					accessToken: tokens.access_token,
+					accessToken: accessCt,
 					accessTokenExpiresAt,
-					refreshToken: tokens.refresh_token,
+					refreshToken: refreshCt,
 					refreshTokenExpiresAt,
 					scopes: config.EBAY_SCOPES,
+					disclaimerAcceptedAt: pending.disclaimerAcceptedAt,
+					disclaimerVersion: pending.disclaimerVersion,
 					updatedAt: new Date(),
 				},
 			});
@@ -164,14 +197,14 @@ connectRoute.delete(
 		tags: ["OAuth"],
 		summary: "Disconnect eBay account (API-key flow)",
 		responses: {
-			200: { description: "Local binding removed." },
+			200: { description: "Local binding removed; eBay-side revocation attempted best-effort." },
 			401: errorResponse("Missing or invalid API key."),
 		},
 	}),
 	requireApiKey,
 	async (c) => {
 		const apiKey = c.get("apiKey");
-		await db.delete(userEbayOauth).where(eq(userEbayOauth.apiKeyId, apiKey.id));
+		await disconnectEbayBinding(apiKey.id);
 		return c.json({ status: "disconnected" as const });
 	},
 );

@@ -204,6 +204,20 @@
       "when": 1778886263891,
       "tag": "0028_drop_discover_from_compute_job_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1778972663891,
+      "tag": "0029_consent_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1779059063891,
+      "tag": "0030_maintenance_columns",
+      "breakpoints": true
     }
   ]
 }

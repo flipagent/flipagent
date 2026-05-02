@@ -1,0 +1,1 @@
+ALTER TABLE "takedown_requests" ADD COLUMN "sla_breached_at" timestamp with time zone;

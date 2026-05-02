@@ -19,6 +19,16 @@ export interface PendingEbayState {
 	apiKeyId: string;
 	/** Where to redirect the user's browser after the callback finishes. */
 	redirectAfter: string;
+	/**
+	 * JIT consent record stamped into the state at handshake time. The
+	 * disclosure (scope list, 18-month refresh, disconnect-here-doesn't-
+	 * revoke-at-eBay) is acknowledged by the user *before* the OAuth
+	 * round-trip; the callback persists this onto the userEbayOauth row
+	 * so we have a per-binding audit trail distinct from the global
+	 * Terms acceptance.
+	 */
+	disclaimerAcceptedAt: Date;
+	disclaimerVersion: string;
 	expiresAt: number;
 }
 
@@ -30,10 +40,16 @@ function gcStates() {
 	for (const [k, v] of stateStore) if (v.expiresAt < now) stateStore.delete(k);
 }
 
-export function rememberState(apiKeyId: string, redirectAfter: string): string {
+export function rememberState(apiKeyId: string, redirectAfter: string, disclaimer: { version: string }): string {
 	gcStates();
 	const state = randomBytes(16).toString("base64url");
-	stateStore.set(state, { apiKeyId, redirectAfter, expiresAt: Date.now() + STATE_TTL_MS });
+	stateStore.set(state, {
+		apiKeyId,
+		redirectAfter,
+		disclaimerAcceptedAt: new Date(),
+		disclaimerVersion: disclaimer.version,
+		expiresAt: Date.now() + STATE_TTL_MS,
+	});
 	return state;
 }
 

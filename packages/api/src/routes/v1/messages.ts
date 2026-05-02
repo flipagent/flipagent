@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { withTradingAuth } from "../../middleware/with-trading-auth.js";
+import { scrubMessageBody } from "../../services/ebay/trading/message-hygiene.js";
 import { getMyMessages, type MyMessage, replyToBuyer } from "../../services/ebay/trading/messages.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
@@ -89,14 +90,35 @@ messagesRoute.post(
 				400,
 			);
 		}
+		// Off-eBay contact strip — prohibited by eBay's "Offering to buy or
+		// sell outside of eBay" policy and our AUP. Default behaviour is to
+		// reject the send so the caller knows their copy contained a phone /
+		// email / external URL; pass `?force_send=1` to ship the redacted
+		// body anyway (used by automation pipelines that already vet copy).
+		const hygiene = scrubMessageBody(body.body);
+		const forceSend = c.req.query("force_send") === "1";
+		if (hygiene.redactions.length > 0 && !forceSend) {
+			return c.json(
+				{
+					error: "off_ebay_contact_info" as const,
+					message:
+						"Message contains contact info eBay's User Agreement prohibits in messages: " +
+						hygiene.redactions.map((r) => `${r.kind} (${r.original})`).join(", ") +
+						". Edit and retry, or pass `?force_send=1` to ship the redacted version.",
+					redactions: hygiene.redactions,
+					redactedBody: hygiene.cleanBody,
+				},
+				422,
+			);
+		}
 		const result = await replyToBuyer({
 			accessToken,
 			itemId: body.listingId,
 			recipientUserId: body.to,
 			parentMessageId: body.replyTo,
 			subject: body.subject ?? "Re:",
-			body: body.body,
+			body: hygiene.cleanBody,
 		});
-		return c.json(result);
+		return c.json({ ...result, redactions: hygiene.redactions });
 	}),
 );

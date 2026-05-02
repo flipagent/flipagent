@@ -78,6 +78,12 @@ const Schema = Type.Object({
 	// dev/test → falls back to a key derived from BETTER_AUTH_SECRET so
 	// local setups don't trip on startup.
 	KEYS_ENCRYPTION_KEY: Type.Optional(Type.String()),
+	// AES-256 envelope key for OAuth tokens (eBay, GitHub, Google) and
+	// webhook HMAC secrets at rest. Base64; required in production. Same
+	// dev/test fallback shape as KEYS_ENCRYPTION_KEY — derives from
+	// BETTER_AUTH_SECRET so local boots don't trip. Kept separate from
+	// KEYS_ENCRYPTION_KEY so the API-key blast radius stays smaller.
+	SECRETS_ENCRYPTION_KEY: Type.Optional(Type.String()),
 	APP_URL: Type.String({ default: "http://localhost:4321" }),
 	BETTER_AUTH_URL: Type.String({ default: "http://localhost:4000" }),
 	GITHUB_CLIENT_ID: Type.Optional(Type.String()),
@@ -166,6 +172,7 @@ const raw = {
 	EBAY_CATALOG_APPROVED: process.env.EBAY_CATALOG_APPROVED === "1",
 	BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
 	KEYS_ENCRYPTION_KEY: process.env.KEYS_ENCRYPTION_KEY,
+	SECRETS_ENCRYPTION_KEY: process.env.SECRETS_ENCRYPTION_KEY,
 	APP_URL: process.env.APP_URL ?? "http://localhost:4321",
 	BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? `http://localhost:${process.env.PORT ?? 4000}`,
 	GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
@@ -221,6 +228,7 @@ export const config = decoded as {
 	EBAY_CATALOG_APPROVED: boolean;
 	BETTER_AUTH_SECRET?: string;
 	KEYS_ENCRYPTION_KEY?: string;
+	SECRETS_ENCRYPTION_KEY?: string;
 	APP_URL: string;
 	BETTER_AUTH_URL: string;
 	GITHUB_CLIENT_ID?: string;

@@ -12,6 +12,7 @@
 
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
+import { decryptIfEncrypted } from "../auth/secret-envelope.js";
 import { db } from "../db/client.js";
 import {
 	type BridgeJob as DbBridgeJob,
@@ -174,7 +175,11 @@ async function deliverOne(
 	fetchImpl: typeof globalThis.fetch,
 ): Promise<void> {
 	const ts = Math.floor(Date.now() / 1000);
-	const signature = signPayload(endpoint.secret, rawBody, ts);
+	// Decrypt the HMAC secret at signing time. Legacy plaintext rows pass
+	// through unchanged; enveloped rows decrypt. Tolerates the rolling
+	// migration window without a synchronous backfill.
+	const secretPlain = decryptIfEncrypted(endpoint.secret) ?? endpoint.secret;
+	const signature = signPayload(secretPlain, rawBody, ts);
 	let status: "delivered" | "failed" = "failed";
 	let responseStatus: number | null = null;
 	let responseBody: string | null = null;
@@ -206,7 +211,11 @@ async function deliverOne(
 	const insert: NewWebhookDelivery = {
 		endpointId: endpoint.id,
 		eventType,
-		payload: envelope as Record<string, unknown>,
+		// Mask PII fields (buyer email, address, phone, payment details)
+		// before persisting. Webhook deliveries are kept for retry + audit
+		// but the raw envelope often carries upstream Stripe/eBay PII that
+		// doesn't need to live in our DB past delivery confirmation.
+		payload: maskWebhookPayload(envelope) as Record<string, unknown>,
 		status,
 		attempt: 1,
 		responseStatus,
@@ -231,4 +240,56 @@ async function deliverOne(
 export function previewSecret(secret: string): string {
 	const hash = createHash("sha256").update(secret).digest("hex").slice(0, 8);
 	return `${secret.slice(0, 12)}…${hash}`;
+}
+
+/**
+ * PII-masking pass over a webhook envelope before persisting to
+ * `webhook_deliveries.payload`. Recursive: walks objects + arrays and
+ * replaces any field whose key matches a PII shape with a `[redacted]`
+ * marker. The matcher is conservative — it errs on the side of redacting
+ * because we keep `eventType + responseStatus + responseBody (truncated)`
+ * for audit, which is enough to debug delivery without the underlying
+ * PII. Receivers see the unmasked envelope (we mask only on the way to
+ * our DB).
+ */
+const PII_KEY_PATTERNS = [
+	/^email$/i,
+	/buyer.*email/i,
+	/customer.*email/i,
+	/recipient.*email/i,
+	/^phone(_number)?$/i,
+	/buyer.*phone/i,
+	/recipient.*phone/i,
+	/^address$/i,
+	/shipping.*address/i,
+	/contact.*address/i,
+	/billing.*address/i,
+	/^line[12]$/i,
+	/^postal_?code$/i,
+	/^card$/i,
+	/^card_?number$/i,
+	/last4/i,
+	/^cvc$/i,
+	/^cvv$/i,
+	/^token$/i,
+	/payment_?method/i,
+	/^iban$/i,
+	/^routing/i,
+	/account_?number/i,
+];
+
+const REDACTED = "[redacted]";
+
+export function maskWebhookPayload(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(maskWebhookPayload);
+	if (value === null || typeof value !== "object") return value;
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+		if (PII_KEY_PATTERNS.some((re) => re.test(k))) {
+			out[k] = REDACTED;
+		} else {
+			out[k] = maskWebhookPayload(v);
+		}
+	}
+	return out;
 }

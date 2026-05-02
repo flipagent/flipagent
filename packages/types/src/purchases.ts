@@ -133,6 +133,22 @@ export const PurchaseCreate = Type.Object(
 
 		/** Force a specific transport. Auto-picks when omitted. */
 		transport: Type.Optional(Type.Union([Type.Literal("rest"), Type.Literal("bridge")])),
+
+		/**
+		 * Per-order human-review attestation. eBay's User Agreement
+		 * (effective Feb 20, 2026) prohibits "buy-for-me agents,
+		 * LLM-driven bots, or any end-to-end flow that attempts to place
+		 * orders without human review." flipagent's bridge transport
+		 * requires this acknowledgement on every `/v1/purchases` call;
+		 * REST transport requires it unless the eBay developer account
+		 * holds Order API approval (`EBAY_ORDER_API_APPROVED=1`). Pass
+		 * an ISO-8601 timestamp not older than 5 minutes — the
+		 * attestation means a human in your interface confirmed THIS
+		 * specific order within the last few minutes. The shape check
+		 * (parseable + freshness window) lives in the orchestrator so
+		 * stale + malformed return a uniform 412.
+		 */
+		humanReviewedAt: Type.Optional(Type.String({ description: "ISO-8601 timestamp" })),
 	},
 	{ $id: "PurchaseCreate" },
 );

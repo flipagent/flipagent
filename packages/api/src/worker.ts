@@ -39,12 +39,14 @@ import {
 	transitionToFailed,
 } from "./services/compute-jobs/queue.js";
 import { runEvaluatePipeline } from "./services/evaluate/run.js";
+import { runMaintenanceTick } from "./services/maintenance/sweeper.js";
 
 const WORKER_LEASE_MS = Number.parseInt(process.env.WORKER_LEASE_MS ?? "300000", 10); // 5min
 const WORKER_HEARTBEAT_MS = Number.parseInt(process.env.WORKER_HEARTBEAT_MS ?? "30000", 10); // 30s
 const WORKER_MAX_ATTEMPTS = Number.parseInt(process.env.WORKER_MAX_ATTEMPTS ?? "3", 10);
 const WORKER_POLL_INTERVAL_MS = Number.parseInt(process.env.WORKER_POLL_INTERVAL_MS ?? "1000", 10);
 const WORKER_RECOVERY_INTERVAL_MS = Number.parseInt(process.env.WORKER_RECOVERY_INTERVAL_MS ?? "60000", 10);
+const WORKER_MAINTENANCE_INTERVAL_MS = Number.parseInt(process.env.WORKER_MAINTENANCE_INTERVAL_MS ?? "900000", 10); // 15min
 const WORKER_SHUTDOWN_GRACE_MS = Number.parseInt(process.env.WORKER_SHUTDOWN_GRACE_MS ?? "30000", 10);
 
 const workerId = `worker-${hostname()}-${process.pid}`;
@@ -162,6 +164,28 @@ async function recoveryLoop(): Promise<void> {
 	}
 }
 
+/**
+ * Periodic maintenance loop — separate from compute-job claim/recovery
+ * because the cleanup tasks (takedown SLA emails, notification PII
+ * scrub, forwarder photo cleanup, bridge-token TTL) run on a slower
+ * cadence and do their own SQL-side idempotency. Best-effort: a per-
+ * task failure is logged inside the sweeper without throwing.
+ */
+async function maintenanceLoop(): Promise<void> {
+	while (!shuttingDown) {
+		const results = await runMaintenanceTick().catch((err) => {
+			console.error("[worker] runMaintenanceTick threw:", err);
+			return [] as Awaited<ReturnType<typeof runMaintenanceTick>>;
+		});
+		const summary = results
+			.filter((r) => r.processed > 0 || r.error)
+			.map((r) => (r.error ? `${r.task}=ERR(${r.error})` : `${r.task}=${r.processed}`))
+			.join(" ");
+		if (summary) console.log(`[worker] maintenance: ${summary}`);
+		await sleep(WORKER_MAINTENANCE_INTERVAL_MS);
+	}
+}
+
 async function shutdown(signal: string): Promise<void> {
 	if (shuttingDown) return;
 	console.log(`[worker] received ${signal}, draining (grace ${WORKER_SHUTDOWN_GRACE_MS}ms)`);
@@ -213,4 +237,4 @@ if (initial.requeued > 0 || initial.failed > 0) {
 	console.log(`[worker] boot recovery: requeued=${initial.requeued} failed=${initial.failed}`);
 }
 
-await Promise.all([mainLoop(), recoveryLoop()]);
+await Promise.all([mainLoop(), recoveryLoop(), maintenanceLoop()]);

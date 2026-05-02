@@ -227,6 +227,13 @@ variable "keys_encryption_key" {
   default     = ""
 }
 
+variable "secrets_encryption_key" {
+  description = "AES-256-GCM symmetric key (base64, 32 bytes) for the secrets envelope — wraps eBay OAuth refresh tokens + webhook HMAC secrets at rest. Required in production; the api throws on boot without it. Kept separate from `keys_encryption_key` so the API-key blast radius stays smaller. Generate with `openssl rand -base64 32`."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # --- Better-Auth + GitHub/Google OAuth — leave empty to ship with the dashboard --
 # (sign-in, /v1/me/*, /api/auth/*) returning 503 not_configured.
 

@@ -20,6 +20,7 @@
  */
 
 import { eq } from "drizzle-orm";
+import { decryptIfEncrypted, encryptSecret } from "../../auth/secret-envelope.js";
 import { config, isEbayOAuthConfigured } from "../../config.js";
 import { db } from "../../db/client.js";
 import { type UserEbayOauth, userEbayOauth } from "../../db/schema.js";
@@ -119,24 +120,93 @@ export async function getUserBinding(apiKeyId: string): Promise<UserEbayOauth | 
  * Fresh access token for the api-key's connected eBay account. Refreshes the
  * stored access token if it's within 60s of expiry. Throws `not_connected`
  * if no binding exists.
+ *
+ * Tokens are stored under the secrets envelope (AES-256-GCM gated on
+ * `SECRETS_ENCRYPTION_KEY`). Reads pass through `decryptIfEncrypted`
+ * which tolerates legacy plaintext rows during the migration window —
+ * any legacy row gets re-written enveloped on its next refresh.
  */
 export async function getUserAccessToken(apiKeyId: string): Promise<string> {
 	const binding = await getUserBinding(apiKeyId);
 	if (!binding) throw new Error("not_connected");
+	const accessPlain = decryptIfEncrypted(binding.accessToken) ?? "";
 	if (binding.accessTokenExpiresAt.getTime() > Date.now() + 60_000) {
-		return binding.accessToken;
+		return accessPlain;
 	}
-	const refreshed = await refreshUserAccess(binding.refreshToken);
+	const refreshPlain = decryptIfEncrypted(binding.refreshToken) ?? "";
+	const refreshed = await refreshUserAccess(refreshPlain);
 	const newExpires = new Date(Date.now() + refreshed.expires_in * 1000);
 	await db
 		.update(userEbayOauth)
 		.set({
-			accessToken: refreshed.access_token,
+			accessToken: encryptSecret(refreshed.access_token),
 			accessTokenExpiresAt: newExpires,
 			updatedAt: new Date(),
 		})
 		.where(eq(userEbayOauth.id, binding.id));
 	return refreshed.access_token;
+}
+
+/**
+ * Disconnect-and-revoke for one api-key binding. The two disconnect
+ * routes (`DELETE /v1/connect/ebay` and `DELETE /v1/me/ebay/connect`)
+ * both want to:
+ *
+ *   1. snapshot the refresh token,
+ *   2. delete the local row,
+ *   3. best-effort revoke at eBay so the refresh token is invalidated
+ *      upstream too.
+ *
+ * Centralised here so both routes share the order, the decryption
+ * boundary, and the upstream-failure-doesn't-block-local-delete contract.
+ * Returns whether an upstream revoke was attempted (the caller may
+ * surface that to the user).
+ */
+export async function disconnectEbayBinding(apiKeyId: string): Promise<{ revokeAttempted: boolean }> {
+	const [snap] = await db
+		.select({ refreshToken: userEbayOauth.refreshToken })
+		.from(userEbayOauth)
+		.where(eq(userEbayOauth.apiKeyId, apiKeyId))
+		.limit(1);
+	await db.delete(userEbayOauth).where(eq(userEbayOauth.apiKeyId, apiKeyId));
+	if (!snap?.refreshToken) return { revokeAttempted: false };
+	const refreshPlain = decryptIfEncrypted(snap.refreshToken) ?? snap.refreshToken;
+	await revokeUserRefreshToken(refreshPlain).catch((err) => {
+		console.warn(`[ebay] upstream revoke failed for apiKey=${apiKeyId}:`, err);
+	});
+	return { revokeAttempted: true };
+}
+
+/**
+ * Revoke a refresh token at eBay's end. eBay exposes the OAuth 2.0
+ * RFC 7009 endpoint at `/identity/v1/oauth2/revoke`; the request is
+ * authenticated with the same `client_id:client_secret` Basic header
+ * we use for token exchange. Best-effort: callers must not block local
+ * disconnect on an upstream failure (network, expired refresh, eBay
+ * outage), so this throws on hard errors but the call site catches.
+ */
+export async function revokeUserRefreshToken(refreshToken: string): Promise<void> {
+	if (!isEbayOAuthConfigured()) return;
+	const auth = Buffer.from(`${config.EBAY_CLIENT_ID}:${config.EBAY_CLIENT_SECRET}`).toString("base64");
+	const body = new URLSearchParams({
+		token: refreshToken,
+		token_type_hint: "refresh_token",
+	}).toString();
+	const res = await fetch(`${config.EBAY_AUTH_URL}/identity/v1/oauth2/revoke`, {
+		method: "POST",
+		headers: {
+			Authorization: `Basic ${auth}`,
+			"Content-Type": "application/x-www-form-urlencoded",
+		},
+		body,
+	});
+	// RFC 7009: revocation endpoints SHOULD return 200 even when the token
+	// is unknown or already revoked. Treat 200/204 as success and bubble
+	// other statuses so the caller's catch can log + move on.
+	if (res.status !== 200 && res.status !== 204) {
+		const detail = await res.text().catch(() => "");
+		throw new Error(`eBay revoke failed: ${res.status} ${detail}`);
+	}
 }
 
 /**

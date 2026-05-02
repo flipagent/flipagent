@@ -77,6 +77,17 @@ export const user = pgTable("user", {
 	 * For paid tiers the floor used is `max(creditsResetAt, monthStart)`.
 	 */
 	creditsResetAt: timestamp("credits_reset_at", { withTimezone: true }).notNull().defaultNow(),
+	/**
+	 * Clickwrap consent record. Set the moment the user submits the sign-up
+	 * form (or accepts a re-consent prompt). `termsVersion` matches the
+	 * `Last updated` date stamped on /legal/terms; bumping that date and
+	 * shipping a new clickwrap row gives us a clean audit trail of which
+	 * version each user agreed to. Both nullable for users created before
+	 * the column existed; backfilled lazily on next sign-in.
+	 */
+	termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+	termsVersion: text("terms_version"),
+	termsAcceptedIp: text("terms_accepted_ip"),
 	createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -282,6 +293,14 @@ export const takedownRequests = pgTable(
 		status: takedownStatusEnum("status").notNull().default("pending"),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 		processedAt: timestamp("processed_at", { withTimezone: true }),
+		/**
+		 * Timestamp the SLA-breach alert fired for this row. Set by the
+		 * maintenance sweeper after a row sits in `pending` past the 48h
+		 * SLA. Idempotency guard — once set, the sweeper does not re-alert
+		 * even if the row stays pending for days. Cleared by triage actions
+		 * (approve/reject) implicitly by virtue of `status` flipping.
+		 */
+		slaBreachedAt: timestamp("sla_breached_at", { withTimezone: true }),
 	},
 	(t) => ({
 		itemIdx: index("takedown_item_idx").on(t.itemId),
@@ -434,6 +453,17 @@ export const userEbayOauth = pgTable(
 		refreshToken: text("refresh_token").notNull(),
 		refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
 		scopes: text("scopes").notNull(),
+		/**
+		 * Just-in-time consent record. The eBay-connect flow surfaces a
+		 * disclosure (scopes, 18-month refresh token, disconnect-here-doesn't-
+		 * revoke-at-eBay) before redirecting to eBay's authorize page. We
+		 * persist the acknowledgement timestamp + version on the OAuth row
+		 * so we have a per-binding audit trail distinct from the global
+		 * Terms acceptance on the user table. Nullable for bindings created
+		 * before the column existed.
+		 */
+		disclaimerAcceptedAt: timestamp("disclaimer_accepted_at", { withTimezone: true }),
+		disclaimerVersion: text("disclaimer_version"),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 	},
