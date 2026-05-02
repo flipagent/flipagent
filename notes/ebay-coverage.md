@@ -203,21 +203,13 @@ The following are **probable** but not directly probed yet:
 - AAQ (Ask A Question) pre-purchase exposure — Trading distinguishes member-message types; REST may or may not show pre-purchase questions
 - Folder / search filtering parity — Trading `GetMyMessages` has folder filter; REST appears to be paginated-flat list only
 
-### G.1.3 Revised migration recommendation
+### G.1.3 Migration shipped 2026-05-02 (commits `d9e0dba`, `6a9dfc6`)
 
-| Capability | Decision | Rationale |
-|---|---|---|
-| **Public seller feedback summary read** (lookup any seller's feedback by username) | ✅ Migrate to `GET commerce/feedback/v1/feedback_rating_summary` | App-token only, no user OAuth needed. Pure win — replaces a Trading `GetFeedback` use case. |
-| **Self awaiting-feedback / leave / respond** | ✅ Migrate to `commerce/feedback/v1` | DSR template confirmed feature-equivalent. Cost: add `commerce.feedback` scope (re-consent existing users). |
-| **Self message inbox + send + update** | ✅ Migrate to `commerce/message/v1` | System notifications confirmed in REST. Cost: add `commerce.message` scope (re-consent). |
-| **AAQ pre-purchase question handling** | 🟡 Defer until verified | Need a real test case. Keep Trading as fallback for now. |
+REST `commerce/message/v1` + `commerce/feedback/v1` are now the primary path. Trading XML modules deleted. `/v1/messages` redesigned around eBay's conversation-threaded shape (3 handlers: list / thread / send) instead of the Trading-era flat `Message[]`. `/v1/feedback` shape unchanged externally; internals swapped. SDK + MCP tools + CLI updated.
 
-Migration plan:
-1. Add `commerce.message` + `commerce.feedback` to `EBAY_SCOPES` in `packages/api/src/config.ts:41-49`.
-2. Force reconnect for existing users (next `/v1/connect/ebay/start` issues a re-consent automatically since scope set changed).
-3. Build REST clients in `services/ebay/rest/` for these two paths (use `sellRequest` pattern).
-4. Update `services/ebay/trading/{messages,feedback}.ts` callers in `routes/v1/{messages,feedback}.ts` to call the REST client first; fall back to Trading on 404 or unsupported variants (e.g., AAQ).
-5. Once stable for ~1 month with no Trading fallback hits, delete the Trading modules.
+Re-consent required: existing users' OAuth tokens lack `commerce.message` + `commerce.feedback` scopes; next `/v1/connect/ebay/start` will request them.
+
+Still untested in production: POST writes (send_message, leave feedback, respond_to_feedback) — endpoints exist + scope granted, but no live POST executed. AAQ pre-purchase exposure unverified.
 
 ### G.2 Whole eBay APIs we don't touch at all
 
@@ -231,7 +223,7 @@ Migration plan:
 | Resource | We have | Reference has additionally | Highest-value adds |
 |---|---|---|---|
 | Sell Marketing | ~8 paths | 30+ paths: bulk_create/delete/update_ads_by_listing_id, bulk_create_ads_by_inventory_reference, ad_campaign clone/end/pause/resume, get_campaign_by_name, ad/{id}/update_bid, get_ads_by_listing_id, get_ads_by_inventory_reference | bulk ad ops + campaign lifecycle (pause/resume) — agents managing 100s of listings need bulk |
-| Sell Inventory | 14 paths | `POST /offer/get_listing_fees` (preview fees pre-publish), `POST /bulk_publish_offer`, `listing/{id}/sku/{sku}/locations` CRUD, `offer/publish_by_inventory_item_group`, `offer/withdraw_by_inventory_item_group`, `location/{id}/{enable,disable}`, `location/{id}/update_location_details`, product_compatibility CRUD | **`offer/get_listing_fees`** ← evaluator can show post-fee margin without committing |
+| Sell Inventory | 15 paths (`get_listing_fees` shipped commit `6a9dfc6`) | `POST /bulk_publish_offer`, `listing/{id}/sku/{sku}/locations` CRUD, `offer/publish_by_inventory_item_group`, `offer/withdraw_by_inventory_item_group`, `location/{id}/{enable,disable}`, `location/{id}/update_location_details`, product_compatibility CRUD | bulk publish + multi-warehouse location attach |
 | Sell Account | 11 paths | `POST /program/{opt_in,opt_out}`, `GET /program` (program enrollment), payment_policy/return_policy/fulfillment_policy `_by_name` lookups | program opt-in opens managed-payments / advertising onboarding via API |
 | Sell Metadata | 3 paths | 17+ paths per marketplace: get_category_policies, get_listing_structure_policies, get_extended_producer_responsibility_policies (EU EPR mandatory), get_hazardous_materials_labels, get_product_safety_labels, get_product_compliance_policies, get_regulatory_policies, get_motors_listing_policies, get_currencies, get_shipping_policies, get_site_visibility_policies, compatibilities/* (5 paths) | EU EPR + product safety labels are **legally required** for EU listings post-2025 |
 | Sell Logistics (eDelivery) | 3 paths | `actual_costs`, `address_preference` GET/POST, `consign_preference` GET/POST, `agents`, `battery_qualifications`, `dropoff_sites`, `services`, `bundle` GET/POST | international shipping (consignment, dropoff sites, battery shipping qualifications) |
@@ -257,16 +249,29 @@ The reference answers our earlier "어떻게 알 수 있나" question concretely
 
 ### G.6 Prioritised follow-ups (sorted by user-visible impact)
 
-1. **`offer/get_listing_fees` in evaluator** — show fee-net margin pre-publish (Inventory API)
-2. **REST feedback READ migration** — verified working today; replaces Trading `GetFeedback` for public seller-feedback reads (no approval needed)
-3. **REST feedback WRITE + REST messaging migration** — needs scope-availability probe first (see G.1); upside is dropping two Trading XML modules, but unproven
-4. **Dispute response lifecycle** — contest/accept/add_evidence on Sell Fulfillment payment_dispute
-5. **Negotiation read-back** — `GET /sell/negotiation/v1/offer` + `/offer/{id}`
-6. **Developer rate-limit** as `/v1/me/quota`
-7. **Sell Metadata EU EPR + product safety** — legal req for EU listings
-8. **Bulk Marketing ad ops** — agents managing many listings
-9. **VeRO API** — for sellers fielding IP claims (also our own takedown could route here)
-10. **Notification subscription enable/disable/test/filter** — webhook debugging
+**Done this session:**
+- ✅ REST messaging + feedback migration — `commit d9e0dba`
+- ✅ `offer/get_listing_fees` wrapped as `/v1/listings/preview-fees` — `commit 6a9dfc6`
+
+**Important correction on `get_listing_fees`** (verified live 2026-05-02 with both APIs):
+Both REST `get_listing_fees` AND Trading `VerifyAddItem` return only **listing-time fees** (InsertionFee, BoldFee, GalleryFee, ProPackBundleFee, ~27 categories). **Neither returns FinalValueFee** (eBay's main ~13.25% commission). FVF is charged at sale time, not listing time, so it's outside both APIs' scope.
+
+→ `get_listing_fees` is **NOT an evaluator margin upgrade**. Our `quant/fees.ts` static `feeRate: 0.1325` remains the correct model for FVF. `/v1/listings/preview-fees` is useful only for "what insertion + ad fees will I pay on these N drafts I've already created" — not "what's my net after sale".
+
+**Next priorities (re-ranked after the FVF discovery):**
+
+1. **Dispute response lifecycle** — contest / accept / add_evidence / fetch_evidence_content on `/sell/fulfillment/v1/payment_dispute/{id}`. Today agents can READ disputes but not respond — biggest user-visible gap. Verified live: scope `sell.fulfillment` already granted to our app.
+2. **Negotiation read-back** — `GET /sell/negotiation/v1/offer` + `/offer/{id}`. Today we send offers but can't see if buyer responded.
+3. **Sell Metadata EU EPR + product safety** — `get_extended_producer_responsibility_policies`, `get_product_safety_labels`, `get_regulatory_policies`. Legally required for EU listings post-2025.
+4. **Developer rate-limit** as `/v1/me/quota` — quota introspection. Small but useful.
+5. **Bulk Marketing ad ops** — bulk_create/delete/update_ads_by_listing_id, campaign clone/end/pause/resume. For agents managing many listings.
+6. **VeRO API** — `commerce/vero/v1` for sellers fielding IP claims (also our own takedown could route here).
+7. **Notification subscription enable/disable/test/filter** — webhook debugging.
+8. **Post-Order v2** (cancellation/return/inquiry) — currently we route disputes through Sell Fulfillment payment_dispute only; Post-Order would close the buyer-initiated INR/Return gap.
+
+**De-prioritised:**
+- ~~Migrate POST messages/feedback writes~~ — endpoints already wired in commit `d9e0dba`; just unverified live. Smoke-test by sending a test message rather than fresh code.
+- ~~`offer/get_listing_fees` in evaluator~~ — wrong tool for that job (see correction above).
 
 ### G.7 Reference paths
 
