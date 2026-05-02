@@ -75,9 +75,18 @@ async function resolveSessionKey(headers: Headers): Promise<ApiKey | null> {
 export const requireApiKey = createMiddleware(async (c, next) => {
 	const startedAt = Date.now();
 	const plain = extractKey(c.req.header("Authorization"), c.req.header("X-API-Key"));
+	// Distinguishes the two callers we accept on this gate: programmatic
+	// (explicit Authorization / X-API-Key header → this is the metered
+	// surface) vs. dashboard (logged-in session cookie, no api-key header
+	// → flipagent.dev's own UI talking to its api). Session callers still
+	// authorize through the user's most-recent active key (so admin RBAC
+	// + per-tier capability checks keep working) but the credit budget
+	// + usage_events log are SKIPPED — the dashboard rendering itself
+	// must not burn the user's lifetime free-tier quota.
+	const viaApiKey = plain != null;
 
 	let row: ApiKey | null = null;
-	if (plain) {
+	if (viaApiKey) {
 		row = (await findActiveKey(plain)) as ApiKey | null;
 		if (!row) {
 			return c.json({ error: "invalid_key", message: "Key not found or revoked." }, 401);
@@ -99,18 +108,19 @@ export const requireApiKey = createMiddleware(async (c, next) => {
 
 	// Two independent gates:
 	//   1. Monthly credit budget — every metered endpoint charges N credits.
-	//      Pricing-driven; what 429 surfaces.
+	//      Pricing-driven; what 429 surfaces. Skipped for session callers
+	//      (dashboard internal traffic).
 	//   2. Burst (per-minute / per-hour) — abuse protection on raw call rate.
-	// Both must pass; both surface as 429 with distinct `error` codes so
-	// clients can react differently (upgrade vs back off).
+	//      Always applies — anti-abuse should fire whether the caller used
+	//      an api key or a session cookie.
 	const tier = row.tier as Tier;
-	const credits = creditsForEndpoint(c.req.path);
+	const credits = viaApiKey ? creditsForEndpoint(c.req.path) : 0;
 	const [usage, burst] = await Promise.all([
 		snapshotUsage({ apiKeyId: row.id, userId: row.userId }, tier),
 		snapshotBurst({ apiKeyId: row.id, userId: row.userId }, tier),
 	]);
 
-	if (usage.overLimit) {
+	if (viaApiKey && usage.overLimit) {
 		c.header("X-RateLimit-Limit", String(usage.creditsLimit));
 		c.header("X-RateLimit-Remaining", "0");
 		// `usage.resetAt` is null for the Free tier (one-time grant). Skip the
@@ -164,8 +174,15 @@ export const requireApiKey = createMiddleware(async (c, next) => {
 	// shared cache layer, so we skip the usage_events insert for those.
 	// touchLastUsed still runs so "last used" stays meaningful.
 	const fromCache = c.res.headers.get("X-Flipagent-From-Cache") === "true";
+	// Skip usage_events insert when (a) the response came from the shared
+	// cache layer (pricing-page promise) or (b) the caller is the dashboard
+	// (session cookie, no api-key header) — dashboard internal data fetches
+	// (panel mounts, taxonomy reads, "featured" curation) must not show up
+	// as the user's API consumption nor charge against their credit budget.
+	// touchLastUsed still runs in both cases so "last used" stays meaningful.
+	const skipUsageLog = fromCache || !viaApiKey;
 	await Promise.all([
-		fromCache
+		skipUsageLog
 			? Promise.resolve()
 			: recordUsage({ apiKeyId: row.id, userId: row.userId, endpoint: c.req.path, statusCode, latencyMs }).catch(
 					(err) => console.error("[auth] recordUsage failed:", err),

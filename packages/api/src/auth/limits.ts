@@ -75,6 +75,9 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
  */
 export function creditsForEndpoint(endpoint: string, fromCache = false): number {
 	if (fromCache) return 0;
+	// Discovery sub-routes — static curated lists, no pipeline run.
+	if (endpoint.startsWith("/v1/evaluate/featured")) return 0;
+	if (endpoint.startsWith("/v1/evaluate/scopes")) return 0;
 	if (endpoint.startsWith("/v1/evaluate")) return 50;
 	if (endpoint.startsWith("/v1/items")) return 1;
 	if (endpoint.startsWith("/v1/products")) return 1;
@@ -130,6 +133,8 @@ function nextMonthBoundary(): Date {
  * if you change one, change the other.
  */
 const CREDITS_CASE = sql<number>`CASE
+	WHEN ${usageEvents.endpoint} LIKE '/v1/evaluate/featured%' THEN 0
+	WHEN ${usageEvents.endpoint} LIKE '/v1/evaluate/scopes%' THEN 0
 	WHEN ${usageEvents.endpoint} LIKE '/v1/evaluate%' THEN 50
 	WHEN ${usageEvents.endpoint} LIKE '/v1/items%' THEN 1
 	WHEN ${usageEvents.endpoint} LIKE '/v1/products%' THEN 1
