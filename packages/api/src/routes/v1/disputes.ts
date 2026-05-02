@@ -3,11 +3,17 @@
  * unified into one resource with a `type` discriminator.
  */
 
-import { DisputeRespond, DisputeResponse, DisputesListQuery, DisputesListResponse } from "@flipagent/types";
+import {
+	DisputeActivityResponse,
+	DisputeRespond,
+	DisputeResponse,
+	DisputesListQuery,
+	DisputesListResponse,
+} from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { getDispute, listDisputes, respondToDispute } from "../../services/disputes/operations.js";
+import { getDispute, getDisputeActivity, listDisputes, respondToDispute } from "../../services/disputes/operations.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
 export const disputesRoute = new Hono();
@@ -54,6 +60,38 @@ disputesRoute.get(
 		});
 		if (!dispute) return c.json({ error: "dispute_not_found", message: "No dispute." }, 404);
 		return c.json(dispute);
+	},
+);
+
+disputesRoute.get(
+	"/:id/activity",
+	describeRoute({
+		tags: ["Disputes"],
+		summary: "Activity history (payment disputes only)",
+		description:
+			"Returns the activity log for a payment dispute (open / contested / evidence-added / resolved). 404 when the id resolves to a return / case / cancellation / inquiry — eBay has no activity endpoint for those.",
+		responses: {
+			200: jsonResponse("Activity log.", DisputeActivityResponse),
+			404: errorResponse("Dispute not found or not a payment dispute."),
+			...COMMON,
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const result = await getDisputeActivity(c.req.param("id"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		if (!result) {
+			return c.json(
+				{
+					error: "dispute_activity_unavailable",
+					message: "Activity history is only available for payment disputes.",
+				},
+				404,
+			);
+		}
+		return c.json({ ...result, source: "rest" as const });
 	},
 );
 

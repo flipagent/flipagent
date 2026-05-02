@@ -100,13 +100,17 @@ export async function getDispute(
 	return null;
 }
 
-const RESPOND_PATH: Record<DisputeType, string> = {
+const RESPOND_PATH: Record<Exclude<DisputeType, "payment">, string> = {
 	return: "decide",
 	case: "provide_seller_response",
 	cancellation: "approve",
 	inquiry: "provide_seller_response",
-	payment: "contest",
 };
+
+interface PaymentDisputeRaw {
+	revision?: number;
+	paymentDisputeId?: string;
+}
 
 export async function respondToDispute(
 	id: string,
@@ -115,6 +119,32 @@ export async function respondToDispute(
 ): Promise<Dispute | null> {
 	const current = await getDispute(id, undefined, ctx);
 	if (!current) return null;
+	if (current.type === "payment") {
+		// Payment disputes use a different request shape than the post-order
+		// resources. eBay needs the current `revision` integer (echo of
+		// optimistic-locking version) so we re-fetch the raw record before
+		// dispatching. accept = seller pays; decline | counter | escalate
+		// → contest the dispute.
+		const raw = await sellRequest<PaymentDisputeRaw>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: GET_PATH.payment(id),
+			marketplace: ctx.marketplace,
+		}).catch(() => null);
+		const revision = raw?.revision ?? 1;
+		const action = body.action === "accept" ? "accept" : "contest";
+		const requestBody: Record<string, unknown> = { revision };
+		if (body.message) requestBody.note = body.message;
+		if (body.returnAddress) requestBody.returnAddress = body.returnAddress;
+		await sellRequest({
+			apiKeyId: ctx.apiKeyId,
+			method: "POST",
+			path: `${GET_PATH.payment(id)}/${action}`,
+			body: requestBody,
+			marketplace: ctx.marketplace,
+		});
+		return getDispute(id, "payment", ctx);
+	}
 	const action = body.action.toUpperCase();
 	const requestBody: Record<string, unknown> = { decisionType: action };
 	if (body.amount) {
@@ -131,4 +161,47 @@ export async function respondToDispute(
 		marketplace: ctx.marketplace,
 	});
 	return getDispute(id, current.type, ctx);
+}
+
+interface UpstreamPaymentDisputeActivity {
+	activityType?: string;
+	actor?: string;
+	date?: string;
+	activityDate?: string;
+	notes?: string;
+}
+
+interface UpstreamPaymentDisputeActivityHistory {
+	activity?: UpstreamPaymentDisputeActivity[];
+}
+
+/**
+ * Payment-dispute activity history. Returns null when the dispute id
+ * resolves to a non-payment type (no eBay equivalent endpoint for
+ * returns / cases / cancellations / inquiries).
+ */
+export async function getDisputeActivity(
+	id: string,
+	ctx: DisputesContext,
+): Promise<{
+	disputeId: string;
+	activity: { activityType: string; actor?: string; date: string; notes?: string }[];
+} | null> {
+	const current = await getDispute(id, "payment", ctx);
+	if (!current) return null;
+	const res = await sellRequest<UpstreamPaymentDisputeActivityHistory>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `${GET_PATH.payment(id)}/activity`,
+		marketplace: ctx.marketplace,
+	});
+	return {
+		disputeId: id,
+		activity: (res.activity ?? []).map((a) => ({
+			activityType: a.activityType ?? "UNKNOWN",
+			...(a.actor ? { actor: a.actor } : {}),
+			date: a.date ?? a.activityDate ?? "",
+			...(a.notes ? { notes: a.notes } : {}),
+		})),
+	};
 }

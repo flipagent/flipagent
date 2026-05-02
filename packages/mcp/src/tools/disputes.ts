@@ -6,7 +6,7 @@
 
 import { DisputeRespond, DisputesListQuery } from "@flipagent/types";
 import { Type } from "@sinclair/typebox";
-import { getClient, toApiCallError } from "../client.js";
+import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 
 /* -------------------------- flipagent_disputes_list ------------------------ */
@@ -14,15 +14,14 @@ import type { Config } from "../config.js";
 export { DisputesListQuery as disputesListInput };
 
 export const disputesListDescription =
-	"List active disputes / returns / cancellations / cases for the connected seller. GET /v1/disputes. Filter by `type` (return|cancellation|inr|snad|inquiry) + `status` (open|awaiting_seller|awaiting_buyer|resolved|escalated). Use `status:'awaiting_seller'` to surface what needs a response.";
+	'List active disputes — returns, cancellations, INR (item-not-received), SNAD (significantly-not-as-described), inquiries — for the connected seller. Calls GET /v1/disputes. **When to use** — daily triage: pull `status: "awaiting_seller"` to find cases that need a response within eBay\'s deadline. Pair with `flipagent_get_dispute` to read the buyer\'s claim before responding. **Inputs** — optional `type` (`return | cancellation | inr | snad | inquiry`), optional `status` (`open | awaiting_seller | awaiting_buyer | resolved | escalated`), pagination `limit` + `offset`. **Output** — `{ disputes: Dispute[], limit, offset }`. **Prereqs** — eBay seller account connected. On 401 the response carries `next_action`. **Example** — `{ status: "awaiting_seller" }`.';
 
 export async function disputesListExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.disputes.list(args as Parameters<typeof client.disputes.list>[0]);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/disputes");
-		return { error: "disputes_list_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "disputes_list_failed", "/v1/disputes");
 	}
 }
 
@@ -31,7 +30,7 @@ export async function disputesListExecute(config: Config, args: Record<string, u
 export const disputesGetInput = Type.Object({ id: Type.String({ minLength: 1 }) });
 
 export const disputesGetDescription =
-	"Fetch full detail for one dispute — buyer claim, evidence, deadline, available actions. GET /v1/disputes/{id}.";
+	'Fetch full detail for one dispute. Calls GET /v1/disputes/{id}. **When to use** — read the buyer\'s claim, attached evidence (photos, messages), deadlines, and which actions are still legal in this state before calling `flipagent_respond_to_dispute`. **Inputs** — `id` (from `flipagent_list_disputes`). **Output** — `{ id, type, status, buyer, listingId, orderId, claim, evidence: [...], deadline?, availableActions: [...], history: [...] }`. **Prereqs** — eBay seller account connected. **Example** — `{ id: "5012345678" }`.';
 
 export async function disputesGetExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const id = String(args.id);
@@ -39,8 +38,7 @@ export async function disputesGetExecute(config: Config, args: Record<string, un
 		const client = getClient(config);
 		return await client.disputes.get(id);
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/disputes/${id}`);
-		return { error: "disputes_get_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "disputes_get_failed", `/v1/disputes/${id}`);
 	}
 }
 
@@ -52,7 +50,7 @@ export const disputesRespondInput = Type.Composite([
 ]);
 
 export const disputesRespondDescription =
-	"Respond to a dispute — accept, refund, partial refund, ship replacement, escalate, or send a message. POST /v1/disputes/{id}/respond. `action` enum varies by `type` from `flipagent_disputes_get`; pass the matching shape (e.g. `{ action: 'refund_full' }`, `{ action: 'partial_refund', amountCents }`, `{ action: 'message', message }`).";
+	'Take action on a dispute — accept, refund, partial refund, ship replacement, escalate, or send a message. Calls POST /v1/disputes/{id}/respond. **When to use** — close out cases from `flipagent_list_disputes({ status: "awaiting_seller" })`. **Always** call `flipagent_get_dispute` first to read the legal `availableActions` for the current state. **Inputs** — `id`, `action` (varies by dispute type), plus action-specific fields. Examples: `{ action: "refund_full" }`, `{ action: "partial_refund", amountCents: 1000 }`, `{ action: "ship_replacement", trackingNumber, carrier }`, `{ action: "escalate", reason }`, `{ action: "message", message }`. **Output** — `{ id, status, history: [...] }`. **Prereqs** — eBay seller account connected. **Example** — `{ id: "5012345678", action: "refund_full" }`.';
 
 export async function disputesRespondExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const { id, ...body } = args as { id: string } & Record<string, unknown>;
@@ -60,7 +58,23 @@ export async function disputesRespondExecute(config: Config, args: Record<string
 		const client = getClient(config);
 		return await client.disputes.respond(id, body as Parameters<typeof client.disputes.respond>[1]);
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/disputes/${id}/respond`);
-		return { error: "disputes_respond_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "disputes_respond_failed", `/v1/disputes/${id}/respond`);
+	}
+}
+
+/* ------------------------- flipagent_disputes_activity --------------------- */
+
+export const disputesActivityInput = Type.Object({ id: Type.String({ minLength: 1 }) });
+
+export const disputesActivityDescription =
+	'Activity history for a payment dispute. Calls GET /v1/disputes/{id}/activity. **When to use** — audit the timeline of a payment dispute (open / contested / evidence-added / resolved) before responding, or to verify your contest landed. **Limitation** — eBay only exposes activity history for `type: payment` disputes; returns / cases / cancellations / inquiries 404 here. **Inputs** — `id`. **Output** — `{ disputeId, activity: [{ activityType, actor, date, notes? }] }`. **Prereqs** — eBay seller account connected. **Example** — `{ id: "5012345678" }`.';
+
+export async function disputesActivityExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
+	const id = String(args.id);
+	try {
+		const client = getClient(config);
+		return await client.disputes.activity(id);
+	} catch (err) {
+		return toolErrorEnvelope(err, "disputes_activity_failed", `/v1/disputes/${id}/activity`);
 	}
 }

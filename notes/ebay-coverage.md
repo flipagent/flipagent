@@ -227,7 +227,7 @@ Still untested in production: POST writes (send_message, leave feedback, respond
 | Sell Account | 11 paths | `POST /program/{opt_in,opt_out}`, `GET /program` (program enrollment), payment_policy/return_policy/fulfillment_policy `_by_name` lookups | program opt-in opens managed-payments / advertising onboarding via API |
 | Sell Metadata | 3 paths | 17+ paths per marketplace: get_category_policies, get_listing_structure_policies, get_extended_producer_responsibility_policies (EU EPR mandatory), get_hazardous_materials_labels, get_product_safety_labels, get_product_compliance_policies, get_regulatory_policies, get_motors_listing_policies, get_currencies, get_shipping_policies, get_site_visibility_policies, compatibilities/* (5 paths) | EU EPR + product safety labels are **legally required** for EU listings post-2025 |
 | Sell Logistics (eDelivery) | 3 paths | `actual_costs`, `address_preference` GET/POST, `consign_preference` GET/POST, `agents`, `battery_qualifications`, `dropoff_sites`, `services`, `bundle` GET/POST | international shipping (consignment, dropoff sites, battery shipping qualifications) |
-| Sell Negotiation | 2 paths | `GET /offer`, `GET /offer/{offerId}` (read back outbound offer status) | we send offers but can't see if buyer responded — UX gap |
+| Sell Negotiation | 2 paths (only paths eBay offers) | ~~`GET /offer`, `GET /offer/{offerId}`~~ — **NOT REAL** (verified live 2026-05-02; ebay-mcp wrapper got this wrong, the paths return 404). Negotiation is genuinely write-only at REST. | — (gap is real but no eBay solution; would need bridge to scrape My eBay > Sent Offers) |
 | Sell Fulfillment / Disputes | search + get-by-id | `payment_dispute/{id}/activity` (history), `payment_dispute/{id}/contest`, `accept_payment_dispute`, `add_evidence`, `update_evidence`, `fetch_evidence_content` | full dispute response lifecycle — currently agents can read disputes but cannot respond |
 | Commerce Notification | 4 paths | 15+ paths: subscription full CRUD, subscription/{id}/{enable,disable,test}, subscription/{id}/filter CRUD, config GET/PUT, public_key/{id}, topic, topic/{id} | filter mgmt + test endpoint = critical for webhook debugging |
 | Commerce Taxonomy | 5 paths | `get_compatibility_property_values` (we have property_names but not values) | parts/motors compatibility completion |
@@ -252,22 +252,24 @@ The reference answers our earlier "어떻게 알 수 있나" question concretely
 **Done this session:**
 - ✅ REST messaging + feedback migration — `commit d9e0dba`
 - ✅ `offer/get_listing_fees` wrapped as `/v1/listings/preview-fees` — `commit 6a9dfc6`
+- ✅ Payment-dispute lifecycle — `respondToDispute` for type=`payment` now correctly fetches the upstream `revision` and posts to `/accept` or `/contest` with the right body shape (was previously a no-op stub). New `GET /v1/disputes/{id}/activity` endpoint surfaces the dispute history. Evidence upload (binary) deferred — multipart flow.
+- ❌ Negotiation read-back — **verified impossible** 2026-05-02. eBay's `sell/negotiation/v1` only ships `find_eligible_items` + `send_offer_to_interested_buyers`. Paths `/offer`, `/offers`, `/sent_offers`, `/outbound`, `/history` all 404. ebay-mcp wrapper claimed `GET /offer` exists but the OpenAPI contract doesn't include it; live probe confirms 404. The only way to see sent-offer status is bridge-scraping My eBay > Sent Offers.
 
 **Important correction on `get_listing_fees`** (verified live 2026-05-02 with both APIs):
 Both REST `get_listing_fees` AND Trading `VerifyAddItem` return only **listing-time fees** (InsertionFee, BoldFee, GalleryFee, ProPackBundleFee, ~27 categories). **Neither returns FinalValueFee** (eBay's main ~13.25% commission). FVF is charged at sale time, not listing time, so it's outside both APIs' scope.
 
 → `get_listing_fees` is **NOT an evaluator margin upgrade**. Our `quant/fees.ts` static `feeRate: 0.1325` remains the correct model for FVF. `/v1/listings/preview-fees` is useful only for "what insertion + ad fees will I pay on these N drafts I've already created" — not "what's my net after sale".
 
-**Next priorities (re-ranked after the FVF discovery):**
+**Next priorities (re-ranked after dispute lifecycle ship + negotiation impossibility finding):**
 
-1. **Dispute response lifecycle** — contest / accept / add_evidence / fetch_evidence_content on `/sell/fulfillment/v1/payment_dispute/{id}`. Today agents can READ disputes but not respond — biggest user-visible gap. Verified live: scope `sell.fulfillment` already granted to our app.
-2. **Negotiation read-back** — `GET /sell/negotiation/v1/offer` + `/offer/{id}`. Today we send offers but can't see if buyer responded.
-3. **Sell Metadata EU EPR + product safety** — `get_extended_producer_responsibility_policies`, `get_product_safety_labels`, `get_regulatory_policies`. Legally required for EU listings post-2025.
-4. **Developer rate-limit** as `/v1/me/quota` — quota introspection. Small but useful.
-5. **Bulk Marketing ad ops** — bulk_create/delete/update_ads_by_listing_id, campaign clone/end/pause/resume. For agents managing many listings.
-6. **VeRO API** — `commerce/vero/v1` for sellers fielding IP claims (also our own takedown could route here).
-7. **Notification subscription enable/disable/test/filter** — webhook debugging.
-8. **Post-Order v2** (cancellation/return/inquiry) — currently we route disputes through Sell Fulfillment payment_dispute only; Post-Order would close the buyer-initiated INR/Return gap.
+1. **Sell Metadata EU EPR + product safety** — `get_extended_producer_responsibility_policies`, `get_product_safety_labels`, `get_regulatory_policies`. Legally required for EU listings post-2025.
+2. **Dispute evidence upload** (binary multipart) — `POST /payment_dispute/{id}/upload_evidence_file` + `add_evidence` + `update_evidence`. Completes the dispute lifecycle the contest/accept work started; deferred from this session because of multipart complexity.
+3. **Developer rate-limit** as `/v1/me/quota` — quota introspection. Small but useful.
+4. **Bulk Marketing ad ops** — bulk_create/delete/update_ads_by_listing_id, campaign clone/end/pause/resume. For agents managing many listings.
+5. **VeRO API** — `commerce/vero/v1` for sellers fielding IP claims (also our own takedown could route here).
+6. **Notification subscription enable/disable/test/filter** — webhook debugging.
+7. **Post-Order v2** (cancellation/return/inquiry) — currently we route disputes through Sell Fulfillment payment_dispute only; Post-Order would close the buyer-initiated INR/Return gap.
+8. **Negotiation read-back via bridge** — only path forward for "did the buyer respond to my sent offer?" since REST is genuinely impossible.
 
 **De-prioritised:**
 - ~~Migrate POST messages/feedback writes~~ — endpoints already wired in commit `d9e0dba`; just unverified live. Smoke-test by sending a test message rather than fresh code.

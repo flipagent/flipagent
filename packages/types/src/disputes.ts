@@ -66,10 +66,54 @@ export const DisputeRespond = Type.Object(
 		trackingNumber: Type.Optional(Type.String()),
 		carrier: Type.Optional(Type.String()),
 		message: Type.Optional(Type.String({ maxLength: 1000 })),
+		/**
+		 * For type=`payment` dispute contest only. Required by eBay when
+		 * the dispute reason is `SIGNIFICANTLY_NOT_AS_DESCRIBED` — the
+		 * seller must offer a return address.
+		 */
+		returnAddress: Type.Optional(
+			Type.Object({
+				fullName: Type.String(),
+				addressLine1: Type.String(),
+				addressLine2: Type.Optional(Type.String()),
+				city: Type.String(),
+				stateOrProvince: Type.Optional(Type.String()),
+				postalCode: Type.String(),
+				country: Type.String({ description: "ISO 3166-1 alpha-2." }),
+				primaryPhone: Type.Optional(Type.String()),
+			}),
+		),
 	},
 	{ $id: "DisputeRespond" },
 );
 export type DisputeRespond = Static<typeof DisputeRespond>;
+
+/**
+ * Activity-log entry for a payment dispute. eBay only exposes activity
+ * history for `type=payment` disputes today (`/sell/fulfillment/v1/
+ * payment_dispute/{id}/activity`). Returns and cases have no
+ * equivalent endpoint.
+ */
+export const DisputeActivityEntry = Type.Object(
+	{
+		activityType: Type.String({ description: "e.g. OPENED, EVIDENCE_ADDED, CONTESTED, RESOLVED." }),
+		actor: Type.Optional(Type.String({ description: "BUYER | SELLER | EBAY." })),
+		date: Type.String({ description: "ISO 8601 timestamp." }),
+		notes: Type.Optional(Type.String()),
+	},
+	{ $id: "DisputeActivityEntry" },
+);
+export type DisputeActivityEntry = Static<typeof DisputeActivityEntry>;
+
+export const DisputeActivityResponse = Type.Object(
+	{
+		disputeId: Type.String(),
+		activity: Type.Array(DisputeActivityEntry),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "DisputeActivityResponse" },
+);
+export type DisputeActivityResponse = Static<typeof DisputeActivityResponse>;
 
 export const DisputesListQuery = Type.Object(
 	{

@@ -42,6 +42,9 @@ import {
 } from "./bids.js";
 import { browserQueryDescription, browserQueryExecute, browserQueryInput } from "./browser-primitives.js";
 import {
+	disputesActivityDescription,
+	disputesActivityExecute,
+	disputesActivityInput,
 	disputesGetDescription,
 	disputesGetExecute,
 	disputesGetInput,
@@ -771,6 +774,13 @@ export const tools: Tool[] = [
 		description: disputesRespondDescription,
 		inputSchema: disputesRespondInput,
 		execute: disputesRespondExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_get_dispute_activity",
+		description: disputesActivityDescription,
+		inputSchema: disputesActivityInput,
+		execute: disputesActivityExecute,
 		toolset: "comms",
 	},
 	{
