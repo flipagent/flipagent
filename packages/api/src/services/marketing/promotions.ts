@@ -86,15 +86,23 @@ export async function listPromotions(
 	q: { limit?: number; offset?: number; status?: PromotionStatus },
 	ctx: MarketingContext,
 ): Promise<{ promotions: Promotion[]; limit: number; offset: number }> {
+	// Verified live 2026-05-02: `/item_promotion` is POST-only (create).
+	// The generic list endpoint is `/promotion?marketplace_id=&...` —
+	// `marketplace_id` query param is REQUIRED (without it eBay 400s
+	// "request has errors"). For markdown-style sales use
+	// `services/marketing/markdowns.ts` (separate filter).
 	const limit = q.limit ?? 50;
 	const offset = q.offset ?? 0;
-	const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+	const params = new URLSearchParams({
+		limit: String(limit),
+		offset: String(offset),
+		marketplace_id: ctx.marketplace ?? "EBAY_US",
+	});
 	if (q.status) params.set("promotion_status", q.status.toUpperCase());
 	const res = await sellRequest<{ promotions?: EbayPromotion[] }>({
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
-		path: `/sell/marketing/v1/item_promotion?${params.toString()}`,
-		marketplace: ctx.marketplace,
+		path: `/sell/marketing/v1/promotion?${params.toString()}`,
 	}).catch(swallowEbay404);
 	return { promotions: (res?.promotions ?? []).map(ebayPromotionToFlipagent), limit, offset };
 }
