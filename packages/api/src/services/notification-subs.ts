@@ -116,3 +116,141 @@ export async function listTopics(ctx: NotifContext): Promise<{ topics: Notificat
 		})),
 	};
 }
+
+export async function enableSubscription(id: string, ctx: NotifContext): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/commerce/notification/v1/subscription/${encodeURIComponent(id)}/enable`,
+		body: {},
+	});
+}
+
+export async function disableSubscription(id: string, ctx: NotifContext): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/commerce/notification/v1/subscription/${encodeURIComponent(id)}/disable`,
+		body: {},
+	});
+}
+
+/**
+ * Sends a test event to the destination wired to this subscription.
+ * Critical for webhook debugging — confirms the destination URL +
+ * verification token round-trip works end-to-end before live events
+ * start landing.
+ */
+export async function testSubscription(id: string, ctx: NotifContext): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/commerce/notification/v1/subscription/${encodeURIComponent(id)}/test`,
+		body: {},
+	});
+}
+
+export interface SubscriptionFilter {
+	id: string;
+	expression: string;
+}
+
+interface UpstreamFilter {
+	filterId?: string;
+	filterSchema?: string;
+	filterExpression?: string;
+}
+
+export async function getSubscriptionFilter(
+	subscriptionId: string,
+	filterId: string,
+	ctx: NotifContext,
+): Promise<SubscriptionFilter | null> {
+	const res = await sellRequest<UpstreamFilter>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/commerce/notification/v1/subscription/${encodeURIComponent(subscriptionId)}/filter/${encodeURIComponent(filterId)}`,
+	}).catch(() => null);
+	if (!res) return null;
+	return {
+		id: res.filterId ?? filterId,
+		expression: res.filterExpression ?? res.filterSchema ?? "",
+	};
+}
+
+export async function createSubscriptionFilter(
+	subscriptionId: string,
+	expression: string,
+	ctx: NotifContext,
+): Promise<{ filterId: string | null }> {
+	// eBay returns the new filterId in the Location header. `sellRequest`
+	// returns the parsed body only (typically empty for these creates),
+	// so we hit the upstream directly here for the Location header.
+	const res = await sellRequest<{ filterId?: string }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/commerce/notification/v1/subscription/${encodeURIComponent(subscriptionId)}/filter`,
+		body: { filterSchema: expression },
+	});
+	return { filterId: res?.filterId ?? null };
+}
+
+export async function deleteSubscriptionFilter(
+	subscriptionId: string,
+	filterId: string,
+	ctx: NotifContext,
+): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "DELETE",
+		path: `/commerce/notification/v1/subscription/${encodeURIComponent(subscriptionId)}/filter/${encodeURIComponent(filterId)}`,
+	});
+}
+
+export interface NotificationConfig {
+	alertEmail: string | null;
+}
+
+interface UpstreamConfig {
+	alertEmail?: string;
+}
+
+export async function getNotificationConfig(ctx: NotifContext): Promise<NotificationConfig> {
+	const res = await sellRequest<UpstreamConfig>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: "/commerce/notification/v1/config",
+	}).catch(() => null);
+	return { alertEmail: res?.alertEmail ?? null };
+}
+
+export async function updateNotificationConfig(body: { alertEmail?: string | null }, ctx: NotifContext): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "PUT",
+		path: "/commerce/notification/v1/config",
+		body: { alertEmail: body.alertEmail ?? null },
+	});
+}
+
+export interface PublicKeyResponse {
+	keyId: string;
+	algorithm: string | null;
+	digest: string | null;
+	key: string | null;
+}
+
+export async function getPublicKey(keyId: string, ctx: NotifContext): Promise<PublicKeyResponse | null> {
+	const res = await sellRequest<{ algorithm?: string; digest?: string; key?: string }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/commerce/notification/v1/public_key/${encodeURIComponent(keyId)}`,
+	}).catch(() => null);
+	if (!res) return null;
+	return {
+		keyId,
+		algorithm: res.algorithm ?? null,
+		digest: res.digest ?? null,
+		key: res.key ?? null,
+	};
+}

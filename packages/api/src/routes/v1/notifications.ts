@@ -25,11 +25,20 @@ import { requireApiKey } from "../../middleware/auth.js";
 import { getUserAccessToken } from "../../services/ebay/oauth.js";
 import {
 	createSubscription,
+	createSubscriptionFilter,
 	deleteSubscription,
+	deleteSubscriptionFilter,
+	disableSubscription,
+	enableSubscription,
+	getNotificationConfig,
+	getPublicKey,
 	getSubscription,
+	getSubscriptionFilter,
 	listDestinations,
 	listSubscriptions,
 	listTopics,
+	testSubscription,
+	updateNotificationConfig,
 } from "../../services/notification-subs.js";
 import { dispatchNotification } from "../../services/notifications/dispatch.js";
 import {
@@ -309,5 +318,144 @@ notificationsRoute.delete(
 	async (c) => {
 		await deleteSubscription(c.req.param("id"), { apiKeyId: c.var.apiKey.id });
 		return c.body(null, 204);
+	},
+);
+
+notificationsRoute.post(
+	"/subscriptions/:id/enable",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Enable a paused subscription",
+		responses: { 204: { description: "Enabled." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await enableSubscription(c.req.param("id"), { apiKeyId: c.var.apiKey.id });
+		return c.body(null, 204);
+	},
+);
+
+notificationsRoute.post(
+	"/subscriptions/:id/disable",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Disable an active subscription (events stop firing)",
+		responses: { 204: { description: "Disabled." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await disableSubscription(c.req.param("id"), { apiKeyId: c.var.apiKey.id });
+		return c.body(null, 204);
+	},
+);
+
+notificationsRoute.post(
+	"/subscriptions/:id/test",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Send a test event to the destination",
+		description:
+			"eBay POSTs a synthetic event payload to the destination URL wired on this subscription. Use this to verify webhook delivery + signature verification round-trip end-to-end before relying on live events.",
+		responses: { 204: { description: "Test dispatched." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await testSubscription(c.req.param("id"), { apiKeyId: c.var.apiKey.id });
+		return c.body(null, 204);
+	},
+);
+
+notificationsRoute.get(
+	"/subscriptions/:id/filters/:filterId",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Get one subscription filter",
+		responses: { 200: { description: "Filter." }, 404: errorResponse("Not found."), ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const filter = await getSubscriptionFilter(c.req.param("id"), c.req.param("filterId"), {
+			apiKeyId: c.var.apiKey.id,
+		});
+		if (!filter) return c.json({ error: "filter_not_found" }, 404);
+		return c.json(filter);
+	},
+);
+
+notificationsRoute.post(
+	"/subscriptions/:id/filters",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Add a filter expression to a subscription",
+		description:
+			"Filter expressions narrow which events fire on this subscription (e.g. only events for a specific listing). See eBay docs for filter expression syntax.",
+		responses: { 201: { description: "Filter created." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const body = (await c.req.json()) as { expression: string };
+		const result = await createSubscriptionFilter(c.req.param("id"), body.expression, {
+			apiKeyId: c.var.apiKey.id,
+		});
+		return c.json(result, 201);
+	},
+);
+
+notificationsRoute.delete(
+	"/subscriptions/:id/filters/:filterId",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Remove a subscription filter",
+		responses: { 204: { description: "Removed." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await deleteSubscriptionFilter(c.req.param("id"), c.req.param("filterId"), {
+			apiKeyId: c.var.apiKey.id,
+		});
+		return c.body(null, 204);
+	},
+);
+
+notificationsRoute.get(
+	"/config",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Get notification config (alert email)",
+		responses: { 200: { description: "Config." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => c.json(await getNotificationConfig({ apiKeyId: c.var.apiKey.id })),
+);
+
+notificationsRoute.put(
+	"/config",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Update notification config (alert email destination)",
+		responses: { 204: { description: "Updated." }, ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const body = (await c.req.json()) as { alertEmail?: string | null };
+		await updateNotificationConfig(body, { apiKeyId: c.var.apiKey.id });
+		return c.body(null, 204);
+	},
+);
+
+notificationsRoute.get(
+	"/public-keys/:id",
+	describeRoute({
+		tags: ["Notifications"],
+		summary: "Get a notification signing public key",
+		description:
+			"eBay rotates webhook signing keys. The kid header on inbound notifications references one of these keys; fetch it here to verify signatures locally.",
+		responses: { 200: { description: "Public key." }, 404: errorResponse("Not found."), ...SUBS_COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const key = await getPublicKey(c.req.param("id"), { apiKeyId: c.var.apiKey.id });
+		if (!key) return c.json({ error: "key_not_found" }, 404);
+		return c.json(key);
 	},
 );
