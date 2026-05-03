@@ -50,6 +50,7 @@ const Schema = Type.Object({
 			"https://api.ebay.com/oauth/api_scope/commerce.feedback",
 			"https://api.ebay.com/oauth/api_scope/sell.marketing",
 			"https://api.ebay.com/oauth/api_scope/sell.marketing.readonly",
+			"https://api.ebay.com/oauth/api_scope/sell.analytics.readonly",
 			// `sell.stores.readonly` deliberately omitted — verified live
 			// 2026-05-02 that eBay silently drops it from consent for
 			// non-approved apps (every /sell/stores/v1/* path 403s

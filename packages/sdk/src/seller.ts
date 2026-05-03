@@ -6,7 +6,6 @@
 import type {
 	SalesTaxResponse,
 	SellerAdvertisingEligibility,
-	SellerEligibility,
 	SellerKyc,
 	SellerPaymentsProgram,
 	SellerPrivilege,
@@ -15,7 +14,6 @@ import type {
 import type { FlipagentHttp } from "./http.js";
 
 export interface SellerClient {
-	eligibility(): Promise<SellerEligibility>;
 	privilege(): Promise<SellerPrivilege>;
 	kyc(): Promise<SellerKyc>;
 	subscription(): Promise<SellerSubscription>;
@@ -26,7 +24,6 @@ export interface SellerClient {
 
 export function createSellerClient(http: FlipagentHttp): SellerClient {
 	return {
-		eligibility: () => http.get("/v1/me/seller/eligibility"),
 		privilege: () => http.get("/v1/me/seller/privilege"),
 		kyc: () => http.get("/v1/me/seller/kyc"),
 		subscription: () => http.get("/v1/me/seller/subscription"),

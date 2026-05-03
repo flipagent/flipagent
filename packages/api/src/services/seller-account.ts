@@ -9,13 +9,11 @@ import type {
 	CustomPoliciesListResponse,
 	CustomPolicy,
 	CustomPolicyCreate,
-	Marketplace,
 	RateTable,
 	RateTablesListResponse,
 	SalesTaxResponse,
 	SalesTaxRow,
 	SellerAdvertisingEligibility,
-	SellerEligibility,
 	SellerKyc,
 	SellerPaymentsProgram,
 	SellerPrivilege,
@@ -90,12 +88,17 @@ export async function getSellerAdvertisingEligibility(
 	ctx: SellerAccountContext,
 ): Promise<SellerAdvertisingEligibility> {
 	const marketplace = ctx.marketplace ?? "EBAY_US";
+	// `X-EBAY-C-MARKETPLACE-ID` is REQUIRED on this endpoint per the
+	// OpenAPI contract — omitting it returns errorId 35001 (eBay
+	// internal error). Verified live 2026-05-02. Also `program_types`
+	// (snake_case, plural) is the correct query param when filtering.
 	const res = await sellRequest<{
 		advertisingEligibility?: Array<{ marketplaceId: string; eligibility: boolean; programs?: string[] }>;
 	}>({
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: "/sell/account/v1/advertising_eligibility",
+		marketplace,
 	}).catch(swallowEbay404);
 	const row = res?.advertisingEligibility?.find((r) => r.marketplaceId === marketplace);
 	return {
@@ -205,27 +208,15 @@ export async function createCustomPolicy(input: CustomPolicyCreate, ctx: SellerA
 	};
 }
 
-interface EbayEligibility {
-	eligibilities?: Array<{ programType: string; eligible: boolean; ineligibleReason?: string }>;
-}
-
-export async function getSellerEligibility(ctx: SellerAccountContext): Promise<SellerEligibility> {
-	const res = await sellRequest<EbayEligibility>({
-		apiKeyId: ctx.apiKeyId,
-		method: "GET",
-		path: "/sell/account/v1/eligibility",
-		marketplace: ctx.marketplace,
-	}).catch(swallowEbay404);
-	const marketplace: Marketplace = "ebay";
-	return {
-		marketplace,
-		eligibilities: (res?.eligibilities ?? []).map((e) => ({
-			program: e.programType,
-			eligible: e.eligible,
-			...(e.ineligibleReason ? { reason: e.ineligibleReason } : {}),
-		})),
-	};
-}
+// `getSellerEligibility` removed — verified live 2026-05-02 that
+// `/sell/account/v1/eligibility` returns 404 in every variant tried.
+// The endpoint is not in eBay's published OpenAPI for the Account API
+// either; it appears to never have existed. Caller surface
+// (`/v1/seller/eligibility`) had been silently returning empty arrays
+// since the wrapper was first written. Use
+// `getSellerAdvertisingEligibility` (Promoted Listings + offsite ads
+// eligibility) or `getOptedInPrograms` (programs the seller has
+// joined) for the equivalent signal.
 
 export async function transferFulfillmentPolicy(
 	policyId: string,

@@ -8,7 +8,6 @@
 import {
 	SalesTaxResponse,
 	SellerAdvertisingEligibility,
-	SellerEligibility,
 	SellerKyc,
 	SellerPaymentsProgram,
 	SellerPrivilege,
@@ -20,7 +19,6 @@ import { requireApiKey } from "../../middleware/auth.js";
 import {
 	getSalesTax,
 	getSellerAdvertisingEligibility,
-	getSellerEligibility,
 	getSellerKyc,
 	getSellerPaymentsProgram,
 	getSellerPrivilege,
@@ -32,23 +30,11 @@ export const sellerRoute = new Hono();
 
 const COMMON = { 401: errorResponse("Auth missing."), 502: errorResponse("Upstream eBay failed.") };
 
-sellerRoute.get(
-	"/eligibility",
-	describeRoute({
-		tags: ["Seller"],
-		summary: "Per-program eligibility (EBAY_FOR_BUSINESS, INTERNATIONAL_SHIPPING, …)",
-		responses: { 200: jsonResponse("Eligibility.", SellerEligibility), ...COMMON },
-	}),
-	requireApiKey,
-	async (c) =>
-		c.json({
-			...(await getSellerEligibility({
-				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
-			})),
-			source: "rest" as const,
-		}),
-);
+// `/v1/seller/eligibility` removed — wrapped a non-existent eBay
+// endpoint (`/sell/account/v1/eligibility` 404s in every variant).
+// Use `/v1/seller/advertising-eligibility` for ad-program signal,
+// `/v1/me/programs` for opted-in programs, or `/v1/seller/privilege`
+// for selling-limit privilege.
 
 sellerRoute.get(
 	"/privilege",

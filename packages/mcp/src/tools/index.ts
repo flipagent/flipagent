@@ -411,9 +411,6 @@ import {
 	sellerAdvertisingEligibilityDescription,
 	sellerAdvertisingEligibilityExecute,
 	sellerAdvertisingEligibilityInput,
-	sellerEligibilityDescription,
-	sellerEligibilityExecute,
-	sellerEligibilityInput,
 	sellerKycDescription,
 	sellerKycExecute,
 	sellerKycInput,
@@ -1377,13 +1374,6 @@ export const tools: Tool[] = [
 	},
 
 	// ─── seller_account (read-only diagnostics) ──────────────────────────
-	{
-		name: "flipagent_get_seller_eligibility",
-		description: sellerEligibilityDescription,
-		inputSchema: sellerEligibilityInput,
-		execute: sellerEligibilityExecute,
-		toolset: "seller_account",
-	},
 	{
 		name: "flipagent_get_seller_privilege",
 		description: sellerPrivilegeDescription,

@@ -1,31 +1,21 @@
 /**
- * `/v1/marketplaces/{country}` — per-marketplace metadata + digital-signature routes.
+ * `/v1/marketplaces/{country}` — per-marketplace metadata.
+ *
+ * `/digital-signature` removed — wrapped a non-existent eBay endpoint
+ * (`/sell/metadata/v1/marketplace/{X}/get_digital_signature_routes`
+ * 404s in every variant probed; the path is also absent from eBay's
+ * OpenAPI for the Sell Metadata API). Re-add only if eBay publishes
+ * the endpoint or we identify the right path.
  */
 
-import { type DigitalSignatureRoutesResponse, MarketplaceMetadata } from "@flipagent/types";
+import { MarketplaceMetadata } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { getDigitalSignatureRoutes } from "../../services/marketplace-meta/digital-signature.js";
 import { getMarketplaceMetadata } from "../../services/marketplace-meta/operations.js";
 import { errorResponse, jsonResponse } from "../../utils/openapi.js";
 
 export const marketplacesRoute = new Hono();
-
-marketplacesRoute.get(
-	"/:country/digital-signature",
-	describeRoute({
-		tags: ["Marketplaces"],
-		summary: "Routes that require digital-signature delivery",
-		responses: { 200: { description: "Routes." }, 401: errorResponse("Auth missing.") },
-	}),
-	requireApiKey,
-	async (c) =>
-		c.json({
-			...(await getDigitalSignatureRoutes(c.req.param("country"), c.var.apiKey.id)),
-			source: "rest" as const,
-		} satisfies DigitalSignatureRoutesResponse),
-);
 
 marketplacesRoute.get(
 	"/:country",
