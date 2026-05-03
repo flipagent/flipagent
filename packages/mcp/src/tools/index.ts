@@ -298,11 +298,10 @@ import {
 } from "./webhooks.js";
 
 /**
- * Toolsets group Phase 1 tools so the host (Claude Desktop, Cursor, etc.)
- * can load only the slice the user actually needs. Cursor caps at 40 MCP
- * tools total; Anthropic notes selection accuracy degrades past 30–50.
- * The default slice ("core") is kept under that ceiling. Opt in to others
- * via `FLIPAGENT_MCP_TOOLSETS=core,comms,forwarder,…`.
+ * Toolsets group Phase 1 tools so the host can load only the slice the
+ * user actually needs. The default slice ("core") stays inside common
+ * host tool caps and within the model's selection-accuracy comfort zone.
+ * Opt in to others via `FLIPAGENT_MCP_TOOLSETS=core,comms,forwarder,…`.
  *
  * Phase 1 scope only — non-Phase-1 toolsets (marketing, bulk, discovery)
  * have been removed from the V1 surface; the underlying SDK + service
@@ -325,8 +324,9 @@ export const ALL_TOOLSETS: readonly Toolset[] = [
 	"admin",
 ] as const;
 
-// `core` alone fits well under Cursor's 40-tool cap and Anthropic's 30–50 selection-accuracy
-// guideline. Other toolsets are opt-in via FLIPAGENT_MCP_TOOLSETS.
+// `core` alone stays well under common host tool caps and within model
+// selection-accuracy comfort. Other toolsets are opt-in via
+// FLIPAGENT_MCP_TOOLSETS.
 export const DEFAULT_TOOLSETS: readonly Toolset[] = ["core"] as const;
 
 export interface Tool {
@@ -338,13 +338,12 @@ export interface Tool {
 }
 
 /**
- * Tool naming convention: `flipagent_<verb>_<resource>`, snake_case. Per
- * Anthropic's MCP-builder skill (anthropics/skills `mcp_best_practices.md`)
- * and the GitHub / Stripe / Slack reference servers, action-leading names
- * (`create_listing` over `listings_create`) align better with how LLMs plan
- * tool calls. The `flipagent_` prefix keeps names collision-free when other
- * MCP servers are loaded alongside. Marketplace stays a *parameter*, never
- * part of the tool name — Amazon/Mercari adapters reuse the same names.
+ * Tool naming convention: `flipagent_<verb>_<resource>`, snake_case.
+ * Action-leading names (`create_listing` over `listings_create`) align
+ * better with how LLMs plan tool calls. The `flipagent_` prefix keeps
+ * names collision-free when other MCP servers are loaded alongside.
+ * Marketplace stays a *parameter*, never part of the tool name —
+ * Amazon / Mercari adapters reuse the same names.
  */
 export const tools: Tool[] = [
 	// ─── core ────────────────────────────────────────────────────────────

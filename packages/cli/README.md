@@ -41,15 +41,16 @@ flipagent ship quote --item v1|123456789|0 --weight 500 --dest NY
 All commands print JSON to stdout — pipe to `jq`, redirect to a file,
 or read from another script.
 
-## Set up MCP for Claude Desktop / Cursor / Cline / Zed / Windsurf
+## Set up MCP
 
 ```bash
 flipagent init --mcp
 ```
 
-Detects every supported MCP client on the machine, writes the flipagent
-server entry, and backs up the original config (`<path>.bak`) on first
-touch. Restart your AI client after running.
+Detects the MCP host config on this machine (Claude Code by default;
+the installer also recognizes other common stdio hosts), writes the
+flipagent server entry, and backs up the original config (`<path>.bak`)
+on first touch. Restart the host after running.
 
 Re-running is idempotent — only the `flipagent` entry is replaced.
 
@@ -71,7 +72,7 @@ flipagent init [--mcp] [--keys] [--key <value>]
 
 ## Manual MCP setup
 
-If you'd rather paste it yourself, drop this into your client's MCP config:
+If you'd rather paste it yourself, drop this into your host's MCP config:
 
 ```jsonc
 {
@@ -84,14 +85,6 @@ If you'd rather paste it yourself, drop this into your client's MCP config:
   }
 }
 ```
-
-| Client | Config file |
-|---|---|
-| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) |
-| Cursor | `.cursor/mcp.json` (in workspace) |
-| Cline | `~/.cline/mcp.json` |
-| Zed | Settings → MCP servers |
-| Windsurf | Settings → Cascade → MCP servers |
 
 ## Get a key
 

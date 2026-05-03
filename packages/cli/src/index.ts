@@ -25,7 +25,7 @@
  *   flipagent disputes list              Returns / cases / cancellations
  *   flipagent feedback awaiting          Transactions still owed feedback
  *
- *   flipagent init --mcp                 Wire up Claude Desktop / Cursor / etc.
+ *   flipagent init --mcp                 Wire up the local MCP host config.
  *   flipagent --help
  *
  * Auth precedence: --key flag > FLIPAGENT_API_KEY env > stored config.
@@ -598,8 +598,13 @@ function detectClients(): ClientTarget[] {
 				: join(home, ".config/Claude/claude_desktop_config.json");
 
 	const cursorPath = join(home, ".cursor/mcp.json");
+	// Claude Code keeps user-level MCP settings in `~/.claude.json` (the
+	// `mcpServers` key sits alongside other CLI config). It's our primary
+	// host — try it first.
+	const claudeCodePath = join(home, ".claude.json");
 
 	return [
+		{ name: "Claude Code", configPath: claudeCodePath },
 		{ name: "Claude Desktop", configPath: claudeDesktopPath },
 		{ name: "Cursor", configPath: cursorPath },
 	];
@@ -693,8 +698,8 @@ async function runInit(args: ParsedArgs): Promise<void> {
 
 	if (configured === 0) {
 		stdout.write(
-			"\nNo MCP clients were configured. Install Claude Desktop or Cursor first,\n" +
-				"or copy the manual MCP snippet from https://flipagent.dev/docs/mcp/.\n",
+			"\nNo MCP host config was found on this machine.\n" +
+				"Copy the manual snippet from https://flipagent.dev/docs/mcp/ instead.\n",
 		);
 		process.exit(1);
 	}
@@ -745,8 +750,8 @@ Buyer comms + post-sale:
 
 Setup:
   flipagent init [--mcp] [--keys] [--key <value>]
-                                      Detect Claude Desktop / Cursor and write the
-                                      flipagent MCP entry.
+                                      Detect the local MCP host config
+                                      and write the flipagent entry.
 
 Buy-side execution (/v1/purchases) runs in two transports — REST
 passthrough (with eBay Buy Order API approval) or the flipagent

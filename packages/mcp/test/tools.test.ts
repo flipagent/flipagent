@@ -117,7 +117,7 @@ describe("tools registry", () => {
 });
 
 describe("toolset gating", () => {
-	it("default core selection fits inside Cursor's 40-tool cap", () => {
+	it("default core selection stays under common host tool caps (≤40)", () => {
 		const defaults = selectTools(["core"]);
 		expect(defaults.length).toBeLessThanOrEqual(40);
 		expect(defaults.length).toBeGreaterThan(0);

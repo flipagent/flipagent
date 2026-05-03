@@ -17,13 +17,13 @@ failures here become silent failures later.
 ## Step 1 — Identify the user's runtime
 
 Pick one based on what you know about the user. Default to MCP if the
-user is talking to you through Claude Desktop / Cursor / Cline / Zed /
-Windsurf / Continue. Default to SDK if the user is building Node /
-TypeScript code. Default to HTTP otherwise.
+user is talking to you through an MCP-capable host (Claude Code is the
+primary). Default to SDK if the user is building Node / TypeScript
+code. Default to HTTP otherwise.
 
 | Runtime | Path |
 |---|---|
-| MCP-capable AI client (Claude Desktop, Cursor, …) | Step 3a |
+| MCP-capable host (Claude Code, etc.) | Step 3a |
 | Node / TypeScript app | Step 3b |
 | Python / Go / Rust / other | Step 3c |
 
@@ -57,11 +57,10 @@ If absent or invalid:
 
 ## Step 3 — Configure for the user's runtime
 
-### 3a. MCP-capable AI client
+### 3a. MCP-capable host
 
-Run the one-command installer. It detects every supported client
-(Claude Desktop, Cursor, Cline, Zed, Continue, Windsurf) and writes the
-correct config file:
+Run the one-command installer. It detects the MCP host config on the
+machine and writes the flipagent server entry:
 
 ```
 npx -y flipagent-cli init --mcp
@@ -74,27 +73,22 @@ Pass `--keys` to skip the interactive key prompt and use the
 FLIPAGENT_API_KEY=fa_free_xxx npx -y flipagent-cli init --mcp --keys
 ```
 
-After the CLI exits, tell the user to **restart their AI client**.
-Tools won't appear until restart.
+After the CLI exits, tell the user to **restart the host**. Tools
+won't appear until restart.
 
-Manual fallback (Claude Desktop):
+Manual fallback — patch the host's `mcpServers` config:
 
-- File: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Patch the `mcpServers` object:
-  ```json
-  {
-    "mcpServers": {
-      "flipagent": {
-        "command": "npx",
-        "args": ["-y", "flipagent-mcp"],
-        "env": { "FLIPAGENT_API_KEY": "fa_free_xxx" }
-      }
+```json
+{
+  "mcpServers": {
+    "flipagent": {
+      "command": "npx",
+      "args": ["-y", "flipagent-mcp"],
+      "env": { "FLIPAGENT_API_KEY": "fa_free_xxx" }
     }
   }
-  ```
-
-Cursor uses `.cursor/mcp.json` (in workspace). Cline uses
-`~/.cline/mcp.json`. Zed and Windsurf use their settings panel.
+}
+```
 
 ### 3b. Node / TypeScript app
 

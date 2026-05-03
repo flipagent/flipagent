@@ -1,7 +1,7 @@
 /**
  * Canned responses returned when FLIPAGENT_MCP_MOCK=1. Lets a user install
- * the MCP server and verify their Claude Desktop / Cursor config without
- * needing a flipagent API key or eBay OAuth.
+ * the MCP server and verify their host config without needing a flipagent
+ * API key or eBay OAuth.
  */
 
 import type { BrowseSearchResponse, ItemSummary } from "@flipagent/types/ebay/buy";
