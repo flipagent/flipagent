@@ -45,6 +45,12 @@ export async function getMarketplaceMetadata(
 	ctx: MarketplaceMetaContext,
 ): Promise<MarketplaceMetadata> {
 	const ebayMarketplace = COUNTRY_TO_EBAY[country.toUpperCase()] ?? "EBAY_US";
+	// Sales tax jurisdictions are keyed by COUNTRY (not marketplace) on
+	// the eBay side. Verified live 2026-05-02: the
+	// `/marketplace/{X}/get_sales_tax_jurisdictions` form 404s — only
+	// `/country/{cc}/sales_tax_jurisdiction` (singular, no `get_` prefix)
+	// works.
+	const countryCode = country.toUpperCase();
 	const [returnRes, salesRes] = await Promise.all([
 		sellRequest<EbayReturnPolicies>({
 			apiKeyId: ctx.apiKeyId,
@@ -54,7 +60,7 @@ export async function getMarketplaceMetadata(
 		sellRequest<EbaySalesTax>({
 			apiKeyId: ctx.apiKeyId,
 			method: "GET",
-			path: `/sell/metadata/v1/marketplace/${encodeURIComponent(ebayMarketplace)}/get_sales_tax_jurisdictions`,
+			path: `/sell/metadata/v1/country/${encodeURIComponent(countryCode)}/sales_tax_jurisdiction`,
 		}).catch(() => ({ salesTaxJurisdictions: [] })),
 	]);
 
