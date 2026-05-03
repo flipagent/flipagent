@@ -260,20 +260,35 @@ Both REST `get_listing_fees` AND Trading `VerifyAddItem` return only **listing-t
 
 → `get_listing_fees` is **NOT an evaluator margin upgrade**. Our `quant/fees.ts` static `feeRate: 0.1325` remains the correct model for FVF. `/v1/listings/preview-fees` is useful only for "what insertion + ad fees will I pay on these N drafts I've already created" — not "what's my net after sale".
 
-**Next priorities (re-ranked after dispute lifecycle ship + negotiation impossibility finding):**
+**Subsequent shipments (commits 72e49ce → 389980c):**
 
-1. **Sell Metadata EU EPR + product safety** — `get_extended_producer_responsibility_policies`, `get_product_safety_labels`, `get_regulatory_policies`. Legally required for EU listings post-2025.
-2. **Dispute evidence upload** (binary multipart) — `POST /payment_dispute/{id}/upload_evidence_file` + `add_evidence` + `update_evidence`. Completes the dispute lifecycle the contest/accept work started; deferred from this session because of multipart complexity.
-3. **Developer rate-limit** as `/v1/me/quota` — quota introspection. Small but useful.
-4. **Bulk Marketing ad ops** — bulk_create/delete/update_ads_by_listing_id, campaign clone/end/pause/resume. For agents managing many listings.
-5. **VeRO API** — `commerce/vero/v1` for sellers fielding IP claims (also our own takedown could route here).
-6. **Notification subscription enable/disable/test/filter** — webhook debugging.
-7. **Post-Order v2** (cancellation/return/inquiry) — currently we route disputes through Sell Fulfillment payment_dispute only; Post-Order would close the buyer-initiated INR/Return gap.
-8. **Negotiation read-back via bridge** — only path forward for "did the buyer respond to my sent offer?" since REST is genuinely impossible.
+- ✅ Developer rate-limit → `/v1/me/quota` (Batch A)
+- ✅ Account program enrollment → `/v1/me/programs` + opt-in/out (Batch A)
+- ✅ Translation MCP tool wrapping existing route (Batch A)
+- ✅ Notification subscription enable/disable/test, filter CRUD, config GET/PUT, public_key (Batch B)
+- ✅ Inventory item-group bulk publish/withdraw + product compatibility CRUD (Batch C)
+- ✅ Marketing campaign lifecycle + bulk ad ops by listingId (Batch D)
+- ✅ Marketing bulk ad ops by inventoryReferenceId + ad report download (sweep)
+- ✅ Sell Account `_by_name` policy lookups (sweep)
+- ✅ SKU-level multi-warehouse locations (sweep)
+- ✅ Post-Order v2 cancellation create + eligibility (Batch E) **+ pre-existing IAF auth bug fix** — `/v1/disputes` reads for return/case/cancellation/inquiry types had been silently empty since the post-order paths were wrapped (Bearer was wrong, `IAF` is the legacy pipe). Two-line fix unblocks every existing post-order caller.
+- ✅ Payment-dispute multipart evidence upload + binary download (Batch F)
+- ✅ `GET /v1/store` (store metadata) — backed by Trading `GetStore` because Sell Stores REST is gated behind app-level approval we don't have (verified live: every `/sell/stores/v1/*` 403s "Insufficient permissions" even with `sell.stores.readonly` consented + an active eBay Store on the account). Trading returns the same data with no scope gate. Switch to REST when we get app approval.
+- 🚨 **Pre-existing silent bug also surfaced**: `sell.marketing` was missing from `EBAY_SCOPES`, so every `listAdCampaigns` / ads read had been silently 403'ing → empty array (the same `.catch(() => null)` swallow that hid the post-order IAF bug). Added `sell.marketing` + `sell.marketing.readonly` and verified all marketing endpoints now work.
+- ✅ `swallow404` helper — every new read in this session uses it instead of `.catch(() => null)`. Pre-existing ~45 sites in unrelated callers deliberately untouched.
 
-**De-prioritised:**
-- ~~Migrate POST messages/feedback writes~~ — endpoints already wired in commit `d9e0dba`; just unverified live. Smoke-test by sending a test message rather than fresh code.
-- ~~`offer/get_listing_fees` in evaluator~~ — wrong tool for that job (see correction above).
+**Genuinely deferred (low ROI for current US-centric user base):**
+
+- **Sell Metadata EU EPR + product safety** — explicitly skipped. Read-only metadata; setting EPR/RP IDs on listings would be the actual workflow change, and our users aren't EU-side.
+- **VeRO** — IP claims niche.
+- **Sell Logistics international (eDelivery)** — cross-border only.
+- **Sell Feed bulk daily snapshots** — for high-volume sellers.
+- **Buy Feed / Buy Marketing** — specific use cases.
+
+**Genuinely impossible (verified, eBay just doesn't offer it):**
+
+- **Negotiation read-back** — REST is write-only (verified live: `/sell/negotiation/v1/offer` and 4 plausible variants all 404). The only path is bridge-scraping My eBay > Sent Offers.
+- **Trading-only forever** — Best Offer in/out, Watch List, MyeBay Buying, Saved Searches read, VerifyAddItem (the synthetic-listing fee preview that REST `get_listing_fees` is a strict subset of).
 
 ### G.7 Reference paths
 

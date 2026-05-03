@@ -3,7 +3,7 @@
  */
 
 import type { StoreCategory, StoreCategoryUpsert } from "@flipagent/types";
-import { sellRequest, swallow404 } from "./ebay/rest/user-client.js";
+import { sellRequest } from "./ebay/rest/user-client.js";
 
 interface EbayStoreCategory {
 	categoryId: string;
@@ -56,110 +56,54 @@ export async function upsertStoreCategories(
 }
 
 /**
- * Store metadata — name, URL, description, theme. Wraps Sell Stores
- * `GET /sell/stores/v1/store`. Read-only — eBay routes store
- * configuration changes through the seller dashboard or Trading
- * `SetStore` (intentionally not REST-exposed).
+ * Store metadata — name, URL, description, theme. Backed by Trading
+ * `GetStore` (XML) instead of Sell Stores REST `/sell/stores/v1/store`.
  *
- * Requires the `sell.stores.readonly` scope on the user's OAuth token.
+ * Why Trading: verified live 2026-05-02 that REST `/sell/stores/v1/*`
+ * uniformly 403s "Insufficient permissions" even with an active eBay
+ * Store on the account, because eBay silently drops the
+ * `sell.stores.readonly` scope from user consent for non-approved
+ * apps (the API is gated behind eBay-side app approval we don't
+ * have). Trading `GetStore` returns the same data with no scope
+ * gate.
+ *
+ * Switch to REST once we get Stores API app approval through the
+ * developer portal — the wire shape is the same.
  */
+import { parseTrading, stringFrom, tradingCall } from "./ebay/trading/client.js";
+
 export interface StoreInfo {
 	storeName: string | null;
 	storeUrl: string | null;
 	storeDescription: string | null;
 	storeStatus: string | null;
-	storeTheme: { colorTheme?: string; fontTheme?: string } | null;
 	storeSubscriptionLevel: string | null;
 }
 
-interface UpstreamStoreResponse {
-	storeName?: string;
-	storeUrl?: string;
-	storeDescription?: string;
-	storeStatus?: string;
-	storeTheme?: { colorTheme?: string; fontTheme?: string };
-	storeSubscriptionLevel?: string;
-}
-
-export async function getStoreInfo(ctx: StoreContext): Promise<StoreInfo | null> {
-	const res = await swallow404(
-		sellRequest<UpstreamStoreResponse>({
-			apiKeyId: ctx.apiKeyId,
-			method: "GET",
-			path: "/sell/stores/v1/store",
-			marketplace: ctx.marketplace,
-		}),
-	);
-	if (!res) return null;
+export async function getStoreInfo(ctx: StoreContext, accessToken: string): Promise<StoreInfo | null> {
+	const xml = await tradingCall({
+		callName: "GetStore",
+		accessToken,
+		body: `<?xml version="1.0" encoding="utf-8"?>
+<GetStoreRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <DetailLevel>ReturnAll</DetailLevel>
+</GetStoreRequest>`,
+	}).catch(() => null);
+	if (!xml) return null;
+	const parsed = parseTrading(xml, "GetStore");
+	const store = (parsed.Store ?? {}) as Record<string, unknown>;
+	if (!store || Object.keys(store).length === 0) return null;
+	const subscription = (store.SubscriptionLevel ?? store.StoreSubscriptionLevel) as unknown;
 	return {
-		storeName: res.storeName ?? null,
-		storeUrl: res.storeUrl ?? null,
-		storeDescription: res.storeDescription ?? null,
-		storeStatus: res.storeStatus ?? null,
-		storeTheme: res.storeTheme ?? null,
-		storeSubscriptionLevel: res.storeSubscriptionLevel ?? null,
+		storeName: stringFrom(store.Name),
+		storeUrl: stringFrom(store.URL),
+		storeDescription: stringFrom(store.Description),
+		storeStatus: stringFrom(store.Status),
+		storeSubscriptionLevel: stringFrom(subscription),
 	};
 }
 
-/**
- * Async store-task list. Wraps Sell Stores `GET /sell/stores/v1/store/
- * tasks`. Returns long-running operations against the store (e.g.
- * bulk-category re-org). Each entry has a status — caller polls
- * `getStoreTask(id)` until terminal.
- */
-export interface StoreTask {
-	taskId: string;
-	status: string;
-	taskType: string | null;
-	creationDate: string | null;
-	completionDate: string | null;
-	errorMessage: string | null;
-}
-
-interface UpstreamStoreTask {
-	taskId?: string;
-	status?: string;
-	taskType?: string;
-	creationDate?: string;
-	completionDate?: string;
-	errorMessage?: string;
-}
-
-interface UpstreamTasksResponse {
-	tasks?: UpstreamStoreTask[];
-}
-
-function toStoreTask(t: UpstreamStoreTask): StoreTask {
-	return {
-		taskId: t.taskId ?? "",
-		status: t.status ?? "UNKNOWN",
-		taskType: t.taskType ?? null,
-		creationDate: t.creationDate ?? null,
-		completionDate: t.completionDate ?? null,
-		errorMessage: t.errorMessage ?? null,
-	};
-}
-
-export async function listStoreTasks(ctx: StoreContext): Promise<{ tasks: StoreTask[] }> {
-	const res = await swallow404(
-		sellRequest<UpstreamTasksResponse>({
-			apiKeyId: ctx.apiKeyId,
-			method: "GET",
-			path: "/sell/stores/v1/store/tasks",
-			marketplace: ctx.marketplace,
-		}),
-	);
-	return { tasks: (res?.tasks ?? []).map(toStoreTask) };
-}
-
-export async function getStoreTask(taskId: string, ctx: StoreContext): Promise<StoreTask | null> {
-	const res = await swallow404(
-		sellRequest<UpstreamStoreTask>({
-			apiKeyId: ctx.apiKeyId,
-			method: "GET",
-			path: `/sell/stores/v1/store/tasks/${encodeURIComponent(taskId)}`,
-			marketplace: ctx.marketplace,
-		}),
-	);
-	return res ? toStoreTask(res) : null;
-}
+// `listStoreTasks` / `getStoreTask` deliberately not implemented —
+// no Trading equivalent for the async store-task queue. Re-add via
+// Sell Stores REST once we get app approval, or via bridge if the
+// use case warrants scraping My eBay > Subscriptions > Store > Tasks.

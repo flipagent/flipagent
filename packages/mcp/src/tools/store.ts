@@ -41,7 +41,7 @@ export async function storeCategoriesUpsertExecute(config: Config, args: Record<
 
 export const storeGetInput = Type.Object({});
 export const storeGetDescription =
-	"Fetch the seller's eBay Store metadata — name, URL, description, theme, subscription level. Calls GET /v1/store. **When to use** — display the seller's storefront brand info (header, dashboard summary, profile page). Read-only — eBay routes store config writes through the seller dashboard or Trading SetStore. **Inputs** — none. **Output** — `{ storeName, storeUrl, storeDescription, storeStatus, storeTheme: { colorTheme?, fontTheme? }, storeSubscriptionLevel }`. **Prereqs** — eBay seller account connected with `sell.stores.readonly` scope (added 2026-05-02; existing OAuth bindings need re-consent on next /v1/connect/ebay/start). 404 if the seller has no eBay Store subscription. **Example** — call with `{}`.";
+	"Fetch the seller's eBay Store metadata — name, URL, description, status, subscription level. Calls GET /v1/store. **Backed by Trading `GetStore`** (XML) since Sell Stores REST is gated behind app-level approval we don't have. **When to use** — display the seller's storefront brand info (header, dashboard summary, profile page). Read-only — store config writes go through the seller dashboard or Trading SetStore. **Inputs** — none. **Output** — `{ storeName, storeUrl, storeDescription, storeStatus, storeSubscriptionLevel }`. **Prereqs** — eBay seller account connected with an active eBay Store subscription. 404 if no Store on the account. **Example** — call with `{}`.";
 export async function storeGetExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
@@ -51,29 +51,7 @@ export async function storeGetExecute(config: Config, _args: Record<string, unkn
 	}
 }
 
-/* ---------------------------- flipagent_list_store_tasks ------------------- */
-
-export const storeTasksListInput = Type.Object({});
-export const storeTasksListDescription =
-	"List async store-tasks (e.g. bulk category re-org, store theme change). Calls GET /v1/store/tasks. **When to use** — track long-running store operations the seller initiated through the dashboard or a prior API call. **Inputs** — none. **Output** — `{ tasks: [{ taskId, status, taskType, creationDate, completionDate?, errorMessage? }] }`. Status enum: PENDING | IN_PROGRESS | COMPLETED | FAILED.";
-export async function storeTasksListExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
-	try {
-		const client = getClient(config);
-		return await client.store.tasks();
-	} catch (err) {
-		return toolErrorEnvelope(err, "store_tasks_list_failed", "/v1/store/tasks");
-	}
-}
-
-export const storeTaskGetInput = Type.Object({ id: Type.String({ minLength: 1 }) });
-export const storeTaskGetDescription =
-	"Fetch one store-task by id. Calls GET /v1/store/tasks/{id}. **Inputs** — `id`. **Output** — single task object (same shape as list rows).";
-export async function storeTaskGetExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
-	const id = String(args.id);
-	try {
-		const client = getClient(config);
-		return await client.store.task(id);
-	} catch (err) {
-		return toolErrorEnvelope(err, "store_task_get_failed", `/v1/store/tasks/${id}`);
-	}
-}
+// `flipagent_list_store_tasks` / `flipagent_get_store_task` left out —
+// no Trading equivalent for the async store-task queue, and Sell
+// Stores REST is gated. Re-add via Sell Stores once we get app
+// approval, or via bridge if the use case warrants scraping.

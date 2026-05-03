@@ -48,7 +48,14 @@ const Schema = Type.Object({
 			"https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
 			"https://api.ebay.com/oauth/api_scope/commerce.message",
 			"https://api.ebay.com/oauth/api_scope/commerce.feedback",
-			"https://api.ebay.com/oauth/api_scope/sell.stores.readonly",
+			"https://api.ebay.com/oauth/api_scope/sell.marketing",
+			"https://api.ebay.com/oauth/api_scope/sell.marketing.readonly",
+			// `sell.stores.readonly` deliberately omitted — verified live
+			// 2026-05-02 that eBay silently drops it from consent for
+			// non-approved apps (every /sell/stores/v1/* path 403s
+			// "Insufficient permissions" even though the seller has an
+			// active eBay Store). Re-add only after our app gets
+			// stores-API app-level approval through the developer portal.
 		].join(" "),
 	}),
 	// Buy Order API is Limited Release. Set to `1` only after eBay approves
