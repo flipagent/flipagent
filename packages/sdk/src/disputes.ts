@@ -4,6 +4,10 @@
  */
 
 import type {
+	CancellationCreateRequest,
+	CancellationCreateResponse,
+	CancellationEligibilityRequest,
+	CancellationEligibilityResponse,
 	Dispute,
 	DisputeActivityResponse,
 	DisputeRespond,
@@ -17,6 +21,8 @@ export interface DisputesClient {
 	get(id: string): Promise<Dispute>;
 	respond(id: string, body: DisputeRespond): Promise<Dispute>;
 	activity(id: string): Promise<DisputeActivityResponse>;
+	checkCancellation(body: CancellationEligibilityRequest): Promise<CancellationEligibilityResponse>;
+	createCancellation(body: CancellationCreateRequest): Promise<CancellationCreateResponse>;
 }
 
 export function createDisputesClient(http: FlipagentHttp): DisputesClient {
@@ -25,5 +31,7 @@ export function createDisputesClient(http: FlipagentHttp): DisputesClient {
 		get: (id) => http.get(`/v1/disputes/${encodeURIComponent(id)}`),
 		respond: (id, body) => http.post(`/v1/disputes/${encodeURIComponent(id)}/respond`, body),
 		activity: (id) => http.get(`/v1/disputes/${encodeURIComponent(id)}/activity`),
+		checkCancellation: (body) => http.post("/v1/disputes/cancellations/check-eligibility", body),
+		createCancellation: (body) => http.post("/v1/disputes/cancellations", body),
 	};
 }

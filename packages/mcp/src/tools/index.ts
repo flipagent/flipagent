@@ -72,6 +72,12 @@ import {
 } from "./bids.js";
 import { browserQueryDescription, browserQueryExecute, browserQueryInput } from "./browser-primitives.js";
 import {
+	cancellationCreateDescription,
+	cancellationCreateExecute,
+	cancellationCreateInput,
+	cancellationEligibilityDescription,
+	cancellationEligibilityExecute,
+	cancellationEligibilityInput,
 	disputesActivityDescription,
 	disputesActivityExecute,
 	disputesActivityInput,
@@ -937,6 +943,20 @@ export const tools: Tool[] = [
 		description: disputesActivityDescription,
 		inputSchema: disputesActivityInput,
 		execute: disputesActivityExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_check_cancellation_eligibility",
+		description: cancellationEligibilityDescription,
+		inputSchema: cancellationEligibilityInput,
+		execute: cancellationEligibilityExecute,
+		toolset: "comms",
+	},
+	{
+		name: "flipagent_create_cancellation",
+		description: cancellationCreateDescription,
+		inputSchema: cancellationCreateInput,
+		execute: cancellationCreateExecute,
 		toolset: "comms",
 	},
 	{

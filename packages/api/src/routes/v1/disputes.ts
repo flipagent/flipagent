@@ -4,6 +4,10 @@
  */
 
 import {
+	CancellationCreateRequest,
+	CancellationCreateResponse,
+	CancellationEligibilityRequest,
+	CancellationEligibilityResponse,
 	DisputeActivityResponse,
 	DisputeRespond,
 	DisputeResponse,
@@ -13,6 +17,7 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
+import { checkCancellationEligibility, createCancellation } from "../../services/disputes/cancellation.js";
 import { getDispute, getDisputeActivity, listDisputes, respondToDispute } from "../../services/disputes/operations.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
@@ -60,6 +65,52 @@ disputesRoute.get(
 		});
 		if (!dispute) return c.json({ error: "dispute_not_found", message: "No dispute." }, 404);
 		return c.json(dispute);
+	},
+);
+
+disputesRoute.post(
+	"/cancellations/check-eligibility",
+	describeRoute({
+		tags: ["Disputes"],
+		summary: "Check if a seller can cancel an order",
+		description:
+			"Wraps `/post-order/v2/cancellation/check_eligibility`. Use before `flipagent_create_cancellation` to confirm cancellation is permitted (and surface eBay's allowed reason list). Some orders pass the cancellation window or are otherwise locked.",
+		responses: {
+			200: jsonResponse("Eligibility result.", CancellationEligibilityResponse),
+			...COMMON,
+		},
+	}),
+	requireApiKey,
+	tbBody(CancellationEligibilityRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const result = await checkCancellationEligibility(body.legacyOrderId, body.items, {
+			apiKeyId: c.var.apiKey.id,
+		});
+		return c.json({ ...result, source: "rest" as const });
+	},
+);
+
+disputesRoute.post(
+	"/cancellations",
+	describeRoute({
+		tags: ["Disputes"],
+		summary: "Create a seller-initiated cancellation",
+		description:
+			"Wraps `/post-order/v2/cancellation` (POST). For seller-initiated cancellations (out-of-stock, address issues, buyer asked). Distinct from `respondToDispute(action='accept')` which acknowledges a buyer-initiated cancellation request.",
+		responses: {
+			201: jsonResponse("Cancellation created.", CancellationCreateResponse),
+			...COMMON,
+		},
+	}),
+	requireApiKey,
+	tbBody(CancellationCreateRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const result = await createCancellation(body.legacyOrderId, body.reason, body.items, {
+			apiKeyId: c.var.apiKey.id,
+		});
+		return c.json({ ...result, source: "rest" as const }, 201);
 	},
 );
 

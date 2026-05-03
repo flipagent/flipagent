@@ -16,6 +16,7 @@
  */
 
 import { config, isEbayOAuthConfigured } from "../../../config.js";
+import type { NextActionKind } from "../../../services/shared/next-action.js";
 import { fetchRetry } from "../../../utils/fetch-retry.js";
 import { getUserAccessToken } from "../oauth.js";
 
@@ -23,12 +24,20 @@ export class EbayApiError extends Error {
 	readonly status: number;
 	readonly code: string;
 	readonly upstream: unknown;
-	constructor(status: number, code: string, message: string, upstream?: unknown) {
+	/**
+	 * When set, the global onError handler attaches a fully-resolved
+	 * `next_action` block to the response body — pointing the caller at
+	 * the OAuth start URL, the extension install page, etc. See
+	 * `services/shared/next-action.ts`.
+	 */
+	readonly nextActionKind: NextActionKind | undefined;
+	constructor(status: number, code: string, message: string, upstream?: unknown, nextActionKind?: NextActionKind) {
 		super(message);
 		this.name = "EbayApiError";
 		this.status = status;
 		this.code = code;
 		this.upstream = upstream;
+		this.nextActionKind = nextActionKind;
 	}
 }
 
@@ -48,7 +57,13 @@ export interface SellRequestOpts {
  */
 export async function sellRequest<T = unknown>(opts: SellRequestOpts): Promise<T> {
 	if (!isEbayOAuthConfigured()) {
-		throw new EbayApiError(503, "ebay_not_configured", "eBay OAuth credentials are not set on this api instance.");
+		throw new EbayApiError(
+			503,
+			"ebay_not_configured",
+			"eBay OAuth credentials are not set on this api instance.",
+			undefined,
+			"configure_ebay",
+		);
 	}
 	let token: string;
 	try {
@@ -59,14 +74,24 @@ export async function sellRequest<T = unknown>(opts: SellRequestOpts): Promise<T
 			throw new EbayApiError(
 				401,
 				"ebay_account_not_connected",
-				"Connect an eBay seller account first (POST /v1/connect/ebay).",
+				"Connect an eBay seller account first.",
+				undefined,
+				"ebay_oauth",
 			);
 		}
 		throw new EbayApiError(502, "ebay_token_refresh_failed", `eBay token refresh failed: ${msg}`);
 	}
 
+	// Post-Order v2 (`/post-order/v2/...`) is the legacy IAF-token pipe;
+	// every other surface is RESTful Bearer. Live-verified 2026-05-02:
+	// `Authorization: Bearer …` returns 401 on post-order paths;
+	// `Authorization: IAF …` returns the real payload. Without this
+	// branch the existing `/v1/disputes` LIST + GET routes silently
+	// resolved to empty for return / case / cancellation / inquiry types
+	// (their `.catch(() => null)` swallowed the auth failure).
+	const isPostOrder = opts.path.startsWith("/post-order/");
 	const headers: Record<string, string> = {
-		Authorization: `Bearer ${token}`,
+		Authorization: isPostOrder ? `IAF ${token}` : `Bearer ${token}`,
 		Accept: "application/json",
 		"Accept-Language": "en-US",
 	};

@@ -4,7 +4,12 @@
  * Inquiries with a `type` discriminator.
  */
 
-import { DisputeRespond, DisputesListQuery } from "@flipagent/types";
+import {
+	CancellationCreateRequest,
+	CancellationEligibilityRequest,
+	DisputeRespond,
+	DisputesListQuery,
+} from "@flipagent/types";
 import { Type } from "@sinclair/typebox";
 import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
@@ -76,5 +81,35 @@ export async function disputesActivityExecute(config: Config, args: Record<strin
 		return await client.disputes.activity(id);
 	} catch (err) {
 		return toolErrorEnvelope(err, "disputes_activity_failed", `/v1/disputes/${id}/activity`);
+	}
+}
+
+/* ------------------ flipagent_check_cancellation_eligibility --------------- */
+
+export { CancellationEligibilityRequest as cancellationEligibilityInput };
+export const cancellationEligibilityDescription =
+	"Check whether an order can still be cancelled by the seller. Calls POST /v1/disputes/cancellations/check-eligibility. **When to use** — before calling `flipagent_create_cancellation` to confirm cancellation is allowed (some orders pass the cancellation window). **Inputs** — `{ legacyOrderId, items: [{ itemId, transactionId? }] }`. **Output** — `{ eligible, reasons: [...allowed-reason-codes...] }`.";
+export async function cancellationEligibilityExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
+	try {
+		return await getClient(config).disputes.checkCancellation(
+			args as Parameters<ReturnType<typeof getClient>["disputes"]["checkCancellation"]>[0],
+		);
+	} catch (err) {
+		return toolErrorEnvelope(err, "cancellation_eligibility_failed", "/v1/disputes/cancellations/check-eligibility");
+	}
+}
+
+/* ------------------------ flipagent_create_cancellation -------------------- */
+
+export { CancellationCreateRequest as cancellationCreateInput };
+export const cancellationCreateDescription =
+	'Create a seller-initiated cancellation on a sold order. Calls POST /v1/disputes/cancellations. **When to use** — out-of-stock, address issues, or honoring a buyer\'s cancel request before ship. Distinct from responding to a buyer-initiated cancellation (use `flipagent_respond_to_dispute` with action="accept" for that). **Inputs** — `{ legacyOrderId, reason: "BUYER_ASKED_CANCEL" | "OUT_OF_STOCK_OR_CANNOT_FULFILL" | "ADDRESS_ISSUES", items: [...] }`. **Output** — `{ cancelId, status }`.';
+export async function cancellationCreateExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
+	try {
+		return await getClient(config).disputes.createCancellation(
+			args as Parameters<ReturnType<typeof getClient>["disputes"]["createCancellation"]>[0],
+		);
+	} catch (err) {
+		return toolErrorEnvelope(err, "cancellation_create_failed", "/v1/disputes/cancellations");
 	}
 }

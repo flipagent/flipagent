@@ -115,6 +115,53 @@ export const DisputeActivityResponse = Type.Object(
 );
 export type DisputeActivityResponse = Static<typeof DisputeActivityResponse>;
 
+export const CancellationCreateRequest = Type.Object(
+	{
+		legacyOrderId: Type.String({ description: "eBay legacy order id (numeric)." }),
+		reason: Type.Union([
+			Type.Literal("BUYER_ASKED_CANCEL"),
+			Type.Literal("OUT_OF_STOCK_OR_CANNOT_FULFILL"),
+			Type.Literal("ADDRESS_ISSUES"),
+		]),
+		items: Type.Array(Type.Object({ itemId: Type.String(), transactionId: Type.Optional(Type.String()) }), {
+			minItems: 1,
+		}),
+	},
+	{ $id: "CancellationCreateRequest" },
+);
+export type CancellationCreateRequest = Static<typeof CancellationCreateRequest>;
+
+export const CancellationCreateResponse = Type.Object(
+	{
+		cancelId: Type.Union([Type.String(), Type.Null()]),
+		status: Type.Union([Type.String(), Type.Null()]),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "CancellationCreateResponse" },
+);
+export type CancellationCreateResponse = Static<typeof CancellationCreateResponse>;
+
+export const CancellationEligibilityRequest = Type.Object(
+	{
+		legacyOrderId: Type.String(),
+		items: Type.Array(Type.Object({ itemId: Type.String(), transactionId: Type.Optional(Type.String()) }), {
+			minItems: 1,
+		}),
+	},
+	{ $id: "CancellationEligibilityRequest" },
+);
+export type CancellationEligibilityRequest = Static<typeof CancellationEligibilityRequest>;
+
+export const CancellationEligibilityResponse = Type.Object(
+	{
+		eligible: Type.Boolean(),
+		reasons: Type.Array(Type.String()),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "CancellationEligibilityResponse" },
+);
+export type CancellationEligibilityResponse = Static<typeof CancellationEligibilityResponse>;
+
 export const DisputesListQuery = Type.Object(
 	{
 		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
