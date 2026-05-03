@@ -1176,13 +1176,20 @@ table.api {
 	width: 100%;
 	border-collapse: collapse;
 	font-size: 14px;
+	table-layout: auto;
 }
 
 table.api th,
 table.api td {
-	padding: 10px 0;
+	padding: 12px 20px 12px 0;
 	text-align: left;
 	border-bottom: 1px solid var(--border-faint);
+	vertical-align: top;
+}
+
+table.api th:last-child,
+table.api td:last-child {
+	padding-right: 0;
 }
 
 table.api th {
@@ -1192,6 +1199,7 @@ table.api th {
 	text-transform: uppercase;
 	letter-spacing: 0.1em;
 	font-family: var(--mono);
+	white-space: nowrap;
 }
 
 table.api td {
@@ -1202,6 +1210,8 @@ table.api td code {
 	background: transparent;
 	padding: 0;
 	color: var(--text);
+	overflow-wrap: anywhere;
+	word-break: break-word;
 }
 
 /* Docs sidebar ======================================================== */
