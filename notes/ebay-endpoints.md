@@ -764,3 +764,84 @@ When wrapping a new endpoint:
 3. Fill `Our route` with the `/v1/...` shape.
 4. Set Status to WRP until you live-probe it; flip to OK with date once verified.
 5. If you removed something dead, move the row to Section 5.
+
+---
+
+## Section 8: Live probe sweep — 2026-05-02 results
+
+Sweep run with sprd-shop user OAuth token after adding `commerce.message`,
+`commerce.feedback`, `sell.marketing`, `sell.marketing.readonly`, and
+`sell.analytics.readonly` scopes. Each row: HTTP status code + brief.
+
+### 200/204 — verified working
+
+| Endpoint | Notes |
+|---|---|
+| GET `/sell/account/v1/custom_policy` | works |
+| GET `/sell/account/v1/kyc` | 204 (no kyc events) |
+| GET `/sell/account/v1/privilege` | works |
+| GET `/sell/account/v1/rate_table?marketplace_id=EBAY_US` | works |
+| GET `/sell/account/v1/subscription` | works |
+| GET `/sell/account/v1/advertising_eligibility` (with X-EBAY-C-MARKETPLACE-ID) | works after fix — INELIGIBLE due to NOT_ENOUGH_ACTIVITY |
+| GET `/sell/account/v1/payments_program/EBAY_US/EBAY_PAYMENTS{,/onboarding}` | works |
+| GET `/sell/account/v1/sales_tax/{country}/{jurisdiction}` | 204 (no tax setup) |
+| GET `/sell/account/v1/program/get_opted_in_programs` | works |
+| GET `/sell/inventory/v1/inventory_item?limit=1` | works |
+| GET `/sell/inventory/v1/location?limit=1` | works |
+| GET `/sell/inventory/v1/offer?sku=X` | 404 on fake sku — shape OK |
+| GET `/sell/fulfillment/v1/order?limit=1` | works |
+| GET `/sell/marketing/v1/ad_campaign?limit=1` | works (after `sell.marketing` scope fix) |
+| GET `/sell/marketing/v1/ad_report_metadata` | works |
+| GET `/sell/marketing/v1/promotion?marketplace_id=EBAY_US` | works |
+| GET `/sell/marketing/v1/promotion_summary_report?marketplace_id=EBAY_US` | works |
+| GET `/sell/compliance/v1/listing_violation*` | 204 (no violations) |
+| GET `/sell/metadata/v1/marketplace/EBAY_US/get_return_policies` | works |
+| GET `/sell/metadata/v1/marketplace/EBAY_US/get_listing_structure_policies` | works |
+| GET `/sell/metadata/v1/marketplace/EBAY_US/get_currencies` | works |
+| GET `/sell/metadata/v1/country/US/sales_tax_jurisdiction` | works after path fix |
+| GET `/commerce/identity/v1/user/` | works (sprd-shop returned) |
+| GET `/commerce/taxonomy/v1/get_default_category_tree_id?marketplace_id=EBAY_US` | works |
+| GET `/commerce/feedback/v1/feedback_rating_summary?user_id=X&filter=ratingType:Y` | works |
+| GET `/commerce/message/v1/conversation` | works |
+| GET `/commerce/notification/v1/{config,subscription,topic,destination}` | all 200 |
+| POST `/commerce/translation/v1_beta/translate` | works after path+context fix |
+| POST `/commerce/message/v1/send_message` (fake recipient) | 400 invalid otherPartyUsername — shape OK |
+| POST `/post-order/v2/cancellation/check_eligibility` (with `Authorization: IAF`) | works |
+| GET `/post-order/v2/return/search` (IAF) | works |
+| GET `/sell/fulfillment/v1/payment_dispute_summary` | 404 (no disputes — normal eBay convention) |
+
+### 4xx with reason — endpoint OK, account/data state issue
+
+| Endpoint | Code | Reason |
+|---|---|---|
+| GET `/sell/account/v1/{fulfillment,payment,return}_policy` | 400 | "User is not eligible for Business Policy" — sprd-shop hasn't enrolled in BP. Real fix: provide `flipagent_opt_in_program(SELLING_POLICY_MANAGEMENT)` flow. |
+| GET `/sell/marketing/v1/item_price_markdown?marketplace_id=EBAY_US&limit=1` | 400 | "The request has errors." — likely required filter param missing. Need OAS deep-dive. |
+| GET `/sell/marketing/v1/item_promotion?marketplace_id=EBAY_US&limit=1` | 400 | Same as markdown. |
+| POST `/sell/logistics/v1_beta/shipping_quote` | 400 | Needs body with weight + addresses. Wrapper takes that input but our test was empty. Shape probably OK. |
+| GET `/sell/account/v1/fulfillment_policy/get_by_policy_name?...` | 400 | Same BP-eligibility issue. |
+
+### 4xx requires investigation
+
+| Endpoint | Code | Notes |
+|---|---|---|
+| GET `/sell/finances/v1/{payout,payout_summary,transaction,transfer}` | 404 (empty body) | Non-standard 404. Suggests scope/access mismatch — content-length 0 and no JSON error envelope. `sell.finances` is in EBAY_SCOPES. May require Managed Payments enrollment beyond opt-in (sprd-shop IS in EBAY_PAYMENTS). **OPEN.** |
+| GET `/sell/logistics/v1_beta/shipment/{id}` | 403 | "Insufficient permissions." Likely needs `sell.logistics` scope which isn't in EBAY_SCOPES (we only have what's in config.ts). **OPEN — add scope?** |
+| GET `/buy/offer/v1_beta/bidding/{id}` | 404 | Buy Offer (proxy bidding) — may be Limited Release or eBay deprecated. **OPEN.** |
+| GET `/sell/feed/v1/inventory_task` | 403 explicit "Contact Developer Technical Support" | Limited Release — would need eBay app approval. Not actionable until applied. |
+| GET `/buy/feed/v1_beta/*` | (per earlier sweep) 403 | Same Limited Release gate. |
+| GET `/commerce/charity/v1/charity_org/search?q=test` | 404 | errorId 165002 — "Invalid charity org search request". Probably wrong query param. Wrapper exists but wiring incomplete (per earlier audit). |
+
+### Bugs fixed this round (commits 3a388ea, 970d11+)
+
+| Wrapper | Bug | Fix |
+|---|---|---|
+| `services/recommendations.ts:36` | path `find_listing_recommendations` 404 | → POST `/find` with body, marketplace `EBAY-US` (hyphen) |
+| `services/marketplace-meta/operations.ts:57` | path `marketplace/{X}/get_sales_tax_jurisdictions` 404 | → `/country/{cc}/sales_tax_jurisdiction` |
+
+### Still need re-consent to verify
+
+| Scope | Why |
+|---|---|
+| `sell.analytics.readonly` | Just added to `EBAY_SCOPES`; sprd-shop's existing OAuth doesn't have it. Re-consent required to verify analytics endpoints (currently 403). |
+| `sell.logistics` | Not yet in `EBAY_SCOPES`. Adding would unlock shipment GETs (currently 403). |
+
