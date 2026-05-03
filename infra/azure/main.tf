@@ -80,6 +80,36 @@ locals {
   )
 }
 
+# --- Storage account for /v1/media image uploads -----------------------------
+# Listings reference image URLs by fetch — eBay's image fetcher retrieves
+# them at publish time. The container is set to anonymous-blob (read-only)
+# public access so the URLs are reachable without per-request signing.
+# Uploads themselves are SAS-signed and short-lived (30 min) — see
+# `services/blob/azure.ts`.
+
+resource "azurerm_storage_account" "media" {
+  # Storage-account names must be 3-24 chars, lowercase letters/digits only.
+  # `local.prefix` already meets that; strip non-alnum just in case.
+  name                          = substr(replace("${local.prefix}media", "/[^a-z0-9]/", ""), 0, 24)
+  resource_group_name           = azurerm_resource_group.rg.name
+  location                      = azurerm_resource_group.rg.location
+  account_tier                  = "Standard"
+  account_replication_type      = "LRS"
+  allow_nested_items_to_be_public = true
+  min_tls_version               = "TLS1_2"
+  tags                          = local.tags
+}
+
+resource "azurerm_storage_container" "media" {
+  name                  = "media"
+  storage_account_id    = azurerm_storage_account.media.id
+  container_access_type = "blob"
+}
+
+locals {
+  blob_connection_string = azurerm_storage_account.media.primary_connection_string
+}
+
 # --- Log Analytics workspace (required by Container Apps) ---------------------
 
 resource "azurerm_log_analytics_workspace" "logs" {
@@ -271,6 +301,10 @@ resource "azurerm_container_app" "api" {
     name  = "resend-api-key"
     value = var.resend_api_key
   }
+  secret {
+    name  = "blob-connection-string"
+    value = local.blob_connection_string
+  }
 
   # LLM provider keys + eBay DevID — declared dynamically so empty values are
   # silently skipped. Azure rejects secrets with empty `value`, and the
@@ -330,6 +364,14 @@ resource "azurerm_container_app" "api" {
       env {
         name        = "DATABASE_URL"
         secret_name = "database-url"
+      }
+      env {
+        name        = "BLOB_CONNECTION_STRING"
+        secret_name = "blob-connection-string"
+      }
+      env {
+        name  = "BLOB_CONTAINER"
+        value = azurerm_storage_container.media.name
       }
       env {
         name  = "SCRAPER_API_VENDOR"

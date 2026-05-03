@@ -1,9 +1,12 @@
 /**
- * `/v1/media` — eBay-hosted image/video upload (commerce/media).
+ * `/v1/media` — image + video upload prep.
  *
- * Two-step flow:
- *   POST /v1/media/uploads → uploadUrl + mediaId
- *   PUT  uploadUrl (multipart binary) → 204
+ *   POST /v1/media/uploads → uploadUrl (signed) + publicUrl + mediaId
+ *   PUT  uploadUrl (binary)  → 201
+ *   then use `publicUrl` in the listing's `imageUrls[]`.
+ *
+ * Image uploads land on flipagent-managed Azure Blob Storage (Azurite
+ * for local dev). Video uploads use eBay's commerce/media surface.
  */
 
 import { type Static, Type } from "@sinclair/typebox";
@@ -18,13 +21,22 @@ export const MediaUpload = Type.Object(
 		uploadUrl: Type.String(),
 		uploadHeaders: Type.Record(Type.String(), Type.String()),
 		expiresAt: Type.String(),
+		publicUrl: Type.Optional(Type.String({ description: "Public URL the blob will be reachable at after the PUT (image uploads only)." })),
 		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "MediaUpload" },
 );
 export type MediaUpload = Static<typeof MediaUpload>;
 
-export const MediaUploadRequest = Type.Object({ type: MediaType }, { $id: "MediaUploadRequest" });
+export const MediaUploadRequest = Type.Object(
+	{
+		type: MediaType,
+		contentType: Type.Optional(
+			Type.String({ description: "MIME type the caller will PUT (default: image/jpeg). Image uploads only." }),
+		),
+	},
+	{ $id: "MediaUploadRequest" },
+);
 export type MediaUploadRequest = Static<typeof MediaUploadRequest>;
 
 export const Media = Type.Object(

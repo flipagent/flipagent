@@ -30,6 +30,20 @@ services:
       timeout: 3s
       retries: 5
 
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: flipagent-azurite
+    restart: unless-stopped
+    command: >
+      azurite-blob
+      --blobHost 0.0.0.0
+      --location /data
+      --skipApiVersionCheck
+    volumes:
+      - flipagent-azurite:/data
+    ports:
+      - "10000:10000"
+
   api:
     build:
       context: .
@@ -43,6 +57,9 @@ services:
       PORT: "4000"
       NODE_ENV: production
       MIGRATE_ON_BOOT: "1"
+      # Azurite well-known dev account; container created on first upload.
+      BLOB_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      BLOB_CONTAINER: "media"
     env_file:
       - path: packages/api/.env
         required: false
@@ -52,3 +69,4 @@ services:
 
 volumes:
   flipagent-pgdata:
+  flipagent-azurite:
