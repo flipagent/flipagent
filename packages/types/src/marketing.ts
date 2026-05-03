@@ -147,6 +147,70 @@ export const AdCampaignCreate = Type.Object(
 );
 export type AdCampaignCreate = Static<typeof AdCampaignCreate>;
 
+/* ─── bulk ad ops ─── */
+
+export const AdCampaignCloneRequest = Type.Object(
+	{ name: Type.String({ description: "New campaign name (required by eBay)." }) },
+	{ $id: "AdCampaignCloneRequest" },
+);
+export type AdCampaignCloneRequest = Static<typeof AdCampaignCloneRequest>;
+
+export const AdBidUpdateRequest = Type.Object(
+	{ bidPercentage: Type.String({ description: 'eBay-format string, e.g. "5.0".' }) },
+	{ $id: "AdBidUpdateRequest" },
+);
+export type AdBidUpdateRequest = Static<typeof AdBidUpdateRequest>;
+
+const BulkAdRow = Type.Object(
+	{
+		listingId: Type.String(),
+		bidPercentage: Type.Optional(Type.String()),
+	},
+	{ $id: "BulkAdRow" },
+);
+
+export const BulkAdsByListingRequest = Type.Object(
+	{ requests: Type.Array(BulkAdRow, { minItems: 1, maxItems: 500 }) },
+	{ $id: "BulkAdsByListingRequest" },
+);
+export type BulkAdsByListingRequest = Static<typeof BulkAdsByListingRequest>;
+
+export const BulkAdsByListingDeleteRequest = Type.Object(
+	{ listingIds: Type.Array(Type.String(), { minItems: 1, maxItems: 500 }) },
+	{ $id: "BulkAdsByListingDeleteRequest" },
+);
+export type BulkAdsByListingDeleteRequest = Static<typeof BulkAdsByListingDeleteRequest>;
+
+export const BulkAdsStatusRequest = Type.Object(
+	{
+		requests: Type.Array(
+			Type.Object({
+				listingId: Type.String(),
+				adStatus: Type.Union([Type.Literal("ACTIVE"), Type.Literal("PAUSED")]),
+			}),
+			{ minItems: 1, maxItems: 500 },
+		),
+	},
+	{ $id: "BulkAdsStatusRequest" },
+);
+export type BulkAdsStatusRequest = Static<typeof BulkAdsStatusRequest>;
+
+export const BulkAdsResponse = Type.Object(
+	{
+		results: Type.Array(
+			Type.Object({
+				listingId: Type.String(),
+				adId: Type.Optional(Type.String()),
+				status: Type.Optional(Type.String()),
+				errors: Type.Optional(Type.Unknown()),
+			}),
+		),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "BulkAdsResponse" },
+);
+export type BulkAdsResponse = Static<typeof BulkAdsResponse>;
+
 /* --------------------------- Markdowns ------------------------------- */
 
 export const PriceMarkdown = Type.Object(

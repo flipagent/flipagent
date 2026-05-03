@@ -3,10 +3,16 @@
  */
 
 import {
+	AdBidUpdateRequest,
+	AdCampaignCloneRequest,
 	AdCampaignCreate,
 	AdGroupCreate,
 	AdGroupsListResponse,
 	AdsListResponse,
+	BulkAdsByListingDeleteRequest,
+	BulkAdsByListingRequest,
+	BulkAdsResponse,
+	BulkAdsStatusRequest,
 	ReportMetadata,
 	ReportTask,
 	ReportTaskCreate,
@@ -16,11 +22,21 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import {
+	bulkCreateAdsByListingId,
+	bulkDeleteAdsByListingId,
+	bulkUpdateAdsBidByListingId,
+	bulkUpdateAdsStatus,
+	cloneAdCampaign,
 	createAdCampaign,
 	createAdGroup,
+	endAdCampaign,
+	getCampaignByName,
 	listAdCampaigns,
 	listAdGroups,
 	listAdsForCampaign,
+	pauseAdCampaign,
+	resumeAdCampaign,
+	updateAdBid,
 } from "../../services/marketing/ads.js";
 import {
 	createReportTask,
@@ -71,6 +87,192 @@ adsRoute.post(
 			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
 		});
 		return c.json(r, 201);
+	},
+);
+
+adsRoute.get(
+	"/by-name",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Get ad campaign by name",
+		responses: { 200: { description: "Campaign." }, 404: errorResponse("Not found."), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const name = c.req.query("name");
+		if (!name) return c.json({ error: "missing_name", message: "?name= is required." }, 400);
+		const r = await getCampaignByName(name, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		if (!r) return c.json({ error: "campaign_not_found" }, 404);
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/pause",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Pause an active campaign",
+		responses: { 204: { description: "Paused." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await pauseAdCampaign(c.req.param("campaignId"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.body(null, 204);
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/resume",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Resume a paused campaign",
+		responses: { 204: { description: "Resumed." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await resumeAdCampaign(c.req.param("campaignId"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.body(null, 204);
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/end",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "End (terminal) a campaign",
+		responses: { 204: { description: "Ended." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await endAdCampaign(c.req.param("campaignId"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.body(null, 204);
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/clone",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Clone a campaign under a new name",
+		responses: { 201: { description: "Created." }, ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(AdCampaignCloneRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const r = await cloneAdCampaign(c.req.param("campaignId"), body.name, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const }, 201);
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/ads/:adId/bid",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Update one ad's bid percentage",
+		responses: { 204: { description: "Updated." }, ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(AdBidUpdateRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		await updateAdBid(c.req.param("campaignId"), c.req.param("adId"), body.bidPercentage, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.body(null, 204);
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/ads/bulk-create",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Bulk-create ads by listing id (up to 500)",
+		responses: { 200: jsonResponse("Per-row result.", BulkAdsResponse), ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(BulkAdsByListingRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const r = await bulkCreateAdsByListingId(c.req.param("campaignId"), body.requests, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/ads/bulk-update-bid",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Bulk-update ad bids by listing id",
+		responses: { 200: jsonResponse("Per-row result.", BulkAdsResponse), ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(BulkAdsByListingRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const r = await bulkUpdateAdsBidByListingId(
+			c.req.param("campaignId"),
+			body.requests.map((row) => ({ listingId: row.listingId, bidPercentage: row.bidPercentage ?? "" })),
+			{ apiKeyId: c.var.apiKey.id, marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID") },
+		);
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/ads/bulk-delete",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Bulk-delete ads by listing id",
+		responses: { 200: jsonResponse("Per-row result.", BulkAdsResponse), ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(BulkAdsByListingDeleteRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const r = await bulkDeleteAdsByListingId(c.req.param("campaignId"), body.listingIds, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/ads/bulk-update-status",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Bulk pause/resume ads by listing id",
+		responses: { 200: jsonResponse("Per-row result.", BulkAdsResponse), ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(BulkAdsStatusRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const r = await bulkUpdateAdsStatus(c.req.param("campaignId"), body.requests, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const });
 	},
 );
 

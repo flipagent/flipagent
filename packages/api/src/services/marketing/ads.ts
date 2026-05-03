@@ -136,6 +136,195 @@ export async function listAdGroups(campaignId: string, ctx: MarketingContext): P
 	return { groups: (res?.adGroups ?? []).map((g) => adGroupFrom(g, campaignId)) };
 }
 
+/* ─── campaign lifecycle ─── */
+
+export async function getCampaignByName(name: string, ctx: MarketingContext): Promise<AdCampaign | null> {
+	const res = await sellRequest<EbayCampaign>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/sell/marketing/v1/ad_campaign/get_campaign_by_name?campaign_name=${encodeURIComponent(name)}`,
+		marketplace: ctx.marketplace,
+	}).catch(() => null);
+	return res ? ebayCampaignToFlipagent(res) : null;
+}
+
+async function campaignAction(campaignId: string, action: string, ctx: MarketingContext): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/${action}`,
+		body: {},
+		marketplace: ctx.marketplace,
+	});
+}
+
+export const pauseAdCampaign = (id: string, ctx: MarketingContext) => campaignAction(id, "pause", ctx);
+export const resumeAdCampaign = (id: string, ctx: MarketingContext) => campaignAction(id, "resume", ctx);
+export const endAdCampaign = (id: string, ctx: MarketingContext) => campaignAction(id, "end", ctx);
+
+export async function cloneAdCampaign(
+	campaignId: string,
+	newName: string,
+	ctx: MarketingContext,
+): Promise<{ campaignId: string | null }> {
+	const res = await sellRequest<{ campaignId?: string }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/clone`,
+		body: { campaignName: newName },
+		marketplace: ctx.marketplace,
+		contentLanguage: "en-US",
+	});
+	return { campaignId: res?.campaignId ?? null };
+}
+
+/* ─── per-ad bid update + bulk ad ops by listingId ─── */
+
+export async function updateAdBid(
+	campaignId: string,
+	adId: string,
+	bidPercentage: string,
+	ctx: MarketingContext,
+): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/ad/${encodeURIComponent(adId)}/update_bid`,
+		body: { bidPercentage },
+		marketplace: ctx.marketplace,
+	});
+}
+
+export interface BulkAdCreateRow {
+	listingId: string;
+	bidPercentage?: string;
+}
+
+export interface BulkAdCreateResponse {
+	results: Array<{ listingId: string; adId?: string; status?: string; errors?: unknown }>;
+}
+
+export async function bulkCreateAdsByListingId(
+	campaignId: string,
+	rows: BulkAdCreateRow[],
+	ctx: MarketingContext,
+): Promise<BulkAdCreateResponse> {
+	interface UpstreamRow {
+		listingId: string;
+		adId?: string;
+		statusCode?: number;
+		errors?: unknown;
+	}
+	const res = await sellRequest<{ responses?: UpstreamRow[] }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/bulk_create_ads_by_listing_id`,
+		body: {
+			requests: rows.map((r) => ({
+				listingId: r.listingId,
+				...(r.bidPercentage ? { bidPercentage: r.bidPercentage } : {}),
+			})),
+		},
+		marketplace: ctx.marketplace,
+	});
+	return {
+		results: (res?.responses ?? []).map((r) => ({
+			listingId: r.listingId,
+			...(r.adId ? { adId: r.adId } : {}),
+			...(r.statusCode != null ? { status: String(r.statusCode) } : {}),
+			...(r.errors ? { errors: r.errors } : {}),
+		})),
+	};
+}
+
+export interface BulkAdBidUpdateRow {
+	listingId: string;
+	bidPercentage: string;
+}
+
+export async function bulkUpdateAdsBidByListingId(
+	campaignId: string,
+	rows: BulkAdBidUpdateRow[],
+	ctx: MarketingContext,
+): Promise<BulkAdCreateResponse> {
+	interface UpstreamRow {
+		listingId: string;
+		statusCode?: number;
+		errors?: unknown;
+	}
+	const res = await sellRequest<{ responses?: UpstreamRow[] }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/bulk_update_ads_bid_by_listing_id`,
+		body: { requests: rows },
+		marketplace: ctx.marketplace,
+	});
+	return {
+		results: (res?.responses ?? []).map((r) => ({
+			listingId: r.listingId,
+			...(r.statusCode != null ? { status: String(r.statusCode) } : {}),
+			...(r.errors ? { errors: r.errors } : {}),
+		})),
+	};
+}
+
+export async function bulkDeleteAdsByListingId(
+	campaignId: string,
+	listingIds: string[],
+	ctx: MarketingContext,
+): Promise<BulkAdCreateResponse> {
+	interface UpstreamRow {
+		listingId: string;
+		statusCode?: number;
+		errors?: unknown;
+	}
+	const res = await sellRequest<{ responses?: UpstreamRow[] }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/bulk_delete_ads_by_listing_id`,
+		body: { requests: listingIds.map((id) => ({ listingId: id })) },
+		marketplace: ctx.marketplace,
+	});
+	return {
+		results: (res?.responses ?? []).map((r) => ({
+			listingId: r.listingId,
+			...(r.statusCode != null ? { status: String(r.statusCode) } : {}),
+			...(r.errors ? { errors: r.errors } : {}),
+		})),
+	};
+}
+
+export interface BulkAdStatusRow {
+	listingId: string;
+	adStatus: "ACTIVE" | "PAUSED";
+}
+
+export async function bulkUpdateAdsStatus(
+	campaignId: string,
+	rows: BulkAdStatusRow[],
+	ctx: MarketingContext,
+): Promise<BulkAdCreateResponse> {
+	interface UpstreamRow {
+		listingId: string;
+		statusCode?: number;
+		errors?: unknown;
+	}
+	const res = await sellRequest<{ responses?: UpstreamRow[] }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/bulk_update_ads_status_by_listing_id`,
+		body: { requests: rows },
+		marketplace: ctx.marketplace,
+	});
+	return {
+		results: (res?.responses ?? []).map((r) => ({
+			listingId: r.listingId,
+			...(r.statusCode != null ? { status: String(r.statusCode) } : {}),
+			...(r.errors ? { errors: r.errors } : {}),
+		})),
+	};
+}
+
 export async function createAdGroup(campaignId: string, input: AdGroupCreate, ctx: MarketingContext): Promise<AdGroup> {
 	const res = await sellRequest<{ adGroupId?: string }>({
 		apiKeyId: ctx.apiKeyId,
