@@ -21,7 +21,7 @@ import type {
 	SellerPrivilege,
 	SellerSubscription,
 } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
 import { toCents } from "./shared/money.js";
 
 interface EbayPrivilege {
@@ -78,7 +78,7 @@ export async function getSellerPaymentsProgram(ctx: SellerAccountContext): Promi
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: `/sell/account/v1/payments_program/${marketplace}/EBAY_PAYMENTS`,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return {
 		marketplace: "ebay",
 		status: res?.status ?? "NOT_OPTED_IN",
@@ -96,7 +96,7 @@ export async function getSellerAdvertisingEligibility(
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: "/sell/account/v1/advertising_eligibility",
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	const row = res?.advertisingEligibility?.find((r) => r.marketplaceId === marketplace);
 	return {
 		marketplace: "ebay",
@@ -117,7 +117,7 @@ export async function getSalesTax(country: string, ctx: SellerAccountContext): P
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: `/sell/account/v1/sales_tax?country_code=${country.toUpperCase()}`,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	const rows: SalesTaxRow[] = (res?.salesTaxes ?? []).map((r) => ({
 		country: r.country,
 		jurisdictionId: r.salesTaxJurisdictionId,
@@ -140,7 +140,7 @@ export async function listRateTables(ctx: SellerAccountContext): Promise<RateTab
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: "/sell/account/v1/rate_table",
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	const rateTables: RateTable[] = (res?.rateTables ?? []).map((r) => ({
 		id: r.rateTableId,
 		name: r.name,
@@ -170,7 +170,7 @@ export async function listCustomPolicies(
 		method: "GET",
 		path: `/sell/account/v1/custom_policy?${params.toString()}`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	const customPolicies: CustomPolicy[] = (res?.customPolicies ?? []).map((p) => ({
 		id: p.customPolicyId,
 		name: p.name,
@@ -215,7 +215,7 @@ export async function getSellerEligibility(ctx: SellerAccountContext): Promise<S
 		method: "GET",
 		path: "/sell/account/v1/eligibility",
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	const marketplace: Marketplace = "ebay";
 	return {
 		marketplace,

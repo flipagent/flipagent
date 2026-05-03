@@ -6,7 +6,7 @@
  */
 
 import type { Dispute, DisputeRespond, DisputesListQuery, DisputeType } from "@flipagent/types";
-import { sellRequest, swallow404 } from "../ebay/rest/user-client.js";
+import { sellRequest, swallow404, swallowEbay404 } from "../ebay/rest/user-client.js";
 import {
 	type EbayCancellationRecord,
 	type EbayCaseRecord,
@@ -58,7 +58,7 @@ export async function listDisputes(
 			method: "GET",
 			path,
 			marketplace: ctx.marketplace,
-		}).catch(() => null);
+		}).catch(swallowEbay404);
 		if (!res) continue;
 		if (t === "return") {
 			const rows = (res.members ?? res.returns ?? []) as EbayReturnRecord[];
@@ -90,7 +90,7 @@ export async function getDispute(
 			method: "GET",
 			path: GET_PATH[t](id),
 			marketplace: ctx.marketplace,
-		}).catch(() => null);
+		}).catch(swallowEbay404);
 		if (!res) continue;
 		if (t === "return") return ebayReturnToDispute(res as unknown as EbayReturnRecord);
 		if (t === "case") return ebayCaseToDispute(res as unknown as EbayCaseRecord);

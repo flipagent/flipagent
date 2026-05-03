@@ -119,12 +119,17 @@ export async function sellRequest<T = unknown>(opts: SellRequestOpts): Promise<T
 }
 
 /**
- * Promise wrapper that converts an EbayApiError 404 into `null` and
- * re-throws everything else. Use this when "not found = empty
- * collection / no record" is the legitimate semantics — never use a
- * bare `.catch(() => null)`, which silently swallows scope errors,
- * outages, network issues, and IAF-vs-Bearer auth bugs (see the
- * post-order fix in commit 5f4b83c).
+ * `.catch()` handler that converts an EbayApiError 404 into `null`
+ * and re-throws everything else. Use this in place of the bare
+ * `.catch(() => null)` anti-pattern, which silently swallows scope
+ * errors, outages, network issues, and auth bugs (see the post-order
+ * IAF mismatch in commit 5f4b83c and the missing-sell.marketing-scope
+ * silent failure in commit e120fa4 — both were hidden for months by
+ * `.catch(() => null)`).
+ *
+ * Two forms for ergonomic use:
+ *   - `swallow404(sellRequest(...))` — wrap the whole promise
+ *   - `sellRequest(...).catch(swallowEbay404)` — chained at the end
  */
 export async function swallow404<T>(promise: Promise<T>): Promise<T | null> {
 	try {
@@ -133,6 +138,11 @@ export async function swallow404<T>(promise: Promise<T>): Promise<T | null> {
 		if (err instanceof EbayApiError && err.status === 404) return null;
 		throw err;
 	}
+}
+
+export function swallowEbay404(err: unknown): null {
+	if (err instanceof EbayApiError && err.status === 404) return null;
+	throw err;
 }
 
 function safeJson(text: string): unknown {

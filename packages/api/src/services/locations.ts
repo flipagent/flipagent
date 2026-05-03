@@ -3,7 +3,7 @@
  */
 
 import type { Location, LocationCreate, LocationStatus } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
 
 interface EbayLocation {
 	merchantLocationKey: string;
@@ -58,7 +58,7 @@ export async function listLocations(ctx: LocationsContext): Promise<{ locations:
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: "/sell/inventory/v1/location",
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return { locations: (res?.locations ?? []).map(ebayToFlipagent) };
 }
 
@@ -67,7 +67,7 @@ export async function getLocation(id: string, ctx: LocationsContext): Promise<Lo
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: `/sell/inventory/v1/location/${encodeURIComponent(id)}`,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return res ? ebayToFlipagent(res) : null;
 }
 

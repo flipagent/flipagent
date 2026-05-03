@@ -3,7 +3,7 @@
  */
 
 import type { Ad, AdCampaign, AdCampaignCreate, AdGroup, AdGroupCreate, AdsListResponse } from "@flipagent/types";
-import { sellRequest, swallow404 } from "../ebay/rest/user-client.js";
+import { sellRequest, swallow404, swallowEbay404 } from "../ebay/rest/user-client.js";
 import { toCents, toDollarString } from "../shared/money.js";
 import type { MarketingContext } from "./promotions.js";
 
@@ -51,7 +51,7 @@ export async function listAdCampaigns(
 		method: "GET",
 		path: `/sell/marketing/v1/ad_campaign?${params.toString()}`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return {
 		campaigns: (res?.campaigns ?? []).map(ebayCampaignToFlipagent),
 		limit,
@@ -98,7 +98,7 @@ export async function listAdsForCampaign(campaignId: string, ctx: MarketingConte
 		method: "GET",
 		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/ad`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return (res?.ads ?? []).map((a) => ({
 		id: a.adId,
 		campaignId,
@@ -132,7 +132,7 @@ export async function listAdGroups(campaignId: string, ctx: MarketingContext): P
 		method: "GET",
 		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/ad_group`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return { groups: (res?.adGroups ?? []).map((g) => adGroupFrom(g, campaignId)) };
 }
 

@@ -8,7 +8,7 @@ import type { ReportMetadata, ReportTask, ReportTaskCreate } from "@flipagent/ty
 import { config, isEbayOAuthConfigured } from "../../config.js";
 import { fetchRetry } from "../../utils/fetch-retry.js";
 import { getUserAccessToken } from "../ebay/oauth.js";
-import { EbayApiError, sellRequest } from "../ebay/rest/user-client.js";
+import { EbayApiError, sellRequest, swallowEbay404 } from "../ebay/rest/user-client.js";
 import type { MarketingContext } from "./promotions.js";
 
 interface EbayReportTask {
@@ -61,7 +61,7 @@ export async function listReportTasks(
 		method: "GET",
 		path: REPORT_PATH[kind],
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return { tasks: (res?.tasks ?? []).map((t) => taskFrom(t, kind)) };
 }
 
@@ -75,7 +75,7 @@ export async function getReportTask(
 		method: "GET",
 		path: `${REPORT_PATH[kind]}/${encodeURIComponent(id)}`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return res ? taskFrom(res, kind) : null;
 }
 
@@ -142,7 +142,7 @@ export async function getReportMetadata(ctx: MarketingContext): Promise<ReportMe
 		method: "GET",
 		path: "/sell/marketing/v1/ad_report_metadata",
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return {
 		dimensions: (res?.dimensions ?? []).map((d) => ({
 			name: d.dimensionKey,

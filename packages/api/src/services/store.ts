@@ -3,7 +3,7 @@
  */
 
 import type { StoreCategory, StoreCategoryUpsert } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
 
 interface EbayStoreCategory {
 	categoryId: string;
@@ -34,7 +34,7 @@ export async function getStoreCategories(ctx: StoreContext): Promise<{ categorie
 		method: "GET",
 		path: "/sell/stores/v2/store-categories",
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	const categories: StoreCategory[] = [];
 	for (const root of res?.storeCategories ?? []) flatten(root, categories);
 	return { categories };
@@ -80,7 +80,7 @@ export interface StoreInfo {
 	storeSubscriptionLevel: string | null;
 }
 
-export async function getStoreInfo(ctx: StoreContext, accessToken: string): Promise<StoreInfo | null> {
+export async function getStoreInfo(_ctx: StoreContext, accessToken: string): Promise<StoreInfo | null> {
 	const xml = await tradingCall({
 		callName: "GetStore",
 		accessToken,
@@ -88,7 +88,7 @@ export async function getStoreInfo(ctx: StoreContext, accessToken: string): Prom
 <GetStoreRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <DetailLevel>ReturnAll</DetailLevel>
 </GetStoreRequest>`,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	if (!xml) return null;
 	const parsed = parseTrading(xml, "GetStore");
 	const store = (parsed.Store ?? {}) as Record<string, unknown>;

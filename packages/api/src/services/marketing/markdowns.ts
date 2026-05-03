@@ -3,7 +3,7 @@
  */
 
 import type { PriceMarkdown, PriceMarkdownCreate } from "@flipagent/types";
-import { sellRequest } from "../ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "../ebay/rest/user-client.js";
 import type { MarketingContext } from "./promotions.js";
 
 interface EbayMarkdown {
@@ -42,7 +42,7 @@ export async function listMarkdowns(
 		method: "GET",
 		path: `/sell/marketing/v1/item_price_markdown?${params.toString()}`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return { markdowns: (res?.campaigns ?? []).map(markdownFrom), limit, offset };
 }
 

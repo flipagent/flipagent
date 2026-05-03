@@ -8,7 +8,7 @@
  */
 
 import type { Media, MediaUpload, MediaUploadRequest } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
 
 interface EbayUpload {
 	mediaId: string;
@@ -42,6 +42,6 @@ export async function getMedia(id: string, type: "image" | "video", ctx: MediaCo
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: `/commerce/media/v1_beta/${type}/${encodeURIComponent(id)}`,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return res ? { id, type, ...(res.url ? { url: res.url } : {}), status: res.status } : null;
 }

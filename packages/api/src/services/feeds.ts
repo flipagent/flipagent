@@ -3,7 +3,7 @@
  */
 
 import type { FeedKind, FeedTask, FeedTaskCreate, FeedTaskStatus } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
 
 const STATUS_FROM: Record<string, FeedTaskStatus> = {
 	QUEUED: "queued",
@@ -81,7 +81,7 @@ export async function listFeedTasks(kind: FeedKind | undefined, ctx: FeedsContex
 			method: "GET",
 			path: `${pathBase(k)}/${resourceName(k)}`,
 			marketplace: ctx.marketplace,
-		}).catch(() => null);
+		}).catch(swallowEbay404);
 		for (const t of res?.tasks ?? []) all.push(ebayTaskToFlipagent(t, k));
 	}
 	return { tasks: all };
@@ -93,7 +93,7 @@ export async function getFeedTask(id: string, kind: FeedKind, ctx: FeedsContext)
 		method: "GET",
 		path: `${pathBase(kind)}/${resourceName(kind)}/${encodeURIComponent(id)}`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return res ? ebayTaskToFlipagent(res, kind) : null;
 }
 

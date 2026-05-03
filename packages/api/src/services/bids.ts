@@ -3,7 +3,7 @@
  */
 
 import type { Bid, BidCreate, BidStatus } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
 import { toCents, toDollarString } from "./shared/money.js";
 
 const STATUS_FROM: Record<string, BidStatus> = {
@@ -54,7 +54,7 @@ export async function listBids(ctx: BidsContext): Promise<{ bids: Bid[] }> {
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: "/buy/offer/v1/bidding",
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return { bids: (res?.biddings ?? []).map(ebayBidToFlipagent) };
 }
 

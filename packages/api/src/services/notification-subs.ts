@@ -8,7 +8,7 @@ import type {
 	NotificationSubscriptionCreate,
 	NotificationTopic,
 } from "@flipagent/types";
-import { sellRequest, swallow404 } from "./ebay/rest/user-client.js";
+import { sellRequest, swallow404, swallowEbay404 } from "./ebay/rest/user-client.js";
 
 interface EbaySubscription {
 	subscriptionId: string;
@@ -37,7 +37,7 @@ export async function listSubscriptions(ctx: NotifContext): Promise<{ subscripti
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: "/commerce/notification/v1/subscription",
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return { subscriptions: (res?.subscriptions ?? []).map(toFlipagent) };
 }
 
@@ -46,7 +46,7 @@ export async function getSubscription(id: string, ctx: NotifContext): Promise<No
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: `/commerce/notification/v1/subscription/${encodeURIComponent(id)}`,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return res ? toFlipagent(res) : null;
 }
 
@@ -88,7 +88,7 @@ export async function listDestinations(ctx: NotifContext): Promise<{ destination
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: "/commerce/notification/v1/destination",
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return {
 		destinations: (res?.destinations ?? []).map((d) => ({
 			id: d.destinationId,
@@ -106,7 +106,7 @@ export async function listTopics(ctx: NotifContext): Promise<{ topics: Notificat
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: "/commerce/notification/v1/topic",
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return {
 		topics: (res?.topics ?? []).map((t) => ({
 			id: t.topicId,

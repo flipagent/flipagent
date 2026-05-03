@@ -10,7 +10,7 @@ import type {
 	TrafficReport,
 	TrafficReportRow,
 } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
 
 const LEVEL_FROM: Record<string, SellerStandardsLevel> = {
 	TOP_RATED: "top_rated",
@@ -44,7 +44,7 @@ export async function getTrafficReport(
 		method: "GET",
 		path: `/sell/analytics/v1/traffic_report?${params.toString()}`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	const rows: TrafficReportRow[] = (res?.records ?? []).map((r) => {
 		const m = new Map((r.metricValues ?? []).map((v) => [v.metricKey, Number(v.value)]));
 		return {
@@ -73,7 +73,7 @@ export async function getSellerStandards(
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: `/sell/analytics/v1/seller_standards_profile/${programId}/${cycle}`,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return {
 		marketplace: "ebay",
 		program: programId,
@@ -101,7 +101,7 @@ export async function getServiceMetrics(ctx: AnalyticsContext): Promise<ServiceM
 		method: "GET",
 		path: "/sell/analytics/v1/customer_service_metric",
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	const metrics: ServiceMetric[] = (res?.serviceMetrics ?? []).map((m) => ({
 		metric: m.metricKey,
 		level: LEVEL_FROM[m.level] ?? "above_standard",

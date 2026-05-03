@@ -11,7 +11,7 @@ import type {
 	Transfer,
 	TransfersListResponse,
 } from "@flipagent/types";
-import { sellRequest } from "../ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "../ebay/rest/user-client.js";
 import { moneyFromOrZero } from "../shared/money.js";
 import {
 	type EbayPayout,
@@ -73,7 +73,7 @@ export async function getPayoutSummary(from: string, to: string, ctx: MoneyConte
 		method: "GET",
 		path: `/sell/finances/v1/payout_summary?${params.toString()}`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return {
 		totalAmount: moneyFromOrZero(res?.amount),
 		...(res?.feeAmount ? { feeAmount: moneyFromOrZero(res.feeAmount) } : {}),
@@ -121,7 +121,7 @@ export async function listTransfers(
 		method: "GET",
 		path: `/sell/finances/v1/transfer?${params.toString()}`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	const transfers: Transfer[] = (res?.transfers ?? []).map((t) => ({
 		id: t.transferId,
 		amount: moneyFromOrZero(t.amount),

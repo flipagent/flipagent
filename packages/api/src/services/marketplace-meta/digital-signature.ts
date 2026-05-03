@@ -4,7 +4,7 @@
  */
 
 import type { DigitalSignatureRoute } from "@flipagent/types";
-import { sellRequest } from "../ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "../ebay/rest/user-client.js";
 import { toCents } from "../shared/money.js";
 
 const COUNTRY_TO_EBAY: Record<string, string> = {
@@ -36,7 +36,7 @@ export async function getDigitalSignatureRoutes(
 		apiKeyId,
 		method: "GET",
 		path: `/sell/metadata/v1/marketplace/${m}/get_digital_signature_routes`,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return {
 		routes: (res?.digitalSignatureRoutes ?? []).map((r) => ({
 			fromCountry: r.fromCountry,

@@ -3,8 +3,7 @@
  */
 
 import type { OfferCreate } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
-
+import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
 export interface OutboundContext {
 	apiKeyId: string;
 }
@@ -29,7 +28,7 @@ export async function findEligibleItems(ctx: OutboundContext): Promise<{ items: 
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
 		path: "/sell/negotiation/v1/find_eligible_items",
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return {
 		items: res?.eligibleItems ?? [],
 		...(res?.total !== undefined ? { total: res.total } : {}),

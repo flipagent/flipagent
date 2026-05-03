@@ -9,7 +9,7 @@ import type {
 	PromotionsListResponse,
 	PromotionType,
 } from "@flipagent/types";
-import { sellRequest } from "../ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "../ebay/rest/user-client.js";
 import { toCents, toDollarString } from "../shared/money.js";
 
 export interface MarketingContext {
@@ -95,7 +95,7 @@ export async function listPromotions(
 		method: "GET",
 		path: `/sell/marketing/v1/item_promotion?${params.toString()}`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	return { promotions: (res?.promotions ?? []).map(ebayPromotionToFlipagent), limit, offset };
 }
 

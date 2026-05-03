@@ -16,7 +16,7 @@ import type {
 	ListingMigrate,
 	ListingMigrateResult,
 } from "@flipagent/types";
-import { sellRequest } from "../ebay/rest/user-client.js";
+import { sellRequest, swallowEbay404 } from "../ebay/rest/user-client.js";
 
 function dollarString(cents: number): string {
 	return (cents / 100).toFixed(2);
@@ -132,7 +132,7 @@ export async function getListingGroup(id: string, ctx: BulkContext): Promise<Lis
 		method: "GET",
 		path: `/sell/inventory/v1/inventory_item_group/${encodeURIComponent(id)}`,
 		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	}).catch(swallowEbay404);
 	if (!res) return null;
 	return {
 		id,
