@@ -17,7 +17,7 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { listPolicies } from "../../services/policies.js";
+import { getPolicyByName, listPolicies } from "../../services/policies.js";
 import {
 	createCustomPolicy,
 	listCustomPolicies,
@@ -45,6 +45,31 @@ policiesRoute.get(
 			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
 		});
 		return c.json({ policies: r.policies, limit: r.limit, offset: r.offset, source: "rest" as const });
+	},
+);
+
+policiesRoute.get(
+	"/by-name",
+	describeRoute({
+		tags: ["Policies"],
+		summary: "Look up a policy by exact name (idempotency helper)",
+		description:
+			"Wraps Sell Account `/sell/account/v1/{type}_policy/get_by_policy_name?marketplace_id=&name=`. Useful for scripts that want to check whether a named policy exists before creating it (avoid duplicates).",
+		responses: { 200: { description: "Policy." }, 404: errorResponse("Not found."), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const type = c.req.query("type");
+		const name = c.req.query("name");
+		if (!type || !POLICY_TYPES.has(type) || !name) {
+			return c.json({ error: "missing_params", message: "?type=return|payment|fulfillment&name=… required." }, 400);
+		}
+		const r = await getPolicyByName(type as PolicyType, name, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		if (!r) return c.json({ error: "policy_not_found", message: `No ${type} policy named '${name}'.` }, 404);
+		return c.json({ ...r, source: "rest" as const });
 	},
 );
 

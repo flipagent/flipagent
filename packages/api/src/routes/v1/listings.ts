@@ -28,6 +28,8 @@ import {
 	ListingVerifyResponse,
 	ProductCompatibilityRequest,
 	ProductCompatibilityResponse,
+	SkuLocationsRequest,
+	SkuLocationsResponse,
 } from "@flipagent/types";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -45,6 +47,7 @@ import { getListing, listListings } from "../../services/listings/get.js";
 import { publishByInventoryItemGroup, withdrawByInventoryItemGroup } from "../../services/listings/groups.js";
 import { endListing, relistListing, updateListing } from "../../services/listings/lifecycle.js";
 import { previewListingFees } from "../../services/listings/preview-fees.js";
+import { deleteSkuLocations, getSkuLocations, setSkuLocations } from "../../services/listings/sku-locations.js";
 import { verifyListing } from "../../services/listings/verify.js";
 import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
@@ -391,6 +394,78 @@ listingsRoute.delete(
 		} catch (err) {
 			const mapped = mapEbayError(c, err);
 			if (mapped) return mapped;
+			throw err;
+		}
+	},
+);
+
+listingsRoute.get(
+	"/:listingId/skus/:sku/locations",
+	describeRoute({
+		tags: ["Listings"],
+		summary: "Get fulfillment-center mappings for one SKU within a listing",
+		responses: {
+			200: jsonResponse("Locations.", SkuLocationsResponse),
+			404: errorResponse("No locations mapped."),
+			...COMMON_RESPONSES,
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const { listingId, sku } = c.req.param();
+		try {
+			const r = await getSkuLocations(listingId, sku, { apiKeyId: c.var.apiKey.id });
+			if (!r) return c.json({ error: "no_mappings", message: `No locations mapped for SKU '${sku}'.` }, 404);
+			return c.json({ ...r, source: "rest" as const });
+		} catch (err) {
+			const m = mapEbayError(c, err);
+			if (m) return m;
+			throw err;
+		}
+	},
+);
+
+listingsRoute.put(
+	"/:listingId/skus/:sku/locations",
+	describeRoute({
+		tags: ["Listings"],
+		summary: "Map fulfillment-center locations + per-location stock to one SKU",
+		description:
+			"Replaces the SKU's location set. Each entry pins a `merchantLocationKey` + per-location `quantity`. Used by sellers with multi-warehouse fulfillment so eBay calculates EDD per buyer location. Cap: first 50 locations are considered for EDD math.",
+		responses: { 200: { description: "Mappings set." }, ...COMMON_RESPONSES },
+	}),
+	requireApiKey,
+	tbBody(SkuLocationsRequest),
+	async (c) => {
+		const { listingId, sku } = c.req.param();
+		const body = c.req.valid("json");
+		try {
+			await setSkuLocations(listingId, sku, body.locations, { apiKeyId: c.var.apiKey.id });
+			return c.json({ ok: true, source: "rest" as const });
+		} catch (err) {
+			const m = mapEbayError(c, err);
+			if (m) return m;
+			throw err;
+		}
+	},
+);
+
+listingsRoute.delete(
+	"/:listingId/skus/:sku/locations",
+	describeRoute({
+		tags: ["Listings"],
+		summary: "Clear all SKU→location mappings",
+		responses: { 204: { description: "Cleared." }, ...COMMON_RESPONSES },
+	}),
+	requireApiKey,
+	async (c) => {
+		const { listingId, sku } = c.req.param();
+		try {
+			await deleteSkuLocations(listingId, sku, { apiKeyId: c.var.apiKey.id });
+			return c.body(null, 204);
+		} catch (err) {
+			const m = mapEbayError(c, err);
+			if (m) return m;
 			throw err;
 		}
 	},

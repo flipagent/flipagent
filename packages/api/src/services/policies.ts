@@ -141,3 +141,29 @@ export async function listPolicies(
 	}
 	return { policies: all, limit: all.length, offset: 0 };
 }
+
+/**
+ * Look up a policy by its human name. Useful for idempotent scripts:
+ * "do I already have a fulfillment policy named 'Standard'?". Wraps
+ * `/sell/account/v1/{type}_policy/get_by_policy_name?marketplace_id=&name=`.
+ */
+export async function getPolicyByName(type: PolicyType, name: string, ctx: PoliciesContext): Promise<Policy | null> {
+	const marketplace = ctx.marketplace ?? "EBAY_US";
+	const path = `/sell/account/v1/${type}_policy/get_by_policy_name?marketplace_id=${encodeURIComponent(marketplace)}&name=${encodeURIComponent(name)}`;
+	if (type === "return") {
+		const res = await sellRequest<EbayReturnPolicy>({ apiKeyId: ctx.apiKeyId, method: "GET", path }).catch(
+			() => null,
+		);
+		return res ? returnPolicyToFlipagent(res) : null;
+	}
+	if (type === "payment") {
+		const res = await sellRequest<EbayPaymentPolicy>({ apiKeyId: ctx.apiKeyId, method: "GET", path }).catch(
+			() => null,
+		);
+		return res ? paymentPolicyToFlipagent(res) : null;
+	}
+	const res = await sellRequest<EbayFulfillmentPolicy>({ apiKeyId: ctx.apiKeyId, method: "GET", path }).catch(
+		() => null,
+	);
+	return res ? fulfillmentPolicyToFlipagent(res) : null;
+}

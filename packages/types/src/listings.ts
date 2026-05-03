@@ -375,6 +375,36 @@ export const ProductCompatibilityRequest = Type.Object(
 );
 export type ProductCompatibilityRequest = Static<typeof ProductCompatibilityRequest>;
 
+const SkuLocationAvailability = Type.Object(
+	{
+		merchantLocationKey: Type.String(),
+		availability: Type.Optional(
+			Type.Object({
+				quantity: Type.Integer({ minimum: 0 }),
+				allocationByFormat: Type.Optional(
+					Type.Object({
+						auction: Type.Optional(Type.Integer({ minimum: 0 })),
+						fixedPrice: Type.Optional(Type.Integer({ minimum: 0 })),
+					}),
+				),
+			}),
+		),
+	},
+	{ $id: "SkuLocationAvailability" },
+);
+
+export const SkuLocationsRequest = Type.Object(
+	{ locations: Type.Array(SkuLocationAvailability, { minItems: 1, maxItems: 50 }) },
+	{ $id: "SkuLocationsRequest" },
+);
+export type SkuLocationsRequest = Static<typeof SkuLocationsRequest>;
+
+export const SkuLocationsResponse = Type.Object(
+	{ locations: Type.Array(SkuLocationAvailability), source: Type.Optional(ResponseSource) },
+	{ $id: "SkuLocationsResponse" },
+);
+export type SkuLocationsResponse = Static<typeof SkuLocationsResponse>;
+
 export const ListingPreviewFeesResponse = Type.Object(
 	{
 		summaries: Type.Array(

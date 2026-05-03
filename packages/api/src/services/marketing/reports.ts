@@ -5,7 +5,10 @@
  */
 
 import type { ReportMetadata, ReportTask, ReportTaskCreate } from "@flipagent/types";
-import { sellRequest } from "../ebay/rest/user-client.js";
+import { config, isEbayOAuthConfigured } from "../../config.js";
+import { fetchRetry } from "../../utils/fetch-retry.js";
+import { getUserAccessToken } from "../ebay/oauth.js";
+import { EbayApiError, sellRequest } from "../ebay/rest/user-client.js";
 import type { MarketingContext } from "./promotions.js";
 
 interface EbayReportTask {
@@ -98,6 +101,35 @@ export async function createReportTask(input: ReportTaskCreate, ctx: MarketingCo
 		...(input.dimensions ? { dimensions: input.dimensions } : {}),
 		...(input.metrics ? { metrics: input.metrics } : {}),
 		createdAt: new Date().toISOString(),
+	};
+}
+
+/**
+ * Download a completed ad report as raw TSV. Wraps `GET /sell/
+ * marketing/v1/ad_report/{report_id}`. The report itself is what
+ * `getReportTask` returns the URL to once status='completed'; this
+ * helper hits the URL directly and returns the bytes + content-type
+ * (typically `text/tab-separated-values`).
+ *
+ * Per-user quota: 200 calls/hour (eBay-side limit).
+ */
+export async function downloadAdReport(
+	reportId: string,
+	ctx: MarketingContext,
+): Promise<{ data: Uint8Array; contentType: string }> {
+	if (!isEbayOAuthConfigured()) {
+		throw new EbayApiError(503, "ebay_not_configured", "eBay OAuth credentials are not set on this api instance.");
+	}
+	const token = await getUserAccessToken(ctx.apiKeyId);
+	const url = `${config.EBAY_BASE_URL}/sell/marketing/v1/ad_report/${encodeURIComponent(reportId)}`;
+	const res = await fetchRetry(url, { method: "GET", headers: { Authorization: `Bearer ${token}` } });
+	if (!res.ok) {
+		const text = await res.text();
+		throw new EbayApiError(res.status, `ebay_${res.status}`, text || `eBay returned ${res.status}`);
+	}
+	return {
+		data: new Uint8Array(await res.arrayBuffer()),
+		contentType: res.headers.get("content-type") ?? "text/tab-separated-values",
 	};
 }
 

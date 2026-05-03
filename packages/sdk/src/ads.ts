@@ -36,6 +36,36 @@ export interface AdsClient {
 	bulkUpdateAdBids(campaignId: string, body: BulkAdsByListingRequest): Promise<BulkAdsResponse>;
 	bulkDeleteAds(campaignId: string, body: BulkAdsByListingDeleteRequest): Promise<BulkAdsResponse>;
 	bulkUpdateAdStatus(campaignId: string, body: BulkAdsStatusRequest): Promise<BulkAdsResponse>;
+	bulkCreateAdsByInventoryRef(
+		campaignId: string,
+		body: {
+			requests: Array<{
+				inventoryReferenceId: string;
+				inventoryReferenceType: "INVENTORY_ITEM" | "INVENTORY_ITEM_GROUP";
+				bidPercentage?: string;
+			}>;
+		},
+	): Promise<unknown>;
+	bulkUpdateAdBidsByInventoryRef(
+		campaignId: string,
+		body: {
+			requests: Array<{
+				inventoryReferenceId: string;
+				inventoryReferenceType: "INVENTORY_ITEM" | "INVENTORY_ITEM_GROUP";
+				bidPercentage: string;
+			}>;
+		},
+	): Promise<unknown>;
+	bulkDeleteAdsByInventoryRef(
+		campaignId: string,
+		body: {
+			requests: Array<{
+				inventoryReferenceId: string;
+				inventoryReferenceType: "INVENTORY_ITEM" | "INVENTORY_ITEM_GROUP";
+			}>;
+		},
+	): Promise<unknown>;
+	downloadReport(reportId: string): Promise<Response>;
 	listGroups(campaignId: string): Promise<AdGroupsListResponse>;
 	createGroup(campaignId: string, body: AdGroupCreate): Promise<AdGroup>;
 	reportMetadata(): Promise<ReportMetadata>;
@@ -60,6 +90,11 @@ export function createAdsClient(http: FlipagentHttp): AdsClient {
 		bulkUpdateAdBids: (id, body) => http.post(`${c(id)}/ads/bulk-update-bid`, body),
 		bulkDeleteAds: (id, body) => http.post(`${c(id)}/ads/bulk-delete`, body),
 		bulkUpdateAdStatus: (id, body) => http.post(`${c(id)}/ads/bulk-update-status`, body),
+		bulkCreateAdsByInventoryRef: (id, body) => http.post(`${c(id)}/ads/bulk-create-by-inventory-reference`, body),
+		bulkUpdateAdBidsByInventoryRef: (id, body) =>
+			http.post(`${c(id)}/ads/bulk-update-bid-by-inventory-reference`, body),
+		bulkDeleteAdsByInventoryRef: (id, body) => http.post(`${c(id)}/ads/bulk-delete-by-inventory-reference`, body),
+		downloadReport: (reportId) => http.fetchRaw(`/v1/ads/reports/${encodeURIComponent(reportId)}/download`),
 		listGroups: (id) => http.get(`${c(id)}/groups`),
 		createGroup: (id, body) => http.post(`${c(id)}/groups`, body),
 		reportMetadata: () => http.get("/v1/ads/reports/metadata"),

@@ -299,6 +299,93 @@ export interface BulkAdStatusRow {
 	adStatus: "ACTIVE" | "PAUSED";
 }
 
+/* ─── inventory_reference variants (for multi-variation listings) ─── */
+
+export interface BulkAdInventoryRefRow {
+	inventoryReferenceId: string;
+	inventoryReferenceType: "INVENTORY_ITEM" | "INVENTORY_ITEM_GROUP";
+	bidPercentage?: string;
+}
+
+interface UpstreamInventoryRefResponseRow {
+	inventoryReferenceId: string;
+	inventoryReferenceType?: string;
+	adId?: string;
+	statusCode?: number;
+	errors?: unknown;
+}
+
+export interface BulkAdInventoryRefResponse {
+	results: Array<{
+		inventoryReferenceId: string;
+		inventoryReferenceType: string;
+		adId?: string;
+		status?: string;
+		errors?: unknown;
+	}>;
+}
+
+function mapInventoryRefRows(rows: UpstreamInventoryRefResponseRow[] | undefined): BulkAdInventoryRefResponse {
+	return {
+		results: (rows ?? []).map((r) => ({
+			inventoryReferenceId: r.inventoryReferenceId,
+			inventoryReferenceType: r.inventoryReferenceType ?? "",
+			...(r.adId ? { adId: r.adId } : {}),
+			...(r.statusCode != null ? { status: String(r.statusCode) } : {}),
+			...(r.errors ? { errors: r.errors } : {}),
+		})),
+	};
+}
+
+export async function bulkCreateAdsByInventoryReference(
+	campaignId: string,
+	rows: BulkAdInventoryRefRow[],
+	ctx: MarketingContext,
+): Promise<BulkAdInventoryRefResponse> {
+	const res = await sellRequest<{ responses?: UpstreamInventoryRefResponseRow[] }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/bulk_create_ads_by_inventory_reference`,
+		body: { requests: rows },
+		marketplace: ctx.marketplace,
+	});
+	return mapInventoryRefRows(res?.responses);
+}
+
+export async function bulkUpdateAdsBidByInventoryReference(
+	campaignId: string,
+	rows: Array<{
+		inventoryReferenceId: string;
+		inventoryReferenceType: "INVENTORY_ITEM" | "INVENTORY_ITEM_GROUP";
+		bidPercentage: string;
+	}>,
+	ctx: MarketingContext,
+): Promise<BulkAdInventoryRefResponse> {
+	const res = await sellRequest<{ responses?: UpstreamInventoryRefResponseRow[] }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/bulk_update_ads_bid_by_inventory_reference`,
+		body: { requests: rows },
+		marketplace: ctx.marketplace,
+	});
+	return mapInventoryRefRows(res?.responses);
+}
+
+export async function bulkDeleteAdsByInventoryReference(
+	campaignId: string,
+	rows: Array<{ inventoryReferenceId: string; inventoryReferenceType: "INVENTORY_ITEM" | "INVENTORY_ITEM_GROUP" }>,
+	ctx: MarketingContext,
+): Promise<BulkAdInventoryRefResponse> {
+	const res = await sellRequest<{ responses?: UpstreamInventoryRefResponseRow[] }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/bulk_delete_ads_by_inventory_reference`,
+		body: { requests: rows },
+		marketplace: ctx.marketplace,
+	});
+	return mapInventoryRefRows(res?.responses);
+}
+
 export async function bulkUpdateAdsStatus(
 	campaignId: string,
 	rows: BulkAdStatusRow[],

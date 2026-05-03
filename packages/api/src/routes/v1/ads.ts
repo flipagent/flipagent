@@ -22,8 +22,11 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import {
+	bulkCreateAdsByInventoryReference,
 	bulkCreateAdsByListingId,
+	bulkDeleteAdsByInventoryReference,
 	bulkDeleteAdsByListingId,
+	bulkUpdateAdsBidByInventoryReference,
 	bulkUpdateAdsBidByListingId,
 	bulkUpdateAdsStatus,
 	cloneAdCampaign,
@@ -40,6 +43,7 @@ import {
 } from "../../services/marketing/ads.js";
 import {
 	createReportTask,
+	downloadAdReport,
 	getReportMetadata,
 	getReportTask,
 	listReportTasks,
@@ -254,6 +258,98 @@ adsRoute.post(
 			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
 		});
 		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/ads/bulk-create-by-inventory-reference",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Bulk-create ads by inventory_reference (multi-variation listings)",
+		description:
+			"Variant of bulk-create that targets `inventoryReferenceId` + `inventoryReferenceType` (`INVENTORY_ITEM` | `INVENTORY_ITEM_GROUP`) instead of `listingId`. Use when listings are organized as inventory_item_groups (size/color matrices) and you want to ad an entire variation set in one go.",
+		responses: { 200: { description: "Per-row result." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const body = (await c.req.json()) as {
+			requests: Array<{
+				inventoryReferenceId: string;
+				inventoryReferenceType: "INVENTORY_ITEM" | "INVENTORY_ITEM_GROUP";
+				bidPercentage?: string;
+			}>;
+		};
+		const r = await bulkCreateAdsByInventoryReference(c.req.param("campaignId"), body.requests, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/ads/bulk-update-bid-by-inventory-reference",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Bulk-update ad bids by inventory_reference",
+		responses: { 200: { description: "Per-row result." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const body = (await c.req.json()) as {
+			requests: Array<{
+				inventoryReferenceId: string;
+				inventoryReferenceType: "INVENTORY_ITEM" | "INVENTORY_ITEM_GROUP";
+				bidPercentage: string;
+			}>;
+		};
+		const r = await bulkUpdateAdsBidByInventoryReference(c.req.param("campaignId"), body.requests, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+adsRoute.post(
+	"/:campaignId/ads/bulk-delete-by-inventory-reference",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Bulk-delete ads by inventory_reference",
+		responses: { 200: { description: "Per-row result." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const body = (await c.req.json()) as {
+			requests: Array<{
+				inventoryReferenceId: string;
+				inventoryReferenceType: "INVENTORY_ITEM" | "INVENTORY_ITEM_GROUP";
+			}>;
+		};
+		const r = await bulkDeleteAdsByInventoryReference(c.req.param("campaignId"), body.requests, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+adsRoute.get(
+	"/reports/:reportId/download",
+	describeRoute({
+		tags: ["Ads"],
+		summary: "Download a completed ad report (TSV)",
+		description:
+			"Streams the raw TSV report. Call after `flipagent_get_ad_report` shows status=completed. eBay enforces 200 calls/hour per user on this endpoint.",
+		responses: { 200: { description: "TSV bytes." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const { data, contentType } = await downloadAdReport(c.req.param("reportId"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.body(data, 200, { "Content-Type": contentType });
 	},
 );
 

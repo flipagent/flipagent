@@ -32,6 +32,13 @@ export interface ListingsClient {
 	getCompatibility(sku: string): Promise<ProductCompatibilityResponse>;
 	setCompatibility(sku: string, body: ProductCompatibilityRequest): Promise<{ ok: true }>;
 	deleteCompatibility(sku: string): Promise<void>;
+	getSkuLocations(listingId: string, sku: string): Promise<import("@flipagent/types").SkuLocationsResponse>;
+	setSkuLocations(
+		listingId: string,
+		sku: string,
+		body: import("@flipagent/types").SkuLocationsRequest,
+	): Promise<{ ok: true }>;
+	deleteSkuLocations(listingId: string, sku: string): Promise<void>;
 }
 
 export function createListingsClient(http: FlipagentHttp): ListingsClient {
@@ -50,5 +57,11 @@ export function createListingsClient(http: FlipagentHttp): ListingsClient {
 		getCompatibility: (sku) => http.get(`/v1/listings/${encodeURIComponent(sku)}/compatibility`),
 		setCompatibility: (sku, body) => http.put(`/v1/listings/${encodeURIComponent(sku)}/compatibility`, body),
 		deleteCompatibility: (sku) => http.delete(`/v1/listings/${encodeURIComponent(sku)}/compatibility`),
+		getSkuLocations: (listingId, sku) =>
+			http.get(`/v1/listings/${encodeURIComponent(listingId)}/skus/${encodeURIComponent(sku)}/locations`),
+		setSkuLocations: (listingId, sku, body) =>
+			http.put(`/v1/listings/${encodeURIComponent(listingId)}/skus/${encodeURIComponent(sku)}/locations`, body),
+		deleteSkuLocations: (listingId, sku) =>
+			http.delete(`/v1/listings/${encodeURIComponent(listingId)}/skus/${encodeURIComponent(sku)}/locations`),
 	};
 }
