@@ -5,6 +5,8 @@
  */
 
 import type {
+	ItemGroupActionRequest,
+	ItemGroupPublishResponse,
 	Listing,
 	ListingCreate,
 	ListingPreviewFeesRequest,
@@ -12,6 +14,8 @@ import type {
 	ListingsListQuery,
 	ListingsListResponse,
 	ListingUpdate,
+	ProductCompatibilityRequest,
+	ProductCompatibilityResponse,
 } from "@flipagent/types";
 import type { FlipagentHttp } from "./http.js";
 
@@ -23,6 +27,11 @@ export interface ListingsClient {
 	end(sku: string): Promise<Listing>;
 	relist(sku: string): Promise<Listing>;
 	previewFees(body: ListingPreviewFeesRequest): Promise<ListingPreviewFeesResponse>;
+	publishGroup(body: ItemGroupActionRequest): Promise<ItemGroupPublishResponse>;
+	withdrawGroup(body: ItemGroupActionRequest): Promise<{ ok: true }>;
+	getCompatibility(sku: string): Promise<ProductCompatibilityResponse>;
+	setCompatibility(sku: string, body: ProductCompatibilityRequest): Promise<{ ok: true }>;
+	deleteCompatibility(sku: string): Promise<void>;
 }
 
 export function createListingsClient(http: FlipagentHttp): ListingsClient {
@@ -34,5 +43,12 @@ export function createListingsClient(http: FlipagentHttp): ListingsClient {
 		end: (sku) => http.delete(`/v1/listings/${encodeURIComponent(sku)}`),
 		relist: (sku) => http.post(`/v1/listings/${encodeURIComponent(sku)}/relist`),
 		previewFees: (body) => http.post("/v1/listings/preview-fees", body),
+		publishGroup: (body) =>
+			http.post(`/v1/listings/groups/${encodeURIComponent(body.inventoryItemGroupKey)}/publish`, body),
+		withdrawGroup: (body) =>
+			http.post(`/v1/listings/groups/${encodeURIComponent(body.inventoryItemGroupKey)}/withdraw`, body),
+		getCompatibility: (sku) => http.get(`/v1/listings/${encodeURIComponent(sku)}/compatibility`),
+		setCompatibility: (sku, body) => http.put(`/v1/listings/${encodeURIComponent(sku)}/compatibility`, body),
+		deleteCompatibility: (sku) => http.delete(`/v1/listings/${encodeURIComponent(sku)}/compatibility`),
 	};
 }

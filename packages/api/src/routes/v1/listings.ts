@@ -15,6 +15,8 @@
  */
 
 import {
+	ItemGroupActionRequest,
+	ItemGroupPublishResponse,
 	ListingCreate,
 	ListingPreviewFeesRequest,
 	ListingPreviewFeesResponse,
@@ -24,6 +26,8 @@ import {
 	ListingUpdate,
 	ListingVerifyRequest,
 	ListingVerifyResponse,
+	ProductCompatibilityRequest,
+	ProductCompatibilityResponse,
 } from "@flipagent/types";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -31,8 +35,14 @@ import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { withTradingAuth } from "../../middleware/with-trading-auth.js";
 import { EbayApiError } from "../../services/ebay/rest/user-client.js";
+import {
+	deleteProductCompatibility,
+	getProductCompatibility,
+	setProductCompatibility,
+} from "../../services/listings/compatibility.js";
 import { createListing, MissingPrereqError, PublishFailedError } from "../../services/listings/create.js";
 import { getListing, listListings } from "../../services/listings/get.js";
+import { publishByInventoryItemGroup, withdrawByInventoryItemGroup } from "../../services/listings/groups.js";
 import { endListing, relistListing, updateListing } from "../../services/listings/lifecycle.js";
 import { previewListingFees } from "../../services/listings/preview-fees.js";
 import { verifyListing } from "../../services/listings/verify.js";
@@ -244,6 +254,140 @@ listingsRoute.delete(
 				return c.json({ error: "listing_not_found", message: `No listing for SKU '${sku}'.` }, 404);
 			}
 			return c.json(listing);
+		} catch (err) {
+			const mapped = mapEbayError(c, err);
+			if (mapped) return mapped;
+			throw err;
+		}
+	},
+);
+
+listingsRoute.post(
+	"/groups/:groupKey/publish",
+	describeRoute({
+		tags: ["Listings"],
+		summary: "Publish all variant offers under an inventory_item_group",
+		description:
+			"Wraps Sell Inventory `POST /offer/publish_by_inventory_item_group`. Publishes every offer attached to the named group on the named marketplace in one call — useful for multi-variation listings (size/color matrices) where individually-publishing each variant would race.",
+		responses: {
+			200: jsonResponse("Published.", ItemGroupPublishResponse),
+			...COMMON_RESPONSES,
+		},
+	}),
+	requireApiKey,
+	tbBody(ItemGroupActionRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		try {
+			const result = await publishByInventoryItemGroup(body.inventoryItemGroupKey, body.marketplaceId, {
+				apiKeyId: c.var.apiKey.id,
+				marketplace: body.marketplaceId,
+			});
+			return c.json({ ...result, source: "rest" as const });
+		} catch (err) {
+			const mapped = mapEbayError(c, err);
+			if (mapped) return mapped;
+			throw err;
+		}
+	},
+);
+
+listingsRoute.post(
+	"/groups/:groupKey/withdraw",
+	describeRoute({
+		tags: ["Listings"],
+		summary: "Withdraw all variant offers under an inventory_item_group",
+		responses: {
+			200: { description: "Withdrawn." },
+			...COMMON_RESPONSES,
+		},
+	}),
+	requireApiKey,
+	tbBody(ItemGroupActionRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		try {
+			await withdrawByInventoryItemGroup(body.inventoryItemGroupKey, body.marketplaceId, {
+				apiKeyId: c.var.apiKey.id,
+				marketplace: body.marketplaceId,
+			});
+			return c.json({ ok: true, source: "rest" as const });
+		} catch (err) {
+			const mapped = mapEbayError(c, err);
+			if (mapped) return mapped;
+			throw err;
+		}
+	},
+);
+
+listingsRoute.get(
+	"/:sku/compatibility",
+	describeRoute({
+		tags: ["Listings"],
+		summary: "Get product compatibility (parts/motors fitment)",
+		responses: {
+			200: jsonResponse("Compatibility list.", ProductCompatibilityResponse),
+			404: errorResponse("No compatibility set."),
+			...COMMON_RESPONSES,
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const sku = c.req.param("sku");
+		try {
+			const result = await getProductCompatibility(sku, { apiKeyId: c.var.apiKey.id });
+			if (!result)
+				return c.json({ error: "compatibility_not_set", message: `No compatibility for SKU '${sku}'.` }, 404);
+			return c.json({ ...result, source: "rest" as const });
+		} catch (err) {
+			const mapped = mapEbayError(c, err);
+			if (mapped) return mapped;
+			throw err;
+		}
+	},
+);
+
+listingsRoute.put(
+	"/:sku/compatibility",
+	describeRoute({
+		tags: ["Listings"],
+		summary: "Set product compatibility (parts/motors fitment list)",
+		description:
+			"Replaces the compatibility set for one inventory item. Each row lists property/value pairs (Year, Make, Model, ...) that describe one compatible product. Used by parts sellers — without compatibility, eBay's parts-finder can't surface the listing.",
+		responses: {
+			200: { description: "Set." },
+			...COMMON_RESPONSES,
+		},
+	}),
+	requireApiKey,
+	tbBody(ProductCompatibilityRequest),
+	async (c) => {
+		const sku = c.req.param("sku");
+		const body = c.req.valid("json");
+		try {
+			await setProductCompatibility(sku, body.compatibleProducts, { apiKeyId: c.var.apiKey.id });
+			return c.json({ ok: true, source: "rest" as const });
+		} catch (err) {
+			const mapped = mapEbayError(c, err);
+			if (mapped) return mapped;
+			throw err;
+		}
+	},
+);
+
+listingsRoute.delete(
+	"/:sku/compatibility",
+	describeRoute({
+		tags: ["Listings"],
+		summary: "Delete the product-compatibility set",
+		responses: { 204: { description: "Deleted." }, ...COMMON_RESPONSES },
+	}),
+	requireApiKey,
+	async (c) => {
+		const sku = c.req.param("sku");
+		try {
+			await deleteProductCompatibility(sku, { apiKeyId: c.var.apiKey.id });
+			return c.body(null, 204);
 		} catch (err) {
 			const mapped = mapEbayError(c, err);
 			if (mapped) return mapped;

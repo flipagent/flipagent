@@ -326,6 +326,55 @@ export const ListingFeeLine = Type.Object(
 );
 export type ListingFeeLine = Static<typeof ListingFeeLine>;
 
+export const ItemGroupActionRequest = Type.Object(
+	{
+		inventoryItemGroupKey: Type.String(),
+		marketplaceId: Type.String({ description: "EBAY_US, EBAY_DE, etc." }),
+	},
+	{ $id: "ItemGroupActionRequest" },
+);
+export type ItemGroupActionRequest = Static<typeof ItemGroupActionRequest>;
+
+export const ItemGroupPublishResponse = Type.Object(
+	{
+		listingId: Type.Union([Type.String(), Type.Null()]),
+		warnings: Type.Array(Type.Object({ message: Type.String(), errorId: Type.Optional(Type.Integer()) })),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "ItemGroupPublishResponse" },
+);
+export type ItemGroupPublishResponse = Static<typeof ItemGroupPublishResponse>;
+
+const CompatibilityProperty = Type.Object(
+	{ name: Type.String(), value: Type.String() },
+	{ $id: "CompatibilityProperty" },
+);
+
+export const CompatibilityRow = Type.Object(
+	{
+		productFamilyProperties: Type.Optional(Type.Record(Type.String(), Type.String())),
+		properties: Type.Array(CompatibilityProperty),
+		notes: Type.Optional(Type.String()),
+	},
+	{ $id: "CompatibilityRow" },
+);
+export type CompatibilityRow = Static<typeof CompatibilityRow>;
+
+export const ProductCompatibilityResponse = Type.Object(
+	{
+		compatibleProducts: Type.Array(CompatibilityRow),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "ProductCompatibilityResponse" },
+);
+export type ProductCompatibilityResponse = Static<typeof ProductCompatibilityResponse>;
+
+export const ProductCompatibilityRequest = Type.Object(
+	{ compatibleProducts: Type.Array(CompatibilityRow) },
+	{ $id: "ProductCompatibilityRequest" },
+);
+export type ProductCompatibilityRequest = Static<typeof ProductCompatibilityRequest>;
+
 export const ListingPreviewFeesResponse = Type.Object(
 	{
 		summaries: Type.Array(
