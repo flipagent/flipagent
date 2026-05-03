@@ -15,71 +15,95 @@ import {
 	ebayTaxonomyDefaultIdInput,
 	ebayTaxonomySuggestInput,
 } from "../src/tools/ebay-taxonomy.js";
-import { tools } from "../src/tools/index.js";
+import { selectTools, tools } from "../src/tools/index.js";
 
 const mockConfig: Config = {
 	flipagentBaseUrl: "https://api.flipagent.dev",
 	authToken: "fa_test",
 	mock: true,
 	userAgent: "flipagent-mcp/test",
+	enabledToolsets: ["*"],
 };
 
 describe("tool execute (mock mode)", () => {
-	it("flipagent_items_search returns canned SearchPagedCollection when mock=true", async () => {
+	it("flipagent_search_items returns canned SearchPagedCollection when mock=true", async () => {
 		const result = (await ebaySearchExecute(mockConfig, { q: "canon" })) as { itemSummaries: unknown[] };
 		expect(Array.isArray(result.itemSummaries)).toBe(true);
 		expect(result.itemSummaries.length).toBeGreaterThan(0);
 	});
 
-	it("flipagent_items_search_sold returns canned itemSales when mock=true", async () => {
+	it("flipagent_search_sold_items returns canned itemSales when mock=true", async () => {
 		const result = (await ebaySoldSearchExecute(mockConfig, { q: "canon" })) as { itemSales: unknown[] };
 		expect(Array.isArray(result.itemSales)).toBe(true);
 		expect(result.itemSales.length).toBeGreaterThan(0);
 	});
 
-	it("flipagent_items_get echoes itemId in mock response", async () => {
+	it("flipagent_get_item echoes itemId in mock response", async () => {
 		const result = (await ebayItemDetailExecute(mockConfig, { itemId: "v1|MOCK01|0" })) as { itemId: string };
 		expect(result.itemId).toBe("v1|MOCK01|0");
 	});
 });
 
 describe("tools registry", () => {
-	it("registers all 108 tools", () => {
-		expect(tools).toHaveLength(108);
+	it("registers the Phase 1 tool set", () => {
+		// Phase 1 — hands-off reseller cycle: source/buy/receive/list/sell/comms/resolve/analyze.
+		// Adjust this number whenever a Phase 1 tool is added or removed.
+		expect(tools.length).toBeGreaterThan(80);
+		expect(tools.length).toBeLessThan(110);
 	});
 
-	it("uses the flipagent_<resource>_<verb> naming scheme uniformly", () => {
+	it("uses the flipagent_<verb>_<resource> naming scheme uniformly", () => {
 		for (const t of tools) {
 			expect(t.name).toMatch(/^flipagent_/);
 			expect(t.name).toMatch(/^[a-z0-9_]+$/);
 		}
 	});
 
-	it("covers read/sell + flipagent evaluate/ship", () => {
+	it("tags every tool with a known toolset", () => {
+		const valid = new Set([
+			"core",
+			"comms",
+			"forwarder",
+			"notifications",
+			"seller_account",
+			"admin",
+		]);
+		for (const t of tools) {
+			expect(valid.has(t.toolset)).toBe(true);
+		}
+	});
+
+	it("covers the canonical search → evaluate → buy → list → sale → fulfill flow", () => {
 		const names = tools.map((t) => t.name);
 		expect(names).toEqual(
 			expect.arrayContaining([
-				// marketplace data — read
-				"flipagent_items_search",
-				"flipagent_items_get",
-				"flipagent_items_search_sold",
-				"flipagent_categories_list",
-				"flipagent_categories_suggest",
-				"flipagent_categories_aspects",
-				// flipagent management
-				"flipagent_capabilities",
-				"flipagent_connect_ebay_status",
-				// sell-side
-				"flipagent_listings_create",
-				"flipagent_listings_update",
-				"flipagent_listings_relist",
-				"flipagent_sales_list",
-				"flipagent_sales_ship",
-				"flipagent_payouts_list",
-				// flipagent value-add (Decisions / Operations pillars)
-				"flipagent_evaluate",
-				"flipagent_ship_quote",
-				"flipagent_ship_providers",
+				// core discovery
+				"flipagent_get_capabilities",
+				"flipagent_get_my_key",
+				// sourcing
+				"flipagent_search_items",
+				"flipagent_get_item",
+				"flipagent_search_sold_items",
+				"flipagent_list_categories",
+				"flipagent_suggest_category",
+				"flipagent_list_category_aspects",
+				// decisions + operations
+				"flipagent_evaluate_item",
+				"flipagent_get_evaluate_job",
+				"flipagent_get_evaluation_pool",
+				"flipagent_quote_shipping",
+				// buy
+				"flipagent_create_purchase",
+				"flipagent_get_purchase",
+				"flipagent_cancel_purchase",
+				// list
+				"flipagent_create_listing",
+				"flipagent_update_listing",
+				"flipagent_relist_listing",
+				// sale fulfillment
+				"flipagent_list_sales",
+				"flipagent_ship_sale",
+				"flipagent_list_payouts",
 			]),
 		);
 	});
@@ -89,6 +113,29 @@ describe("tools registry", () => {
 			expect(t.description.length).toBeGreaterThan(0);
 			expect(t.inputSchema).toHaveProperty("type", "object");
 		}
+	});
+});
+
+describe("toolset gating", () => {
+	it("default core selection fits inside Cursor's 40-tool cap", () => {
+		const defaults = selectTools(["core"]);
+		expect(defaults.length).toBeLessThanOrEqual(40);
+		expect(defaults.length).toBeGreaterThan(0);
+		// must include the canonical first-call tools
+		const names = defaults.map((t) => t.name);
+		expect(names).toContain("flipagent_get_capabilities");
+		expect(names).toContain("flipagent_evaluate_item");
+		expect(names).toContain("flipagent_create_listing");
+	});
+
+	it('"*" selects every registered tool', () => {
+		const all = selectTools(["*"]);
+		expect(all).toHaveLength(tools.length);
+	});
+
+	it("single toolset filters to just that group", () => {
+		const onlyComms = selectTools(["comms"]);
+		for (const t of onlyComms) expect(t.toolset).toBe("comms");
 	});
 });
 

@@ -205,7 +205,8 @@ describe("/v1/items (mocked scrape)", () => {
 	});
 });
 
-describe("/v1/takedown", () => {
+// /v1/takedown disabled for Phase 1 (no public surface for V1).
+describe.skip("/v1/takedown", () => {
 	it("rejects malformed body", async () => {
 		const res = await call("/v1/takedown", {
 			method: "POST",
@@ -232,7 +233,8 @@ describe("/v1/takedown", () => {
 	});
 });
 
-describe("/v1/expenses", () => {
+// /v1/expenses disabled for Phase 1 (flipagent's own ledger — not on the agent's eBay loop).
+describe.skip("/v1/expenses", () => {
 	it("rejects record without an api key", async () => {
 		const res = await call("/v1/expenses/record", {
 			method: "POST",

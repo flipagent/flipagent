@@ -1,65 +1,6 @@
 import type { TSchema } from "@sinclair/typebox";
 import type { Config } from "../config.js";
 import {
-	adsAdBidUpdateDescription,
-	adsAdBidUpdateExecute,
-	adsAdBidUpdateInput,
-	adsAdsListDescription,
-	adsAdsListExecute,
-	adsAdsListInput,
-	adsBulkCreateDescription,
-	adsBulkCreateExecute,
-	adsBulkCreateInput,
-	adsBulkDeleteDescription,
-	adsBulkDeleteExecute,
-	adsBulkDeleteInput,
-	adsBulkUpdateBidDescription,
-	adsBulkUpdateBidExecute,
-	adsBulkUpdateBidInput,
-	adsBulkUpdateStatusDescription,
-	adsBulkUpdateStatusExecute,
-	adsBulkUpdateStatusInput,
-	adsCampaignByNameDescription,
-	adsCampaignByNameExecute,
-	adsCampaignByNameInput,
-	adsCampaignCloneDescription,
-	adsCampaignCloneExecute,
-	adsCampaignCloneInput,
-	adsCampaignEndDescription,
-	adsCampaignEndExecute,
-	adsCampaignEndInput,
-	adsCampaignPauseDescription,
-	adsCampaignPauseExecute,
-	adsCampaignPauseInput,
-	adsCampaignResumeDescription,
-	adsCampaignResumeExecute,
-	adsCampaignResumeInput,
-	adsCampaignsCreateDescription,
-	adsCampaignsCreateExecute,
-	adsCampaignsCreateInput,
-	adsCampaignsListDescription,
-	adsCampaignsListExecute,
-	adsCampaignsListInput,
-	adsGroupsCreateDescription,
-	adsGroupsCreateExecute,
-	adsGroupsCreateInput,
-	adsGroupsListDescription,
-	adsGroupsListExecute,
-	adsGroupsListInput,
-	adsReportsCreateDescription,
-	adsReportsCreateExecute,
-	adsReportsCreateInput,
-	adsReportsGetDescription,
-	adsReportsGetExecute,
-	adsReportsGetInput,
-	adsReportsListDescription,
-	adsReportsListExecute,
-	adsReportsListInput,
-	adsReportsMetadataDescription,
-	adsReportsMetadataExecute,
-	adsReportsMetadataInput,
-} from "./ads.js";
-import {
 	bidsEligibleListingsDescription,
 	bidsEligibleListingsExecute,
 	bidsEligibleListingsInput,
@@ -147,8 +88,6 @@ import {
 	evaluationPoolExecute,
 	evaluationPoolInput,
 } from "./evaluate-listing.js";
-import { expensesRecordDescription, expensesRecordExecute, expensesRecordInput } from "./expenses-record.js";
-import { expensesSummaryDescription, expensesSummaryExecute, expensesSummaryInput } from "./expenses-summary.js";
 import {
 	feedbackAwaitingDescription,
 	feedbackAwaitingExecute,
@@ -190,55 +129,7 @@ import {
 	planetExpressPackagesExecute,
 	planetExpressPackagesInput,
 } from "./forwarder-planetexpress.js";
-import {
-	listingsCompatibilityDeleteDescription,
-	listingsCompatibilityDeleteExecute,
-	listingsCompatibilityDeleteInput,
-	listingsCompatibilityGetDescription,
-	listingsCompatibilityGetExecute,
-	listingsCompatibilityGetInput,
-	listingsCompatibilitySetDescription,
-	listingsCompatibilitySetExecute,
-	listingsCompatibilitySetInput,
-	listingsGroupPublishDescription,
-	listingsGroupPublishExecute,
-	listingsGroupPublishInput,
-	listingsGroupWithdrawDescription,
-	listingsGroupWithdrawExecute,
-	listingsGroupWithdrawInput,
-} from "./inventory-groups.js";
 import { keysMeDescription, keysMeExecute, keysMeInput } from "./keys.js";
-import {
-	listingGroupsDeleteDescription,
-	listingGroupsDeleteExecute,
-	listingGroupsDeleteInput,
-	listingGroupsGetDescription,
-	listingGroupsGetExecute,
-	listingGroupsGetInput,
-	listingGroupsUpsertDescription,
-	listingGroupsUpsertExecute,
-	listingGroupsUpsertInput,
-} from "./listing-groups.js";
-import {
-	listingsBulkGetInventoryDescription,
-	listingsBulkGetInventoryExecute,
-	listingsBulkGetInventoryInput,
-	listingsBulkGetOffersDescription,
-	listingsBulkGetOffersExecute,
-	listingsBulkGetOffersInput,
-	listingsBulkMigrateDescription,
-	listingsBulkMigrateExecute,
-	listingsBulkMigrateInput,
-	listingsBulkPublishDescription,
-	listingsBulkPublishExecute,
-	listingsBulkPublishInput,
-	listingsBulkUpdatePricesDescription,
-	listingsBulkUpdatePricesExecute,
-	listingsBulkUpdatePricesInput,
-	listingsBulkUpsertDescription,
-	listingsBulkUpsertExecute,
-	listingsBulkUpsertInput,
-} from "./listings-bulk.js";
 import {
 	listingsPreviewFeesDescription,
 	listingsPreviewFeesExecute,
@@ -264,14 +155,6 @@ import {
 	locationsUpsertExecute,
 	locationsUpsertInput,
 } from "./locations.js";
-import {
-	markdownsCreateDescription,
-	markdownsCreateExecute,
-	markdownsCreateInput,
-	markdownsListDescription,
-	markdownsListExecute,
-	markdownsListInput,
-} from "./markdowns.js";
 import {
 	mePrograms_listDescription,
 	mePrograms_listExecute,
@@ -375,38 +258,10 @@ import {
 	policiesListInput,
 } from "./policies.js";
 import {
-	promotionsCreateDescription,
-	promotionsCreateExecute,
-	promotionsCreateInput,
-	promotionsListDescription,
-	promotionsListExecute,
-	promotionsListInput,
-	promotionsReportsCreateDescription,
-	promotionsReportsCreateExecute,
-	promotionsReportsCreateInput,
-	promotionsReportsGetDescription,
-	promotionsReportsGetExecute,
-	promotionsReportsGetInput,
-	promotionsReportsListDescription,
-	promotionsReportsListExecute,
-	promotionsReportsListInput,
-} from "./promotions.js";
-import {
 	recommendationsListDescription,
 	recommendationsListExecute,
 	recommendationsListInput,
 } from "./recommendations.js";
-import {
-	savedSearchesCreateDescription,
-	savedSearchesCreateExecute,
-	savedSearchesCreateInput,
-	savedSearchesDeleteDescription,
-	savedSearchesDeleteExecute,
-	savedSearchesDeleteInput,
-	savedSearchesListDescription,
-	savedSearchesListExecute,
-	savedSearchesListInput,
-} from "./saved-searches.js";
 import {
 	sellerAdvertisingEligibilityDescription,
 	sellerAdvertisingEligibilityExecute,
@@ -429,31 +284,7 @@ import {
 } from "./seller.js";
 import { shipProvidersDescription, shipProvidersExecute, shipProvidersInput } from "./ship-providers.js";
 import { shipQuoteDescription, shipQuoteExecute, shipQuoteInput } from "./ship-quote.js";
-import {
-	storeCategoriesDescription,
-	storeCategoriesExecute,
-	storeCategoriesInput,
-	storeCategoriesUpsertDescription,
-	storeCategoriesUpsertExecute,
-	storeCategoriesUpsertInput,
-	storeGetDescription,
-	storeGetExecute,
-	storeGetInput,
-} from "./store.js";
 import { transactionsListDescription, transactionsListExecute, transactionsListInput } from "./transactions.js";
-import { translateDescription, translateExecute, translateInput } from "./translate.js";
-import { trendsCategoriesDescription, trendsCategoriesExecute, trendsCategoriesInput } from "./trends.js";
-import {
-	watchingListDescription,
-	watchingListExecute,
-	watchingListInput,
-	watchingUnwatchDescription,
-	watchingUnwatchExecute,
-	watchingUnwatchInput,
-	watchingWatchDescription,
-	watchingWatchExecute,
-	watchingWatchInput,
-} from "./watching.js";
 import {
 	webhooksListDescription,
 	webhooksListExecute,
@@ -467,37 +298,36 @@ import {
 } from "./webhooks.js";
 
 /**
- * Toolsets group ~108 tools so the host (Claude Desktop, Cursor, etc.) can
- * load only the slice the user actually needs. Cursor caps at 40 MCP tools
- * total; Anthropic notes selection accuracy degrades past 30–50. The default
- * slice ("core") is kept under the 40-tool ceiling. Opt in to others via
- * `FLIPAGENT_MCP_TOOLSETS=core,marketing,bulk,…`. Pattern follows GitHub's
- * official MCP server.
+ * Toolsets group Phase 1 tools so the host (Claude Desktop, Cursor, etc.)
+ * can load only the slice the user actually needs. Cursor caps at 40 MCP
+ * tools total; Anthropic notes selection accuracy degrades past 30–50.
+ * The default slice ("core") is kept under that ceiling. Opt in to others
+ * via `FLIPAGENT_MCP_TOOLSETS=core,comms,forwarder,…`.
+ *
+ * Phase 1 scope only — non-Phase-1 toolsets (marketing, bulk, discovery)
+ * have been removed from the V1 surface; the underlying SDK + service
+ * wrappers stay in place at the API for re-introduction later.
  */
 export type Toolset =
 	| "core" // sourcing + decisions + buy + listing prereqs + sale fulfillment + finance — default-on
 	| "comms" // messages + offers + disputes + feedback (post-sale buyer comms)
-	| "marketing" // promotions + markdowns + ads + store
-	| "bulk" // listings_bulk + listing_groups (power-user batch ops)
 	| "forwarder" // /v1/forwarder/{provider}/* (Planet Express today)
-	| "discovery" // watching + saved_searches + recommendations + trends + bids
-	| "seller_account" // /v1/me/seller/* read-only diagnostics
-	| "notifications" // webhooks + eBay platform notifications + browser_query
-	| "admin"; // bridge surfaces, key introspection, status
+	| "notifications" // webhooks + eBay platform notifications
+	| "seller_account" // /v1/me/seller/* read-only diagnostics + sales tax
+	| "admin"; // bridge surfaces, key introspection, status, browser primitive
 
 export const ALL_TOOLSETS: readonly Toolset[] = [
 	"core",
 	"comms",
-	"marketing",
-	"bulk",
 	"forwarder",
-	"discovery",
-	"seller_account",
 	"notifications",
+	"seller_account",
 	"admin",
 ] as const;
 
-export const DEFAULT_TOOLSETS: readonly Toolset[] = ["core", "admin"] as const;
+// `core` alone fits well under Cursor's 40-tool cap and Anthropic's 30–50 selection-accuracy
+// guideline. Other toolsets are opt-in via FLIPAGENT_MCP_TOOLSETS.
+export const DEFAULT_TOOLSETS: readonly Toolset[] = ["core"] as const;
 
 export interface Tool {
 	name: string;
@@ -515,11 +345,6 @@ export interface Tool {
  * tool calls. The `flipagent_` prefix keeps names collision-free when other
  * MCP servers are loaded alongside. Marketplace stays a *parameter*, never
  * part of the tool name — Amazon/Mercari adapters reuse the same names.
- *
- * Verb vocabulary: list, get, search, create, update, upsert, delete,
- * enable, disable, ship, quote, evaluate, buy, cancel, place, watch,
- * unwatch, leave, send, respond, register, revoke, refresh, dispatch,
- * link, record, suggest, relist, publish, migrate, bulk_*.
  */
 export const tools: Tool[] = [
 	// ─── core ────────────────────────────────────────────────────────────
@@ -566,15 +391,8 @@ export const tools: Tool[] = [
 		execute: mePrograms_optOutExecute,
 		toolset: "core",
 	},
-	{
-		name: "flipagent_translate",
-		description: translateDescription,
-		inputSchema: translateInput,
-		execute: translateExecute,
-		toolset: "core",
-	},
 
-	// Sourcing — marketplace data (anonymous app token works)
+	// Sourcing — marketplace data (no eBay OAuth needed)
 	{
 		name: "flipagent_search_items",
 		description: ebaySearchDescription,
@@ -670,6 +488,27 @@ export const tools: Tool[] = [
 		execute: ebayOrderCancelExecute,
 		toolset: "core",
 	},
+	{
+		name: "flipagent_list_bids",
+		description: bidsListDescription,
+		inputSchema: bidsListInput,
+		execute: bidsListExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_place_bid",
+		description: bidsPlaceDescription,
+		inputSchema: bidsPlaceInput,
+		execute: bidsPlaceExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_list_biddable_listings",
+		description: bidsEligibleListingsDescription,
+		inputSchema: bidsEligibleListingsInput,
+		execute: bidsEligibleListingsExecute,
+		toolset: "core",
+	},
 
 	// Listing prereqs + listing CRUD (sell-side, eBay OAuth required)
 	{
@@ -742,41 +581,6 @@ export const tools: Tool[] = [
 		execute: listingsPreviewFeesExecute,
 		toolset: "core",
 	},
-	{
-		name: "flipagent_publish_listing_group",
-		description: listingsGroupPublishDescription,
-		inputSchema: listingsGroupPublishInput,
-		execute: listingsGroupPublishExecute,
-		toolset: "core",
-	},
-	{
-		name: "flipagent_withdraw_listing_group",
-		description: listingsGroupWithdrawDescription,
-		inputSchema: listingsGroupWithdrawInput,
-		execute: listingsGroupWithdrawExecute,
-		toolset: "core",
-	},
-	{
-		name: "flipagent_get_listing_compatibility",
-		description: listingsCompatibilityGetDescription,
-		inputSchema: listingsCompatibilityGetInput,
-		execute: listingsCompatibilityGetExecute,
-		toolset: "core",
-	},
-	{
-		name: "flipagent_set_listing_compatibility",
-		description: listingsCompatibilitySetDescription,
-		inputSchema: listingsCompatibilitySetInput,
-		execute: listingsCompatibilitySetExecute,
-		toolset: "core",
-	},
-	{
-		name: "flipagent_delete_listing_compatibility",
-		description: listingsCompatibilityDeleteDescription,
-		inputSchema: listingsCompatibilityDeleteInput,
-		execute: listingsCompatibilityDeleteExecute,
-		toolset: "core",
-	},
 
 	// Sale fulfillment + finance (sell-side)
 	{
@@ -808,29 +612,23 @@ export const tools: Tool[] = [
 		toolset: "core",
 	},
 	{
-		name: "flipagent_record_expense",
-		description: expensesRecordDescription,
-		inputSchema: expensesRecordInput,
-		execute: expensesRecordExecute,
-		toolset: "core",
-	},
-	{
-		name: "flipagent_get_expense_summary",
-		description: expensesSummaryDescription,
-		inputSchema: expensesSummaryInput,
-		execute: expensesSummaryExecute,
+		name: "flipagent_list_recommendations",
+		description: recommendationsListDescription,
+		inputSchema: recommendationsListInput,
+		execute: recommendationsListExecute,
 		toolset: "core",
 	},
 
-	// ─── admin ───────────────────────────────────────────────────────────
-	// Connection status, ship providers, location-state toggles, location detail/delete.
 	{
 		name: "flipagent_get_ebay_connection",
 		description: flipagentConnectStatusDescription,
 		inputSchema: flipagentConnectStatusInput,
 		execute: flipagentConnectStatusExecute,
-		toolset: "admin",
+		toolset: "core",
 	},
+
+	// ─── admin ───────────────────────────────────────────────────────────
+	// Ship providers, location detail/delete + state toggles, browser DOM primitive escape hatch.
 	{
 		name: "flipagent_list_shipping_providers",
 		description: shipProvidersDescription,
@@ -864,6 +662,13 @@ export const tools: Tool[] = [
 		description: locationsDisableDescription,
 		inputSchema: locationsDisableInput,
 		execute: locationsDisableExecute,
+		toolset: "admin",
+	},
+	{
+		name: "flipagent_query_browser",
+		description: browserQueryDescription,
+		inputSchema: browserQueryInput,
+		execute: browserQueryExecute,
 		toolset: "admin",
 	},
 
@@ -981,275 +786,6 @@ export const tools: Tool[] = [
 		toolset: "comms",
 	},
 
-	// ─── marketing (promotions, markdowns, ads, store) ───────────────────
-	{
-		name: "flipagent_list_promotions",
-		description: promotionsListDescription,
-		inputSchema: promotionsListInput,
-		execute: promotionsListExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_create_promotion",
-		description: promotionsCreateDescription,
-		inputSchema: promotionsCreateInput,
-		execute: promotionsCreateExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_list_promotion_reports",
-		description: promotionsReportsListDescription,
-		inputSchema: promotionsReportsListInput,
-		execute: promotionsReportsListExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_create_promotion_report",
-		description: promotionsReportsCreateDescription,
-		inputSchema: promotionsReportsCreateInput,
-		execute: promotionsReportsCreateExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_get_promotion_report",
-		description: promotionsReportsGetDescription,
-		inputSchema: promotionsReportsGetInput,
-		execute: promotionsReportsGetExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_list_markdowns",
-		description: markdownsListDescription,
-		inputSchema: markdownsListInput,
-		execute: markdownsListExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_create_markdown",
-		description: markdownsCreateDescription,
-		inputSchema: markdownsCreateInput,
-		execute: markdownsCreateExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_list_ad_campaigns",
-		description: adsCampaignsListDescription,
-		inputSchema: adsCampaignsListInput,
-		execute: adsCampaignsListExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_create_ad_campaign",
-		description: adsCampaignsCreateDescription,
-		inputSchema: adsCampaignsCreateInput,
-		execute: adsCampaignsCreateExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_list_ads",
-		description: adsAdsListDescription,
-		inputSchema: adsAdsListInput,
-		execute: adsAdsListExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_list_ad_groups",
-		description: adsGroupsListDescription,
-		inputSchema: adsGroupsListInput,
-		execute: adsGroupsListExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_create_ad_group",
-		description: adsGroupsCreateDescription,
-		inputSchema: adsGroupsCreateInput,
-		execute: adsGroupsCreateExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_get_ad_report_metadata",
-		description: adsReportsMetadataDescription,
-		inputSchema: adsReportsMetadataInput,
-		execute: adsReportsMetadataExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_list_ad_reports",
-		description: adsReportsListDescription,
-		inputSchema: adsReportsListInput,
-		execute: adsReportsListExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_create_ad_report",
-		description: adsReportsCreateDescription,
-		inputSchema: adsReportsCreateInput,
-		execute: adsReportsCreateExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_get_ad_report",
-		description: adsReportsGetDescription,
-		inputSchema: adsReportsGetInput,
-		execute: adsReportsGetExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_get_ad_campaign_by_name",
-		description: adsCampaignByNameDescription,
-		inputSchema: adsCampaignByNameInput,
-		execute: adsCampaignByNameExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_pause_ad_campaign",
-		description: adsCampaignPauseDescription,
-		inputSchema: adsCampaignPauseInput,
-		execute: adsCampaignPauseExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_resume_ad_campaign",
-		description: adsCampaignResumeDescription,
-		inputSchema: adsCampaignResumeInput,
-		execute: adsCampaignResumeExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_end_ad_campaign",
-		description: adsCampaignEndDescription,
-		inputSchema: adsCampaignEndInput,
-		execute: adsCampaignEndExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_clone_ad_campaign",
-		description: adsCampaignCloneDescription,
-		inputSchema: adsCampaignCloneInput,
-		execute: adsCampaignCloneExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_update_ad_bid",
-		description: adsAdBidUpdateDescription,
-		inputSchema: adsAdBidUpdateInput,
-		execute: adsAdBidUpdateExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_bulk_create_ads",
-		description: adsBulkCreateDescription,
-		inputSchema: adsBulkCreateInput,
-		execute: adsBulkCreateExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_bulk_update_ad_bids",
-		description: adsBulkUpdateBidDescription,
-		inputSchema: adsBulkUpdateBidInput,
-		execute: adsBulkUpdateBidExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_bulk_delete_ads",
-		description: adsBulkDeleteDescription,
-		inputSchema: adsBulkDeleteInput,
-		execute: adsBulkDeleteExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_bulk_update_ad_status",
-		description: adsBulkUpdateStatusDescription,
-		inputSchema: adsBulkUpdateStatusInput,
-		execute: adsBulkUpdateStatusExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_list_store_categories",
-		description: storeCategoriesDescription,
-		inputSchema: storeCategoriesInput,
-		execute: storeCategoriesExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_upsert_store_categories",
-		description: storeCategoriesUpsertDescription,
-		inputSchema: storeCategoriesUpsertInput,
-		execute: storeCategoriesUpsertExecute,
-		toolset: "marketing",
-	},
-	{
-		name: "flipagent_get_store",
-		description: storeGetDescription,
-		inputSchema: storeGetInput,
-		execute: storeGetExecute,
-		toolset: "marketing",
-	},
-	// ─── bulk (variations + power-user batch) ────────────────────────────
-	{
-		name: "flipagent_get_listing_group",
-		description: listingGroupsGetDescription,
-		inputSchema: listingGroupsGetInput,
-		execute: listingGroupsGetExecute,
-		toolset: "bulk",
-	},
-	{
-		name: "flipagent_upsert_listing_group",
-		description: listingGroupsUpsertDescription,
-		inputSchema: listingGroupsUpsertInput,
-		execute: listingGroupsUpsertExecute,
-		toolset: "bulk",
-	},
-	{
-		name: "flipagent_delete_listing_group",
-		description: listingGroupsDeleteDescription,
-		inputSchema: listingGroupsDeleteInput,
-		execute: listingGroupsDeleteExecute,
-		toolset: "bulk",
-	},
-	{
-		name: "flipagent_bulk_get_inventory",
-		description: listingsBulkGetInventoryDescription,
-		inputSchema: listingsBulkGetInventoryInput,
-		execute: listingsBulkGetInventoryExecute,
-		toolset: "bulk",
-	},
-	{
-		name: "flipagent_bulk_get_offers",
-		description: listingsBulkGetOffersDescription,
-		inputSchema: listingsBulkGetOffersInput,
-		execute: listingsBulkGetOffersExecute,
-		toolset: "bulk",
-	},
-	{
-		name: "flipagent_bulk_update_listing_prices",
-		description: listingsBulkUpdatePricesDescription,
-		inputSchema: listingsBulkUpdatePricesInput,
-		execute: listingsBulkUpdatePricesExecute,
-		toolset: "bulk",
-	},
-	{
-		name: "flipagent_bulk_upsert_listings",
-		description: listingsBulkUpsertDescription,
-		inputSchema: listingsBulkUpsertInput,
-		execute: listingsBulkUpsertExecute,
-		toolset: "bulk",
-	},
-	{
-		name: "flipagent_bulk_publish_listings",
-		description: listingsBulkPublishDescription,
-		inputSchema: listingsBulkPublishInput,
-		execute: listingsBulkPublishExecute,
-		toolset: "bulk",
-	},
-	{
-		name: "flipagent_bulk_migrate_listings",
-		description: listingsBulkMigrateDescription,
-		inputSchema: listingsBulkMigrateInput,
-		execute: listingsBulkMigrateExecute,
-		toolset: "bulk",
-	},
-
 	// ─── forwarder ───────────────────────────────────────────────────────
 	{
 		name: "flipagent_refresh_forwarder",
@@ -1294,86 +830,7 @@ export const tools: Tool[] = [
 		toolset: "forwarder",
 	},
 
-	// ─── discovery (sourcing radar) ──────────────────────────────────────
-	{
-		name: "flipagent_list_watching",
-		description: watchingListDescription,
-		inputSchema: watchingListInput,
-		execute: watchingListExecute,
-		toolset: "discovery",
-	},
-	{
-		name: "flipagent_watch_item",
-		description: watchingWatchDescription,
-		inputSchema: watchingWatchInput,
-		execute: watchingWatchExecute,
-		toolset: "discovery",
-	},
-	{
-		name: "flipagent_unwatch_item",
-		description: watchingUnwatchDescription,
-		inputSchema: watchingUnwatchInput,
-		execute: watchingUnwatchExecute,
-		toolset: "discovery",
-	},
-	{
-		name: "flipagent_list_saved_searches",
-		description: savedSearchesListDescription,
-		inputSchema: savedSearchesListInput,
-		execute: savedSearchesListExecute,
-		toolset: "discovery",
-	},
-	{
-		name: "flipagent_create_saved_search",
-		description: savedSearchesCreateDescription,
-		inputSchema: savedSearchesCreateInput,
-		execute: savedSearchesCreateExecute,
-		toolset: "discovery",
-	},
-	{
-		name: "flipagent_delete_saved_search",
-		description: savedSearchesDeleteDescription,
-		inputSchema: savedSearchesDeleteInput,
-		execute: savedSearchesDeleteExecute,
-		toolset: "discovery",
-	},
-	{
-		name: "flipagent_get_category_trends",
-		description: trendsCategoriesDescription,
-		inputSchema: trendsCategoriesInput,
-		execute: trendsCategoriesExecute,
-		toolset: "discovery",
-	},
-	{
-		name: "flipagent_list_recommendations",
-		description: recommendationsListDescription,
-		inputSchema: recommendationsListInput,
-		execute: recommendationsListExecute,
-		toolset: "discovery",
-	},
-	{
-		name: "flipagent_list_bids",
-		description: bidsListDescription,
-		inputSchema: bidsListInput,
-		execute: bidsListExecute,
-		toolset: "discovery",
-	},
-	{
-		name: "flipagent_place_bid",
-		description: bidsPlaceDescription,
-		inputSchema: bidsPlaceInput,
-		execute: bidsPlaceExecute,
-		toolset: "discovery",
-	},
-	{
-		name: "flipagent_list_biddable_listings",
-		description: bidsEligibleListingsDescription,
-		inputSchema: bidsEligibleListingsInput,
-		execute: bidsEligibleListingsExecute,
-		toolset: "discovery",
-	},
-
-	// ─── seller_account (read-only diagnostics) ──────────────────────────
+	// ─── seller_account (read-only diagnostics + sales tax) ──────────────
 	{
 		name: "flipagent_get_seller_privilege",
 		description: sellerPrivilegeDescription,
@@ -1417,7 +874,7 @@ export const tools: Tool[] = [
 		toolset: "seller_account",
 	},
 
-	// ─── notifications + browser DOM primitive ───────────────────────────
+	// ─── notifications + webhooks ────────────────────────────────────────
 	{
 		name: "flipagent_register_webhook",
 		description: webhooksRegisterDescription,
@@ -1543,13 +1000,6 @@ export const tools: Tool[] = [
 		inputSchema: notificationsRecentInput,
 		execute: notificationsRecentExecute,
 		toolset: "notifications",
-	},
-	{
-		name: "flipagent_query_browser",
-		description: browserQueryDescription,
-		inputSchema: browserQueryInput,
-		execute: browserQueryExecute,
-		toolset: "admin",
 	},
 ];
 

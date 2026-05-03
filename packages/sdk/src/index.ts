@@ -2,62 +2,46 @@
  * Typed client for the flipagent API — `api.flipagent.dev`.
  *
  * One client, one API key. Every namespace maps one-to-one to a
- * `/v1/<resource>` route. Layered:
+ * `/v1/<resource>` route. Phase 1 scope — what an agent needs to run a
+ * hands-off reseller cycle (source → buy → receive → list → sell →
+ * communicate → resolve → analyze).
  *
- *   Marketplace data (read):
- *     items, categories, products, charities, media, featured
+ *   Source:        items, categories, products, evaluate
+ *   Buy + Receive: purchases, bids, forwarder
+ *   List:          listings, locations, policies, media
+ *   Sell:          sales, labels, ship
+ *   Communicate:   messages, feedback, notifications, webhooks, offers
+ *   Resolve:       disputes
+ *   Analyze:       payouts, transactions, transfers, analytics, recommendations
+ *   Operational:   me, seller, keys, billing, connect, capabilities, browser
  *
- *   My side (write):
- *     listings, listingsBulk, listingGroups, locations, purchases, sales
+ *   Escape hatch:  http — typed get/post/put/patch/delete for endpoints
+ *                  not yet wrapped (or surfaces deferred from Phase 1).
  *
- *   Money + comms + disputes:
- *     payouts, transactions, transfers, messages, offers, feedback,
- *     disputes, policies, violations, recommendations, marketplaces
- *
- *   Intelligence:
- *     evaluate, ship, expenses, trends
- *
- *   Marketing + storefront:
- *     promotions, markdowns, ads, store, analytics, feeds, bids,
- *     translate, labels
- *
- *   My eBay:
- *     seller, watching, savedSearches
- *
- *   Account / ops:
- *     keys, billing, connect, capabilities, takedown, webhooks,
- *     notifications, forwarder, browser
- *
- *   Escape hatch:
- *     http — typed get/post/put/patch/delete for endpoints not yet wrapped
+ * Surfaces deferred from Phase 1 (wrappers exist on the API; not surfaced
+ * on the client): ads, cart, charities, developer, edelivery, expenses,
+ * featured, feeds, listing-groups, listings-bulk, markdowns, marketplaces,
+ * promotions, saved-searches, store, takedown, translate, trends,
+ * violations, watching. Reach them through `client.http` until promoted.
  */
 
-import { type AdsClient, createAdsClient } from "./ads.js";
 import { type AnalyticsClient, createAnalyticsClient } from "./analytics.js";
 import { type BidsClient, createBidsClient } from "./bids.js";
 import { type BillingClient, createBillingClient } from "./billing.js";
 import { type BrowserClient, createBrowserClient } from "./browser.js";
 import { type CapabilitiesClient, createCapabilitiesClient } from "./capabilities.js";
 import { type CategoriesClient, createCategoriesClient } from "./categories.js";
-import { type CharitiesClient, createCharitiesClient } from "./charities.js";
 import { type ConnectClient, createConnectClient } from "./connect.js";
 import { createDisputesClient, type DisputesClient } from "./disputes.js";
 import { createEvaluateClient, type EvaluateClient } from "./evaluate.js";
-import { createExpensesClient, type ExpensesClient } from "./expenses.js";
-import { createFeaturedClient, type FeaturedClient } from "./featured.js";
 import { createFeedbackClient, type FeedbackClient } from "./feedback.js";
-import { createFeedsClient, type FeedsClient } from "./feeds.js";
 import { createForwarderClient, type ForwarderClient } from "./forwarder.js";
 import { createHttp, type FlipagentHttp } from "./http.js";
 import { createItemsClient, type ItemsClient } from "./items.js";
 import { createKeysClient, type KeysClient } from "./keys.js";
 import { createLabelsClient, type LabelsClient } from "./labels.js";
-import { createListingGroupsClient, type ListingGroupsClient } from "./listing-groups.js";
 import { createListingsClient, type ListingsClient } from "./listings.js";
-import { createListingsBulkClient, type ListingsBulkClient } from "./listings-bulk.js";
 import { createLocationsClient, type LocationsClient } from "./locations.js";
-import { createMarkdownsClient, type MarkdownsClient } from "./markdowns.js";
-import { createMarketplacesClient, type MarketplacesClient } from "./marketplaces.js";
 import { createMeClient, type MeClient } from "./me.js";
 import { createMediaClient, type MediaClient } from "./media.js";
 import { createMessagesClient, type MessagesClient } from "./messages.js";
@@ -66,20 +50,12 @@ import { createNotificationsClient, type NotificationsClient } from "./notificat
 import { createOffersClient, type OffersClient } from "./offers.js";
 import { createPoliciesClient, type PoliciesClient } from "./policies.js";
 import { createProductsClient, type ProductsClient } from "./products.js";
-import { createPromotionsClient, type PromotionsClient } from "./promotions.js";
 import { createPurchasesClient, type PurchasesClient } from "./purchases.js";
 import { createRecommendationsClient, type RecommendationsClient } from "./recommendations.js";
 import { createSalesClient, type SalesClient } from "./sales.js";
-import { createSavedSearchesClient, type SavedSearchesClient } from "./saved-searches.js";
 import { createSellerClient, type SellerClient } from "./seller.js";
 import { createShipClient, type ShipClient } from "./ship.js";
-import { createStoreClient, type StoreClient } from "./store.js";
-import { createTakedownClient, type TakedownClient } from "./takedown.js";
 import { createTransfersClient, type TransfersClient } from "./transfers.js";
-import { createTranslateClient, type TranslateClient } from "./translate.js";
-import { createTrendsClient, type TrendsClient } from "./trends.js";
-import { createViolationsClient, type ViolationsClient } from "./violations.js";
-import { createWatchingClient, type WatchingClient } from "./watching.js";
 import { createWebhooksClient, type WebhooksClient } from "./webhooks.js";
 
 export interface FlipagentClientOptions {
@@ -89,67 +65,52 @@ export interface FlipagentClientOptions {
 }
 
 export interface FlipagentClient {
-	// Marketplace data (read)
+	// Source
 	items: ItemsClient;
 	categories: CategoriesClient;
 	products: ProductsClient;
-	charities: CharitiesClient;
-	media: MediaClient;
-	featured: FeaturedClient;
+	evaluate: EvaluateClient;
 
-	// My side (write)
-	listings: ListingsClient;
-	listingsBulk: ListingsBulkClient;
-	listingGroups: ListingGroupsClient;
-	locations: LocationsClient;
+	// Buy + Receive
 	purchases: PurchasesClient;
-	sales: SalesClient;
+	bids: BidsClient;
+	forwarder: ForwarderClient;
 
-	// Money + comms + disputes
+	// List
+	listings: ListingsClient;
+	locations: LocationsClient;
+	policies: PoliciesClient;
+	media: MediaClient;
+
+	// Sell
+	sales: SalesClient;
+	labels: LabelsClient;
+	ship: ShipClient;
+
+	// Communicate
+	messages: MessagesClient;
+	feedback: FeedbackClient;
+	notifications: NotificationsClient;
+	webhooks: WebhooksClient;
+	offers: OffersClient;
+
+	// Resolve
+	disputes: DisputesClient;
+
+	// Analyze
 	payouts: PayoutsClient;
 	transactions: TransactionsClient;
 	transfers: TransfersClient;
-	messages: MessagesClient;
-	offers: OffersClient;
-	feedback: FeedbackClient;
-	disputes: DisputesClient;
-	policies: PoliciesClient;
-	violations: ViolationsClient;
-	recommendations: RecommendationsClient;
-	marketplaces: MarketplacesClient;
-	me: MeClient;
-
-	// Intelligence
-	evaluate: EvaluateClient;
-	ship: ShipClient;
-	expenses: ExpensesClient;
-	trends: TrendsClient;
-
-	// Marketing + storefront
-	promotions: PromotionsClient;
-	markdowns: MarkdownsClient;
-	ads: AdsClient;
-	store: StoreClient;
 	analytics: AnalyticsClient;
-	feeds: FeedsClient;
-	bids: BidsClient;
-	translate: TranslateClient;
-	labels: LabelsClient;
+	recommendations: RecommendationsClient;
 
-	// My eBay surfaces
+	// Operational
+	me: MeClient;
 	seller: SellerClient;
-	watching: WatchingClient;
-	savedSearches: SavedSearchesClient;
-
-	// Account / ops
 	keys: KeysClient;
 	billing: BillingClient;
 	connect: ConnectClient;
 	capabilities: CapabilitiesClient;
-	takedown: TakedownClient;
-	webhooks: WebhooksClient;
-	notifications: NotificationsClient;
-	forwarder: ForwarderClient;
 	browser: BrowserClient;
 
 	// Escape hatch
@@ -168,90 +129,65 @@ export function createFlipagentClient(opts: FlipagentClientOptions): FlipagentCl
 		items: createItemsClient(http),
 		categories: createCategoriesClient(http),
 		products: createProductsClient(http),
-		charities: createCharitiesClient(http),
-		media: createMediaClient(http),
-		featured: createFeaturedClient(http),
+		evaluate: createEvaluateClient(http),
+
+		purchases: createPurchasesClient(http),
+		bids: createBidsClient(http),
+		forwarder: createForwarderClient(http),
 
 		listings: createListingsClient(http),
-		listingsBulk: createListingsBulkClient(http),
-		listingGroups: createListingGroupsClient(http),
 		locations: createLocationsClient(http),
-		purchases: createPurchasesClient(http),
+		policies: createPoliciesClient(http),
+		media: createMediaClient(http),
+
 		sales: createSalesClient(http),
+		labels: createLabelsClient(http),
+		ship: createShipClient(http),
+
+		messages: createMessagesClient(http),
+		feedback: createFeedbackClient(http),
+		notifications: createNotificationsClient(http),
+		webhooks: createWebhooksClient(http),
+		offers: createOffersClient(http),
+
+		disputes: createDisputesClient(http),
 
 		payouts: createPayoutsClient(http),
 		transactions: createTransactionsClient(http),
 		transfers: createTransfersClient(http),
-		messages: createMessagesClient(http),
-		offers: createOffersClient(http),
-		feedback: createFeedbackClient(http),
-		disputes: createDisputesClient(http),
-		policies: createPoliciesClient(http),
-		violations: createViolationsClient(http),
-		recommendations: createRecommendationsClient(http),
-		marketplaces: createMarketplacesClient(http),
-		me: createMeClient(http),
-
-		evaluate: createEvaluateClient(http),
-		ship: createShipClient(http),
-		expenses: createExpensesClient(http),
-		trends: createTrendsClient(http),
-
-		promotions: createPromotionsClient(http),
-		markdowns: createMarkdownsClient(http),
-		ads: createAdsClient(http),
-		store: createStoreClient(http),
 		analytics: createAnalyticsClient(http),
-		feeds: createFeedsClient(http),
-		bids: createBidsClient(http),
-		translate: createTranslateClient(http),
-		labels: createLabelsClient(http),
+		recommendations: createRecommendationsClient(http),
 
+		me: createMeClient(http),
 		seller: createSellerClient(http),
-		watching: createWatchingClient(http),
-		savedSearches: createSavedSearchesClient(http),
-
 		keys: createKeysClient(http),
 		billing: createBillingClient(http),
 		connect: createConnectClient(http),
 		capabilities: createCapabilitiesClient(http),
-		takedown: createTakedownClient(http),
-		webhooks: createWebhooksClient(http),
-		notifications: createNotificationsClient(http),
-		forwarder: createForwarderClient(http),
 		browser: createBrowserClient(http),
 
 		http,
 	};
 }
 
-export type { AdsClient } from "./ads.js";
 export type { AnalyticsClient } from "./analytics.js";
 export type { BidsClient } from "./bids.js";
 export type { BillingClient } from "./billing.js";
 export type { BrowserClient } from "./browser.js";
 export type { CapabilitiesClient } from "./capabilities.js";
 export type { CategoriesClient } from "./categories.js";
-export type { CharitiesClient } from "./charities.js";
 export type { ConnectClient } from "./connect.js";
 export type { DisputesClient } from "./disputes.js";
 export type { EvaluateClient } from "./evaluate.js";
-export type { ExpensesClient, ExpensesSummaryParams } from "./expenses.js";
-export type { FeaturedClient } from "./featured.js";
 export type { FeedbackAwaiting, FeedbackClient } from "./feedback.js";
-export type { FeedsClient } from "./feeds.js";
 export type { ForwarderClient } from "./forwarder.js";
 export type { FlipagentHttp, RequestMethod } from "./http.js";
 export { FlipagentApiError } from "./http.js";
 export type { ItemsClient } from "./items.js";
 export type { KeysClient } from "./keys.js";
 export type { LabelsClient } from "./labels.js";
-export type { ListingGroupsClient } from "./listing-groups.js";
 export type { ListingsClient } from "./listings.js";
-export type { ListingsBulkClient } from "./listings-bulk.js";
 export type { LocationsClient } from "./locations.js";
-export type { MarkdownsClient } from "./markdowns.js";
-export type { MarketplacesClient } from "./marketplaces.js";
 export type { MeClient } from "./me.js";
 export type { MediaClient } from "./media.js";
 export type { MessagesClient } from "./messages.js";
@@ -260,18 +196,10 @@ export type { NotificationsClient } from "./notifications.js";
 export type { OffersClient } from "./offers.js";
 export type { PoliciesClient } from "./policies.js";
 export type { ProductsClient } from "./products.js";
-export type { PromotionsClient } from "./promotions.js";
 export type { PurchasesClient } from "./purchases.js";
 export type { RecommendationsClient } from "./recommendations.js";
 export type { SalesClient } from "./sales.js";
-export type { SavedSearchesClient } from "./saved-searches.js";
 export type { SellerClient } from "./seller.js";
 export type { ShipClient, ShipProviderSummary, ShipProvidersResponse } from "./ship.js";
-export type { StoreClient } from "./store.js";
-export type { TakedownClient } from "./takedown.js";
 export type { TransfersClient } from "./transfers.js";
-export type { TranslateClient } from "./translate.js";
-export type { TrendsClient } from "./trends.js";
-export type { ViolationsClient } from "./violations.js";
-export type { WatchingClient } from "./watching.js";
 export type { WebhooksClient } from "./webhooks.js";

@@ -1,30 +1,33 @@
 /**
  * Single mount point for the entire `/v1/*` surface — flipagent-native only.
  *
- *   1. Marketplace data (read): items, categories, products, charities,
- *      media, featured
- *   2. My side (write): listings, listing-groups, listings/bulk, locations,
- *      purchases, sales
- *   3. Money + comms + disputes: payouts, transactions, transfers,
- *      messages, offers, feedback, disputes, policies, violations,
- *      recommendations, marketplaces, me/seller
- *   4. Intelligence: evaluate, ship, expenses, trends
- *   5. Marketing & store: promotions, ads, store, analytics, feeds, bids,
- *      markdowns, translate, labels
- *   6. Buyer + seller "my eBay" surfaces: me/{selling,buying}, watching,
- *      saved-searches
- *   7. Account, ops, plumbing: connect, me, keys, billing, health,
- *      capabilities, takedown, admin, forwarder, bridge, browser,
- *      notifications, webhooks
+ * Phase 1 scope (what an agent needs to run a hands-off reseller cycle —
+ * source / buy / receive / list / sell / communicate / refund / analyze):
  *
- * Internally these still call eBay's REST + scrape + bridge + Trading
- * providers under `services/ebay/*`; the public surface itself is
- * marketplace-agnostic. No mirror, no aliases, no raw passthrough.
+ *   - Source:        items, evaluate, categories, products
+ *   - Buy:           purchases, bids
+ *   - Receive:       forwarder
+ *   - List:          listings, locations, policies, media
+ *   - Sell:          sales, labels
+ *   - Communicate:   messages, feedback, notifications, webhooks, offers
+ *   - Resolve:       disputes
+ *   - Analyze:       payouts, transactions, transfers, analytics, recommendations
+ *   - Tax:           seller (sales-tax under /v1/me/seller)
+ *   - Operational:   connect, me, keys, billing, health, capabilities, admin
+ *   - Plumbing:      bridge (extension wire protocol — required for purchases + forwarder)
+ *
+ * Surfaces with wrappers but disabled for V1 (left commented at the bottom):
+ *   charities, featured, edelivery, violations, marketplaces (metadata),
+ *   expenses, trends, promotions, markdowns, ads, store, feeds, translate,
+ *   watching, saved-searches, takedown, developer, browser, cart,
+ *   listings/bulk, listing-groups, ship.
+ *
+ * To re-enable: uncomment the import + mount line. Service-layer wrappers
+ * stay intact under `services/*` so the call site is ready when needed.
  */
 
 import { Hono } from "hono";
 import { adminRoute } from "./admin.js";
-import { adsRoute } from "./ads.js";
 import { analyticsRoute } from "./analytics.js";
 import { bidsRoute } from "./bids.js";
 import { billingRoute } from "./billing.js";
@@ -32,26 +35,19 @@ import { bridgeRoute } from "./bridge.js";
 import { browserRoute } from "./browser.js";
 import { capabilitiesRoute } from "./capabilities.js";
 import { categoriesRoute } from "./categories.js";
-import { charitiesRoute } from "./charities.js";
 import { connectRoute } from "./connect.js";
 import { disputesRoute } from "./disputes.js";
 import { evaluateRoute } from "./evaluate.js";
-import { expensesRoute } from "./expenses.js";
-import { featuredRoute } from "./featured.js";
 import { feedbackRoute } from "./feedback.js";
-import { feedsRoute } from "./feeds.js";
 import { forwarderRoute } from "./forwarder.js";
 import { v1HealthRoute } from "./health.js";
 import { itemsRoute } from "./items.js";
 import { keysRoute } from "./keys.js";
 import { labelsRoute } from "./labels.js";
-import { listingGroupsRoute } from "./listing-groups.js";
 import { listingsRoute } from "./listings.js";
-import { listingsBulkRoute } from "./listings-bulk.js";
 import { locationsRoute } from "./locations.js";
-import { markdownsRoute } from "./markdowns.js";
-import { marketplacesRoute } from "./marketplaces.js";
 import { meRoute } from "./me.js";
+import { meOverviewRoute } from "./me-overview.js";
 import { mediaRoute } from "./media.js";
 import { messagesRoute } from "./messages.js";
 import { notificationsRoute } from "./notifications.js";
@@ -59,79 +55,67 @@ import { offersRoute } from "./offers.js";
 import { payoutsRoute } from "./payouts.js";
 import { policiesRoute } from "./policies.js";
 import { productsRoute } from "./products.js";
-import { promotionsRoute } from "./promotions.js";
 import { purchasesRoute } from "./purchases.js";
 import { recommendationsRoute } from "./recommendations.js";
 import { salesRoute } from "./sales.js";
-import { savedSearchesRoute } from "./saved-searches.js";
 import { sellerRoute } from "./seller.js";
 import { shipRoute } from "./ship.js";
-import { storeRoute } from "./store.js";
-import { takedownRoute } from "./takedown.js";
 import { transactionsRoute } from "./transactions.js";
 import { transfersRoute } from "./transfers.js";
-import { translateRoute } from "./translate.js";
-import { trendsRoute } from "./trends.js";
-import { violationsRoute } from "./violations.js";
-import { watchingRoute } from "./watching.js";
 import { webhooksRoute } from "./webhooks.js";
 
 export const v1Routes = new Hono();
 
-// ---- Marketplace data (read) -------------------------------------------
+// ---- Source ------------------------------------------------------------
 v1Routes.route("/items", itemsRoute);
 v1Routes.route("/categories", categoriesRoute);
 v1Routes.route("/products", productsRoute);
-v1Routes.route("/charities", charitiesRoute);
-v1Routes.route("/media", mediaRoute);
-v1Routes.route("/featured", featuredRoute);
+v1Routes.route("/evaluate", evaluateRoute);
 
-// ---- My side (write) ---------------------------------------------------
-v1Routes.route("/listings/bulk", listingsBulkRoute);
-v1Routes.route("/listings", listingsRoute);
-v1Routes.route("/listing-groups", listingGroupsRoute);
-v1Routes.route("/locations", locationsRoute);
+// ---- Buy + Receive -----------------------------------------------------
 v1Routes.route("/purchases", purchasesRoute);
-v1Routes.route("/sales", salesRoute);
+v1Routes.route("/bids", bidsRoute);
+v1Routes.route("/forwarder", forwarderRoute);
 
-// ---- Money + comms + disputes ------------------------------------------
+// ---- List --------------------------------------------------------------
+v1Routes.route("/listings", listingsRoute);
+v1Routes.route("/locations", locationsRoute);
+v1Routes.route("/policies", policiesRoute);
+v1Routes.route("/media", mediaRoute);
+
+// ---- Sell --------------------------------------------------------------
+v1Routes.route("/sales", salesRoute);
+v1Routes.route("/labels", labelsRoute);
+// `/ship/quote` adds zone calculation + packaging optimization on top of
+// raw Sell Logistics rates (`services/quant/forwarder.ts`).
+v1Routes.route("/ship", shipRoute);
+
+// ---- Communicate -------------------------------------------------------
+v1Routes.route("/messages", messagesRoute);
+v1Routes.route("/feedback", feedbackRoute);
+v1Routes.route("/notifications", notificationsRoute);
+v1Routes.route("/webhooks", webhooksRoute);
+v1Routes.route("/offers", offersRoute);
+
+// ---- Resolve -----------------------------------------------------------
+v1Routes.route("/disputes", disputesRoute);
+
+// ---- Analyze -----------------------------------------------------------
 v1Routes.route("/payouts", payoutsRoute);
 v1Routes.route("/transactions", transactionsRoute);
 v1Routes.route("/transfers", transfersRoute);
-v1Routes.route("/messages", messagesRoute);
-v1Routes.route("/offers", offersRoute);
-v1Routes.route("/feedback", feedbackRoute);
-v1Routes.route("/disputes", disputesRoute);
-v1Routes.route("/policies", policiesRoute);
-v1Routes.route("/violations", violationsRoute);
-v1Routes.route("/recommendations", recommendationsRoute);
-v1Routes.route("/marketplaces", marketplacesRoute);
-
-// ---- Intelligence ------------------------------------------------------
-v1Routes.route("/evaluate", evaluateRoute);
-v1Routes.route("/ship", shipRoute);
-v1Routes.route("/expenses", expensesRoute);
-v1Routes.route("/trends", trendsRoute);
-
-// ---- Marketing + storefront + analytics + bulk + auction ---------------
-v1Routes.route("/promotions", promotionsRoute);
-v1Routes.route("/markdowns", markdownsRoute);
-v1Routes.route("/ads", adsRoute);
-v1Routes.route("/store", storeRoute);
 v1Routes.route("/analytics", analyticsRoute);
-v1Routes.route("/feeds", feedsRoute);
-v1Routes.route("/bids", bidsRoute);
-v1Routes.route("/translate", translateRoute);
-v1Routes.route("/labels", labelsRoute);
-
-// ---- Buyer + seller "my eBay" surfaces --------------------------------
-v1Routes.route("/me/seller", sellerRoute);
-v1Routes.route("/watching", watchingRoute);
-v1Routes.route("/saved-searches", savedSearchesRoute);
+v1Routes.route("/recommendations", recommendationsRoute);
 
 // ---- Account / ops -----------------------------------------------------
-v1Routes.route("/forwarder", forwarderRoute);
 v1Routes.route("/connect", connectRoute);
+// `/me/seller` carries sales-tax + payments-program + privilege; mounted
+// before `/me` so the more specific path wins (Hono routes by mount order).
+v1Routes.route("/me/seller", sellerRoute);
+// `/me/{programs,selling,buying,quota}` — agent-facing reads (API key auth).
+// `/programs/opt-in` is required before policy creation works, so this
+// has to land before the dashboard `/me` catch-all below.
+v1Routes.route("/me", meOverviewRoute);
 // `/me` is one mount: the dashboard surface (session) plus `/me/selling`
 // + `/me/buying` (API key + Trading XML, mounted inside `meRoute` ahead
 // of `requireSession`). See `routes/v1/me.ts`.
@@ -140,11 +124,57 @@ v1Routes.route("/keys", keysRoute);
 v1Routes.route("/billing", billingRoute);
 v1Routes.route("/health", v1HealthRoute);
 v1Routes.route("/capabilities", capabilitiesRoute);
-v1Routes.route("/takedown", takedownRoute);
 v1Routes.route("/admin", adminRoute);
 
 // ---- Agent plumbing ----------------------------------------------------
+// `/bridge/*` is the wire protocol the Chrome extension uses to talk to
+// flipagent (token issuance + longpoll + result reporting). Required for
+// `/purchases` (bridge transport) and `/forwarder/*`.
 v1Routes.route("/bridge", bridgeRoute);
+// `/browser/*` is the synchronous DOM-primitive escape hatch agents reach
+// for when no eBay API exists for a step. Runs through the same Chrome
+// extension as `/forwarder/*` and bridge purchases.
 v1Routes.route("/browser", browserRoute);
-v1Routes.route("/notifications", notificationsRoute);
-v1Routes.route("/webhooks", webhooksRoute);
+
+// ---- Disabled for V1 (uncomment to re-enable) --------------------------
+// import { adsRoute } from "./ads.js";
+// import { cartRoute } from "./cart.js";
+// import { charitiesRoute } from "./charities.js";
+// import { developerRoute } from "./developer.js";
+// import { edeliveryRoute } from "./edelivery.js";
+// import { expensesRoute } from "./expenses.js";
+// import { featuredRoute } from "./featured.js";
+// import { feedsRoute } from "./feeds.js";
+// import { listingGroupsRoute } from "./listing-groups.js";
+// import { listingsBulkRoute } from "./listings-bulk.js";
+// import { markdownsRoute } from "./markdowns.js";
+// import { marketplacesRoute } from "./marketplaces.js";
+// import { promotionsRoute } from "./promotions.js";
+// import { savedSearchesRoute } from "./saved-searches.js";
+// import { storeRoute } from "./store.js";
+// import { takedownRoute } from "./takedown.js";
+// import { translateRoute } from "./translate.js";
+// import { trendsRoute } from "./trends.js";
+// import { violationsRoute } from "./violations.js";
+// import { watchingRoute } from "./watching.js";
+//
+// v1Routes.route("/charities", charitiesRoute);
+// v1Routes.route("/featured", featuredRoute);
+// v1Routes.route("/listings/bulk", listingsBulkRoute);
+// v1Routes.route("/listing-groups", listingGroupsRoute);
+// v1Routes.route("/cart", cartRoute);
+// v1Routes.route("/edelivery", edeliveryRoute);
+// v1Routes.route("/violations", violationsRoute);
+// v1Routes.route("/marketplaces", marketplacesRoute);
+// v1Routes.route("/expenses", expensesRoute);
+// v1Routes.route("/trends", trendsRoute);
+// v1Routes.route("/promotions", promotionsRoute);
+// v1Routes.route("/markdowns", markdownsRoute);
+// v1Routes.route("/ads", adsRoute);
+// v1Routes.route("/store", storeRoute);
+// v1Routes.route("/feeds", feedsRoute);
+// v1Routes.route("/translate", translateRoute);
+// v1Routes.route("/watching", watchingRoute);
+// v1Routes.route("/saved-searches", savedSearchesRoute);
+// v1Routes.route("/takedown", takedownRoute);
+// v1Routes.route("/developer", developerRoute);
