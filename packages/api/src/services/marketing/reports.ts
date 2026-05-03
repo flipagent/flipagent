@@ -116,7 +116,7 @@ export async function createReportTask(input: ReportTaskCreate, ctx: MarketingCo
 export async function downloadAdReport(
 	reportId: string,
 	ctx: MarketingContext,
-): Promise<{ data: Uint8Array; contentType: string }> {
+): Promise<{ data: ArrayBuffer; contentType: string }> {
 	if (!isEbayOAuthConfigured()) {
 		throw new EbayApiError(503, "ebay_not_configured", "eBay OAuth credentials are not set on this api instance.");
 	}
@@ -128,7 +128,7 @@ export async function downloadAdReport(
 		throw new EbayApiError(res.status, `ebay_${res.status}`, text || `eBay returned ${res.status}`);
 	}
 	return {
-		data: new Uint8Array(await res.arrayBuffer()),
+		data: await res.arrayBuffer(),
 		contentType: res.headers.get("content-type") ?? "text/tab-separated-values",
 	};
 }

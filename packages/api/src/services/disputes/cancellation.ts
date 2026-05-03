@@ -9,6 +9,7 @@
  * through the IAF auth pipe handled in `sellRequest`.
  */
 
+import type { CancellationCreateRequest } from "@flipagent/types";
 import { sellRequest } from "../ebay/rest/user-client.js";
 
 export interface CancellationContext {
@@ -20,8 +21,10 @@ export interface CancellationItem {
 	transactionId?: string;
 }
 
-const CANCEL_REASONS = ["BUYER_ASKED_CANCEL", "OUT_OF_STOCK_OR_CANNOT_FULFILL", "ADDRESS_ISSUES"] as const;
-export type CancelReason = (typeof CANCEL_REASONS)[number];
+// Reason vocabulary lives on `CancellationCreateRequest.reason` in
+// `@flipagent/types`. Re-derive the union here so service callers
+// don't have to import the route-shape just for the literals.
+export type CancelReason = CancellationCreateRequest["reason"];
 
 interface UpstreamCancellationCheck {
 	eligibleForCancellation?: boolean;

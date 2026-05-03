@@ -349,7 +349,7 @@ adsRoute.get(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
 		});
-		return c.body(data, 200, { "Content-Type": contentType });
+		return c.body(new Uint8Array(data), 200, { "Content-Type": contentType });
 	},
 );
 

@@ -190,6 +190,23 @@ import {
 	planetExpressPackagesExecute,
 	planetExpressPackagesInput,
 } from "./forwarder-planetexpress.js";
+import {
+	listingsCompatibilityDeleteDescription,
+	listingsCompatibilityDeleteExecute,
+	listingsCompatibilityDeleteInput,
+	listingsCompatibilityGetDescription,
+	listingsCompatibilityGetExecute,
+	listingsCompatibilityGetInput,
+	listingsCompatibilitySetDescription,
+	listingsCompatibilitySetExecute,
+	listingsCompatibilitySetInput,
+	listingsGroupPublishDescription,
+	listingsGroupPublishExecute,
+	listingsGroupPublishInput,
+	listingsGroupWithdrawDescription,
+	listingsGroupWithdrawExecute,
+	listingsGroupWithdrawInput,
+} from "./inventory-groups.js";
 import { keysMeDescription, keysMeExecute, keysMeInput } from "./keys.js";
 import {
 	listingGroupsDeleteDescription,
@@ -227,23 +244,6 @@ import {
 	listingsPreviewFeesExecute,
 	listingsPreviewFeesInput,
 } from "./listings-fees.js";
-import {
-	listingsCompatibilityDeleteDescription,
-	listingsCompatibilityDeleteExecute,
-	listingsCompatibilityDeleteInput,
-	listingsCompatibilityGetDescription,
-	listingsCompatibilityGetExecute,
-	listingsCompatibilityGetInput,
-	listingsCompatibilitySetDescription,
-	listingsCompatibilitySetExecute,
-	listingsCompatibilitySetInput,
-	listingsGroupPublishDescription,
-	listingsGroupPublishExecute,
-	listingsGroupPublishInput,
-	listingsGroupWithdrawDescription,
-	listingsGroupWithdrawExecute,
-	listingsGroupWithdrawInput,
-} from "./listings-groups.js";
 import {
 	locationsDeleteDescription,
 	locationsDeleteExecute,
@@ -1580,7 +1580,7 @@ export const tools: Tool[] = [
 		description: browserQueryDescription,
 		inputSchema: browserQueryInput,
 		execute: browserQueryExecute,
-		toolset: "notifications",
+		toolset: "admin",
 	},
 ];
 

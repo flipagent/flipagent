@@ -345,15 +345,19 @@ export const ItemGroupPublishResponse = Type.Object(
 );
 export type ItemGroupPublishResponse = Static<typeof ItemGroupPublishResponse>;
 
-const CompatibilityProperty = Type.Object(
+// Internal — NOT `CompatibilityProperty` (that name is owned by
+// `compatibility.ts` for the Taxonomy/Compatibility-API shape with
+// `name` + `localizedName`). Inventory product_compatibility uses
+// just name/value pairs, hence the different shape + name.
+const CompatibilityRowProperty = Type.Object(
 	{ name: Type.String(), value: Type.String() },
-	{ $id: "CompatibilityProperty" },
+	{ $id: "CompatibilityRowProperty" },
 );
 
 export const CompatibilityRow = Type.Object(
 	{
 		productFamilyProperties: Type.Optional(Type.Record(Type.String(), Type.String())),
-		properties: Type.Array(CompatibilityProperty),
+		properties: Type.Array(CompatibilityRowProperty),
 		notes: Type.Optional(Type.String()),
 	},
 	{ $id: "CompatibilityRow" },

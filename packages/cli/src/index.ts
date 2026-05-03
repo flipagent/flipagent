@@ -18,8 +18,9 @@
  *   flipagent sales ship <orderId>       Mark shipped + tracking
  *   flipagent payouts list               Payouts history
  *   flipagent transactions list          Per-event finance (sale|refund|fee|adjustment)
- *   flipagent messages list [--unread]   Buyer ↔ seller messages
- *   flipagent messages send …            Reply to buyer
+ *   flipagent messages list [--type from_ebay|from_members]
+ *   flipagent messages thread <id> --type <…>
+ *   flipagent messages send (--conversation <id> | --to <user>) --body <text>
  *   flipagent offers list                Best Offers (incoming|outgoing)
  *   flipagent disputes list              Returns / cases / cancellations
  *   flipagent feedback awaiting          Transactions still owed feedback
@@ -734,8 +735,9 @@ Sell + finance:
   flipagent transactions list [--type sale|refund|fee|adjustment] [--payout-id <id>] [--limit N]
 
 Buyer comms + post-sale:
-  flipagent messages list [--unread] [--direction incoming|outgoing] [--limit N]
-  flipagent messages send --to <userId> --subject <s> --body <text>
+  flipagent messages list [--type from_ebay|from_members] [--limit N]
+  flipagent messages thread <conversationId> --type from_ebay|from_members
+  flipagent messages send (--conversation <id> | --to <username>) --body <text> [--listing <itemId>]
   flipagent offers list [--direction incoming|outgoing] [--status pending|accepted|...]
   flipagent disputes list [--status open|awaiting_seller|...] [--type return|cancellation|inr|snad|inquiry]
   flipagent feedback awaiting

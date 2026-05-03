@@ -51,7 +51,7 @@ async function ensureToken(apiKeyId: string): Promise<string> {
 export interface UploadEvidenceFileArgs {
 	apiKeyId: string;
 	disputeId: string;
-	fileBuffer: Uint8Array | ArrayBuffer | Blob;
+	fileBuffer: ArrayBuffer | Blob;
 	contentType: string;
 	filename?: string;
 }
@@ -129,7 +129,7 @@ export interface FetchEvidenceContentArgs {
 }
 
 export async function fetchEvidenceContent(args: FetchEvidenceContentArgs): Promise<{
-	data: Uint8Array;
+	data: ArrayBuffer;
 	contentType: string;
 }> {
 	const token = await ensureToken(args.apiKeyId);
@@ -143,9 +143,8 @@ export async function fetchEvidenceContent(args: FetchEvidenceContentArgs): Prom
 		const text = await res.text();
 		throw new EbayApiError(res.status, `ebay_${res.status}`, text || `eBay returned ${res.status}`);
 	}
-	const buffer = new Uint8Array(await res.arrayBuffer());
 	return {
-		data: buffer,
+		data: await res.arrayBuffer(),
 		contentType: res.headers.get("content-type") ?? "application/octet-stream",
 	};
 }

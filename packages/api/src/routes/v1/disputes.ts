@@ -176,11 +176,10 @@ disputesRoute.post(
 		if (!(file instanceof File)) {
 			return c.json({ error: "missing_file", message: "POST a multipart form with a `file` part." }, 400);
 		}
-		const buf = new Uint8Array(await file.arrayBuffer());
 		const result = await uploadEvidenceFile({
 			apiKeyId: c.var.apiKey.id,
 			disputeId: c.req.param("id"),
-			fileBuffer: buf,
+			fileBuffer: await file.arrayBuffer(),
 			contentType: file.type || "application/octet-stream",
 			filename: file.name,
 		});
@@ -255,7 +254,7 @@ disputesRoute.get(
 			evidenceId: c.req.param("evidenceId"),
 			fileId: c.req.param("fileId"),
 		});
-		return c.body(data, 200, { "Content-Type": contentType });
+		return c.body(new Uint8Array(data), 200, { "Content-Type": contentType });
 	},
 );
 
