@@ -36,6 +36,10 @@ export interface FlipagentHttp {
 	put<T>(path: string, body?: unknown): Promise<T>;
 	patch<T>(path: string, body?: unknown): Promise<T>;
 	delete<T>(path: string, query?: Record<string, string | number | undefined>): Promise<T>;
+	/** POST a non-JSON body (e.g. multipart FormData). Caller owns Content-Type. */
+	postRaw<T>(path: string, body: BodyInit): Promise<T>;
+	/** Raw `fetch` for binary downloads — returns the unparsed Response. */
+	fetchRaw(path: string, init?: RequestInit): Promise<Response>;
 }
 
 export function createHttp(opts: HttpOptions): FlipagentHttp {
@@ -83,6 +87,33 @@ export function createHttp(opts: HttpOptions): FlipagentHttp {
 		return (text ? JSON.parse(text) : undefined) as T;
 	}
 
+	async function postRaw<T>(path: string, body: BodyInit): Promise<T> {
+		const res = await fetchImpl(buildUrl(path), {
+			method: "POST",
+			headers: { ...baseHeaders },
+			body,
+		});
+		if (!res.ok) {
+			let detail: unknown;
+			try {
+				detail = await res.json();
+			} catch {
+				detail = await res.text().catch(() => undefined);
+			}
+			throw new FlipagentApiError(res.status, path, detail);
+		}
+		const text = await res.text();
+		return (text ? JSON.parse(text) : undefined) as T;
+	}
+
+	async function fetchRaw(path: string, init?: RequestInit): Promise<Response> {
+		const merged: RequestInit = {
+			...init,
+			headers: { ...baseHeaders, ...((init?.headers as Record<string, string>) ?? {}) },
+		};
+		return fetchImpl(buildUrl(path), merged);
+	}
+
 	return {
 		request,
 		get: (path, query) => request("GET", path, undefined, query),
@@ -90,5 +121,7 @@ export function createHttp(opts: HttpOptions): FlipagentHttp {
 		put: (path, body) => request("PUT", path, body),
 		patch: (path, body) => request("PATCH", path, body),
 		delete: (path, query) => request("DELETE", path, undefined, query),
+		postRaw,
+		fetchRaw,
 	};
 }

@@ -13,11 +13,21 @@ import {
 	DisputeResponse,
 	DisputesListQuery,
 	DisputesListResponse,
+	EvidenceAddRequest,
+	EvidenceAddResponse,
+	EvidenceFileUploadResponse,
+	EvidenceUpdateRequest,
 } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { checkCancellationEligibility, createCancellation } from "../../services/disputes/cancellation.js";
+import {
+	addEvidence,
+	fetchEvidenceContent,
+	updateEvidence,
+	uploadEvidenceFile,
+} from "../../services/disputes/evidence.js";
 import { getDispute, getDisputeActivity, listDisputes, respondToDispute } from "../../services/disputes/operations.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
@@ -143,6 +153,109 @@ disputesRoute.get(
 			);
 		}
 		return c.json({ ...result, source: "rest" as const });
+	},
+);
+
+disputesRoute.post(
+	"/:id/evidence/files",
+	describeRoute({
+		tags: ["Disputes"],
+		summary: "Upload one binary evidence file (multipart) to a payment dispute",
+		description:
+			"Wraps `POST /sell/fulfillment/v1/payment_dispute/{id}/upload_evidence_file`. Accepts `multipart/form-data` with a `file` part (JPEG/JPG/PNG only per eBay). Returns the `fileId` you'll reference in `POST /v1/disputes/{id}/evidence` to bundle into an evidence set, then in `respondToDispute(action='decline')` to contest.",
+		responses: {
+			200: jsonResponse("File uploaded.", EvidenceFileUploadResponse),
+			400: errorResponse("Missing file."),
+			...COMMON,
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const form = await c.req.parseBody();
+		const file = form.file;
+		if (!(file instanceof File)) {
+			return c.json({ error: "missing_file", message: "POST a multipart form with a `file` part." }, 400);
+		}
+		const buf = new Uint8Array(await file.arrayBuffer());
+		const result = await uploadEvidenceFile({
+			apiKeyId: c.var.apiKey.id,
+			disputeId: c.req.param("id"),
+			fileBuffer: buf,
+			contentType: file.type || "application/octet-stream",
+			filename: file.name,
+		});
+		return c.json({ ...result, source: "rest" as const });
+	},
+);
+
+disputesRoute.post(
+	"/:id/evidence",
+	describeRoute({
+		tags: ["Disputes"],
+		summary: "Bundle uploaded files into an evidence set on a payment dispute",
+		description:
+			"Wraps `POST /sell/fulfillment/v1/payment_dispute/{id}/add_evidence`. Pass `fileIds` from prior uploads + an `evidenceType` (eBay's EvidenceTypeEnum: PROOF_OF_DELIVERY, REPLACEMENT_SHIPPED, etc.). Returns the `evidenceId` for later updateEvidence + contest.",
+		responses: {
+			200: jsonResponse("Evidence created.", EvidenceAddResponse),
+			...COMMON,
+		},
+	}),
+	requireApiKey,
+	tbBody(EvidenceAddRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const result = await addEvidence({
+			apiKeyId: c.var.apiKey.id,
+			disputeId: c.req.param("id"),
+			evidenceType: body.evidenceType,
+			files: body.fileIds.map((fileId) => ({ fileId })),
+			...(body.lineItems ? { lineItems: body.lineItems } : {}),
+		});
+		return c.json({ ...result, source: "rest" as const });
+	},
+);
+
+disputesRoute.put(
+	"/:id/evidence/:evidenceId",
+	describeRoute({
+		tags: ["Disputes"],
+		summary: "Add more files to an existing evidence set",
+		responses: { 204: { description: "Updated." }, ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(EvidenceUpdateRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		await updateEvidence({
+			apiKeyId: c.var.apiKey.id,
+			disputeId: c.req.param("id"),
+			evidenceId: c.req.param("evidenceId"),
+			evidenceType: body.evidenceType,
+			files: body.fileIds.map((fileId) => ({ fileId })),
+			...(body.lineItems ? { lineItems: body.lineItems } : {}),
+		});
+		return c.body(null, 204);
+	},
+);
+
+disputesRoute.get(
+	"/:id/evidence/:evidenceId/files/:fileId",
+	describeRoute({
+		tags: ["Disputes"],
+		summary: "Download one evidence file (binary stream)",
+		description:
+			"Wraps `GET /sell/fulfillment/v1/payment_dispute/{id}/fetch_evidence_content`. Streams the raw file with eBay's Content-Type. Useful for audit / re-uploading to your own archive.",
+		responses: { 200: { description: "Binary content." }, 404: errorResponse("Not found."), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const { data, contentType } = await fetchEvidenceContent({
+			apiKeyId: c.var.apiKey.id,
+			disputeId: c.req.param("id"),
+			evidenceId: c.req.param("evidenceId"),
+			fileId: c.req.param("fileId"),
+		});
+		return c.body(data, 200, { "Content-Type": contentType });
 	},
 );
 

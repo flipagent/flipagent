@@ -152,6 +152,39 @@ export const CancellationEligibilityRequest = Type.Object(
 );
 export type CancellationEligibilityRequest = Static<typeof CancellationEligibilityRequest>;
 
+export const EvidenceFileUploadResponse = Type.Object(
+	{
+		fileId: Type.String(),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "EvidenceFileUploadResponse" },
+);
+export type EvidenceFileUploadResponse = Static<typeof EvidenceFileUploadResponse>;
+
+export const EvidenceAddRequest = Type.Object(
+	{
+		evidenceType: Type.String({ description: "eBay EvidenceTypeEnum value (e.g. PROOF_OF_DELIVERY)." }),
+		fileIds: Type.Array(Type.String(), { minItems: 1 }),
+		lineItems: Type.Optional(Type.Array(Type.Object({ itemId: Type.String(), lineItemId: Type.String() }))),
+	},
+	{ $id: "EvidenceAddRequest" },
+);
+export type EvidenceAddRequest = Static<typeof EvidenceAddRequest>;
+
+export const EvidenceAddResponse = Type.Object(
+	{
+		evidenceId: Type.String(),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "EvidenceAddResponse" },
+);
+export type EvidenceAddResponse = Static<typeof EvidenceAddResponse>;
+
+export const EvidenceUpdateRequest = Type.Composite([EvidenceAddRequest, Type.Object({ evidenceId: Type.String() })], {
+	$id: "EvidenceUpdateRequest",
+});
+export type EvidenceUpdateRequest = Static<typeof EvidenceUpdateRequest>;
+
 export const CancellationEligibilityResponse = Type.Object(
 	{
 		eligible: Type.Boolean(),
