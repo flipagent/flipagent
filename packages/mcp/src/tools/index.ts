@@ -220,6 +220,20 @@ import {
 	markdownsListInput,
 } from "./markdowns.js";
 import {
+	mePrograms_listDescription,
+	mePrograms_listExecute,
+	mePrograms_listInput,
+	mePrograms_optInDescription,
+	mePrograms_optInExecute,
+	mePrograms_optInInput,
+	mePrograms_optOutDescription,
+	mePrograms_optOutExecute,
+	mePrograms_optOutInput,
+	meQuotaDescription,
+	meQuotaExecute,
+	meQuotaInput,
+} from "./me-account.js";
+import {
 	mediaCreateUploadDescription,
 	mediaCreateUploadExecute,
 	mediaCreateUploadInput,
@@ -350,6 +364,7 @@ import {
 	storeCategoriesUpsertInput,
 } from "./store.js";
 import { transactionsListDescription, transactionsListExecute, transactionsListInput } from "./transactions.js";
+import { translateDescription, translateExecute, translateInput } from "./translate.js";
 import { trendsCategoriesDescription, trendsCategoriesExecute, trendsCategoriesInput } from "./trends.js";
 import {
 	watchingListDescription,
@@ -444,6 +459,41 @@ export const tools: Tool[] = [
 		description: keysMeDescription,
 		inputSchema: keysMeInput,
 		execute: keysMeExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_get_quota",
+		description: meQuotaDescription,
+		inputSchema: meQuotaInput,
+		execute: meQuotaExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_list_programs",
+		description: mePrograms_listDescription,
+		inputSchema: mePrograms_listInput,
+		execute: mePrograms_listExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_opt_in_program",
+		description: mePrograms_optInDescription,
+		inputSchema: mePrograms_optInInput,
+		execute: mePrograms_optInExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_opt_out_program",
+		description: mePrograms_optOutDescription,
+		inputSchema: mePrograms_optOutInput,
+		execute: mePrograms_optOutExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_translate",
+		description: translateDescription,
+		inputSchema: translateInput,
+		execute: translateExecute,
 		toolset: "core",
 	},
 

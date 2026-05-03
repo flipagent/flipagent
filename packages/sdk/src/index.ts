@@ -58,6 +58,7 @@ import { createListingsBulkClient, type ListingsBulkClient } from "./listings-bu
 import { createLocationsClient, type LocationsClient } from "./locations.js";
 import { createMarkdownsClient, type MarkdownsClient } from "./markdowns.js";
 import { createMarketplacesClient, type MarketplacesClient } from "./marketplaces.js";
+import { createMeClient, type MeClient } from "./me.js";
 import { createMediaClient, type MediaClient } from "./media.js";
 import { createMessagesClient, type MessagesClient } from "./messages.js";
 import { createPayoutsClient, createTransactionsClient, type PayoutsClient, type TransactionsClient } from "./money.js";
@@ -116,6 +117,7 @@ export interface FlipagentClient {
 	violations: ViolationsClient;
 	recommendations: RecommendationsClient;
 	marketplaces: MarketplacesClient;
+	me: MeClient;
 
 	// Intelligence
 	evaluate: EvaluateClient;
@@ -188,6 +190,7 @@ export function createFlipagentClient(opts: FlipagentClientOptions): FlipagentCl
 		violations: createViolationsClient(http),
 		recommendations: createRecommendationsClient(http),
 		marketplaces: createMarketplacesClient(http),
+		me: createMeClient(http),
 
 		evaluate: createEvaluateClient(http),
 		ship: createShipClient(http),
@@ -249,6 +252,7 @@ export type { ListingsBulkClient } from "./listings-bulk.js";
 export type { LocationsClient } from "./locations.js";
 export type { MarkdownsClient } from "./markdowns.js";
 export type { MarketplacesClient } from "./marketplaces.js";
+export type { MeClient } from "./me.js";
 export type { MediaClient } from "./media.js";
 export type { MessagesClient } from "./messages.js";
 export type { PayoutsClient, TransactionsClient } from "./money.js";

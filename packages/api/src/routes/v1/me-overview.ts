@@ -1,19 +1,27 @@
 /**
- * `/v1/me/{selling,buying}` — caller's seller-side & buyer-side overviews
- * (Trading XML GetMyeBaySelling / GetMyeBayBuying).
+ * `/v1/me/{selling,buying,quota,programs}` — caller-side reads.
  *
- * Lives in its own route because the underlying transport is Trading XML
- * with `withTradingAuth`, while the rest of `/me` is session-cookie auth
- * (dashboard) or API-key auth (seller account).
+ * `selling` / `buying` use Trading XML; `quota` / `programs` use REST.
+ * Lives in its own route because of mixed transports + because the
+ * rest of `/me` is session-cookie auth (dashboard) — these are
+ * API-key auth (seller account).
  */
 
-import { BuyingOverview, SellingOverview } from "@flipagent/types";
+import {
+	BuyingOverview,
+	MeProgramsResponse,
+	MeQuotaResponse,
+	ProgramOptRequest,
+	ProgramOptResponse,
+	SellingOverview,
+} from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { withTradingAuth } from "../../middleware/with-trading-auth.js";
+import { getMeQuota, getOptedInPrograms, optInToProgram, optOutOfProgram } from "../../services/me-account.js";
 import { fetchBuyingOverview, fetchSellingOverview } from "../../services/me-overview.js";
-import { errorResponse, jsonResponse } from "../../utils/openapi.js";
+import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const meOverviewRoute = new Hono();
 
@@ -43,4 +51,58 @@ meOverviewRoute.get(
 	withTradingAuth(async (c, accessToken) =>
 		c.json({ ...(await fetchBuyingOverview(accessToken)), source: "trading" as const }),
 	),
+);
+
+meOverviewRoute.get(
+	"/quota",
+	describeRoute({
+		tags: ["Me"],
+		summary: "API rate-limit budget (Developer Analytics)",
+		description:
+			"Combines `/developer/analytics/v1_beta/rate_limit` (app-wide) and `/user_rate_limit` (per-user). Useful for agents to know how much budget they have left in the current window before bursting.",
+		responses: { 200: jsonResponse("Quota.", MeQuotaResponse), 401: errorResponse("Auth missing.") },
+	}),
+	requireApiKey,
+	async (c) => c.json({ ...(await getMeQuota(c.var.apiKey.id)), source: "rest" as const }),
+);
+
+meOverviewRoute.get(
+	"/programs",
+	describeRoute({
+		tags: ["Me"],
+		summary: "List seller programs the caller is opted in to",
+		responses: { 200: jsonResponse("Programs.", MeProgramsResponse), 401: errorResponse("Auth missing.") },
+	}),
+	requireApiKey,
+	async (c) => c.json({ ...(await getOptedInPrograms(c.var.apiKey.id)), source: "rest" as const }),
+);
+
+meOverviewRoute.post(
+	"/programs/opt-in",
+	describeRoute({
+		tags: ["Me"],
+		summary: "Opt in to a seller program (managed payments, etc.)",
+		responses: { 200: jsonResponse("Acknowledged.", ProgramOptResponse), 401: errorResponse("Auth missing.") },
+	}),
+	requireApiKey,
+	tbBody(ProgramOptRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		return c.json({ ...(await optInToProgram(c.var.apiKey.id, body.programType)), source: "rest" as const });
+	},
+);
+
+meOverviewRoute.post(
+	"/programs/opt-out",
+	describeRoute({
+		tags: ["Me"],
+		summary: "Opt out of a seller program",
+		responses: { 200: jsonResponse("Acknowledged.", ProgramOptResponse), 401: errorResponse("Auth missing.") },
+	}),
+	requireApiKey,
+	tbBody(ProgramOptRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		return c.json({ ...(await optOutOfProgram(c.var.apiKey.id, body.programType)), source: "rest" as const });
+	},
 );
