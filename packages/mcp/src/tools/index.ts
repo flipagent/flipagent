@@ -439,6 +439,15 @@ import {
 	storeCategoriesUpsertDescription,
 	storeCategoriesUpsertExecute,
 	storeCategoriesUpsertInput,
+	storeGetDescription,
+	storeGetExecute,
+	storeGetInput,
+	storeTaskGetDescription,
+	storeTaskGetExecute,
+	storeTaskGetInput,
+	storeTasksListDescription,
+	storeTasksListExecute,
+	storeTasksListInput,
 } from "./store.js";
 import { transactionsListDescription, transactionsListExecute, transactionsListInput } from "./transactions.js";
 import { translateDescription, translateExecute, translateInput } from "./translate.js";
@@ -1176,6 +1185,27 @@ export const tools: Tool[] = [
 		description: storeCategoriesUpsertDescription,
 		inputSchema: storeCategoriesUpsertInput,
 		execute: storeCategoriesUpsertExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_get_store",
+		description: storeGetDescription,
+		inputSchema: storeGetInput,
+		execute: storeGetExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_list_store_tasks",
+		description: storeTasksListDescription,
+		inputSchema: storeTasksListInput,
+		execute: storeTasksListExecute,
+		toolset: "marketing",
+	},
+	{
+		name: "flipagent_get_store_task",
+		description: storeTaskGetDescription,
+		inputSchema: storeTaskGetInput,
+		execute: storeTaskGetExecute,
 		toolset: "marketing",
 	},
 
