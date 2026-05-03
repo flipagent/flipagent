@@ -6,7 +6,7 @@
  */
 
 import type { Dispute, DisputeRespond, DisputesListQuery, DisputeType } from "@flipagent/types";
-import { sellRequest } from "../ebay/rest/user-client.js";
+import { sellRequest, swallow404 } from "../ebay/rest/user-client.js";
 import {
 	type EbayCancellationRecord,
 	type EbayCaseRecord,
@@ -125,12 +125,14 @@ export async function respondToDispute(
 		// optimistic-locking version) so we re-fetch the raw record before
 		// dispatching. accept = seller pays; decline | counter | escalate
 		// → contest the dispute.
-		const raw = await sellRequest<PaymentDisputeRaw>({
-			apiKeyId: ctx.apiKeyId,
-			method: "GET",
-			path: GET_PATH.payment(id),
-			marketplace: ctx.marketplace,
-		}).catch(() => null);
+		const raw = await swallow404(
+			sellRequest<PaymentDisputeRaw>({
+				apiKeyId: ctx.apiKeyId,
+				method: "GET",
+				path: GET_PATH.payment(id),
+				marketplace: ctx.marketplace,
+			}),
+		);
 		const revision = raw?.revision ?? 1;
 		const action = body.action === "accept" ? "accept" : "contest";
 		const requestBody: Record<string, unknown> = { revision };

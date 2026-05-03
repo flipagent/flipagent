@@ -118,6 +118,23 @@ export async function sellRequest<T = unknown>(opts: SellRequestOpts): Promise<T
 	return (parsed as T) ?? (undefined as T);
 }
 
+/**
+ * Promise wrapper that converts an EbayApiError 404 into `null` and
+ * re-throws everything else. Use this when "not found = empty
+ * collection / no record" is the legitimate semantics — never use a
+ * bare `.catch(() => null)`, which silently swallows scope errors,
+ * outages, network issues, and IAF-vs-Bearer auth bugs (see the
+ * post-order fix in commit 5f4b83c).
+ */
+export async function swallow404<T>(promise: Promise<T>): Promise<T | null> {
+	try {
+		return await promise;
+	} catch (err) {
+		if (err instanceof EbayApiError && err.status === 404) return null;
+		throw err;
+	}
+}
+
 function safeJson(text: string): unknown {
 	try {
 		return JSON.parse(text);

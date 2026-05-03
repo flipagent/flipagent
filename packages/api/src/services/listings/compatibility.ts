@@ -7,7 +7,7 @@
  * Wraps `/sell/inventory/v1/inventory_item/{sku}/product_compatibility`.
  */
 
-import { sellRequest } from "../ebay/rest/user-client.js";
+import { sellRequest, swallow404 } from "../ebay/rest/user-client.js";
 
 export interface CompatibilityContext {
 	apiKeyId: string;
@@ -52,11 +52,13 @@ export async function getProductCompatibility(
 	sku: string,
 	ctx: CompatibilityContext,
 ): Promise<{ compatibleProducts: CompatibilityRow[] } | null> {
-	const res = await sellRequest<UpstreamCompatibilityResponse>({
-		apiKeyId: ctx.apiKeyId,
-		method: "GET",
-		path: `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}/product_compatibility`,
-	}).catch(() => null);
+	const res = await swallow404(
+		sellRequest<UpstreamCompatibilityResponse>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}/product_compatibility`,
+		}),
+	);
 	if (!res) return null;
 	return { compatibleProducts: (res.compatibleProducts ?? []).map(toRow) };
 }

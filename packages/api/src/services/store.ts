@@ -3,7 +3,7 @@
  */
 
 import type { StoreCategory, StoreCategoryUpsert } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
+import { sellRequest, swallow404 } from "./ebay/rest/user-client.js";
 
 interface EbayStoreCategory {
 	categoryId: string;
@@ -82,12 +82,14 @@ interface UpstreamStoreResponse {
 }
 
 export async function getStoreInfo(ctx: StoreContext): Promise<StoreInfo | null> {
-	const res = await sellRequest<UpstreamStoreResponse>({
-		apiKeyId: ctx.apiKeyId,
-		method: "GET",
-		path: "/sell/stores/v1/store",
-		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	const res = await swallow404(
+		sellRequest<UpstreamStoreResponse>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: "/sell/stores/v1/store",
+			marketplace: ctx.marketplace,
+		}),
+	);
 	if (!res) return null;
 	return {
 		storeName: res.storeName ?? null,
@@ -139,21 +141,25 @@ function toStoreTask(t: UpstreamStoreTask): StoreTask {
 }
 
 export async function listStoreTasks(ctx: StoreContext): Promise<{ tasks: StoreTask[] }> {
-	const res = await sellRequest<UpstreamTasksResponse>({
-		apiKeyId: ctx.apiKeyId,
-		method: "GET",
-		path: "/sell/stores/v1/store/tasks",
-		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	const res = await swallow404(
+		sellRequest<UpstreamTasksResponse>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: "/sell/stores/v1/store/tasks",
+			marketplace: ctx.marketplace,
+		}),
+	);
 	return { tasks: (res?.tasks ?? []).map(toStoreTask) };
 }
 
 export async function getStoreTask(taskId: string, ctx: StoreContext): Promise<StoreTask | null> {
-	const res = await sellRequest<UpstreamStoreTask>({
-		apiKeyId: ctx.apiKeyId,
-		method: "GET",
-		path: `/sell/stores/v1/store/tasks/${encodeURIComponent(taskId)}`,
-		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	const res = await swallow404(
+		sellRequest<UpstreamStoreTask>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: `/sell/stores/v1/store/tasks/${encodeURIComponent(taskId)}`,
+			marketplace: ctx.marketplace,
+		}),
+	);
 	return res ? toStoreTask(res) : null;
 }

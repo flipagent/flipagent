@@ -8,7 +8,7 @@ import type {
 	NotificationSubscriptionCreate,
 	NotificationTopic,
 } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
+import { sellRequest, swallow404 } from "./ebay/rest/user-client.js";
 
 interface EbaySubscription {
 	subscriptionId: string;
@@ -166,11 +166,13 @@ export async function getSubscriptionFilter(
 	filterId: string,
 	ctx: NotifContext,
 ): Promise<SubscriptionFilter | null> {
-	const res = await sellRequest<UpstreamFilter>({
-		apiKeyId: ctx.apiKeyId,
-		method: "GET",
-		path: `/commerce/notification/v1/subscription/${encodeURIComponent(subscriptionId)}/filter/${encodeURIComponent(filterId)}`,
-	}).catch(() => null);
+	const res = await swallow404(
+		sellRequest<UpstreamFilter>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: `/commerce/notification/v1/subscription/${encodeURIComponent(subscriptionId)}/filter/${encodeURIComponent(filterId)}`,
+		}),
+	);
 	if (!res) return null;
 	return {
 		id: res.filterId ?? filterId,
@@ -216,11 +218,13 @@ interface UpstreamConfig {
 }
 
 export async function getNotificationConfig(ctx: NotifContext): Promise<NotificationConfig> {
-	const res = await sellRequest<UpstreamConfig>({
-		apiKeyId: ctx.apiKeyId,
-		method: "GET",
-		path: "/commerce/notification/v1/config",
-	}).catch(() => null);
+	const res = await swallow404(
+		sellRequest<UpstreamConfig>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: "/commerce/notification/v1/config",
+		}),
+	);
 	return { alertEmail: res?.alertEmail ?? null };
 }
 
@@ -241,11 +245,13 @@ export interface PublicKeyResponse {
 }
 
 export async function getPublicKey(keyId: string, ctx: NotifContext): Promise<PublicKeyResponse | null> {
-	const res = await sellRequest<{ algorithm?: string; digest?: string; key?: string }>({
-		apiKeyId: ctx.apiKeyId,
-		method: "GET",
-		path: `/commerce/notification/v1/public_key/${encodeURIComponent(keyId)}`,
-	}).catch(() => null);
+	const res = await swallow404(
+		sellRequest<{ algorithm?: string; digest?: string; key?: string }>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: `/commerce/notification/v1/public_key/${encodeURIComponent(keyId)}`,
+		}),
+	);
 	if (!res) return null;
 	return {
 		keyId,

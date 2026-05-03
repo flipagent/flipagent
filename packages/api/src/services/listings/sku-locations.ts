@@ -6,7 +6,7 @@
  * eBay only considers the first 50 mapped locations when calculating EDD.
  */
 
-import { sellRequest } from "../ebay/rest/user-client.js";
+import { sellRequest, swallow404 } from "../ebay/rest/user-client.js";
 
 export interface SkuLocationsContext {
 	apiKeyId: string;
@@ -26,11 +26,13 @@ export async function getSkuLocations(
 	sku: string,
 	ctx: SkuLocationsContext,
 ): Promise<{ locations: SkuLocationAvailability[] } | null> {
-	const res = await sellRequest<UpstreamLocationMapping>({
-		apiKeyId: ctx.apiKeyId,
-		method: "GET",
-		path: `/sell/inventory/v1/listing/${encodeURIComponent(listingId)}/sku/${encodeURIComponent(sku)}/locations`,
-	}).catch(() => null);
+	const res = await swallow404(
+		sellRequest<UpstreamLocationMapping>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: `/sell/inventory/v1/listing/${encodeURIComponent(listingId)}/sku/${encodeURIComponent(sku)}/locations`,
+		}),
+	);
 	if (!res) return null;
 	return { locations: res.locations ?? [] };
 }

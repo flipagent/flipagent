@@ -5,7 +5,7 @@
  */
 
 import type { MeProgramsResponse, MeQuotaResponse, ProgramOptResponse, QuotaApi } from "@flipagent/types";
-import { sellRequest } from "./ebay/rest/user-client.js";
+import { sellRequest, swallow404 } from "./ebay/rest/user-client.js";
 
 interface UpstreamRateLimitResource {
 	name?: string;
@@ -38,16 +38,20 @@ function toQuotaApis(res: UpstreamRateLimitsResponse | null): QuotaApi[] {
 
 export async function getMeQuota(apiKeyId: string): Promise<Omit<MeQuotaResponse, "source">> {
 	const [appRes, userRes] = await Promise.all([
-		sellRequest<UpstreamRateLimitsResponse>({
-			apiKeyId,
-			method: "GET",
-			path: "/developer/analytics/v1_beta/rate_limit/",
-		}).catch(() => null),
-		sellRequest<UpstreamRateLimitsResponse>({
-			apiKeyId,
-			method: "GET",
-			path: "/developer/analytics/v1_beta/user_rate_limit/",
-		}).catch(() => null),
+		swallow404(
+			sellRequest<UpstreamRateLimitsResponse>({
+				apiKeyId,
+				method: "GET",
+				path: "/developer/analytics/v1_beta/rate_limit/",
+			}),
+		),
+		swallow404(
+			sellRequest<UpstreamRateLimitsResponse>({
+				apiKeyId,
+				method: "GET",
+				path: "/developer/analytics/v1_beta/user_rate_limit/",
+			}),
+		),
 	]);
 	return {
 		apiQuota: toQuotaApis(appRes),
@@ -60,11 +64,13 @@ interface UpstreamProgramsResponse {
 }
 
 export async function getOptedInPrograms(apiKeyId: string): Promise<Omit<MeProgramsResponse, "source">> {
-	const res = await sellRequest<UpstreamProgramsResponse>({
-		apiKeyId,
-		method: "GET",
-		path: "/sell/account/v1/program/get_opted_in_programs",
-	}).catch(() => null);
+	const res = await swallow404(
+		sellRequest<UpstreamProgramsResponse>({
+			apiKeyId,
+			method: "GET",
+			path: "/sell/account/v1/program/get_opted_in_programs",
+		}),
+	);
 	return {
 		programs: (res?.programs ?? []).map((p) => ({ programType: p.programType ?? "" })),
 	};

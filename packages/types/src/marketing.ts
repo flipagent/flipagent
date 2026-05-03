@@ -195,11 +195,22 @@ export const BulkAdsStatusRequest = Type.Object(
 );
 export type BulkAdsStatusRequest = Static<typeof BulkAdsStatusRequest>;
 
+/**
+ * Per-row result of a bulk ad operation. Either `listingId` is set
+ * (for `bulk_*_by_listing_id` family) or `inventoryReferenceId` +
+ * `inventoryReferenceType` are set (for `bulk_*_by_inventory_reference`
+ * family) — never both. eBay's bulk responses are keyed by whichever
+ * identifier the request used.
+ */
 export const BulkAdsResponse = Type.Object(
 	{
 		results: Type.Array(
 			Type.Object({
-				listingId: Type.String(),
+				listingId: Type.Optional(Type.String()),
+				inventoryReferenceId: Type.Optional(Type.String()),
+				inventoryReferenceType: Type.Optional(
+					Type.Union([Type.Literal("INVENTORY_ITEM"), Type.Literal("INVENTORY_ITEM_GROUP")]),
+				),
 				adId: Type.Optional(Type.String()),
 				status: Type.Optional(Type.String()),
 				errors: Type.Optional(Type.Unknown()),

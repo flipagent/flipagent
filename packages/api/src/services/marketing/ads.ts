@@ -3,7 +3,7 @@
  */
 
 import type { Ad, AdCampaign, AdCampaignCreate, AdGroup, AdGroupCreate, AdsListResponse } from "@flipagent/types";
-import { sellRequest } from "../ebay/rest/user-client.js";
+import { sellRequest, swallow404 } from "../ebay/rest/user-client.js";
 import { toCents, toDollarString } from "../shared/money.js";
 import type { MarketingContext } from "./promotions.js";
 
@@ -139,12 +139,14 @@ export async function listAdGroups(campaignId: string, ctx: MarketingContext): P
 /* ─── campaign lifecycle ─── */
 
 export async function getCampaignByName(name: string, ctx: MarketingContext): Promise<AdCampaign | null> {
-	const res = await sellRequest<EbayCampaign>({
-		apiKeyId: ctx.apiKeyId,
-		method: "GET",
-		path: `/sell/marketing/v1/ad_campaign/get_campaign_by_name?campaign_name=${encodeURIComponent(name)}`,
-		marketplace: ctx.marketplace,
-	}).catch(() => null);
+	const res = await swallow404(
+		sellRequest<EbayCampaign>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: `/sell/marketing/v1/ad_campaign/get_campaign_by_name?campaign_name=${encodeURIComponent(name)}`,
+			marketplace: ctx.marketplace,
+		}),
+	);
 	return res ? ebayCampaignToFlipagent(res) : null;
 }
 
