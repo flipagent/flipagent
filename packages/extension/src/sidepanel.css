@@ -1,0 +1,27 @@
+/*
+ * Side panel — thin iframe host. The actual rendering happens inside
+ * `${dashboard}/extension/result/`, which mounts the playground's
+ * own `<EvaluateResult>`. The iframe owns its own scroll, so this
+ * file's only job is to size the iframe to fill the chrome side
+ * panel's viewport.
+ */
+
+* { box-sizing: border-box; }
+html, body {
+	margin: 0;
+	padding: 0;
+	height: 100%;
+	width: 100%;
+	background: #ffffff;
+	overflow: hidden;
+}
+@media (prefers-color-scheme: dark) {
+	html, body { background: #0a0a0a; }
+}
+
+#sp-frame {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border: 0;
+}

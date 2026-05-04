@@ -27,6 +27,11 @@ import {
 	parseResultCount,
 } from "@flipagent/ebay-scraper";
 import type { BridgeJobStatus } from "@flipagent/types";
+import { mountEvaluateChip } from "./evaluate-chip.js";
+import { mountEvaluateSrp } from "./evaluate-srp.js";
+import { MESSAGES } from "./messages.js";
+import { loadConfig, pushCapture } from "./shared.js";
+import { STORAGE_KEYS } from "./storage.js";
 
 interface InFlightSnapshot {
 	id: string;
@@ -35,6 +40,9 @@ interface InFlightSnapshot {
 	maxPriceCents?: number | null;
 	status: string;
 	startedAt: string;
+	/** Forwarded from the bridge job's metadata so per-task content
+	 * handlers can branch (e.g. address vs inbox scrape on PE). */
+	metadata?: Record<string, unknown> | null;
 }
 
 interface ReportBody {
@@ -54,7 +62,7 @@ const BANNER_ID = "flipagent-banner";
 // `/v1/browser/query`) probe arbitrary pages without shipping
 // task-specific content-script code per site.
 chrome.runtime.onMessage.addListener((msg, _sender, send) => {
-	if (msg?.type === "flipagent:browser-op") {
+	if (msg?.type === MESSAGES.BROWSER_OP) {
 		try {
 			const result = runBrowserOpInPage((msg.args ?? {}) as Record<string, unknown>);
 			send(result);
@@ -68,7 +76,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, send) => {
 	// structured payload while we have full DOM access. Parsers are pure
 	// — they take a `domFactory` so we hand in `DOMParser` (always
 	// available in content-script context) and the page's own document.
-	if (msg?.type === "flipagent:ebay-extract") {
+	if (msg?.type === MESSAGES.EBAY_EXTRACT) {
 		try {
 			const result = runEbayExtractInPage(msg as EbayExtractMessage);
 			send(result);
@@ -81,7 +89,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, send) => {
 });
 
 interface EbayExtractMessage {
-	type: "flipagent:ebay-extract";
+	type: typeof MESSAGES.EBAY_EXTRACT;
 	kind: "search" | "detail" | "sold";
 	params?: EbaySearchParams;
 }
@@ -154,17 +162,121 @@ function runBrowserOpInPage(args: BrowserOpArgs): Record<string, unknown> {
 void main();
 
 async function main(): Promise<void> {
-	const stored = await chrome.storage.local.get(["flipagent_in_flight"]);
-	const job = stored.flipagent_in_flight as InFlightSnapshot | undefined;
+	const stored = await chrome.storage.local.get([STORAGE_KEYS.IN_FLIGHT_BUY]);
+	const job = stored[STORAGE_KEYS.IN_FLIGHT_BUY] as InFlightSnapshot | undefined;
 
 	// Per-service dispatch. Each service has its own observer flow.
 	// Buyer-state probe (eBay-specific) only runs on ebay.com.
 	if (location.hostname.endsWith("ebay.com")) {
 		if (job?.marketplace === "ebay") handleEbayJob(job);
 		reportBuyerState();
+		// Per-page evaluate UX. Both surfaces share the per-itemId store
+		// in `evaluate-store.ts`, so a row evaluated on /sch/ shows up
+		// pre-resolved on /itm/{id} (and vice versa). Suppressed while a
+		// buy is in flight — the banner owns the screen then.
+		if (!job) {
+			const browseItemId = parseItemIdFromItemPath(location.pathname);
+			if (browseItemId) {
+				void mountEvaluateChip(browseItemId);
+			} else if (!isCheckoutOrAccountPath(location.pathname)) {
+				// SRP per-card pill on every non-item, non-checkout eBay
+				// page — homepage, search, browse, watchlist, recommendations.
+				// The reconciler in evaluate-srp.ts is anchor-driven so it
+				// auto-detects whichever card markup the page is using.
+				void mountEvaluateSrp();
+			}
+		}
 	} else if (location.hostname.endsWith("planetexpress.com")) {
 		if (job?.marketplace === "planetexpress") handlePlanetExpressJob(job);
+		reportPlanetExpressState();
 	}
+
+	// Passive capture (opt-in). Runs OUTSIDE the eBay-only branch above
+	// because the host-permissions list also covers planetexpress.com but
+	// we never want to push planetexpress pages — the URL allowlist below
+	// is the real gate. Fire-and-forget; failures swallowed in pushCapture.
+	void autoCaptureIfEnabled();
+}
+
+/**
+ * Opt-in passive capture. When the user has flipped the popup toggle,
+ * every public eBay PDP / search page they visit gets parsed via the
+ * same `parseEbayDetailHtml` / `parseEbaySearchHtml` we use for scrape,
+ * and pushed to /v1/bridge/capture. The hosted API normalises and writes
+ * to the response cache so future searches hit it instead of issuing a
+ * fresh scrape.
+ *
+ * Per-tab session debounce: same itemId in the same tab won't push twice
+ * (re-renders, soft navigations, hash changes). Across tabs / sessions
+ * the server-side rate limit (60/min/api key) catches spam.
+ *
+ * The `denylist` mirrors the server check — defence-in-depth so the
+ * extension itself never serializes a personal page even if a network
+ * upgrade somehow bypasses the server validation.
+ */
+const CAPTURE_DENYLIST = [
+	/\/mye\//i, /\/myb\//i, /\/myb_summary/i, /\/signin/i,
+	/\/vod\//i, /\/chk\//i, /\/sl\//i, /\/bsh\//i,
+];
+
+async function autoCaptureIfEnabled(): Promise<void> {
+	if (!location.hostname.endsWith("ebay.com")) return;
+	const cfg = await loadConfig();
+	if (!cfg.captureEnabled || !cfg.bridgeToken) return;
+
+	const url = location.href;
+	const path = location.pathname;
+	if (CAPTURE_DENYLIST.some((re) => re.test(path))) return;
+	const isItm = /^\/itm\/(?:[^/]+\/)?\d{6,}/.test(path);
+	const isProductCatalog = /^\/p\/\d{6,}/.test(path);
+	const isSearch = /^\/sch\//.test(path);
+	if (!isItm && !isProductCatalog && !isSearch) return;
+
+	// Per-tab debounce. sessionStorage is per-document so a single tab
+	// won't push the same URL twice during one session — common when the
+	// user reloads or eBay re-renders the page state.
+	const key = `flipagent_captured_${path}`;
+	if (sessionStorage.getItem(key)) return;
+	sessionStorage.setItem(key, "1");
+
+	const html = document.documentElement.outerHTML;
+	const domFactory = (h: string) => new DOMParser().parseFromString(h, "text/html");
+
+	if (isItm) {
+		const detail = parseEbayDetailHtml(html, url, domFactory);
+		await pushCapture(cfg, { url, rawDetail: detail });
+		return;
+	}
+	// /p/{epid} catalog pages and /sch/ search results don't have a
+	// `parseEbayCatalogHtml` / `parseEbaySearchHtml`-compatible flow on
+	// the server's capture endpoint yet — skip until that lands. The
+	// allowlist still admits them so a single config flip server-side
+	// turns them on without an extension rebuild.
+}
+
+/**
+ * Extract the legacy numeric eBay item id from an item-page pathname.
+ * Handles both the canonical `/itm/123456789012` and the slugged
+ * `/itm/some-product-title/123456789012` forms. Returns null on any
+ * non-item path so the chip stays mounted only where it makes sense.
+ */
+function parseItemIdFromItemPath(pathname: string): string | null {
+	const m = pathname.match(/^\/itm\/(?:[^/]+\/)?(\d{6,})/);
+	return m?.[1] ?? null;
+}
+
+/** Paths where the SRP pill UI doesn't make sense — checkout flow,
+ * sign-in, account / settings pages. Everywhere else (homepage, search,
+ * browse, watchlist, recommendations, my eBay) shows item cards and
+ * gets pills. */
+function isCheckoutOrAccountPath(pathname: string): boolean {
+	return (
+		pathname.startsWith("/chk/") ||
+		pathname.startsWith("/vod/") ||
+		pathname.startsWith("/signin") ||
+		pathname.startsWith("/sl/") ||
+		pathname.startsWith("/help/")
+	);
 }
 
 function handleEbayJob(job: InFlightSnapshot): void {
@@ -206,8 +318,47 @@ function handlePlanetExpressJob(job: InFlightSnapshot): void {
 		// Wrong page — wait for the next navigation.
 		return;
 	}
-	// Wait a brief tick for SPA hydration, then scrape.
+	// Branch on the bridge task. Address scrape can run anywhere under
+	// /client/* because the warehouse cards live on the dashboard root;
+	// inbox scrape needs the packages page.
+	const task = job.metadata && typeof job.metadata === "object" ? (job.metadata as { task?: string }).task : undefined;
+	if (task === "planetexpress_get_address") {
+		void scrapeAddressesAndReport(job);
+		return;
+	}
+	// Default: refresh / packages inbox.
 	void scrapeAndReport(job);
+}
+
+async function scrapeAddressesAndReport(job: InFlightSnapshot): Promise<void> {
+	// Dashboard panel is server-rendered (not SPA), so the warehouse
+	// tab content is in the DOM on first load — short tick is plenty.
+	await new Promise((r) => setTimeout(r, 600));
+	const addresses = scrapePlanetExpressAddresses();
+	if (addresses.length === 0) {
+		showBanner({
+			tone: "error",
+			title: "flipagent couldn't read your forwarder address",
+			body: "DOM selectors didn't match the warehouse panel. The agent will retry from scratch.",
+		});
+		await report({
+			jobId: job.id,
+			outcome: "failed" as BridgeJobStatus,
+			failureReason: "planetexpress_address_selectors_unmatched",
+		});
+		return;
+	}
+	const primary = addresses.find((a) => a.isPrimary) ?? addresses[0]!;
+	showBanner({
+		tone: "success",
+		title: `flipagent · ${addresses.length} warehouse${addresses.length === 1 ? "" : "s"} read`,
+		body: `Primary: ${primary.label}.`,
+	});
+	await report({
+		jobId: job.id,
+		outcome: "completed" as BridgeJobStatus,
+		result: { addresses },
+	});
 }
 
 async function scrapeAndReport(job: InFlightSnapshot): Promise<void> {
@@ -319,6 +470,113 @@ function scrapePlanetExpressPackages(): PlanetExpressPackage[] {
 	const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>("table.table > tbody > tr"));
 	const real = rows.filter((tr) => tr.querySelector("td.grid-col-packet_label"));
 	return real.map((tr) => extractPackage(tr));
+}
+
+/**
+ * PE dashboard panel: a "FREE MAILBOX" panel with a tab nav of warehouses
+ * (`<ul class="nav nav-tabs">`) and a sibling tab pane per warehouse
+ * (`<div id="warehouse{N}" class="tab-pane">`). Each pane has a
+ * `<table class="no-styles">` of two-column rows: label cell ("Name:",
+ * "Address line 1:", "City:", …) + value cell. UK pane uses different
+ * labels ("Street:", no State).
+ *
+ * The active tab pane carries `class="active show"` — that's the
+ * primary warehouse for the user.
+ */
+interface ScrapedAddress {
+	label: string;
+	isPrimary: boolean;
+	name: string;
+	line1: string;
+	line2?: string;
+	city: string;
+	region?: string;
+	postalCode: string;
+	country: string;
+}
+
+function scrapePlanetExpressAddresses(): ScrapedAddress[] {
+	const navAnchors = Array.from(document.querySelectorAll<HTMLAnchorElement>('.nav-tabs a[href^="#warehouse"]'));
+	const out: ScrapedAddress[] = [];
+	for (const nav of navAnchors) {
+		const href = nav.getAttribute("href") ?? "";
+		const id = href.replace(/^#/, "");
+		if (!id) continue;
+		const pane = document.getElementById(id);
+		if (!pane) continue;
+		const label = (nav.textContent ?? "").replace(/\s+/g, " ").trim();
+		const isPrimary = pane.classList.contains("active");
+		const fields = readPaneFields(pane);
+		const country = inferCountry(label, fields.region);
+		const line1 = fields.line1 ?? fields.street ?? "";
+		const city = fields.city ?? "";
+		const postalCode = fields.zip ?? "";
+		if (!line1 || !city || !postalCode) continue; // pane present but malformed
+		const addr: ScrapedAddress = {
+			label,
+			isPrimary,
+			name: fields.name ?? "",
+			line1,
+			city,
+			postalCode,
+			country,
+		};
+		if (fields.line2) addr.line2 = fields.line2;
+		if (fields.region) addr.region = fields.region;
+		out.push(addr);
+	}
+	return out;
+}
+
+/**
+ * Walk the pane's `<table.no-styles>` rows and bucket them by label.
+ * Labels seen in the wild: "Name:", "Address line 1:", "Address line 2
+ * or Apt. # :", "City:", "State:", "Zip Code:", and for UK "Street:".
+ */
+function readPaneFields(pane: Element): {
+	name?: string;
+	line1?: string;
+	line2?: string;
+	street?: string;
+	city?: string;
+	region?: string;
+	zip?: string;
+} {
+	const out: ReturnType<typeof readPaneFields> = {};
+	const rows = pane.querySelectorAll<HTMLTableRowElement>("table.no-styles tr");
+	for (const tr of Array.from(rows)) {
+		const cells = tr.querySelectorAll<HTMLTableCellElement>("td");
+		if (cells.length < 2) continue;
+		const label = (cells[0]!.textContent ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+		const value = (cells[1]!.textContent ?? "").trim().replace(/\s+/g, " ");
+		if (!value) continue;
+		if (label.startsWith("name")) out.name = value;
+		else if (label.startsWith("address line 1")) out.line1 = value;
+		else if (label.startsWith("address line 2") || label.startsWith("apt")) out.line2 = value;
+		else if (label.startsWith("street")) out.street = value;
+		else if (label.startsWith("city")) out.city = value;
+		else if (label.startsWith("state")) out.region = parseRegion(value);
+		else if (label.startsWith("zip") || label.startsWith("postal")) out.zip = value;
+	}
+	return out;
+}
+
+/** "California (CA)" → "CA"; bare "Oregon" → "Oregon"; "" → undefined. */
+function parseRegion(value: string): string | undefined {
+	const m = value.match(/\(([A-Z]{2})\)/);
+	if (m) return m[1];
+	return value || undefined;
+}
+
+/** Best-effort 2-letter country code from the warehouse tab label. */
+function inferCountry(label: string, region: string | undefined): string {
+	const l = label.toLowerCase();
+	if (l.includes("united kingdom") || l.includes("uk")) return "GB";
+	if (l.includes("germany")) return "DE";
+	if (l.includes("japan")) return "JP";
+	// Default to US: PE's other labels are US city/state pairs (Torrance CA,
+	// Tualatin OR, Fort Pierce FL).
+	return region ? "US" : "US";
 }
 
 function extractPackage(row: Element): PlanetExpressPackage {
@@ -465,7 +723,7 @@ async function handlePostPurchase(job: InFlightSnapshot): Promise<void> {
 }
 
 async function report(body: ReportBody): Promise<void> {
-	await chrome.runtime.sendMessage({ type: "flipagent:order-progress", body }).catch(() => {});
+	await chrome.runtime.sendMessage({ type: MESSAGES.ORDER_PROGRESS, body }).catch(() => {});
 }
 
 /* ------------------------------ DOM helpers ------------------------------ */
@@ -586,9 +844,26 @@ function reportBuyerState(): void {
 	const probe = detectBuyerStateFromDom();
 	chrome.runtime
 		.sendMessage({
-			type: "flipagent:buyer-state",
+			type: MESSAGES.BUYER_STATE,
 			loggedIn: probe.loggedIn,
 			ebayUserName: probe.ebayUserName,
+		})
+		.catch(() => {});
+}
+
+/* PE login is URL-routed: app.planetexpress.com/login (or /signin) is the
+ * gate; any /client/* path is post-login. Mirror locally only — no API
+ * column on the bridge_tokens table for PE state today, popup reads
+ * straight from chrome.storage. */
+function reportPlanetExpressState(): void {
+	const path = location.pathname;
+	const onLoginPage = /\/(login|signin)/i.test(path);
+	const inAppShell = /^\/client(\/|$)/.test(path);
+	if (!onLoginPage && !inAppShell) return;
+	chrome.runtime
+		.sendMessage({
+			type: MESSAGES.PE_STATE,
+			loggedIn: inAppShell,
 		})
 		.catch(() => {});
 }
@@ -599,6 +874,24 @@ interface DomBuyerState {
 }
 
 function detectBuyerStateFromDom(): DomBuyerState {
+	// Modern eBay (2024+) header carries the username in
+	// `.gh-identity__greeting` with the structure
+	// `Hi <span>Username!</span>`. Read the inner span directly so we
+	// don't have to regex around the "Hi " prefix or the trailing
+	// punctuation.
+	const greetingEl = document.querySelector(".gh-identity__greeting");
+	if (greetingEl) {
+		const inner = greetingEl.querySelector("span");
+		const name = (inner?.textContent ?? greetingEl.textContent ?? "")
+			.trim()
+			.replace(/^Hi[\s,!]+/i, "")
+			.replace(/[!,.\s]+$/, "");
+		return { loggedIn: true, ebayUserName: name || undefined };
+	}
+
+	// Fallback positive signals — header variants where the greeting span
+	// isn't present (some experiments / regions). Username unknown but
+	// the row still shows "Signed in to eBay" without a name.
 	const loggedInIndicators = [
 		'a[href*="/myb/"]',
 		'a[href*="/mys/"]',
@@ -606,18 +899,7 @@ function detectBuyerStateFromDom(): DomBuyerState {
 		".gh-eb-Li-a",
 	];
 	for (const sel of loggedInIndicators) {
-		const el = document.querySelector(sel);
-		if (el) return { loggedIn: true, ebayUserName: scrapeUsername(el) };
+		if (document.querySelector(sel)) return { loggedIn: true };
 	}
-	const signinLink = document.querySelector('a[href*="signin.ebay.com"], a[href*="/signin"]');
-	if (signinLink) return { loggedIn: false };
 	return { loggedIn: false };
-}
-
-function scrapeUsername(anchor: Element): string | undefined {
-	const txt = (anchor.textContent ?? "").trim();
-	const greet = txt.match(/Hi[,!\s]+([A-Za-z0-9._-]{2,40})/i);
-	if (greet?.[1]) return greet[1];
-	if (txt && txt.length < 40 && !/^(my )?ebay$/i.test(txt) && !/^sign/i.test(txt)) return txt;
-	return undefined;
 }

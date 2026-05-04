@@ -1,13 +1,10 @@
 /*
- * flipagent extension popup — single-CTA UX. The user only ever sees
- * one obvious next step. Three orthogonal connection axes (this
- * browser pair / eBay session / seller API) are still tracked and
- * fetched, but distilled into a single banner with the most
- * actionable next step. Detail rows live behind a Connection details
- * collapsible for debugging.
+ * flipagent extension popup — three sections: header, banner, NOW
+ * panel, plus a one-link footer. Single source of truth for "what's
+ * happening right now"; persistent activity / connection diagnostics /
+ * settings live on the dashboard.
  *
- * Visual language matches the dashboard surface
- * (apps/docs/src/components/Dashboard.css):
+ * Visual language matches the dashboard surface (apps/docs/src/components/Dashboard.css):
  *   - sharp corners (border-radius: 0 on cards; 4-6px on inputs/buttons)
  *   - 1px var(--border-faint) hairlines, no shadows
  *   - mono uppercase eyebrows + ts
@@ -72,7 +69,7 @@ html, body {
 
 .hp {
 	width: 360px;
-	max-height: 600px;
+	max-height: 520px;
 	overflow-y: auto;
 }
 
@@ -96,9 +93,6 @@ html, body {
 	display: block;
 	width: 72px;
 	height: 20px;
-	/* Match the web header — the mark is a wide sparkle, not a square icon.
-	 * The PNG is dark-on-transparent for light backgrounds; flip it in
-	 * dark mode so the strokes stay readable. */
 }
 @media (prefers-color-scheme: dark) {
 	.hp-brand-mark { filter: invert(1) brightness(1.05); }
@@ -122,92 +116,114 @@ html, body {
 }
 .hp-head-link:hover { color: var(--text); }
 
-/* ─── Primary status banner ─────────────────────────────────── */
+/* ─── Setup checklist ───────────────────────────────────────── */
+/* Persistent 4-row roadmap. One line per row; no descriptions in
+ * the resting state (titles carry the meaning). Done rows get a ✓
+ * + dimmed text; the next active row gets a brand-colored dot +
+ * CTA. Collapses to a single "All set" line when fully done. */
 
-.hp-banner {
-	padding: 16px;
-	border-bottom: 1px solid var(--border-faint);
+.hp-setup {
+	padding: 12px 14px 6px;
 }
 
-.hp-banner-row {
-	display: flex;
+.hp-step-list {
+	list-style: none;
+	margin: 6px 0 0;
+	padding: 0;
+}
+
+.hp-step {
+	display: grid;
+	grid-template-columns: 14px minmax(0, 1fr) auto;
+	column-gap: 12px;
 	align-items: center;
-	gap: 10px;
+	padding: 10px 0;
+}
+.hp-step + .hp-step { border-top: 1px solid var(--border-faint); }
+
+.hp-step-mark {
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--text-4);
+	text-align: center;
+	line-height: 1;
+}
+.hp-step.is-done .hp-step-mark { color: var(--ok); }
+.hp-step.is-active .hp-step-mark { color: var(--brand); }
+
+.hp-step-content {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
 }
 
-.hp-banner-dot {
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-	background: var(--text-4);
-	flex-shrink: 0;
-}
-.hp-banner-dot.ok {
-	background: var(--ok);
-}
-.hp-banner-dot.warn {
-	background: var(--warn);
-}
-.hp-banner-dot.err {
-	background: var(--err);
-}
-.hp-banner-dot.live {
-	background: var(--brand);
-	animation: hp-pulse 1.4s ease-in-out infinite;
-}
-
-.hp-banner-headline {
-	font-size: 14px;
-	font-weight: 600;
+.hp-step-title {
+	font-size: 13px;
+	font-weight: 500;
 	color: var(--text);
-	letter-spacing: -0.01em;
+	letter-spacing: -0.005em;
+	line-height: 1.2;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.hp-step.is-done .hp-step-title { color: var(--text-3); font-weight: 400; }
+.hp-step.is-locked .hp-step-title { color: var(--text-4); }
+
+.hp-step-optional {
+	color: var(--text-4);
+	font-weight: 400;
 }
 
-.hp-banner-context {
-	margin-top: 4px;
-	font-size: 12px;
+.hp-step-sub {
+	font-size: 11.5px;
 	color: var(--text-3);
-	line-height: 1.5;
-	padding-left: 18px;
+	line-height: 1.4;
 }
-.hp-banner-context:empty { display: none; }
 
-.hp-banner-cta {
-	display: block;
-	width: 100%;
-	margin-top: 12px;
-	padding: 9px 12px;
-	border: 0;
+.hp-step-cta {
+	padding: 4px 9px;
+	border: 1px solid var(--border-strong);
 	border-radius: 4px;
-	background: var(--brand);
-	color: #fff;
+	background: var(--surface);
+	color: var(--text);
 	font-family: var(--sans);
-	font-size: 12.5px;
+	font-size: 11px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: filter 0.12s ease, transform 50ms ease;
-	letter-spacing: -0.005em;
+	white-space: nowrap;
 }
-/* `display: block` above wins against the default `[hidden]` user-agent
- * rule (`display: none`), so re-assert it explicitly. */
-.hp-banner-cta[hidden] { display: none; }
-.hp-banner-cta:hover { filter: brightness(1.06); }
-.hp-banner-cta:active { transform: scale(0.99); }
-.hp-banner-cta[disabled] {
-	opacity: 0.6;
-	cursor: progress;
+.hp-step-cta:hover { border-color: var(--brand); color: var(--brand); }
+.hp-step.is-active .hp-step-cta { background: var(--brand); border-color: var(--brand); color: #fff; }
+.hp-step.is-active .hp-step-cta:hover { filter: brightness(1.06); }
+
+/* "All set" collapsed summary — shown in place of the 4 rows once
+ * every step is done. */
+.hp-setup-done {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12.5px;
+	color: var(--text);
+}
+.hp-setup-done-dot {
+	width: 8px; height: 8px; border-radius: 50%;
+	background: var(--ok);
+	flex-shrink: 0;
+}
+.hp-setup-done-sub {
+	margin-top: 4px;
+	padding-left: 16px;
+	font-size: 11px;
+	color: var(--text-3);
 }
 
-/* ─── In-flight card ─────────────────────────────────────────── */
+/* ─── Now panel ─────────────────────────────────────────────── */
 
 .hp-now {
-	margin: 16px;
-	padding: 16px;
-	background: var(--surface);
-	border: 1px solid var(--border-faint);
-	border-radius: 0;
+	padding: 14px 16px 6px;
 }
-.hp-now[hidden] { display: none; }
 
 .hp-eyebrow {
 	font-family: var(--mono);
@@ -218,313 +234,123 @@ html, body {
 	color: var(--text-3);
 }
 
-.hp-now-item {
-	margin-top: 8px;
-	font-size: 13.5px;
-	font-weight: 600;
-	color: var(--text);
-	word-break: break-all;
+.hp-now-list {
+	list-style: none;
+	margin: 10px 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
-.hp-now-line {
+/* Empty state — copy the user-facing surface owns this. The CTA hint
+ * points at the Eval button on eBay listings (the chip on /itm and
+ * the per-row buttons on /sch), which is where async work originates
+ * for this UI. No mention of MCP here — that's dev-only context, not
+ * the popup's audience anymore. */
+.hp-now-row {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	margin-top: 10px;
-	font-size: 12.5px;
-	color: var(--text);
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid var(--border-faint);
+	border-radius: 4px;
+	background: var(--surface);
 }
 
-.hp-ind {
+.hp-now-dot {
 	width: 7px;
 	height: 7px;
 	border-radius: 50%;
 	background: var(--text-4);
 	flex-shrink: 0;
 }
-.hp-ind.live {
+.hp-now-dot.ok { background: var(--ok); }
+.hp-now-dot.err { background: var(--err); }
+.hp-now-dot.live {
 	background: var(--brand);
 	animation: hp-pulse 1.4s ease-in-out infinite;
 }
-.hp-ind.ok { background: var(--ok); }
-.hp-ind.err { background: var(--err); }
-.hp-ind.idle { background: var(--text-4); }
 
 @keyframes hp-pulse {
 	0%, 100% { opacity: 1; transform: scale(1); }
 	50% { opacity: 0.4; transform: scale(0.65); }
 }
-
-.hp-now-meta {
-	margin-top: 6px;
-	font-family: var(--mono);
-	font-size: 11px;
-	color: var(--text-3);
+@media (prefers-reduced-motion: reduce) {
+	.hp-banner-dot.live, .hp-now-dot.live { animation: none; }
 }
 
-.hp-now .hp-btn {
-	margin-top: 14px;
-	width: 100%;
-}
-
-/* ─── Activity feed ──────────────────────────────────────────── */
-
-.hp-feed {
-	/* No flex: 1 — that interacted badly with the foldable details/
-	 * settings sections (when both opened, this section was squeezed
-	 * to 0 height and activity disappeared). Now natural height; the
-	 * popup itself scrolls when total content exceeds 600px. */
-}
-
-.hp-feed-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 12px 16px 8px;
-	border-bottom: 1px solid var(--border-faint);
-}
-
-/* Cap the event list height so a long history doesn't dominate the
- * popup. Beyond ~6-7 visible rows, the inner list scrolls. */
-.hp-events {
-	padding: 0;
-	max-height: 240px;
-	overflow-y: auto;
-}
-
-.hp-empty {
-	font-size: 12px;
-	color: var(--text-3);
-	padding: 16px;
-	line-height: 1.55;
-	text-align: center;
-}
-
-/* Table-row pattern from dash-table — bottom borders, mono ts, no
- * left stripe. Status implied by tiny dot color. */
-.hp-event {
-	display: grid;
-	grid-template-columns: 8px 56px 1fr;
-	column-gap: 10px;
-	align-items: start;
-	padding: 9px 16px;
-	border-bottom: 1px solid var(--border-faint);
-	font-size: 12px;
-	color: var(--text-2);
-	line-height: 1.5;
-}
-.hp-event:last-child { border-bottom: 0; }
-
-.hp-event-dot {
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
-	background: var(--text-4);
-	margin-top: 6px;
-}
-.hp-event-dot.success { background: var(--ok); }
-.hp-event-dot.error { background: var(--err); }
-
-.hp-event-ts {
-	font-family: var(--mono);
-	font-size: 10.5px;
-	color: var(--text-3);
-	padding-top: 2px;
-}
-
-.hp-event-msg {
-	color: var(--text);
-	word-break: break-word;
-}
-.hp-event.error .hp-event-msg { color: var(--err); }
-
-.hp-event-detail {
-	display: block;
-	margin-top: 4px;
-	font-family: var(--mono);
-	font-size: 10.5px;
-	color: var(--text-3);
-	white-space: pre-wrap;
-	word-break: break-all;
-}
-
-/* ─── Foldable sections (Connection details + Settings) ─────── */
-
-.hp-fold {
-	border-top: 1px solid var(--border-faint);
-}
-
-.hp-fold > summary {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 12px 16px;
-	cursor: pointer;
-	user-select: none;
-	list-style: none;
-}
-.hp-fold > summary::-webkit-details-marker { display: none; }
-.hp-fold > summary:hover { background: var(--surface-2); }
-
-.hp-chev {
-	color: var(--text-3);
-	transition: transform 0.18s ease;
-}
-.hp-fold[open] .hp-chev { transform: rotate(180deg); }
-
-/* ─── Status detail rows (inside `Connection details` fold) ─── */
-
-.hp-status {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	border-top: 1px solid var(--border-faint);
-}
-
-.hp-row {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 10px 16px;
-	border-bottom: 1px solid var(--border-faint);
-}
-.hp-row:last-child { border-bottom: 0; }
-
-.hp-dot {
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
-	background: var(--text-4);
-	flex-shrink: 0;
-}
-.hp-dot.ok { background: var(--ok); }
-.hp-dot.warn { background: var(--warn); }
-.hp-dot.err { background: var(--err); }
-.hp-dot.idle { background: var(--text-4); }
-
-.hp-row-label {
-	font-family: var(--mono);
-	font-size: 10.5px;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	color: var(--text-3);
-	flex-shrink: 0;
-	min-width: 100px;
-}
-
-.hp-row-detail {
+.hp-now-body {
 	flex: 1;
-	font-size: 12.5px;
-	color: var(--text);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 	min-width: 0;
 }
 
-/* ─── Settings ───────────────────────────────────────────────── */
-
-.hp-settings-body {
-	padding: 4px 16px 16px;
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
+.hp-now-title {
+	font-size: 12.5px;
+	font-weight: 500;
+	color: var(--text);
+	letter-spacing: -0.005em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.hp-field {
-	display: flex;
-	flex-direction: column;
-	gap: 5px;
+.hp-now-sub {
+	margin-top: 2px;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	color: var(--text-3);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.hp-field-label {
+.hp-now-cancel {
+	flex-shrink: 0;
+	height: 24px;
+	padding: 0 9px;
+	border-radius: 4px;
+	border: 1px solid var(--border);
+	background: transparent;
+	color: var(--err);
+	font-family: var(--sans);
+	font-size: 11px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: border-color 120ms ease;
+}
+.hp-now-cancel:hover {
+	border-color: color-mix(in srgb, var(--err) 50%, var(--border));
+}
+
+/* ─── Footer ────────────────────────────────────────────────── */
+
+.hp-foot {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	padding: 10px 16px 14px;
+}
+
+.hp-foot-link {
+	border: 0;
+	background: transparent;
+	color: var(--text-3);
 	font-family: var(--mono);
 	font-size: 10.5px;
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
-	color: var(--text-3);
-}
-
-.hp-field input {
-	padding: 8px 10px;
-	border: 1px solid var(--border);
-	border-radius: 4px;
-	background: var(--surface);
-	color: var(--text);
-	font-family: var(--mono);
-	font-size: 12px;
-	transition: border-color 0.12s ease, box-shadow 0.12s ease;
-}
-.hp-field input:focus {
-	outline: none;
-	border-color: var(--brand);
-	box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
-}
-
-.hp-settings-actions {
-	display: flex;
-	gap: 6px;
-	margin-top: 4px;
-}
-
-/* ─── Buttons (in-flight cancel + settings) ─────────────────── */
-
-.hp-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 6px;
-	height: 30px;
-	padding: 0 12px;
-	border-radius: 4px;
-	border: 1px solid var(--border-strong);
-	background: var(--surface);
-	color: var(--text);
-	font-family: var(--sans);
-	font-size: 12px;
-	font-weight: 500;
 	cursor: pointer;
-	transition: background 0.12s ease, border-color 0.12s ease, transform 50ms ease;
-	flex: 1;
+	padding: 4px 6px;
+	transition: color 120ms ease;
 }
-.hp-btn:hover { background: var(--surface-2); }
-.hp-btn:active { transform: scale(0.98); }
+.hp-foot-link:hover { color: var(--err); }
 
-.hp-btn--heat {
-	background: var(--brand);
-	color: #fff;
-	border-color: transparent;
-}
-.hp-btn--heat:hover { background: var(--brand); filter: brightness(1.05); }
-
-.hp-btn--ghost {
-	background: transparent;
-	border-color: var(--border);
-	color: var(--text-2);
-}
-.hp-btn--ghost:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-2); }
-
-.hp-btn--ghost-danger {
-	background: transparent;
-	border-color: var(--border);
-	color: var(--err);
-}
-.hp-btn--ghost-danger:hover {
-	border-color: color-mix(in srgb, var(--err) 50%, var(--border));
-	background: var(--surface-2);
-}
-
-/* Scrollbar — keep it understated. Applied to both the popup root
- * (when total content > 600px) and the activity list when many
- * events accumulate. */
-.hp::-webkit-scrollbar,
-.hp-events::-webkit-scrollbar { width: 6px; }
-.hp::-webkit-scrollbar-track,
-.hp-events::-webkit-scrollbar-track { background: transparent; }
-.hp::-webkit-scrollbar-thumb,
-.hp-events::-webkit-scrollbar-thumb {
+/* Scrollbar — keep it understated. */
+.hp::-webkit-scrollbar { width: 6px; }
+.hp::-webkit-scrollbar-track { background: transparent; }
+.hp::-webkit-scrollbar-thumb {
 	background: var(--border);
 	border-radius: 3px;
 }
-.hp::-webkit-scrollbar-thumb:hover,
-.hp-events::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+.hp::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }

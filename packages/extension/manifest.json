@@ -2,7 +2,7 @@
 	"manifest_version": 3,
 	"name": "flipagent",
 	"version": "0.0.1",
-	"description": "Local executor for flipagent's bridge surfaces — eBay purchases, package-forwarder ops, and browser DOM queries — running inside your real Chrome session.",
+	"description": "flipagent evaluates eBay listings as flip opportunities. This extension lets the AI act on them in your own Chrome.",
 	"icons": {
 		"16": "icons/icon-16.png",
 		"32": "icons/icon-32.png",
@@ -16,6 +16,9 @@
 			"16": "icons/icon-16.png",
 			"32": "icons/icon-32.png"
 		}
+	},
+	"side_panel": {
+		"default_path": "sidepanel.html"
 	},
 	"background": {
 		"service_worker": "background.js",
@@ -31,16 +34,34 @@
 			],
 			"js": ["content.js"],
 			"run_at": "document_idle"
+		},
+		{
+			"matches": [
+				"https://flipagent.dev/*",
+				"https://*.flipagent.dev/*",
+				"http://localhost:4321/*",
+				"http://localhost:3000/*"
+			],
+			"js": ["presence.js"],
+			"run_at": "document_start"
 		}
 	],
-	"permissions": ["storage", "alarms", "tabs", "scripting"],
+	"permissions": ["storage", "alarms", "tabs", "scripting", "sidePanel", "cookies"],
 	"host_permissions": [
 		"https://www.ebay.com/*",
 		"https://*.ebay.com/*",
 		"https://app.planetexpress.com/*",
 		"https://www.planetexpress.com/*",
-		"https://api.flipagent.dev/*",
+		"https://*.flipagent.dev/*",
 		"http://localhost:4001/*",
 		"http://localhost:4000/*"
-	]
+	],
+	"externally_connectable": {
+		"matches": [
+			"https://flipagent.dev/*",
+			"https://*.flipagent.dev/*",
+			"http://localhost:4321/*",
+			"http://localhost:3000/*"
+		]
+	}
 }

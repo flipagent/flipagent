@@ -6,13 +6,19 @@
 
 import type {
 	BridgeLoginStatusRequest,
+	BridgePeLoginStatusRequest,
 	BridgePollJob,
 	BridgeResultRequest,
-	IssueBridgeTokenResponse,
+	CapabilitiesResponse,
 } from "@flipagent/types";
-import type { EbayPurchaseOrder } from "@flipagent/types/ebay/buy";
 
-export const DEFAULT_BASE_URL = "https://api.flipagent.dev";
+/* Build-time constants — see build.mjs `define` + globals.d.ts. Prod
+ * build bakes `https://api.flipagent.dev` + `https://flipagent.dev`;
+ * dev build (`npm run build:dev`) bakes `http://localhost:4000` +
+ * `http://localhost:4321`. The published Chrome Web Store build is
+ * always the prod variant. */
+export const DEFAULT_BASE_URL = __FLIPAGENT_API_BASE__;
+export const DEFAULT_DASHBOARD_BASE_URL = __FLIPAGENT_DASHBOARD_BASE__;
 
 export interface ExtensionConfig {
 	baseUrl: string;
@@ -20,9 +26,18 @@ export interface ExtensionConfig {
 	bridgeToken?: string;
 	bridgeTokenId?: string;
 	deviceName?: string;
+	/**
+	 * Opt-in: when true, the content script auto-parses every public eBay
+	 * PDP the user visits and pushes it to /v1/bridge/capture so the
+	 * shared catalog is naturally seeded as users browse. Default false —
+	 * users explicitly enable from the popup. Personal pages (My eBay,
+	 * checkout, sign-in, seller hub) are never sent regardless of this
+	 * toggle (URL allowlist applied client-side AND server-side).
+	 */
+	captureEnabled?: boolean;
 }
 
-export const DEFAULT_CONFIG: ExtensionConfig = {
+const DEFAULT_CONFIG: ExtensionConfig = {
 	baseUrl: DEFAULT_BASE_URL,
 };
 
@@ -108,17 +123,6 @@ function safeJson(s: string): unknown {
 
 /* ----------------------------- bridge calls ----------------------------- */
 
-export async function issueBridgeToken(cfg: ExtensionConfig, deviceName: string): Promise<IssueBridgeTokenResponse> {
-	const r = await apiCall<IssueBridgeTokenResponse>(cfg, "/v1/bridge/tokens", {
-		method: "POST",
-		auth: "apiKey",
-		body: { deviceName },
-		timeoutMs: 15_000,
-	});
-	if (!r.body) throw new ApiError(500, "/v1/bridge/tokens", "empty body");
-	return r.body;
-}
-
 export async function pollForJob(cfg: ExtensionConfig, signal?: AbortSignal): Promise<BridgePollJob | null> {
 	const url = `${cfg.baseUrl.replace(/\/+$/, "")}/v1/bridge/poll`;
 	const res = await fetch(url, {
@@ -143,18 +147,49 @@ export async function reportLoginStatus(cfg: ExtensionConfig, body: BridgeLoginS
 	});
 }
 
-export async function getOrderStatus(cfg: ExtensionConfig, purchaseOrderId: string): Promise<EbayPurchaseOrder> {
-	const path = `/v1/purchases/${encodeURIComponent(purchaseOrderId)}`;
-	const r = await apiCall<EbayPurchaseOrder>(cfg, path, { auth: "apiKey", timeoutMs: 10_000 });
-	if (!r.body) throw new ApiError(500, path, "empty body");
-	return r.body;
+export async function reportPeLoginStatus(cfg: ExtensionConfig, body: BridgePeLoginStatusRequest): Promise<void> {
+	await apiCall(cfg, "/v1/bridge/pe-login-status", {
+		method: "POST",
+		auth: "bridgeToken",
+		body,
+		timeoutMs: 10_000,
+	});
 }
 
-export async function cancelOrder(cfg: ExtensionConfig, purchaseOrderId: string): Promise<EbayPurchaseOrder> {
-	const path = `/v1/purchases/${encodeURIComponent(purchaseOrderId)}/cancel`;
-	const r = await apiCall<EbayPurchaseOrder>(cfg, path, { method: "POST", auth: "apiKey", timeoutMs: 10_000 });
-	if (!r.body) throw new ApiError(500, path, "empty body");
-	return r.body;
+export interface BridgeCaptureResult {
+	stored: boolean;
+	itemId?: string;
+	reason?: string;
+	cachedFor?: number;
+}
+
+/**
+ * Push a parsed eBay PDP to the hosted catalog cache. Fire-and-forget
+ * from the caller's perspective — we still await so the per-tab debounce
+ * in content.ts knows the request finished, but errors are swallowed
+ * (a failed capture must not perturb the user's eBay browsing).
+ *
+ * Server-side (`POST /v1/bridge/capture`) re-validates the URL and
+ * enforces a 60-per-minute rate limit per api key — a misbehaving client
+ * gets a 429, which we surface back as `{ stored: false }` so the caller
+ * just moves on.
+ */
+export async function pushCapture(
+	cfg: ExtensionConfig,
+	body: { url: string; rawDetail: unknown },
+): Promise<BridgeCaptureResult> {
+	try {
+		const r = await apiCall<BridgeCaptureResult>(cfg, "/v1/bridge/capture", {
+			method: "POST",
+			auth: "bridgeToken",
+			body,
+			timeoutMs: 10_000,
+		});
+		return r.body ?? { stored: false, reason: "no_body" };
+	} catch (err) {
+		const status = err instanceof ApiError ? err.status : 0;
+		return { stored: false, reason: status === 429 ? "rate_limited" : "request_failed" };
+	}
 }
 
 type EbayConnectStatus = {
@@ -182,29 +217,17 @@ export async function fetchConnectStatus(cfg: ExtensionConfig): Promise<EbayConn
 	return r.body;
 }
 
-/* -------------------------- ebay buyer-state probe -------------------------- */
-
 /**
- * Cached buyer-session snapshot the content script reports on every
- * ebay.com page load. Service worker reads this synchronously instead
- * of probing eBay itself — fetches from the SW context don't get the
- * SameSite=Lax/Strict auth cookies, so DOM inspection from inside the
- * page is the only reliable signal. This is the same pattern Honey
- * and Capital One Shopping use.
+ * Fetch the capability matrix — single source of truth for the popup
+ * setup checklist. Auth via api key; no bridge token required, so it
+ * works the moment a key is pasted (before the first bridge poll).
  */
-export interface BuyerStateSnapshot {
-	loggedIn: boolean;
-	ebayUserName?: string;
-	updatedAt: string;
+export async function fetchCapabilities(cfg: ExtensionConfig): Promise<CapabilitiesResponse> {
+	const r = await apiCall<CapabilitiesResponse>(cfg, "/v1/capabilities", { auth: "apiKey", timeoutMs: 10_000 });
+	if (!r.body) throw new ApiError(500, "/v1/capabilities", "empty body");
+	return r.body;
 }
 
-const BUYER_STATE_KEY = "flipagent_buyer_state";
-
-export async function readBuyerState(): Promise<BuyerStateSnapshot | null> {
-	const stored = await chrome.storage.local.get([BUYER_STATE_KEY]);
-	return (stored[BUYER_STATE_KEY] ?? null) as BuyerStateSnapshot | null;
-}
-
-export async function writeBuyerState(snap: BuyerStateSnapshot): Promise<void> {
-	await chrome.storage.local.set({ [BUYER_STATE_KEY]: snap });
-}
+/* Storage helpers + cross-context types live in `storage.ts` (one
+ * source of truth for chrome.storage.local). This module owns config +
+ * HTTP only — keep it that way. */

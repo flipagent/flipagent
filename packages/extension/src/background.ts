@@ -17,17 +17,19 @@
 
 import type { BridgeJobStatus, BridgePollJob, BridgeResultRequest } from "@flipagent/types";
 import { runEbayQuery } from "./ebay-query.js";
+import { MESSAGES } from "./messages.js";
 import {
 	apiCall,
+	DEFAULT_DASHBOARD_BASE_URL,
 	type ExtensionConfig,
 	loadConfig,
 	pollForJob,
-	readBuyerState,
 	reportLoginStatus,
+	reportPeLoginStatus,
 	reportResult,
 	saveConfig,
-	writeBuyerState,
 } from "./shared.js";
+import { readBuyerState, readPeState, STORAGE_KEYS, writeBuyerState, writePeState } from "./storage.js";
 
 const POLL_ALARM = "flipagent-poll";
 const POLL_PERIOD_MIN = 0.5; // 30 s — MV3 alarms minimum is 30 s in production
@@ -37,53 +39,198 @@ const POLL_TIMEOUT_MS = 25_000;
 
 chrome.runtime.onInstalled.addListener(() => {
 	chrome.alarms.create(POLL_ALARM, { periodInMinutes: POLL_PERIOD_MIN });
+	void prewarmSidepanel();
 });
 chrome.runtime.onStartup.addListener(() => {
 	chrome.alarms.create(POLL_ALARM, { periodInMinutes: POLL_PERIOD_MIN });
+	void prewarmSidepanel();
 });
+
+/** Pre-fetch the side-panel iframe target so the first user click
+ * opens to a hot HTTP cache instead of a cold dashboard bundle.
+ * Without this, click-to-rendered is gated on the React + Tailwind +
+ * Recharts bundle parsing for the first time per session — feels
+ * sluggish even though `chrome.sidePanel.open` itself is instant.
+ *
+ * `no-cors` lets us hit the URL without needing a CORS dance; we
+ * don't read the body, just want the network/disk cache populated.
+ * Failures are silent — pre-warm is a perf optimization, not a
+ * correctness requirement. */
+async function prewarmSidepanel(): Promise<void> {
+	try {
+		const url = `${DEFAULT_DASHBOARD_BASE_URL.replace(/\/+$/, "")}/extension/result/`;
+		await fetch(url, { mode: "no-cors", credentials: "omit", cache: "default" });
+	} catch {
+		/* offline / dashboard not reachable — silently skip */
+	}
+}
 chrome.alarms.onAlarm.addListener((alarm) => {
 	if (alarm.name === POLL_ALARM) void tick().catch((err) => console.error("[flipagent] tick error:", err));
 });
 
 /** Broadcast an activity event to the popup (and any other extension UI). */
 function emit(kind: "info" | "success" | "error", message: string, detail?: string): void {
-	void chrome.runtime.sendMessage({ type: "flipagent:event", kind, message, detail }).catch(() => {
+	void chrome.runtime.sendMessage({ type: MESSAGES.EVENT, kind, message, detail }).catch(() => {
 		// Popup may be closed — drop silently.
 	});
 }
 
+/* ------------------------ external (web → ext) ------------------------ */
+/* The /extension/connect page on flipagent.dev mints credentials via
+ * `POST /v1/me/devices` (session-cookie auth) and forwards them here.
+ * Its origin is whitelisted in manifest.externally_connectable; any
+ * other origin's `chrome.runtime.sendMessage` call is dropped by Chrome
+ * before reaching this listener. We still belt-and-braces validate the
+ * sender url so a future manifest typo can't quietly accept rogue
+ * origins. */
+chrome.runtime.onMessageExternal.addListener((msg, sender, send) => {
+	if (msg?.type === MESSAGES.EXTENSION_CONNECT) {
+		void onExtensionConnect(msg.payload, sender)
+			.then((r) => send(r))
+			.catch((err) => send({ ok: false, error: (err as Error).message ?? String(err) }));
+		return true; // async response
+	}
+	send({ ok: false, error: "unknown_message" });
+	return false;
+});
+
+interface ConnectPayload {
+	apiKey: { id: string; plaintext: string; tier: string };
+	bridgeToken: { id: string; plaintext: string; prefix: string };
+	device: { id: string; deviceName: string | null };
+}
+
+async function onExtensionConnect(
+	payload: ConnectPayload | undefined,
+	sender: chrome.runtime.MessageSender,
+): Promise<{ ok: boolean; error?: string }> {
+	const url = sender.url ?? sender.origin ?? "";
+	if (!isTrustedConnectOrigin(url)) {
+		return { ok: false, error: `untrusted_origin: ${url}` };
+	}
+	if (!payload?.apiKey?.plaintext || !payload?.bridgeToken?.plaintext) {
+		return { ok: false, error: "missing_credentials" };
+	}
+	await saveConfig({
+		apiKey: payload.apiKey.plaintext,
+		bridgeToken: payload.bridgeToken.plaintext,
+		bridgeTokenId: payload.bridgeToken.id,
+		deviceName: payload.device.deviceName ?? undefined,
+	});
+	// Drop any stale buyer-state snapshot so the popup re-derives fresh.
+	await chrome.storage.local.remove(STORAGE_KEYS.BUYER_STATE).catch(() => {});
+	emit("success", "Connected to flipagent", payload.device.deviceName ?? undefined);
+	// Kick off a poll so the bridge starts working immediately, no wait
+	// for the next 30 s alarm.
+	void tick().catch(() => {});
+	return { ok: true };
+}
+
+function isTrustedConnectOrigin(url: string): boolean {
+	if (!url) return false;
+	try {
+		const u = new URL(url);
+		if (u.hostname === "flipagent.dev") return true;
+		if (u.hostname.endsWith(".flipagent.dev")) return true;
+		if (u.hostname === "localhost") return true;
+		return false;
+	} catch {
+		return false;
+	}
+}
+
 // Messages from popup / content script.
 chrome.runtime.onMessage.addListener((msg, _sender, send) => {
-	if (msg?.type === "flipagent:poll-now") {
+	if (msg?.type === MESSAGES.POLL_NOW) {
 		void tick()
 			.then(() => send({ ok: true }))
 			.catch((err) => send({ ok: false, error: String(err) }));
 		return true; // async response
 	}
-	if (msg?.type === "flipagent:buyer-state") {
+	if (msg?.type === MESSAGES.BUYER_STATE) {
 		void onBuyerStateUpdate(msg.loggedIn, msg.ebayUserName).then(() => send({ ok: true }));
+		// Each fresh eBay page load is a chance the user clicks Evaluate
+		// next — opportunistically warm the side-panel iframe's HTTP
+		// cache so the first click feels instant. Cheap when already
+		// cached (304 / served from disk), no-op if dashboard is
+		// unreachable.
+		void prewarmSidepanel();
 		return true;
 	}
-	if (msg?.type === "flipagent:order-progress") {
+	if (msg?.type === MESSAGES.PE_STATE) {
+		void onPeStateUpdate(!!msg.loggedIn).then(() => send({ ok: true }));
+		return true;
+	}
+	if (msg?.type === MESSAGES.ORDER_PROGRESS) {
 		// Content script reports a state transition (placing, completed, failed).
 		// Forward to /v1/bridge/result; clear in-flight on terminal.
 		void onOrderProgress(msg.body as BridgeResultRequest).then(() => send({ ok: true }));
 		return true;
 	}
-	if (msg?.type === "flipagent:cancel-and-close") {
+	if (msg?.type === MESSAGES.CANCEL_AND_CLOSE) {
 		// Side panel asked to abort an in-flight buy: mark cancelled at
 		// the API, drop in-flight, AND close the marketplace tab so the
 		// user can't absent-mindedly click Confirm and pay.
 		void onCancelAndClose().then((r) => send(r));
 		return true;
 	}
+	if (msg?.type === MESSAGES.OPEN_SIDEPANEL) {
+		// Chip / SRP "View" → open the right-edge side panel scoped to
+		// the current tab and pointed at the requested itemId. Must run
+		// inside the user-gesture window propagated by sendMessage; we
+		// don't await anything synchronously before the .open() call.
+		const tabId = _sender.tab?.id;
+		const itemId = String(msg.itemId ?? "");
+		if (!tabId || !itemId) {
+			send({ ok: false, error: "missing_tab_or_item" });
+			return false;
+		}
+		void onOpenSidepanel(tabId, itemId).then(
+			() => send({ ok: true }),
+			(err) => send({ ok: false, error: (err as Error).message ?? String(err) }),
+		);
+		return true;
+	}
+	if (msg?.type === MESSAGES.RERUN_EVAL) {
+		// Side panel asked to re-evaluate the currently-open item. We
+		// can't mutate the in-memory evaluate-store from here (different
+		// runtime), so route the request back to a content script in
+		// the originating tab via storage — the chip / SRP listens for
+		// `flipagent_eval_rerun_request` and triggers `startEvaluate`
+		// for the matching itemId.
+		const itemId = String(msg.itemId ?? "");
+		if (itemId) {
+			void chrome.storage.local.set({
+				[STORAGE_KEYS.EVAL_RERUN_REQUEST]: { itemId, at: new Date().toISOString() },
+			});
+		}
+		send({ ok: true });
+		return false;
+	}
 	return false;
 });
 
+async function onOpenSidepanel(tabId: number, itemId: string): Promise<void> {
+	// `chrome.sidePanel.open` MUST be called inside the user-gesture
+	// window propagated from the content-script click. Awaiting other
+	// async work first risks the gesture expiring (Chrome ~1s budget)
+	// and a silent no-op. So fire .open() synchronously, then run the
+	// secondary writes in parallel — sidepanel.ts reads storage on
+	// mount + subscribes to onChanged, so a 10ms delay between open
+	// and itemId-write is invisible to the user.
+	const openPromise = chrome.sidePanel.open({ tabId }).catch((err) => {
+		console.error("[flipagent] sidePanel.open failed:", err);
+		throw err;
+	});
+	void chrome.sidePanel.setOptions({ tabId, path: "sidepanel.html", enabled: true }).catch(() => {});
+	void chrome.storage.local.set({ [STORAGE_KEYS.SIDEPANEL_ITEM_ID]: itemId });
+	await openPromise;
+}
+
 async function onCancelAndClose(): Promise<{ ok: boolean; error?: string }> {
 	const cfg = await loadConfig();
-	const stored = await chrome.storage.local.get(["flipagent_in_flight"]);
-	const inFlight = stored.flipagent_in_flight as { id: string; marketplace: string } | undefined;
+	const stored = await chrome.storage.local.get([STORAGE_KEYS.IN_FLIGHT_BUY]);
+	const inFlight = stored[STORAGE_KEYS.IN_FLIGHT_BUY] as { id: string; marketplace: string } | undefined;
 	if (!inFlight) return { ok: true }; // already gone
 	try {
 		// 1. cancel via API. eBay's Buy Order REST has no cancel endpoint;
@@ -106,7 +253,7 @@ async function onCancelAndClose(): Promise<{ ok: boolean; error?: string }> {
 		// 3. clear local snapshot. (Background also clears on terminal
 		//    `flipagent:order-progress`; this just makes the popup react
 		//    instantly without round-tripping the API.)
-		await chrome.storage.local.remove("flipagent_in_flight");
+		await chrome.storage.local.remove(STORAGE_KEYS.IN_FLIGHT_BUY);
 		emit("info", "Order cancelled & tab closed");
 		return { ok: true };
 	} catch (err) {
@@ -133,7 +280,24 @@ async function onOrderProgress(body: BridgeResultRequest): Promise<void> {
 		body.failureReason ?? body.ebayOrderId ?? undefined,
 	);
 	if (TERMINAL_OUTCOMES.has(body.outcome)) {
-		await chrome.storage.local.remove("flipagent_in_flight").catch(() => {});
+		await chrome.storage.local.remove(STORAGE_KEYS.IN_FLIGHT_BUY).catch(() => {});
+	}
+}
+
+async function onPeStateUpdate(loggedIn: boolean): Promise<void> {
+	const cfg = await loadConfig();
+	const prior = await readPeState();
+	const changed = !prior || prior.loggedIn !== loggedIn;
+	await writePeState({ loggedIn, updatedAt: new Date().toISOString() });
+	// Mirror to API so dashboard + MCP see the same checklist state. Only
+	// when paired — without a bridge token, the API has no row to update.
+	if (cfg.bridgeToken) {
+		await reportPeLoginStatus(cfg, { loggedIn }).catch((err) =>
+			console.warn("[flipagent] pe-login-status report failed:", err),
+		);
+	}
+	if (changed) {
+		emit(loggedIn ? "success" : "info", loggedIn ? "Planet Express signed in" : "Planet Express signed out");
 	}
 }
 
@@ -196,7 +360,7 @@ async function tick(): Promise<void> {
 		// Best-effort: clear in-flight if any leftover, then reload. The
 		// SW dies during reload — the API never gets a result, but the
 		// purchase_order's expires_at sweeps it out.
-		await chrome.storage.local.remove("flipagent_in_flight").catch(() => {});
+		await chrome.storage.local.remove(STORAGE_KEYS.IN_FLIGHT_BUY).catch(() => {});
 		setTimeout(() => chrome.runtime.reload(), 250);
 		return;
 	}
@@ -219,13 +383,14 @@ async function tick(): Promise<void> {
 
 	console.log("[flipagent] picked up job", job.jobId, "item", job.args.itemId, job.args.marketplace);
 	await chrome.storage.local.set({
-		flipagent_in_flight: {
+		[STORAGE_KEYS.IN_FLIGHT_BUY]: {
 			id: job.jobId,
 			marketplace: job.args.marketplace,
 			itemId: job.args.itemId,
 			maxPriceCents: job.args.maxPriceCents,
 			status: "claimed",
 			startedAt: new Date().toISOString(),
+			metadata: job.args.metadata ?? null,
 		},
 	});
 	emit("info", `Picked up ${job.args.marketplace} buy for ${job.args.itemId}`, `jobId=${job.jobId}`);
@@ -233,7 +398,7 @@ async function tick(): Promise<void> {
 		await dispatchJob(cfg, job);
 	} catch (err) {
 		const failureReason = `dispatcher_failed: ${(err as Error).message ?? String(err)}`;
-		await chrome.storage.local.remove("flipagent_in_flight").catch(() => {});
+		await chrome.storage.local.remove(STORAGE_KEYS.IN_FLIGHT_BUY).catch(() => {});
 		emit("error", "Dispatcher failed", failureReason);
 		await reportResult(cfg, { jobId: job.jobId, outcome: "failed" as BridgeJobStatus, failureReason }).catch(
 			() => {},
@@ -242,7 +407,6 @@ async function tick(): Promise<void> {
 }
 
 // (refreshBuyerStateIfChanged removed — content-script DOM check replaces SW fetch probe.)
-void saveConfig; // suppress unused-import noise; saveConfig is used elsewhere indirectly
 
 /* ----------------------------- job dispatch ----------------------------- */
 /* Interactive model: we open / focus the marketplace tab and let the
@@ -278,6 +442,15 @@ async function runEbayQueryTask(cfg: ExtensionConfig, job: BridgePollJob): Promi
 async function runBrowserOp(cfg: ExtensionConfig, job: BridgePollJob): Promise<void> {
 	try {
 		const meta = (job.args.metadata ?? {}) as Record<string, unknown>;
+
+		// `cookies` op runs in the SW directly (chrome.cookies isn't
+		// content-script accessible). No tab needed; metadata-only response.
+		if (meta.op === "cookies") {
+			const result = await runCookiesProbe(meta);
+			await reportResult(cfg, { jobId: job.jobId, outcome: "completed", result });
+			return;
+		}
+
 		const tabPattern = typeof meta.tabUrlPattern === "string" ? meta.tabUrlPattern : null;
 		let tab: chrome.tabs.Tab | undefined;
 		if (tabPattern) {
@@ -291,7 +464,7 @@ async function runBrowserOp(cfg: ExtensionConfig, job: BridgePollJob): Promise<v
 		if (!tab?.id) throw new Error("no_target_tab");
 
 		const reply = await sendToTabWithInjectFallback(tab.id, {
-			type: "flipagent:browser-op",
+			type: MESSAGES.BROWSER_OP,
 			args: job.args,
 		});
 		if (!reply) throw new Error("content_script_no_reply");
@@ -307,6 +480,29 @@ async function runBrowserOp(cfg: ExtensionConfig, job: BridgePollJob): Promise<v
 			failureReason: `browser_op_failed: ${(err as Error).message}`,
 		}).catch(() => {});
 	}
+}
+
+/**
+ * Inventory cookies for a domain. Values are deliberately not returned
+ * — only metadata that the API surface needs to compute "time to next
+ * forced re-auth": expiry, httpOnly, secure, sameSite.
+ */
+async function runCookiesProbe(meta: Record<string, unknown>): Promise<Record<string, unknown>> {
+	const domain = typeof meta.domain === "string" ? meta.domain : "";
+	if (!domain) throw new Error("missing_domain");
+	const all = await chrome.cookies.getAll({ domain });
+	const cookies = all.map((c) => ({
+		name: c.name,
+		domain: c.domain,
+		path: c.path,
+		expiresAt: c.session ? null : new Date(c.expirationDate! * 1000).toISOString(),
+		httpOnly: c.httpOnly,
+		secure: c.secure,
+		sameSite: c.sameSite,
+	}));
+	const expiries = cookies.map((c) => c.expiresAt).filter((e): e is string => !!e);
+	const earliest = expiries.length > 0 ? expiries.sort()[0]! : null;
+	return { domain, count: cookies.length, earliestExpiresAt: earliest, cookies };
 }
 
 /**
@@ -334,9 +530,9 @@ async function sendToTabWithInjectFallback(tabId: number, msg: unknown): Promise
 }
 
 async function dispatchJob(cfg: ExtensionConfig, job: BridgePollJob): Promise<void> {
-	const url = itemUrlFor(job.args.marketplace, job.args.itemId);
+	const url = itemUrlFor(job);
 	if (!url) {
-		await chrome.storage.local.remove("flipagent_in_flight").catch(() => {});
+		await chrome.storage.local.remove(STORAGE_KEYS.IN_FLIGHT_BUY).catch(() => {});
 		await reportResult(cfg, {
 			jobId: job.jobId,
 			outcome: "failed",
@@ -351,10 +547,16 @@ async function dispatchJob(cfg: ExtensionConfig, job: BridgePollJob): Promise<vo
 	// work here — progress comes back via onOrderProgress.
 }
 
-function itemUrlFor(marketplace: string, itemId: string | null | undefined): string | null {
-	if (marketplace === "ebay") return itemId ? `https://www.ebay.com/itm/${encodeURIComponent(itemId)}` : null;
-	if (marketplace === "planetexpress") {
-		// `pull_packages` lands on the actual inbox table page.
+function itemUrlFor(job: BridgePollJob): string | null {
+	const m = job.args.marketplace;
+	if (m === "ebay") {
+		return job.args.itemId ? `https://www.ebay.com/itm/${encodeURIComponent(job.args.itemId)}` : null;
+	}
+	if (m === "planetexpress") {
+		// Per-task landing page. Address scrape lives on the dashboard
+		// root (`FREE MAILBOX` panel); package inbox is its own page.
+		const task = (job.args.metadata as { task?: string } | null)?.task;
+		if (task === "planetexpress_get_address") return "https://app.planetexpress.com/client/";
 		return "https://app.planetexpress.com/client/packet/";
 	}
 	return null;

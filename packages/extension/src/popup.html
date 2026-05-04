@@ -12,95 +12,22 @@
 			<img class="hp-brand-mark" src="logo-mark.png" alt="" width="72" height="20" aria-hidden="true" />
 			<span class="hp-brand-name">flipagent</span>
 		</div>
-		<a class="hp-head-link" href="https://flipagent.dev/dashboard" target="_blank" rel="noreferrer">Dashboard</a>
+		<a class="hp-head-link" id="dashboard-link" href="https://flipagent.dev/dashboard" target="_blank" rel="noreferrer" hidden>Dashboard ↗</a>
 	</header>
 
-	<section class="hp-banner" id="banner">
-		<div class="hp-banner-row">
-			<span class="hp-banner-dot" id="banner-dot"></span>
-			<span class="hp-banner-headline" id="banner-headline">Loading…</span>
-		</div>
-		<div class="hp-banner-context" id="banner-context"></div>
-		<button class="hp-banner-cta" id="banner-cta" type="button" hidden></button>
+	<section class="hp-setup" id="setup">
+		<div class="hp-eyebrow">Setup</div>
+		<ul class="hp-step-list" id="step-list"></ul>
 	</section>
 
 	<section class="hp-now" id="now" hidden>
-		<div class="hp-eyebrow">In flight</div>
-		<div class="hp-now-item" id="now-item">…</div>
-		<div class="hp-now-line">
-			<span class="hp-ind" id="now-ind"></span>
-			<span id="now-status">…</span>
-		</div>
-		<div class="hp-now-meta" id="now-meta"></div>
-		<button class="hp-btn hp-btn--ghost-danger" id="now-cancel" type="button">
-			Cancel &amp; close tab
-		</button>
+		<div class="hp-eyebrow">Now</div>
+		<ul class="hp-now-list" id="now-list"></ul>
 	</section>
 
-	<section class="hp-feed">
-		<div class="hp-feed-head">
-			<span class="hp-eyebrow">Activity</span>
-		</div>
-		<div id="events" class="hp-events">
-			<div class="hp-empty">
-				No activity yet. Queue a job from your MCP host (Claude Desktop / Cursor) — it lands here.
-			</div>
-		</div>
-	</section>
-
-	<details class="hp-fold" id="details-fold">
-		<summary>
-			<span class="hp-eyebrow">Connection details</span>
-			<svg class="hp-chev" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M3 4.5 6 7.5 9 4.5" />
-			</svg>
-		</summary>
-		<ul class="hp-status">
-			<li class="hp-row" id="row-paired">
-				<span class="hp-dot"></span>
-				<span class="hp-row-label">This browser</span>
-				<span class="hp-row-detail">…</span>
-			</li>
-			<li class="hp-row" id="row-buyer">
-				<span class="hp-dot"></span>
-				<span class="hp-row-label">eBay session</span>
-				<span class="hp-row-detail">…</span>
-			</li>
-			<li class="hp-row" id="row-seller">
-				<span class="hp-dot"></span>
-				<span class="hp-row-label">Seller API</span>
-				<span class="hp-row-detail">…</span>
-			</li>
-		</ul>
-	</details>
-
-	<details class="hp-fold" id="setup-details">
-		<summary>
-			<span class="hp-eyebrow">Settings</span>
-			<svg class="hp-chev" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M3 4.5 6 7.5 9 4.5" />
-			</svg>
-		</summary>
-		<div class="hp-settings-body">
-			<label class="hp-field">
-				<span class="hp-field-label">API key</span>
-				<input id="apiKey" type="password" placeholder="fa_…" autocomplete="off" spellcheck="false" />
-			</label>
-			<label class="hp-field">
-				<span class="hp-field-label">Base URL</span>
-				<input id="baseUrl" type="text" placeholder="https://api.flipagent.dev" spellcheck="false" />
-			</label>
-			<label class="hp-field">
-				<span class="hp-field-label">Device name</span>
-				<input id="deviceName" type="text" placeholder="my-mac" spellcheck="false" />
-			</label>
-			<div class="hp-settings-actions">
-				<button class="hp-btn hp-btn--heat" id="save" type="button">Connect</button>
-				<button class="hp-btn hp-btn--ghost" id="poll" type="button">Poll now</button>
-				<button class="hp-btn hp-btn--ghost-danger" id="clear" type="button">Disconnect</button>
-			</div>
-		</div>
-	</details>
+	<footer class="hp-foot" id="signout-foot" hidden>
+		<button class="hp-foot-link" id="signout" type="button">Sign out</button>
+	</footer>
 </div>
 <script type="module" src="popup.js"></script>
 </body>
