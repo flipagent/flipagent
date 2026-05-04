@@ -1,0 +1,1 @@
+ALTER TABLE "compute_jobs" ADD COLUMN "error_details" jsonb;

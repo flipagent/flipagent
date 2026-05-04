@@ -218,6 +218,55 @@
       "when": 1779059063891,
       "tag": "0030_maintenance_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1779145463891,
+      "tag": "0031_light_prodigy",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1779231863891,
+      "tag": "0032_credits_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1777847952877,
+      "tag": "0033_petite_spirit",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1777849742156,
+      "tag": "0034_milky_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1777853829050,
+      "tag": "0035_complete_sinister_six",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1777854087304,
+      "tag": "0036_pe_login_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1777869460944,
+      "tag": "0037_spotty_william_stryker",
+      "breakpoints": true
     }
   ]
 }

@@ -78,6 +78,37 @@ export const user = pgTable("user", {
 	 */
 	creditsResetAt: timestamp("credits_reset_at", { withTimezone: true }).notNull().defaultNow(),
 	/**
+	 * Stripe dunning anchor. Set the first time `invoice.payment_failed`
+	 * fires for this user's subscription; cleared when the subscription
+	 * returns to `active`. After `PAST_DUE_GRACE_DAYS` of continuous
+	 * past_due, `effectiveTier()` treats this user as free for rate-limit
+	 * purposes — their `user.tier` column stays truthful (so billing copy
+	 * + admin views don't lie), only the enforcement view downgrades. If
+	 * the card resolves later, the next webhook clears this and they snap
+	 * back without losing their tier or any usage history.
+	 */
+	pastDueSince: timestamp("past_due_since", { withTimezone: true }),
+	/**
+	 * Auto-recharge top-up state. When `autoRechargeEnabled` is true and
+	 * the user's `creditsRemaining` falls below `autoRechargeThreshold`,
+	 * the api charges their saved card for `autoRechargeTopup` credits at
+	 * tier-specific per-credit pricing (`pricePerCreditUsd(tier)` in
+	 * `auth/limits.ts`). `lastAutoRechargeAt` guards against double-fire
+	 * during a brief check-window race — middleware only triggers if the
+	 * stamp is older than 60s. Threshold + topup are nullable while
+	 * `enabled=false`; the route layer enforces the "enabled implies both
+	 * set" invariant on PUT so we don't need a CHECK constraint.
+	 *
+	 * Card-on-file comes from the user's existing subscription — Stripe
+	 * stores it as `customer.invoice_settings.default_payment_method` on
+	 * first checkout. Auto-recharge is only available to users on a paid
+	 * tier (free has no card on file).
+	 */
+	autoRechargeEnabled: boolean("auto_recharge_enabled").notNull().default(false),
+	autoRechargeThreshold: integer("auto_recharge_threshold"),
+	autoRechargeTopup: integer("auto_recharge_topup"),
+	lastAutoRechargeAt: timestamp("last_auto_recharge_at", { withTimezone: true }),
+	/**
 	 * Clickwrap consent record. Set the moment the user submits the sign-up
 	 * form (or accepts a re-consent prompt). `termsVersion` matches the
 	 * `Last updated` date stamped on /legal/terms; bumping that date and
@@ -188,11 +219,37 @@ export const usageEvents = pgTable(
 		endpoint: text("endpoint").notNull(),
 		statusCode: integer("status_code").notNull(),
 		latencyMs: integer("latency_ms").notNull(),
+		/**
+		 * Credits charged for this call, snapshotted at write time. Lets
+		 * snapshotUsage() SUM a plain integer instead of a hand-synced SQL
+		 * CASE expression — and lets us add transport-aware variable pricing
+		 * (rest=1c vs scrape=2c on the same endpoint) without another schema
+		 * bump. Defaults to 0 because billing principle is "charge for what
+		 * runs on our infra"; passthrough endpoints stay free.
+		 */
+		creditsCharged: integer("credits_charged").notNull().default(0),
+		/**
+		 * The user's tier at the moment of the call. Recorded so a free user
+		 * who upgrades to hobby and downgrades back doesn't get a fresh
+		 * 500-credit lifetime window: snapshotUsage filters by tier='free'
+		 * when computing free aggregation, so prior free usage stays counted
+		 * regardless of how many subscription cycles happen in between.
+		 */
+		tier: tierEnum("tier").notNull().default("free"),
+		/**
+		 * Where the data came from for this call (`rest`/`scrape`/`bridge`/
+		 * `trading`/`llm`). Mirrors the `X-Flipagent-Source` response header
+		 * sent on the wire. Nullable for rows written before the column
+		 * existed and for endpoints that don't surface a transport (auth
+		 * health, /v1/me/*).
+		 */
+		source: text("source"),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 	},
 	(t) => ({
 		keyTimeIdx: index("usage_events_key_created_idx").on(t.apiKeyId, t.createdAt),
 		userTimeIdx: index("usage_events_user_created_idx").on(t.userId, t.createdAt),
+		userTierTimeIdx: index("usage_events_user_tier_created_idx").on(t.userId, t.tier, t.createdAt),
 	}),
 );
 
@@ -641,7 +698,7 @@ export const buyCheckoutSessionStatusEnum = pgEnum("buy_checkout_session_status"
  *
  * Created so the sold-event handler can find the packageId for a
  * sku without the agent threading the linkage by hand. The
- * `linkSku` flow (called after `flipagent_listings_relist`) populates
+ * `linkSku` flow (called after `flipagent_relist_listing`) populates
  * `sku` + `ebayOfferId`; the `item.sold` notification looks the
  * row up by sku and queues an outbound dispatch automatically.
  */
@@ -755,6 +812,16 @@ export const bridgeTokens = pgTable(
 		ebayLoggedIn: boolean("buyer_logged_in").notNull().default(false),
 		ebayUserName: text("buyer_ebay_user_name"),
 		verifiedAt: timestamp("buyer_verified_at", { withTimezone: true }),
+		/**
+		 * Planet Express (US package forwarder) login state, reported by the
+		 * extension's content script via URL probe on planetexpress.com.
+		 * Mirrors the eBay buyer-state pattern: distinct from any future
+		 * server-side OAuth (PE has no public API today), tracked here so
+		 * `/v1/capabilities.checklist` can show real "done" status across
+		 * all surfaces — popup, dashboard, MCP — instead of just popup.
+		 */
+		peLoggedIn: boolean("pe_logged_in").notNull().default(false),
+		peVerifiedAt: timestamp("pe_verified_at", { withTimezone: true }),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 		lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
 		revokedAt: timestamp("revoked_at", { withTimezone: true }),
@@ -762,6 +829,33 @@ export const bridgeTokens = pgTable(
 	(t) => ({
 		hashUnique: uniqueIndex("bridge_tokens_hash_unique").on(t.tokenHash),
 		apiKeyIdx: index("bridge_tokens_api_key_idx").on(t.apiKeyId),
+	}),
+);
+
+/**
+ * Audit / rate-limit table for `POST /v1/bridge/capture`. Each row is one
+ * captured eBay PDP pushed by the extension's content script. The actual
+ * parsed payload lives in `proxy_response_cache` keyed on the same
+ * itemId — this table tracks provenance + drives the per-api-key rate
+ * limit (60 captures / 60s).
+ *
+ * Unique on (api_key_id, item_id) so the same user re-visiting the same
+ * page doesn't multiply rows; we just bump `captured_at`.
+ */
+export const bridgeCaptures = pgTable(
+	"bridge_captures",
+	{
+		id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+		apiKeyId: uuid("api_key_id")
+			.notNull()
+			.references(() => apiKeys.id, { onDelete: "cascade" }),
+		itemId: text("item_id").notNull(),
+		url: text("url").notNull(),
+		capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => ({
+		apiKeyItemUnique: uniqueIndex("bridge_captures_api_key_item_unique").on(t.apiKeyId, t.itemId),
+		capturedAtIdx: index("bridge_captures_captured_at_idx").on(t.capturedAt),
 	}),
 );
 
@@ -864,6 +958,14 @@ export const computeJobs = pgTable(
 		result: jsonb("result"),
 		errorCode: text("error_code"),
 		errorMessage: text("error_message"),
+		/**
+		 * Structured payload that the failing pipeline step attaches to
+		 * its `EvaluateError` (`details` field). `variation_required` uses
+		 * it to ship the enumerated `variations[]` so an agent client can
+		 * pick a SKU and retry without a second round-trip. JSON-shaped;
+		 * routes pass it through verbatim under a top-level `details` key.
+		 */
+		errorDetails: jsonb("error_details"),
 		cancelRequested: boolean("cancel_requested").notNull().default(false),
 		/**
 		 * Lease deadline for the worker holding this job. NULL when not
@@ -927,6 +1029,15 @@ export const creditGrants = pgTable(
 		revokedAt: timestamp("revoked_at", { withTimezone: true }),
 		revokedByUserId: text("revoked_by_user_id").references(() => user.id, { onDelete: "set null" }),
 		revokeReason: text("revoke_reason"),
+		/**
+		 * Carries the Stripe Checkout Session id when the grant comes from a
+		 * credit-pack purchase. The webhook `INSERT ... ON CONFLICT DO
+		 * NOTHING` against the partial unique index turns Stripe's
+		 * at-least-once redelivery into a no-op. Null for admin-issued
+		 * grants — those go through human review and don't need
+		 * deduplication.
+		 */
+		idempotencyKey: text("idempotency_key"),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 	},
 	(t) => ({
@@ -985,3 +1096,111 @@ export type MatchDecision = typeof matchDecisions.$inferSelect;
 export type NewMatchDecision = typeof matchDecisions.$inferInsert;
 export type CreditGrant = typeof creditGrants.$inferSelect;
 export type NewCreditGrant = typeof creditGrants.$inferInsert;
+
+/**
+ * Agent (preview) — chat-style sessions backed by OpenAI's Responses API.
+ * `openaiResponseId` is the most recent response id we received; the next
+ * call passes it as `previous_response_id` so OpenAI keeps history server-
+ * side (no token resending). Sessions are scoped per api_key so a user's
+ * agent thread doesn't leak across keys. `title` is either user-set or
+ * derived from the first user message (first ~60 chars).
+ */
+export const agentSessions = pgTable(
+	"agent_sessions",
+	{
+		id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+		apiKeyId: uuid("api_key_id")
+			.notNull()
+			.references(() => apiKeys.id, { onDelete: "cascade" }),
+		userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+		openaiResponseId: text("openai_response_id").notNull(),
+		title: text("title"),
+		/** Set when the user pins/favorites the thread. List queries sort
+		 *  pinned threads above unpinned ones (pinnedAt desc, then
+		 *  lastActiveAt desc). Null = not pinned. */
+		pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => ({
+		apiKeyIdx: index("agent_sessions_api_key_idx").on(t.apiKeyId, t.lastActiveAt),
+	}),
+);
+
+/**
+ * Agent rules / preferences / notes. Kept small (10–50 rows / api key)
+ * and stuffed into the system instructions on every chat turn. NOT a
+ * vector memory: this is structured user-stated guidance the agent
+ * must follow. Domain facts (sales, listings, inventory) come from the
+ * normal `/v1/*` query surface, not here.
+ *
+ * `kind` is free-form text ('rule' | 'preference' | 'note' today; we
+ * may grow it). Routes validate the enum at the boundary so the column
+ * stays portable across migrations.
+ */
+export const agentRules = pgTable(
+	"agent_rules",
+	{
+		id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+		apiKeyId: uuid("api_key_id")
+			.notNull()
+			.references(() => apiKeys.id, { onDelete: "cascade" }),
+		userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+		kind: text("kind").notNull(),
+		content: text("content").notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => ({
+		apiKeyIdx: index("agent_rules_api_key_idx").on(t.apiKeyId, t.createdAt),
+	}),
+);
+
+/**
+ * One row per agent execution. Powers the "Activity feed" UI and the
+ * usage / cost panel. `triggerKind` is 'chat' today; 'cron' / 'webhook'
+ * land later when we wire scheduled + event-driven runs (no enum so
+ * adding kinds is migration-free). `costCents` is rounded; pair it with
+ * (`tokensIn`, `tokensOut`, `model`) when sub-cent precision matters.
+ */
+export const agentRuns = pgTable(
+	"agent_runs",
+	{
+		id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+		apiKeyId: uuid("api_key_id")
+			.notNull()
+			.references(() => apiKeys.id, { onDelete: "cascade" }),
+		userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+		sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
+		triggerKind: text("trigger_kind").notNull().default("chat"),
+		model: text("model"),
+		userMessage: text("user_message"),
+		reply: text("reply"),
+		tokensIn: integer("tokens_in").notNull().default(0),
+		tokensOut: integer("tokens_out").notNull().default(0),
+		costCents: integer("cost_cents").notNull().default(0),
+		errorMessage: text("error_message"),
+		/**
+		 * MCP Apps UI resource hint for inline rendering. When the tool
+		 * call attached `_meta.ui.resourceUri`, we capture it here along
+		 * with the structured content. Frontend chat renderer keys off
+		 * `uiResourceUri` to mount an `<iframe>` (via @mcp-ui/client's
+		 * UIResourceRenderer) instead of plain markdown text. Null for
+		 * runs that produced only text or no tool call.
+		 */
+		uiResourceUri: text("ui_resource_uri"),
+		uiProps: jsonb("ui_props"),
+		startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+		finishedAt: timestamp("finished_at", { withTimezone: true }),
+	},
+	(t) => ({
+		apiKeyTimeIdx: index("agent_runs_api_key_time_idx").on(t.apiKeyId, t.startedAt),
+		sessionIdx: index("agent_runs_session_idx").on(t.sessionId, t.startedAt),
+	}),
+);
+
+export type AgentSessionRow = typeof agentSessions.$inferSelect;
+export type NewAgentSession = typeof agentSessions.$inferInsert;
+export type AgentRuleRow = typeof agentRules.$inferSelect;
+export type NewAgentRule = typeof agentRules.$inferInsert;
+export type AgentRunRow = typeof agentRuns.$inferSelect;
+export type NewAgentRun = typeof agentRuns.$inferInsert;
