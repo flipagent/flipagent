@@ -309,167 +309,117 @@ function handleEbayJob(job: InFlightSnapshot): void {
 
 /**
  * Auction proxy-bid handler. Stays observational: shows a banner with
- * the user's max-bid cap, then watches the page (and any modal eBay
- * opens) for a confirmation indicator. The user clicks Place Bid
- * themselves — eBay UA Feb-2026 prohibits automated bidding, and the
- * api-side `humanReviewedAt` gate is the agent-facing half of that
- * commitment.
+ * the user's max-bid cap, then watches the page for a *structural*
+ * change (price tick, bid-count increment) and updates the banner
+ * accordingly. The user clicks Place Bid themselves — eBay UA Feb-2026
+ * prohibits automated bidding, and the api-side `humanReviewedAt` gate
+ * is the agent-facing half of that commitment.
  *
- * Reports `placing` once the bid panel is open, then `completed` (with
- * captured proxyBidId / currentPrice / maxAmount when readable from the
- * confirmation panel) or `failed` (timeout / outbid signal).
+ * Critically, this handler does NOT report the bridge job terminal.
+ * The completion oracle is the server-side reconciler in
+ * `services/bid-reconciler.ts`, which diffs the user's actual eBay
+ * `BidList` against a snapshot captured at job creation. Decoupling
+ * the banner UX from the terminal transition kills two old failure
+ * modes:
+ *   - false negative: eBay rotates layouts, the regex stops matching,
+ *     the observer times out and the job fails even though the bid
+ *     landed (we hit this empirically: `bid_observer_timeout` on a
+ *     bid that Trading API confirmed was placed).
+ *   - false positive: a third-party bidder's tick makes the page
+ *     change and the observer claims success — but the user never
+ *     actually bid.
+ *
+ * The reconciler can't see DOM mutations and the observer can't see
+ * the user's account state. Letting each do what it's good at and
+ * picking the reconciler as the oracle is the only stable design.
  */
 function handleBidItemPage(job: InFlightSnapshot): void {
 	const meta = (job.metadata ?? {}) as Record<string, unknown>;
 	const maxAmountCents = typeof meta.maxAmountCents === "number" ? meta.maxAmountCents : (job.maxPriceCents ?? null);
-	const currency = typeof meta.currency === "string" ? meta.currency : "USD";
 	showBanner({
 		tone: "info",
 		title: "flipagent · ready to record your bid",
-		body: `${maxAmountCents != null ? `Max bid ${formatCents(maxAmountCents)}. ` : ""}Click "Place bid", enter your max, and confirm. We'll capture the result automatically.`,
+		body: `${maxAmountCents != null ? `Max bid ${formatCents(maxAmountCents)}. ` : ""}Click "Place bid", enter your max, and confirm. flipagent confirms the result via your bid list — no time pressure.`,
 	});
 	void report({ jobId: job.id, outcome: "placing" as BridgeJobStatus });
-	watchForBidOutcome(job, { maxAmountCents, currency });
-}
-
-interface BidOutcomeContext {
-	maxAmountCents: number | null;
-	currency: string;
+	watchForBidOutcome();
 }
 
 /**
- * Watch the page (item view + any bid modal eBay opens) for a
- * terminal indicator: a confirmation panel ("You're the high bidder",
- * "Bid placed"), an outbid message ("You've been outbid"), or a price
- * tick that crosses the user's max. Stops on first match or after the
- * 25 s wait window the api uses.
+ * Best-effort visual feedback: when price OR bid count changes on
+ * /itm/, swap the banner to a "change detected — verifying with eBay"
+ * tone so the user sees something happen. The actual completion
+ * transition lands when the server-side reconciler matches the diff;
+ * the agent's next `GET /v1/bids/{listingId}` call surfaces it.
  *
- * MutationObserver is preferred over polling — the panel can render
- * inside an aria-live region or a modal that pops in milliseconds
- * after the click. We poll every 1s as a backstop in case the
- * observer is on the wrong subtree (eBay rotates layouts).
+ * Stable selectors (verified against ebay.com 2026-05-04):
+ *   - `[data-testid="x-price-primary"]` — current high price text
+ *   - `a[href*="bidhistory"]` — "N bids" link in the bid panel
+ * We watch only those subtrees (cheap) instead of the whole body.
  */
-function watchForBidOutcome(job: InFlightSnapshot, ctx: BidOutcomeContext): void {
-	const deadline = Date.now() + 24_000; // slightly under the api's 25s wait
-	let done = false;
-	const finish = (body: ReportBody): void => {
-		if (done) return;
-		done = true;
+function watchForBidOutcome(): void {
+	const initial = readBidPanelState();
+	if (!initial) return; // page shape unrecognised — reconciler still works
+
+	const HARD_CAP_MS = 10 * 60_000; // 10 min — observer is best-effort UX
+	const deadline = Date.now() + HARD_CAP_MS;
+	let acknowledged = false;
+
+	const targets = [
+		document.querySelector('[data-testid="x-price-primary"]'),
+		document.querySelector<HTMLAnchorElement>('a[href*="bidhistory"]'),
+	].filter((el): el is Element => el !== null);
+
+	const tryAcknowledge = (): void => {
+		if (acknowledged) return;
+		if (Date.now() > deadline) {
+			observer.disconnect();
+			window.clearInterval(poll);
+			return;
+		}
+		const current = readBidPanelState();
+		if (!current) return;
+		const priceUp =
+			current.priceCents != null && initial.priceCents != null && current.priceCents > initial.priceCents;
+		const countUp = current.bidCount != null && initial.bidCount != null && current.bidCount > initial.bidCount;
+		if (!priceUp && !countUp) return;
+		acknowledged = true;
 		observer.disconnect();
-		clearInterval(poll);
-		void report(body);
+		window.clearInterval(poll);
+		showBanner({
+			tone: "success",
+			title: "flipagent · bid recorded",
+			body: `eBay shows ${current.bidCount ?? "?"} bids @ ${formatCents(current.priceCents ?? 0)}. Confirming via your bid list…`,
+		});
+		// Don't report terminal — let the reconciler do that. We just
+		// nudged the price/count, which the reconciler will see on its
+		// next tick (or on the agent's next polling read).
 	};
 
-	const tryRead = (): boolean => {
-		const indicator = readBidIndicator();
-		if (!indicator) return false;
-		if (indicator.kind === "won") {
-			showBanner({
-				tone: "success",
-				title: "flipagent · bid captured",
-				body: indicator.proxyBidId
-					? `Proxy bid ${indicator.proxyBidId}. You're the high bidder.`
-					: "You're the high bidder.",
-			});
-			finish({
-				jobId: job.id,
-				outcome: "completed" as BridgeJobStatus,
-				result: {
-					proxyBidId: indicator.proxyBidId,
-					currentPriceCents: indicator.currentPriceCents,
-					maxAmountCents: indicator.maxAmountCents ?? ctx.maxAmountCents,
-					currency: ctx.currency,
-					auctionStatus: "LIVE",
-					highBidder: true,
-				},
-			});
-			return true;
-		}
-		if (indicator.kind === "outbid") {
-			showBanner({
-				tone: "info",
-				title: "flipagent · outbid",
-				body: "Your max wasn't enough. Bid recorded but not winning.",
-			});
-			finish({
-				jobId: job.id,
-				outcome: "completed" as BridgeJobStatus,
-				result: {
-					proxyBidId: indicator.proxyBidId,
-					currentPriceCents: indicator.currentPriceCents,
-					maxAmountCents: indicator.maxAmountCents ?? ctx.maxAmountCents,
-					currency: ctx.currency,
-					auctionStatus: "LIVE",
-					highBidder: false,
-				},
-			});
-			return true;
-		}
-		return false;
-	};
-
-	const observer = new MutationObserver(() => {
-		if (Date.now() > deadline) {
-			finish({
-				jobId: job.id,
-				outcome: "failed" as BridgeJobStatus,
-				failureReason: "bid_observer_timeout",
-			});
-			return;
-		}
-		tryRead();
-	});
-	observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-
-	const poll = window.setInterval(() => {
-		if (Date.now() > deadline) {
-			finish({
-				jobId: job.id,
-				outcome: "failed" as BridgeJobStatus,
-				failureReason: "bid_observer_timeout",
-			});
-			return;
-		}
-		tryRead();
-	}, 1000);
-
-	// First read in case the user already placed the bid before the page
-	// settled (e.g. they refreshed an /itm/ where they're already winning).
-	tryRead();
+	const observer = new MutationObserver(tryAcknowledge);
+	for (const t of targets) {
+		observer.observe(t, { subtree: true, characterData: true, childList: true });
+	}
+	// 1 Hz poll backstop in case eBay swaps the targets out (their
+	// subtree gets replaced rather than mutated, our observer doesn't
+	// re-attach automatically).
+	const poll = window.setInterval(tryAcknowledge, 1000);
+	tryAcknowledge();
 }
 
-interface BidIndicator {
-	kind: "won" | "outbid";
-	proxyBidId?: string;
-	currentPriceCents?: number;
-	maxAmountCents?: number;
-}
-
-/**
- * Inspect the DOM for a bid-result signal. eBay's confirmation panel
- * varies — sometimes a banner inline on the item page, sometimes a
- * modal, sometimes a route to /bid/confirm. We sniff for the textual
- * signal first (most robust across layout rotations) and pull
- * proxyBidId from any modal markup that exposes it.
- */
-function readBidIndicator(): BidIndicator | null {
-	const text = (document.body.innerText ?? "").toLowerCase();
-	const winning =
-		/you'?re the high bidder/.test(text) ||
-		/you are the high bidder/.test(text) ||
-		/your bid was placed/.test(text) ||
-		/bid placed successfully/.test(text);
-	const outbid = /you'?ve been outbid/.test(text) || /you have been outbid/.test(text);
-	if (!winning && !outbid) return null;
-	const out: BidIndicator = { kind: winning ? "won" : "outbid" };
-	const proxyEl = document.querySelector<HTMLElement>(
-		'[data-proxy-bid-id], [data-testid="proxy-bid-id"], [data-bid-id]',
-	);
-	const proxyBidId = proxyEl?.getAttribute("data-proxy-bid-id") ?? proxyEl?.getAttribute("data-bid-id") ?? undefined;
-	if (proxyBidId) out.proxyBidId = proxyBidId;
-	const currentPriceCents = readPriceCents();
-	if (currentPriceCents != null) out.currentPriceCents = currentPriceCents;
-	return out;
+/** Read the structural bid state off the item page. Stable selectors,
+ * no text regex. Returns null if neither field is parseable (page
+ * shape changed) — the reconciler then handles confirmation alone. */
+function readBidPanelState(): { priceCents: number | null; bidCount: number | null } | null {
+	const priceEl = document.querySelector('[data-testid="x-price-primary"]');
+	const priceText = priceEl?.textContent?.trim() ?? "";
+	const priceCents = priceText ? parsePriceText(priceText) : null;
+	const bidCountEl = document.querySelector<HTMLAnchorElement>('a[href*="bidhistory"]');
+	const bidCountText = bidCountEl?.textContent?.trim() ?? "";
+	const bidCountMatch = bidCountText.match(/(\d+)/);
+	const bidCount = bidCountMatch ? Number.parseInt(bidCountMatch[1] ?? "0", 10) : null;
+	if (priceCents == null && bidCount == null) return null;
+	return { priceCents, bidCount };
 }
 
 /**

@@ -18,6 +18,20 @@ export interface MyEbayItemRow {
 	priceCurrency: string | null;
 	endDate: string | null;
 	startDate: string | null;
+	/** BidList only — the user's max proxy bid for this item, from
+	 * `BiddingDetails.MaxBid`. The reconciler in `bridge-reconciler.ts`
+	 * uses this as the oracle for whether a bridge-placed bid landed. */
+	maxBidValue: string | null;
+	maxBidCurrency: string | null;
+	/** BidList only — `SellingStatus.HighBidder` (caller is winning). */
+	highBidder: boolean | null;
+	/** BidList only — total bids on the listing (`SellingStatus.BidCount`). */
+	bidCount: number | null;
+	/** WonList only — eBay's order line item id for this purchase
+	 * (`OrderLineItemID`). Used by the purchase reconciler in
+	 * `bridge-reconciler.ts` to detect "this exact purchase landed"
+	 * (vs the user winning the same item again later). */
+	orderLineItemId: string | null;
 }
 
 interface MyEbaySection {
@@ -25,30 +39,132 @@ interface MyEbaySection {
 	total: number;
 }
 
-function rowsFrom(arr: Record<string, unknown> | undefined): MyEbayItemRow[] {
+/** Trading XML wraps currency values as `{ '#text': <amount>, '@_currencyID': '<iso>' }`
+ * (fast-xml-parser default text-node key is `#text`, not `_`). Returns
+ * `{ value, currency }` as strings, or null if the field is absent. */
+function moneyFrom(v: unknown): { value: string; currency: string } | null {
+	if (!v || typeof v !== "object") return null;
+	const obj = v as Record<string, unknown>;
+	const value = obj["#text"];
+	if (value == null) return null;
+	const currency = obj["@_currencyID"];
+	return {
+		value: String(value),
+		currency: typeof currency === "string" ? currency : "USD",
+	};
+}
+
+/** Empty MyEbayItemRow shape — every section returns this; the
+ * fields each section actually populates are documented on the
+ * interface. */
+function emptyRow(itemId: string): MyEbayItemRow {
+	return {
+		itemId,
+		title: "",
+		url: "",
+		priceValue: null,
+		priceCurrency: null,
+		endDate: null,
+		startDate: null,
+		maxBidValue: null,
+		maxBidCurrency: null,
+		highBidder: null,
+		bidCount: null,
+		orderLineItemId: null,
+	};
+}
+
+/** ActiveList / BidList / ScheduledList / UnsoldList — each `Item`
+ * has price + listing details directly. BidList rows additionally
+ * carry `BiddingDetails.MaxBid` and `SellingStatus.HighBidder`. */
+function bidListRows(arr: Record<string, unknown> | undefined): MyEbayItemRow[] {
 	if (!arr) return [];
-	const list = arrayify(arr.Item ?? arr.OrderTransactionArray ?? arr.Order);
+	const list = arrayify(arr.Item);
 	return list.map((row) => {
 		const sellingStatus = (row.SellingStatus ?? {}) as Record<string, unknown>;
-		const price = (sellingStatus.CurrentPrice ?? row.CurrentPrice ?? row.ConvertedCurrentPrice) as
-			| { _: string; "@_currencyID": string }
-			| undefined;
 		const listing = (row.ListingDetails ?? {}) as Record<string, unknown>;
+		const bidding = (row.BiddingDetails ?? {}) as Record<string, unknown>;
+		const price = moneyFrom(sellingStatus.CurrentPrice ?? row.CurrentPrice ?? row.ConvertedCurrentPrice);
+		const maxBid = moneyFrom(bidding.MaxBid);
+		const bidCountRaw = stringFrom(sellingStatus.BidCount);
 		return {
-			itemId: stringFrom(row.ItemID) ?? "",
+			...emptyRow(stringFrom(row.ItemID) ?? ""),
 			title: stringFrom(row.Title) ?? "",
 			url: stringFrom(listing.ViewItemURL) ?? "",
-			priceValue: price?._ ?? null,
-			priceCurrency: price?.["@_currencyID"] ?? null,
+			priceValue: price?.value ?? null,
+			priceCurrency: price?.currency ?? null,
 			endDate: stringFrom(row.EndTime) ?? null,
 			startDate: stringFrom(listing.StartTime) ?? null,
+			maxBidValue: maxBid?.value ?? null,
+			maxBidCurrency: maxBid?.currency ?? null,
+			highBidder: detectHighBidder(sellingStatus.HighBidder),
+			bidCount: bidCountRaw == null ? null : Number(bidCountRaw),
 		};
 	});
 }
 
-function sectionFrom(section: Record<string, unknown> | undefined): MyEbaySection {
+/** `SellingStatus.HighBidder` is a UserType object with a UserID
+ * field. From OUR perspective: when we are the high bidder eBay
+ * returns our unmasked UserID; when someone else is, eBay masks it
+ * (e.g. "g***4"). Asterisk in the UserID = NOT us = we're outbid.
+ * Absent HighBidder field → null (can't determine, treat as "not
+ * yet known" rather than fabricating a value). */
+function detectHighBidder(hb: unknown): boolean | null {
+	if (hb == null) return null;
+	if (typeof hb === "object") {
+		const userId = stringFrom((hb as Record<string, unknown>).UserID);
+		if (!userId) return null;
+		return !userId.includes("*");
+	}
+	// Some Trading sections return HighBidder as a bare boolean
+	// string ("true"/"false") — preserve that path for completeness.
+	if (typeof hb === "string" || typeof hb === "boolean") return String(hb) === "true";
+	return null;
+}
+
+/** WonList / LostList — `OrderTransactionArray.OrderTransaction[]`,
+ * each carrying a `Transaction` with an embedded `Item`, plus
+ * Transaction-level fields like `OrderLineItemID` and `TotalPrice`
+ * that the purchase reconciler keys off of. The single-Transaction
+ * case wraps as a non-array (fast-xml-parser collapses single
+ * children) — `arrayify` handles both. */
+function wonListRows(arr: Record<string, unknown> | undefined): MyEbayItemRow[] {
+	if (!arr) return [];
+	const list = arrayify(arr.OrderTransaction);
+	const out: MyEbayItemRow[] = [];
+	for (const wrap of list) {
+		const transactions = arrayify(wrap.Transaction);
+		for (const tx of transactions) {
+			const item = (tx.Item ?? {}) as Record<string, unknown>;
+			const itemId = stringFrom(item.ItemID) ?? "";
+			if (!itemId) continue;
+			const sellingStatus = (item.SellingStatus ?? {}) as Record<string, unknown>;
+			const listing = (item.ListingDetails ?? {}) as Record<string, unknown>;
+			// Prefer Transaction.TotalPrice (final paid amount including
+			// shipping/fees) when available; fall back to the listing
+			// price for older rows that don't carry TotalPrice yet.
+			const price = moneyFrom(tx.TotalPrice) ?? moneyFrom(sellingStatus.CurrentPrice);
+			out.push({
+				...emptyRow(itemId),
+				title: stringFrom(item.Title) ?? "",
+				url: stringFrom(listing.ViewItemURL) ?? "",
+				priceValue: price?.value ?? null,
+				priceCurrency: price?.currency ?? null,
+				endDate: stringFrom(item.EndTime) ?? null,
+				startDate: stringFrom(listing.StartTime) ?? null,
+				orderLineItemId: stringFrom(tx.OrderLineItemID) ?? null,
+			});
+		}
+	}
+	return out;
+}
+
+type SectionParser = (arr: Record<string, unknown> | undefined) => MyEbayItemRow[];
+
+function sectionFrom(section: Record<string, unknown> | undefined, parser: SectionParser): MyEbaySection {
 	if (!section) return { items: [], total: 0 };
-	const items = rowsFrom((section.ItemArray ?? section.OrderTransactionArray ?? section) as Record<string, unknown>);
+	const arr = (section.ItemArray ?? section.OrderTransactionArray ?? section) as Record<string, unknown>;
+	const items = parser(arr);
 	const pagResult = (section.PaginationResult ?? {}) as Record<string, unknown>;
 	const total = Number(stringFrom(pagResult.TotalNumberOfEntries) ?? items.length);
 	return { items, total };
@@ -68,10 +184,10 @@ export async function getMyEbaySelling(
 	const xml = await tradingCall({ callName: "GetMyeBaySelling", accessToken, body });
 	const parsed = parseTrading(xml, "GetMyeBaySelling");
 	return {
-		active: sectionFrom(parsed.ActiveList as Record<string, unknown>),
-		sold: sectionFrom(parsed.SoldList as Record<string, unknown>),
-		unsold: sectionFrom(parsed.UnsoldList as Record<string, unknown>),
-		scheduled: sectionFrom(parsed.ScheduledList as Record<string, unknown>),
+		active: sectionFrom(parsed.ActiveList as Record<string, unknown>, bidListRows),
+		sold: sectionFrom(parsed.SoldList as Record<string, unknown>, wonListRows),
+		unsold: sectionFrom(parsed.UnsoldList as Record<string, unknown>, bidListRows),
+		scheduled: sectionFrom(parsed.ScheduledList as Record<string, unknown>, bidListRows),
 	};
 }
 
@@ -94,11 +210,11 @@ export async function getMyEbayBuying(accessToken: string): Promise<{
 	const xml = await tradingCall({ callName: "GetMyeBayBuying", accessToken, body });
 	const parsed = parseTrading(xml, "GetMyeBayBuying");
 	return {
-		bidding: sectionFrom(parsed.BidList as Record<string, unknown>),
-		watching: sectionFrom(parsed.WatchList as Record<string, unknown>),
-		won: sectionFrom(parsed.WonList as Record<string, unknown>),
-		lost: sectionFrom(parsed.LostList as Record<string, unknown>),
-		bestOffers: sectionFrom(parsed.BestOfferList as Record<string, unknown>),
+		bidding: sectionFrom(parsed.BidList as Record<string, unknown>, bidListRows),
+		watching: sectionFrom(parsed.WatchList as Record<string, unknown>, bidListRows),
+		won: sectionFrom(parsed.WonList as Record<string, unknown>, wonListRows),
+		lost: sectionFrom(parsed.LostList as Record<string, unknown>, wonListRows),
+		bestOffers: sectionFrom(parsed.BestOfferList as Record<string, unknown>, bidListRows),
 	};
 }
 

@@ -281,6 +281,7 @@ async function onOrderProgress(body: BridgeResultRequest): Promise<void> {
 	);
 	if (TERMINAL_OUTCOMES.has(body.outcome)) {
 		await chrome.storage.local.remove(STORAGE_KEYS.IN_FLIGHT_BUY).catch(() => {});
+		await clearAttention(body.jobId);
 	}
 }
 
@@ -533,6 +534,131 @@ async function sendToTabWithInjectFallback(tabId: number, msg: unknown): Promise
 	}
 }
 
+/* ---------------------------- attention helpers ---------------------------- */
+/* Bridge jobs are human-in-the-loop: the content script observes,
+ * the user clicks. If the user can't tell flipagent is waiting on
+ * them, the observer eventually times out and the agent gets back
+ * a nondescript failure. These helpers route every interactive job
+ * through three OS-level signals: window focus + system notification
+ * + toolbar badge. State lives in a Map keyed by jobId so the
+ * notification's onClicked + onClosed handlers + the terminal
+ * cleanup in onOrderProgress can find each other. The Map is
+ * best-effort — losing it on SW restart only loses the click-to-
+ * focus convenience, not correctness. */
+
+const NOTIFICATION_PREFIX = "flipagent:job:";
+interface AttentionRecord {
+	notificationId: string;
+	tabId: number;
+	windowId: number;
+}
+const ACTION_NOTIFICATIONS_BY_JOB = new Map<string, AttentionRecord>();
+
+interface AttentionCopy {
+	title: string;
+	body: string;
+}
+
+function formatCents(cents: number, currency = "USD"): string {
+	const symbol = currency === "USD" ? "$" : "";
+	return `${symbol}${(cents / 100).toFixed(2)}`;
+}
+
+function copyForJob(job: BridgePollJob): AttentionCopy {
+	const meta = (job.args.metadata ?? {}) as { task?: string; maxAmountCents?: number; currency?: string };
+	const itemId = job.args.itemId ?? "";
+	if (meta.task === "ebay_place_bid") {
+		const max = meta.maxAmountCents != null ? ` (max ${formatCents(meta.maxAmountCents, meta.currency)})` : "";
+		return {
+			title: "flipagent · place bid",
+			body: `Confirm bid${max} on item ${itemId}. Click "Place bid" in the open eBay tab.`,
+		};
+	}
+	if (job.args.marketplace === "planetexpress") {
+		return {
+			title: "flipagent · Planet Express action",
+			body: "Action required in the open Planet Express tab.",
+		};
+	}
+	const cap = job.args.maxPriceCents != null ? ` (cap ${formatCents(job.args.maxPriceCents)})` : "";
+	return {
+		title: "flipagent · confirm purchase",
+		body: `Confirm purchase${cap} of item ${itemId}. Click "Confirm and pay" in the open eBay tab.`,
+	};
+}
+
+async function notifyAttention(job: BridgePollJob, tab: chrome.tabs.Tab): Promise<void> {
+	if (tab.id === undefined) return;
+	const copy = copyForJob(job);
+	// 1. OS-level window focus + dock/taskbar attention. drawAttention
+	//    bounces the dock icon (macOS) / blinks the taskbar (Windows) —
+	//    the only signal the user reliably sees if they're in another
+	//    app. `tabs.update({active:true})` upstream only foregrounds the
+	//    tab WITHIN its window, not the window itself.
+	if (tab.windowId !== undefined && tab.windowId !== chrome.windows.WINDOW_ID_NONE) {
+		await chrome.windows
+			.update(tab.windowId, { focused: true, drawAttention: true })
+			.catch((err) => console.warn("[flipagent] windows.update failed:", err));
+	}
+	// 2. System notification. requireInteraction keeps it on screen
+	//    (Chrome side; macOS Notification Center may still auto-bank it).
+	const notificationId = `${NOTIFICATION_PREFIX}${job.jobId}`;
+	await new Promise<void>((resolve) =>
+		chrome.notifications.create(
+			notificationId,
+			{
+				type: "basic",
+				iconUrl: chrome.runtime.getURL("icons/icon-128.png"),
+				title: copy.title,
+				message: copy.body,
+				priority: 2,
+				requireInteraction: true,
+			},
+			() => resolve(),
+		),
+	);
+	// 3. Persistent toolbar badge — visible after the notification fades.
+	await chrome.action.setBadgeText({ text: "!" }).catch(() => {});
+	await chrome.action.setBadgeBackgroundColor({ color: "#dc2626" }).catch(() => {});
+	ACTION_NOTIFICATIONS_BY_JOB.set(job.jobId, {
+		notificationId,
+		tabId: tab.id,
+		windowId: tab.windowId ?? chrome.windows.WINDOW_ID_NONE,
+	});
+}
+
+async function clearAttention(jobId: string): Promise<void> {
+	const tracked = ACTION_NOTIFICATIONS_BY_JOB.get(jobId);
+	if (tracked) {
+		await new Promise<void>((resolve) => chrome.notifications.clear(tracked.notificationId, () => resolve()));
+		ACTION_NOTIFICATIONS_BY_JOB.delete(jobId);
+	}
+	if (ACTION_NOTIFICATIONS_BY_JOB.size === 0) {
+		await chrome.action.setBadgeText({ text: "" }).catch(() => {});
+	}
+}
+
+chrome.notifications.onClicked.addListener((notificationId) => {
+	if (!notificationId.startsWith(NOTIFICATION_PREFIX)) return;
+	const jobId = notificationId.slice(NOTIFICATION_PREFIX.length);
+	const tracked = ACTION_NOTIFICATIONS_BY_JOB.get(jobId);
+	if (!tracked) return;
+	void chrome.tabs.update(tracked.tabId, { active: true }).catch(() => {});
+	if (tracked.windowId !== chrome.windows.WINDOW_ID_NONE) {
+		void chrome.windows.update(tracked.windowId, { focused: true }).catch(() => {});
+	}
+	void chrome.notifications.clear(notificationId);
+});
+
+chrome.notifications.onClosed.addListener((notificationId) => {
+	if (!notificationId.startsWith(NOTIFICATION_PREFIX)) return;
+	const jobId = notificationId.slice(NOTIFICATION_PREFIX.length);
+	ACTION_NOTIFICATIONS_BY_JOB.delete(jobId);
+	if (ACTION_NOTIFICATIONS_BY_JOB.size === 0) {
+		void chrome.action.setBadgeText({ text: "" }).catch(() => {});
+	}
+});
+
 async function dispatchJob(cfg: ExtensionConfig, job: BridgePollJob): Promise<void> {
 	const url = itemUrlFor(job);
 	if (!url) {
@@ -546,9 +672,15 @@ async function dispatchJob(cfg: ExtensionConfig, job: BridgePollJob): Promise<vo
 	}
 	const tab = await ensureMarketplaceTab(job.args.marketplace, url);
 	if (tab.id === undefined) throw new Error("could not open marketplace tab");
+	// Bridge transport requires a human click. Without an OS-level
+	// signal the marketplace tab can sit unnoticed behind the agent's
+	// terminal / IDE until the content-script observer times out
+	// (`bid_observer_timeout` etc.). Fire a system notification + focus
+	// Chrome + badge the action icon so the user can't miss it.
+	await notifyAttention(job, tab).catch((err) => console.warn("[flipagent] notifyAttention failed:", err));
 	// Content script's observer runs on document_idle and reads
-	// `flipagent_in_flight` from storage to know what to do. No further
-	// work here — progress comes back via onOrderProgress.
+	// `flipagent_in_flight` from storage to know what to do. Progress
+	// comes back via onOrderProgress; clearAttention runs there on terminal.
 }
 
 function itemUrlFor(job: BridgePollJob): string | null {

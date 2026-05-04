@@ -7,6 +7,13 @@ import { Marketplace, Money, ResponseSource } from "./_common.js";
 
 export const BidStatus = Type.Union(
 	[
+		// `pending` = bridge transport queued the bid in the user's
+		// browser; the user hasn't finished the eBay confirmation flow
+		// yet. The reconciler in `services/bid-reconciler.ts` flips it
+		// to `active` (or `outbid`) once `GetMyeBayBuying.BidList`
+		// confirms it landed; agents poll `GET /v1/bids/{listingId}`
+		// to see the transition.
+		Type.Literal("pending"),
 		Type.Literal("active"),
 		Type.Literal("outbid"),
 		Type.Literal("won"),

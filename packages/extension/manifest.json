@@ -46,7 +46,7 @@
 			"run_at": "document_start"
 		}
 	],
-	"permissions": ["storage", "alarms", "tabs", "scripting", "sidePanel", "cookies"],
+	"permissions": ["storage", "alarms", "tabs", "scripting", "sidePanel", "cookies", "notifications"],
 	"host_permissions": [
 		"https://www.ebay.com/*",
 		"https://*.ebay.com/*",

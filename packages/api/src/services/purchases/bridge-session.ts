@@ -23,6 +23,8 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { type BuyCheckoutSession, bridgeJobs, buyCheckoutSessions } from "../../db/schema.js";
 import { createBridgeJob } from "../bridge-jobs.js";
+import { captureMyEbaySnapshot } from "../bridge-reconciler.js";
+import { BRIDGE_TASKS } from "../ebay/bridge/tasks.js";
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24h, matches eBay's session ttl
 
@@ -104,6 +106,19 @@ export async function placeOrder(
 	const first = items[0];
 	if (!first) throw new BridgeCheckoutError("missing_line_items", 400, "session has no lineItems");
 
+	// Snapshot the buyer's MyeBay state BEFORE queuing the job. The
+	// reconciler in `bridge-reconciler.ts` diffs this against a fresh
+	// snapshot to detect "this purchase landed" without depending on
+	// the content script's DOM observer (which has historically
+	// false-negatived on layout rotations). One Trading call,
+	// ~300-700 ms — the same call the reconciler will repeat to
+	// verify, so the orchestrator gets the cost back as authoritative
+	// completion detection.
+	const beforeSnapshot = await captureMyEbaySnapshot(apiKeyId).catch((err) => {
+		console.warn("[placeOrder] beforeSnapshot capture failed:", err);
+		return undefined;
+	});
+
 	const order = await createBridgeJob({
 		apiKeyId,
 		userId,
@@ -112,7 +127,12 @@ export async function placeOrder(
 		quantity: first.quantity,
 		maxPriceCents: null,
 		idempotencyKey: `checkout-session:${sessionId}`,
-		metadata: { checkoutSessionId: sessionId, ...(first.variationId ? { variationId: first.variationId } : {}) },
+		metadata: {
+			task: BRIDGE_TASKS.EBAY_BUY_ITEM,
+			checkoutSessionId: sessionId,
+			...(first.variationId ? { variationId: first.variationId } : {}),
+			...(beforeSnapshot ? { beforeSnapshot } : {}),
+		},
 	});
 
 	await db

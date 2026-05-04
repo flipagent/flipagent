@@ -15,6 +15,7 @@ import type { Purchase, PurchaseCreate } from "@flipagent/types";
 import type { LineItem } from "@flipagent/types/ebay/buy";
 import { config } from "../../config.js";
 import { cancelJob } from "../bridge-jobs.js";
+import { reconcileJob } from "../bridge-reconciler.js";
 import type { NextActionKind } from "../shared/next-action.js";
 import type { FlipagentResult, SourceKind } from "../shared/result.js";
 import { selectTransport, TransportUnavailableError } from "../shared/transport.js";
@@ -124,6 +125,15 @@ export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext
 }
 
 export async function getPurchase(id: string, apiKeyId: string): Promise<FlipagentResult<Purchase> | null> {
+	// Lazy reconcile: if this is an in-flight bridge job for an eBay
+	// buy, run one Trading API check first. Converts polling agents
+	// into the reconciliation engine — no dependency on the worker
+	// tick — so a happy-path purchase flips from `processing` →
+	// `completed` on the very next GET after the user clicks
+	// "Confirm and pay". No-op for terminal jobs and for jobs handled
+	// by a different adapter (or no adapter — REST orders skip).
+	await reconcileJob(id, apiKeyId).catch((err) => console.warn("[getPurchase] inline reconcile failed:", err));
+
 	const order = await getPurchaseOrder(id, apiKeyId);
 	if (!order) return null;
 	const body = ebayToPurchase({ order });

@@ -30,6 +30,7 @@ import { hostname } from "node:os";
 import { eq } from "drizzle-orm";
 import { closeDb, db } from "./db/client.js";
 import { type ApiKey, apiKeys, type ComputeJob } from "./db/schema.js";
+import { reconcileAllInFlight } from "./services/bridge-reconciler.js";
 import { runJob } from "./services/compute-jobs/dispatcher.js";
 import {
 	claimNextJob,
@@ -47,6 +48,7 @@ const WORKER_MAX_ATTEMPTS = Number.parseInt(process.env.WORKER_MAX_ATTEMPTS ?? "
 const WORKER_POLL_INTERVAL_MS = Number.parseInt(process.env.WORKER_POLL_INTERVAL_MS ?? "1000", 10);
 const WORKER_RECOVERY_INTERVAL_MS = Number.parseInt(process.env.WORKER_RECOVERY_INTERVAL_MS ?? "60000", 10);
 const WORKER_MAINTENANCE_INTERVAL_MS = Number.parseInt(process.env.WORKER_MAINTENANCE_INTERVAL_MS ?? "900000", 10); // 15min
+const WORKER_BID_RECONCILE_INTERVAL_MS = Number.parseInt(process.env.WORKER_BID_RECONCILE_INTERVAL_MS ?? "30000", 10); // 30s
 const WORKER_SHUTDOWN_GRACE_MS = Number.parseInt(process.env.WORKER_SHUTDOWN_GRACE_MS ?? "30000", 10);
 
 const workerId = `worker-${hostname()}-${process.pid}`;
@@ -186,6 +188,29 @@ async function maintenanceLoop(): Promise<void> {
 	}
 }
 
+/**
+ * Bid reconciler loop — closes the loop on bridge-transport bids by
+ * polling eBay's `BidList` for any in-flight `ebay_place_bid` job and
+ * transitioning matched ones to `completed`. Lazy reconciliation also
+ * happens inline on every `GET /v1/bids/{listingId}` (see
+ * `services/bids.ts → getBidStatus`); this loop is the safety net for
+ * jobs nobody is actively polling. Cheap when idle: the WHERE clause
+ * hits the indexed `status` column and short-circuits before any
+ * Trading API call when there's nothing in flight.
+ */
+async function reconcileLoop(): Promise<void> {
+	while (!shuttingDown) {
+		const result = await reconcileAllInFlight().catch((err) => {
+			console.error("[worker] reconcileAllInFlight threw:", err);
+			return { scanned: 0, transitioned: 0 };
+		});
+		if (result.transitioned > 0) {
+			console.log(`[worker] bid reconcile: scanned=${result.scanned} transitioned=${result.transitioned}`);
+		}
+		await sleep(WORKER_BID_RECONCILE_INTERVAL_MS);
+	}
+}
+
 async function shutdown(signal: string): Promise<void> {
 	if (shuttingDown) return;
 	console.log(`[worker] received ${signal}, draining (grace ${WORKER_SHUTDOWN_GRACE_MS}ms)`);
@@ -237,4 +262,4 @@ if (initial.requeued > 0 || initial.failed > 0) {
 	console.log(`[worker] boot recovery: requeued=${initial.requeued} failed=${initial.failed}`);
 }
 
-await Promise.all([mainLoop(), recoveryLoop(), maintenanceLoop()]);
+await Promise.all([mainLoop(), recoveryLoop(), maintenanceLoop(), reconcileLoop()]);

@@ -2,6 +2,9 @@ import {
 	bidsEligibleListingsDescription,
 	bidsEligibleListingsExecute,
 	bidsEligibleListingsInput,
+	bidsGetStatusDescription,
+	bidsGetStatusExecute,
+	bidsGetStatusInput,
 	bidsListDescription,
 	bidsListExecute,
 	bidsListInput,
@@ -311,6 +314,13 @@ export const coreTools: Tool[] = [
 		description: bidsPlaceDescription,
 		inputSchema: bidsPlaceInput,
 		execute: bidsPlaceExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_get_bid_status",
+		description: bidsGetStatusDescription,
+		inputSchema: bidsGetStatusInput,
+		execute: bidsGetStatusExecute,
 		toolset: "core",
 	},
 	{
