@@ -31,6 +31,11 @@ import { getCachedMatchDecision, setCachedMatchDecision } from "./decision-cache
 import { type LlmContent, type LlmProvider, pickProvider } from "./llm/index.js";
 import type { MatchedItem, MatchResponse } from "./types.js";
 
+const TRACE = process.env.MATCHER_TRACE === "1";
+const traceLog = (msg: string): void => {
+	if (TRACE) console.log(`[matcher] ${msg}`);
+};
+
 /**
  * Resolve an `ItemSummary` to its full `ItemDetail`. Returns null when
  * the item has no resolvable id or the upstream couldn't render. Pure
@@ -47,53 +52,33 @@ export type DetailFetcher = (item: ItemSummary) => Promise<ItemDetail | null>;
 // per-category axes. Triage is lenient (cheap filter, only obvious drops);
 // verify is strict (rich detail, commits yes/no).
 
-const SYSTEM_TRIAGE = `You filter an eBay search-result POOL against a CANDIDATE listing.
+// Prompts moved to ./prompts/{base,overlays/*}.ts so per-category rules
+// (sneaker size discipline, watch SKU bare-model rule, graded-card grade
+// matching, etc.) can be added/edited without touching this file. The
+// registry in prompts/index.ts maps eBay categoryId → overlay; the
+// candidate's categoryIdPath drives which overlay fires.
+import { pickVerifyOverlayName, pickVerifyPrompt, SYSTEM_TRIAGE } from "./prompts/index.js";
 
-For each pool item, decide whether it could plausibly be the same product as the candidate. Be inclusive — only "drop" when title / condition / price make it obvious a buyer would not accept it as a substitute (wrong brand, wrong model number, wrong product category, very different price tier). Borderline cases pass through; the next stage has full details and decides.
+type RejectionCat = "wrong_product" | "bundle_or_lot" | "off_condition" | "other";
 
-Return ONLY JSON: [{"i":0,"decision":"keep"|"drop","reason":"short"},...]. Indices match input order. Keep each "reason" to ≤8 words; the verifier stage gets the long form.`;
+const REJECTION_CATS: ReadonlySet<string> = new Set(["wrong_product", "bundle_or_lot", "off_condition", "other"]);
 
-const SYSTEM_VERIFY = `You verify each ITEM against a CANDIDATE on eBay. Frame: would a buyer expecting the candidate accept this item as a substitute?
-
-PRIMARY SIGNALS — treat as authoritative:
-- Brand
-- Model / reference / SKU / part number (what's printed on the product itself, e.g. "YA1264153")
-- Condition tier — eBay tiers price separately. New, Refurbished, Used / Pre-Owned, and For Parts are NOT interchangeable.
-- Variant when product-defining: colour, size, capacity, edition, year, generation, material (e.g. silver dial vs black dial, 36mm vs 38mm)
-
-If the TITLE of both candidate and item carry the SAME reference number AND the condition tier matches AND no product-defining variant differs, the item IS the same product. Return "same: true".
-
-NOISE — IGNORE these. Sellers fill localizedAspects inconsistently and often wrong:
-- Country of Origin discrepancies (one says Italy, the other Switzerland — usually a seller mistake)
-- UPC field saying "Does not apply", "N/A", or missing
-- Department / gender labels (Unisex vs Men vs Women vs Unisex Adults) when the model is the same product
-- "Type" or "Style" aspects that contradict the title — title wins
-- Caseback / strap-material / band-color aspects when they're not in the title and the candidate's title doesn't mention them either
-- Bundle aspects ("with original box and papers", warranty card) UNLESS they materially change resale value at this condition tier
-- Marketing copy / wording / photo angle differences
-
-REJECT (return "same: false") only when an objective product-defining attribute differs:
-- Different reference number in the TITLE (e.g. YA1264153 vs YA1264155)
-- Different colour/size/material/year stated in BOTH titles
-- Different condition tier
-- Genuinely different model line
-
-MULTI-VARIATION LISTINGS (sneakers, clothes, bags): an item or candidate may carry a "variations (N SKUs in this listing)" block — one URL bundling several sizes/colours, each with its own price. When the CANDIDATE's variation is product-defining (its localizedAspects state Size: US M8, or its title implies Size 8), an ITEM that's a multi-variation listing is a match ONLY if one of its SKUs matches the candidate's variation at a comparable price tier. If none of the item's SKUs are the candidate's size (e.g. candidate is "Size: US M8" but the item lists only "PS 3Y" + "GS 5Y"), reject — even when title and brand match. When BOTH candidate and item are multi-variation parents that share the same SKU set, treat as same product (the buyer can pick the same variation on either listing). Use price as a tiebreaker only when the variation aspects are ambiguous: an item priced near one specific SKU is presumptively that SKU.
-
-If only aspects differ but title + reference + condition all match, return "true".
-Decide each item independently; one item's decision must not influence another.
-
-Return ONLY a JSON array: [{"i":0,"same":true|false,"reason":"one short sentence"},...]. Indices match the [N] markers on the items.`;
+function coerceCategory(raw: unknown): RejectionCat | undefined {
+	if (typeof raw !== "string") return undefined;
+	return REJECTION_CATS.has(raw) ? (raw as RejectionCat) : "other";
+}
 
 interface TriageItem {
 	i: number;
 	decision: "keep" | "drop";
 	reason: string;
+	category?: RejectionCat;
 }
 
 interface VerifyResult {
 	same: boolean;
 	reason: string;
+	category?: RejectionCat;
 }
 
 /* ----------------------------- pass 1: triage ----------------------------- */
@@ -113,7 +98,7 @@ function summariseForTriage(item: ItemSummary): string {
  * and the JSON output stays well under any provider's max-tokens cap;
  * large enough that the system prompt amortises over a useful batch.
  */
-const TRIAGE_CHUNK = 25;
+const TRIAGE_CHUNK = process.env.TRIAGE_CHUNK ? Number.parseInt(process.env.TRIAGE_CHUNK, 10) : 25;
 
 async function triageChunk(
 	provider: LlmProvider,
@@ -201,9 +186,20 @@ async function triage(
 		if (slice.length > 0) chunks.push(slice);
 	}
 
+	const triageStart = performance.now();
+	traceLog(`triage start: pool=${pool.length} chunks=${chunks.length} chunkSize=${TRIAGE_CHUNK}`);
+	const chunkStarts = chunks.map(() => performance.now());
 	const results = await Promise.allSettled(
-		chunks.map((chunk) => triageChunkWithRetry(provider, candidate, chunk, useImages)),
+		chunks.map((chunk, i) =>
+			triageChunkWithRetry(provider, candidate, chunk, useImages).then((r) => {
+				traceLog(
+					`  triage chunk ${i} done in ${Math.round(performance.now() - chunkStarts[i]!)}ms (${chunk.length} items)`,
+				);
+				return r;
+			}),
+		),
 	);
+	traceLog(`triage total: ${Math.round(performance.now() - triageStart)}ms`);
 
 	const byIdx = new Map<number, TriageItem>();
 	let okCount = 0;
@@ -229,9 +225,46 @@ interface DetailLike {
 	gtin?: string;
 	condition?: string;
 	categoryPath?: string;
+	/**
+	 * Pipe-joined eBay category id hierarchy (`"293|15032|9355"` for an
+	 * iPhone). Drives `pickVerifyPrompt()` overlay selection — see
+	 * `prompts/index.ts`. Not surfaced in the LLM prompt itself; it's
+	 * routing metadata.
+	 */
+	categoryIdPath?: string;
 	localizedAspects?: ReadonlyArray<{ name: string; value: string }>;
 	image?: { imageUrl: string };
 	price?: { value: string; currency: string };
+	/**
+	 * eBay catalog product id. Same `epid` across every listing of the same
+	 * SKU, so the matcher can short-circuit: when CANDIDATE and ITEM share an
+	 * epid, eBay considers them the same catalog product — no LLM needed.
+	 * Browse REST surfaces it; scrape extracts it from the `/p/{epid}` link.
+	 */
+	epid?: string;
+	/** Manufacturer Part Number — variant disambiguator when title is silent. */
+	mpn?: string;
+	/** >1 means the listing covers multiple physical units (lot/bundle). */
+	lotSize?: number;
+	/** Long-form seller condition note — distinguishes fulfilment notes from defects. */
+	conditionDescription?: string;
+	/** Structured grade/cert rows (PSA grade, BGS rating, certification number). */
+	conditionDescriptors?: ReadonlyArray<{ name?: string; values?: ReadonlyArray<{ content?: string }> }>;
+	/**
+	 * Strikethrough/list-price + discount metadata. Strong fake-listing signal:
+	 * a brand-new iPhone "$400 (was $1199, 67% off)" is almost always a replica.
+	 */
+	marketingPrice?: {
+		originalPrice?: { value: string; currency?: string };
+		discountPercentage?: string;
+	};
+	/**
+	 * Short-form description from the listing's `<meta name="description">`
+	 * tag — eBay populates it from the seller's first paragraph. Often spells
+	 * out STORAGE / COLOR / CARRIER even when the title is silent. Critical
+	 * for variant confirmation when the title omits an axis.
+	 */
+	shortDescription?: string;
 	/**
 	 * Carried through so verified items can splice dates back into the
 	 * returned ItemSummary, letting downstream `enrichWithDuration`
@@ -240,6 +273,18 @@ interface DetailLike {
 	 */
 	itemCreationDate?: string;
 	itemEndDate?: string;
+	/**
+	 * Authenticity Guarantee block — Browse REST emits an object
+	 * (`{ description, termsWebUrl }`) on listings routed through
+	 * third-party authentication (sneakers, handbags, watches, trading
+	 * cards, fine jewelry). Detail-only on REST; the matcher already has
+	 * the detail in hand from the verify pass and splices a derived
+	 * boolean onto the matched ItemSummary so the playground / extension
+	 * can render an "AG" badge on every comp row that qualifies (premium
+	 * signal for resellers; lower dispute risk).
+	 */
+	authenticityGuarantee?: { description?: string; termsWebUrl?: string };
+	qualifiedPrograms?: ReadonlyArray<string>;
 	/**
 	 * Multi-SKU variations parsed from the page's MSKU model. Present on
 	 * any sneaker / clothes / bag listing where one URL covers multiple
@@ -263,12 +308,42 @@ function summariseDetail(d: DetailLike): string {
 	lines.push(`title: ${d.title}`);
 	if (d.brand) lines.push(`brand: ${d.brand}`);
 	if (d.gtin) lines.push(`gtin: ${d.gtin}`);
+	if (d.epid) lines.push(`epid: ${d.epid}`);
+	if (d.mpn) lines.push(`mpn: ${d.mpn}`);
 	if (d.condition) lines.push(`condition: ${d.condition}`);
+	if (d.conditionDescription && d.conditionDescription.toLowerCase() !== d.condition?.toLowerCase()) {
+		lines.push(`conditionNote: ${d.conditionDescription.slice(0, 240)}`);
+	}
+	if (d.conditionDescriptors && d.conditionDescriptors.length > 0) {
+		// Structured grade rows (PSA grade, BGS rating, cert number). One line each.
+		const flat = d.conditionDescriptors
+			.map(
+				(row) =>
+					`${row.name ?? "?"}: ${(row.values ?? [])
+						.map((v) => v.content ?? "")
+						.filter(Boolean)
+						.join(", ")}`,
+			)
+			.join(" | ");
+		lines.push(`grade: ${flat}`);
+	}
+	if (typeof d.lotSize === "number" && d.lotSize > 1) lines.push(`lotSize: ${d.lotSize} units`);
 	if (d.categoryPath) lines.push(`category: ${d.categoryPath}`);
 	if (d.price) lines.push(`price: $${d.price.value}`);
+	if (d.marketingPrice?.originalPrice?.value) {
+		const op = d.marketingPrice.originalPrice.value;
+		const pct = d.marketingPrice.discountPercentage ? ` (${d.marketingPrice.discountPercentage}% off)` : "";
+		lines.push(`marketingPrice: was $${op}${pct}`);
+	}
 	if (d.localizedAspects && d.localizedAspects.length > 0) {
 		lines.push("aspects:");
 		for (const a of d.localizedAspects) lines.push(`  - ${a.name}: ${a.value}`);
+	}
+	// shortDescription often spells out STORAGE / COLOR / CARRIER even when
+	// the title is silent — pulled from the seller's first paragraph by eBay.
+	// Cap at 300 chars so the prompt stays compact.
+	if (d.shortDescription) {
+		lines.push(`description: ${d.shortDescription.slice(0, 300)}`);
 	}
 	// Multi-SKU listings: list every variation as one line — `axis: value`
 	// for each axis, plus the variation's own price. Lets the LLM pick the
@@ -303,51 +378,90 @@ async function verifyBatch(
 ): Promise<VerifyResult[]> {
 	if (items.length === 0) return [];
 
+	// NOTE: prior versions short-circuited to MATCH on shared epid. That was
+	// WRONG. eBay's catalog product id (`epid`) is granular at the
+	// model+capacity level for many categories — e.g. iPhone 15 Pro Max
+	// 256GB across ALL colorways (Natural / Black / Blue / White / even
+	// scammy "Beige TikTok-installed") share epid=9062763667. So a shared
+	// epid is a same-catalog-product signal, NOT a same-variant signal.
+	// We now feed epid into the LLM prompt (via summariseDetail) and let
+	// it combine with title/aspects/variations to decide. The shortcut
+	// stays available for future categories that genuinely have variant-
+	// level epids (graded cards, sealed media), but only after we've
+	// validated per-category that epid == variant for them.
+	const out: VerifyResult[] = new Array(items.length);
+	const llmIndices: number[] = [];
+	for (let i = 0; i < items.length; i++) llmIndices.push(i);
+	if (llmIndices.length === 0) return out;
+
 	const user: LlmContent[] = [];
 	if (useImages && candidate.image?.imageUrl) {
 		user.push({ type: "text", text: "CANDIDATE IMAGE:" });
 		user.push({ type: "image", imageUrl: candidate.image.imageUrl });
 	}
 	user.push({ type: "text", text: `CANDIDATE\n${summariseDetail(candidate)}` });
-	user.push({ type: "text", text: `ITEMS (${items.length}):` });
-	for (let i = 0; i < items.length; i++) {
+	user.push({ type: "text", text: `ITEMS (${llmIndices.length}):` });
+	// Renumber for the LLM (`[0]`..`[N-1]` over the items we actually send),
+	// then map the response back to original indices via `llmIndices`.
+	for (let n = 0; n < llmIndices.length; n++) {
+		const i = llmIndices[n]!;
 		const it = items[i];
 		if (!it) continue;
 		if (useImages && it.image?.imageUrl) {
-			user.push({ type: "text", text: `[${i}] IMAGE:` });
+			user.push({ type: "text", text: `[${n}] IMAGE:` });
 			user.push({ type: "image", imageUrl: it.image.imageUrl });
 		}
-		user.push({ type: "text", text: `[${i}]\n${summariseDetail(it)}` });
+		user.push({ type: "text", text: `[${n}]\n${summariseDetail(it)}` });
 	}
 
+	// Resolve the verifier prompt for this candidate's category.
+	// Unknown categories fall back to the base prompt; known categories
+	// (smartphones / wristwatches / sneakers / graded cards / consoles)
+	// get base + category-specific overlay. See prompts/index.ts.
+	const verifySystem = pickVerifyPrompt(candidate.categoryIdPath);
+	const overlayName = pickVerifyOverlayName(candidate.categoryIdPath);
+	if (overlayName) traceLog(`verify overlay=${overlayName} (path=${candidate.categoryIdPath})`);
+
 	const text = await provider.complete({
-		system: SYSTEM_VERIFY,
+		system: verifySystem,
 		user,
 		// Generous: thinking-mode models (Gemini 2.5+, GPT-5) eat the same
 		// budget for chain-of-thought, so a tight cap silently truncates the
 		// JSON. ~256/item leaves headroom even with full thinking.
-		maxTokens: 512 + items.length * 256,
+		maxTokens: 512 + llmIndices.length * 256,
 	});
 	const arr = parseJsonArray<VerifyEntry>(text);
-	const out: VerifyResult[] = items.map(() => ({ same: false, reason: "verifier returned no entry" }));
+	// Backfill default-reject for items not handled by either path.
+	for (let i = 0; i < items.length; i++) {
+		if (!out[i]) out[i] = { same: false, reason: "verifier returned no entry", category: "other" as const };
+	}
 	for (const r of arr) {
-		if (typeof r.i === "number" && r.i >= 0 && r.i < items.length) {
-			out[r.i] = { same: !!r.same, reason: r.reason ?? "" };
+		// `r.i` is the LLM-side index (0..llmIndices.length-1); map back to
+		// the items[] index via llmIndices[].
+		if (typeof r.i === "number" && r.i >= 0 && r.i < llmIndices.length) {
+			const origIdx = llmIndices[r.i]!;
+			const same = !!r.same;
+			const entry: VerifyResult = { same, reason: r.reason ?? "" };
+			if (!same) entry.category = coerceCategory(r.category) ?? "other";
+			out[origIdx] = entry;
 		}
 	}
 	return out;
 }
 
-// Cap per call so prompts stay readable and one bad LLM call can't lose
-// a huge survivor list. ~10 keeps token budget bounded even with images.
-const VERIFY_CHUNK = 10;
+// Verify pass: 1 item per LLM call. Empirically ~+3% mean F1 over chunk=10
+// (iPhone +26%, Switch +11%) at the same model — per-item attention focus
+// matters more for accuracy than batch amortisation. Wall time barely moves
+// because chunks run in parallel through the existing semaphore. Override
+// via VERIFY_CHUNK env when benchmarking the cost/accuracy tradeoff.
+const VERIFY_CHUNK = process.env.VERIFY_CHUNK ? Number.parseInt(process.env.VERIFY_CHUNK, 10) : 1;
 
 /* ---------------------------------- entry --------------------------------- */
 
 export async function matchPoolWithLlm(
 	candidate: ItemSummary,
 	pool: ReadonlyArray<ItemSummary>,
-	options: { useImages?: boolean },
+	options: { useImages?: boolean; triageProvider?: LlmProvider; verifyProvider?: LlmProvider },
 	fetchDetail: DetailFetcher,
 ): Promise<MatchResponse> {
 	const useImages = options.useImages ?? true;
@@ -356,14 +470,19 @@ export async function matchPoolWithLlm(
 		return { match: [], reject: [], totals: { match: 0, reject: 0 } };
 	}
 
-	const provider = pickProvider();
+	const defaultProvider = options.triageProvider || options.verifyProvider ? null : pickProvider();
+	const triageProvider = options.triageProvider ?? defaultProvider!;
+	const verifyProvider = options.verifyProvider ?? defaultProvider!;
+	traceLog(
+		`providers: triage=${triageProvider.name}/${triageProvider.model} verify=${verifyProvider.name}/${verifyProvider.model}`,
+	);
 
 	// ─── Pass 1: triage ──────────────────────────────────────────────────
 	// Lenient text-only filter that drops obviously different products
 	// using only title + price hints. Cheap (no detail fetch). Chunk
 	// failures pass through to verify (declared behaviour: borderline
 	// cases get the rich detail in pass 2).
-	const triaged = await triage(provider, candidate, pool, useImages);
+	const triaged = await triage(triageProvider, candidate, pool, useImages);
 	const survivors: { idx: number; item: ItemSummary }[] = [];
 	const rejected: MatchedItem[] = [];
 	for (let i = 0; i < pool.length; i++) {
@@ -377,6 +496,7 @@ export async function matchPoolWithLlm(
 				item,
 				bucket: "reject",
 				reason: t.reason || "Triage drop (no reason given).",
+				category: coerceCategory(t.category) ?? "other",
 			});
 		}
 	}
@@ -405,6 +525,8 @@ export async function matchPoolWithLlm(
 	// `fetchDetail` is wired through 4h `withCache` so warm runs are
 	// near-instant. Cold runs match the cost we'd have paid when pass 2
 	// fetched detail for every uncached survivor.
+	const enrichStart = performance.now();
+	traceLog(`enrich start: survivors=${survivors.length}`);
 	const candidateDetail = (await fetchDetail(candidate)) ?? toDetailLike(candidate);
 	const survivorsEnriched = await Promise.all(
 		survivors.map(async (entry) => {
@@ -416,6 +538,7 @@ export async function matchPoolWithLlm(
 			};
 		}),
 	);
+	traceLog(`enrich done: ${Math.round(performance.now() - enrichStart)}ms`);
 
 	// ─── Decision cache lookup ───────────────────────────────────────────
 	// Saves the *LLM verify* cost on warm pairs (the expensive part).
@@ -432,12 +555,16 @@ export async function matchPoolWithLlm(
 				survivorsToVerify.push(entry);
 				return;
 			}
+			const isMatch = cached.decision === "match";
 			const m: MatchedItem = {
 				item: entry.item,
-				bucket: cached.decision === "match" ? "match" : "reject",
+				bucket: isMatch ? "match" : "reject",
 				reason: cached.reason || "Cached decision.",
+				// The decision-cache predates the category field; cached rejects
+				// surface as "other" until they're re-verified at next miss.
+				...(isMatch ? {} : { category: "other" as const }),
 			};
-			(cached.decision === "match" ? cachedMatched : cachedRejected).push(m);
+			(isMatch ? cachedMatched : cachedRejected).push(m);
 		}),
 	);
 
@@ -462,32 +589,50 @@ export async function matchPoolWithLlm(
 	for (let off = 0; off < survivorsToVerify.length; off += VERIFY_CHUNK) {
 		verifyChunks.push(survivorsToVerify.slice(off, off + VERIFY_CHUNK));
 	}
+	const verifyStart = performance.now();
+	traceLog(
+		`verify start: toVerify=${survivorsToVerify.length} chunks=${verifyChunks.length} chunkSize=${VERIFY_CHUNK} cached=${cachedMatched.length + cachedRejected.length}`,
+	);
+	const verifyChunkStarts = verifyChunks.map(() => performance.now());
 	const chunkResults = await Promise.all(
-		verifyChunks.map(async (chunk) => {
+		verifyChunks.map(async (chunk, ci) => {
 			try {
 				const decisions = await verifyBatch(
-					provider,
+					verifyProvider,
 					candidateDetail,
 					chunk.map((c) => c.detail),
 					useImages,
 				);
+				traceLog(
+					`  verify chunk ${ci} done in ${Math.round(performance.now() - verifyChunkStarts[ci]!)}ms (${chunk.length} items)`,
+				);
 				return chunk.map((c, i) => {
 					const same = decisions[i]?.same ?? false;
 					const reason = decisions[i]?.reason ?? "verifier returned no entry";
+					const category: RejectionCat | undefined = same ? undefined : (decisions[i]?.category ?? "other");
 					// Persist to cache so the next caller skips the LLM. Only
 					// real decisions are cached — "verifier returned no entry"
 					// signals a malformed LLM response we shouldn't memoise.
 					if (decisions[i]) {
 						void setCachedMatchDecision(candidate.itemId, c.item.itemId, same ? "match" : "reject", reason);
 					}
-					return { item: c.item, same, reason };
+					return { item: c.item, same, reason, category };
 				});
 			} catch (err) {
+				traceLog(
+					`  verify chunk ${ci} FAILED in ${Math.round(performance.now() - verifyChunkStarts[ci]!)}ms: ${(err as Error).message}`,
+				);
 				const reason = `verify failed: ${(err as Error).message}`;
-				return chunk.map((c) => ({ item: c.item, same: false, reason }));
+				return chunk.map((c) => ({
+					item: c.item,
+					same: false,
+					reason,
+					category: "other" as RejectionCat,
+				}));
 			}
 		}),
 	);
+	traceLog(`verify total: ${Math.round(performance.now() - verifyStart)}ms`);
 	const verifyMatched: MatchedItem[] = [];
 	const verifyRejected: MatchedItem[] = [];
 	for (const r of chunkResults.flat()) {
@@ -495,6 +640,7 @@ export async function matchPoolWithLlm(
 			item: r.item, // dates already spliced via survivorsEnriched
 			bucket: r.same ? "match" : "reject",
 			reason: r.reason,
+			...(r.same ? {} : { category: r.category ?? "other" }),
 		};
 		(r.same ? verifyMatched : verifyRejected).push(labeled);
 	}
@@ -519,21 +665,37 @@ function toDetailLike(item: ItemSummary): DetailLike {
 }
 
 /**
- * Splice `itemCreationDate` / `itemEndDate` from a fetched detail back
- * into the summary, ONLY if the summary lacked them. Lets downstream
- * `enrichWithDuration` short-circuit on items the verify pass already
- * fetched detail for, eliminating a round-trip through the 4h detail
- * cache. Other detail fields (brand / gtin / aspects) stay in the
- * detail cache — callers who need them fetch on demand.
+ * Splice detail-only fields (dates, Authenticity Guarantee, qualified
+ * programs) from a fetched detail back into the summary. Browse REST
+ * Search emits none of these on summary cards, but the matcher's
+ * verify pass already fetched the detail for every candidate — so we
+ * piggy-back, letting downstream consumers (`enrichWithDuration`, the
+ * playground / extension matches list) read them off `ItemSummary`
+ * without a separate detail cache hit. Other detail fields (brand /
+ * gtin / aspects) stay in the detail cache — callers who need them
+ * fetch on demand.
  */
 function spliceDateFields(item: ItemSummary, detail: DetailLike): ItemSummary {
-	if (!detail.itemCreationDate && !detail.itemEndDate) return item;
-	if (item.itemCreationDate && item.itemEndDate) return item;
-	return {
-		...item,
-		itemCreationDate: item.itemCreationDate ?? detail.itemCreationDate,
-		itemEndDate: item.itemEndDate ?? detail.itemEndDate,
+	const dates = !!(detail.itemCreationDate || detail.itemEndDate);
+	const ag = !!detail.authenticityGuarantee || (detail.qualifiedPrograms?.length ?? 0) > 0;
+	if (!dates && !ag) return item;
+	// Cast widens ItemSummary with the two flipagent-side fields — eBay's
+	// strict ItemSummary schema doesn't carry them (Browse REST is
+	// detail-only for AG), but downstream consumers (`EvaluateResponse`
+	// pools → playground / extension) read them off the JSON payload.
+	const next = { ...item } as ItemSummary & {
+		authenticityGuarantee?: boolean;
+		qualifiedPrograms?: string[];
 	};
+	if (dates) {
+		if (!item.itemCreationDate && detail.itemCreationDate) next.itemCreationDate = detail.itemCreationDate;
+		if (!item.itemEndDate && detail.itemEndDate) next.itemEndDate = detail.itemEndDate;
+	}
+	if (ag) {
+		if (detail.authenticityGuarantee) next.authenticityGuarantee = true;
+		if (detail.qualifiedPrograms?.length) next.qualifiedPrograms = [...detail.qualifiedPrograms];
+	}
+	return next;
 }
 
 /* --------------------------- JSON parse helpers --------------------------- */

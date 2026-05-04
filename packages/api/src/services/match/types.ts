@@ -18,6 +18,19 @@ export const MatchBucket = Type.Union([Type.Literal("match"), Type.Literal("reje
 });
 export type MatchBucket = Static<typeof MatchBucket>;
 
+/**
+ * Categorical bucket the LLM matcher emits alongside its prose reason
+ * for a rejected listing. Always one of four; `other` when the rejection
+ * is real but doesn't fit the first three. Surfaced verbatim on the
+ * evaluate digest's `filter.rejectionsByCategory` count map and on each
+ * row of `EvaluatePoolResponse.{sold,active}.rejected`.
+ */
+export const RejectionCategory = Type.Union(
+	[Type.Literal("wrong_product"), Type.Literal("bundle_or_lot"), Type.Literal("off_condition"), Type.Literal("other")],
+	{ $id: "RejectionCategory" },
+);
+export type RejectionCategory = Static<typeof RejectionCategory>;
+
 export const MatchedItem = Type.Object(
 	{
 		item: ItemSummary,
@@ -26,6 +39,8 @@ export const MatchedItem = Type.Object(
 			description:
 				"One-line explanation, e.g. 'Same SKU YA1264153, both Brand New' or 'Different reference YA1264155 (PVD finish)'.",
 		}),
+		/** Set on `bucket: "reject"` rows; LLM-emitted, never inferred via regex. */
+		category: Type.Optional(RejectionCategory),
 	},
 	{ $id: "MatchedItem" },
 );

@@ -52,7 +52,7 @@ function matchQueryHash(candidate: ItemSummary, pool: ReadonlyArray<ItemSummary>
 	return hashQuery({
 		candidate: candidate.itemId,
 		pool: poolIds,
-		useImages: options.useImages ?? true,
+		useImages: options.useImages ?? false,
 	});
 }
 

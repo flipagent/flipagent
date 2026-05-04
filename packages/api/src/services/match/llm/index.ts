@@ -50,16 +50,19 @@ export interface LlmProvider {
 }
 
 /**
- * Per-process LLM concurrency cap. The variants pipeline fans out
- * many verify calls in parallel — one per (variant group × verify
- * chunk); without this gate they all hit the provider at once and
- * the slowest queue at provider side.
- * Capping in-process means the queue is observable from our side and
- * the same calls don't pile up against the provider's rate-limit
- * window. Default 8 — comfortable for Anthropic tier 2+ and OpenAI
- * tier 2+. Override with `LLM_MAX_CONCURRENT`.
+ * Per-process LLM concurrency cap. The matcher fans out one LLM call
+ * per verify item (`VERIFY_CHUNK=1` default in matcher.ts); without
+ * this gate they all hit the provider at once and the slowest queue on
+ * the provider side.
+ *
+ * Default 16 — empirically the sweet spot at our current Google Gemini
+ * paid tier (1000 RPM). At 8 the longest-tail dataset took 50-100s wall
+ * vs ~10s at 16; going to 32 added no further wall-time gain (rate
+ * limits start to bite). Override with `LLM_MAX_CONCURRENT` env when a
+ * provider's tier dictates a different ceiling (Anthropic tier 1: ~4,
+ * OpenAI tier 1: 8-16).
  */
-const llmSemaphore = new Semaphore(config.LLM_MAX_CONCURRENT ?? 8);
+const llmSemaphore = new Semaphore(config.LLM_MAX_CONCURRENT ?? 16);
 
 /**
  * Transient LLM failures (rate-limit, brief 5xx) are common enough that
