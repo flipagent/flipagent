@@ -90,14 +90,14 @@ locals {
 resource "azurerm_storage_account" "media" {
   # Storage-account names must be 3-24 chars, lowercase letters/digits only.
   # `local.prefix` already meets that; strip non-alnum just in case.
-  name                          = substr(replace("${local.prefix}media", "/[^a-z0-9]/", ""), 0, 24)
-  resource_group_name           = azurerm_resource_group.rg.name
-  location                      = azurerm_resource_group.rg.location
-  account_tier                  = "Standard"
-  account_replication_type      = "LRS"
+  name                            = substr(replace("${local.prefix}media", "/[^a-z0-9]/", ""), 0, 24)
+  resource_group_name             = azurerm_resource_group.rg.name
+  location                        = azurerm_resource_group.rg.location
+  account_tier                    = "Standard"
+  account_replication_type        = "LRS"
   allow_nested_items_to_be_public = true
-  min_tls_version               = "TLS1_2"
-  tags                          = local.tags
+  min_tls_version                 = "TLS1_2"
+  tags                            = local.tags
 }
 
 resource "azurerm_storage_container" "media" {
@@ -553,6 +553,25 @@ resource "azurerm_container_app" "api" {
         value = tostring(var.llm_max_concurrent)
       }
 
+      # Agent surface (`/v1/agent/chat`) — runs OpenAI's Responses API
+      # statefully. Reuses `OPENAI_API_KEY` (set above for the matcher);
+      # only the model is split out so we can pick a smarter model for
+      # the agent than the matcher uses. Defaults in code; threaded
+      # through here so prod model swaps don't need a code change.
+      env {
+        name  = "AGENT_OPENAI_MODEL"
+        value = var.agent_openai_model
+      }
+      # Public URL where this api's `/mcp` endpoint is reachable from
+      # OpenAI's infrastructure (Responses API native MCP integration).
+      # When unset the agent still chats but can't call tools — so set
+      # this to `${better_auth_url}/mcp` (or the equivalent CDN-fronted
+      # URL) in prod.
+      env {
+        name  = "MCP_PUBLIC_URL"
+        value = var.mcp_public_url
+      }
+
       # eBay Trading Platform Notifications + per-route source toggles.
       dynamic "env" {
         for_each = var.ebay_dev_id == "" ? [] : [1]
@@ -701,10 +720,10 @@ resource "azurerm_container_app" "worker" {
     max_replicas = var.worker_max_replicas
 
     container {
-      name    = "worker"
-      image   = var.api_image
-      cpu     = var.worker_cpu
-      memory  = var.worker_memory
+      name   = "worker"
+      image  = var.api_image
+      cpu    = var.worker_cpu
+      memory = var.worker_memory
       # Dockerfile WORKDIR is /app; the api workspace builds to
       # packages/api/dist/. Match the api container's CMD path so the
       # worker entrypoint resolves correctly.

@@ -350,6 +350,24 @@ variable "llm_max_concurrent" {
   default     = 8
 }
 
+# --- Agent surface + Streamable HTTP MCP ----------------------------------
+# `/v1/agent/chat` runs OpenAI's Responses API; the model issues tool
+# calls back through `/mcp` (this api's tool catalog over the MCP
+# streamable-HTTP transport). Reuses `openai_api_key` above; the model
+# id and the public MCP URL are the only new vars.
+
+variable "agent_openai_model" {
+  description = "OpenAI model id for /v1/agent/chat. Kept separate from openai_model (the same-product matcher uses a cheaper fast model; the agent wants a smarter one)."
+  type        = string
+  default     = "gpt-5.5"
+}
+
+variable "mcp_public_url" {
+  description = "Public URL of this api's /mcp endpoint, reachable from OpenAI's infrastructure. Without it the agent surface still chats but cannot call tools. e.g. https://api.flipagent.dev/mcp."
+  type        = string
+  default     = ""
+}
+
 # --- eBay platform notifications + per-route source toggles --
 
 variable "ebay_dev_id" {
