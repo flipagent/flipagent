@@ -34,6 +34,12 @@ export const ebayBuyItemInput = Type.Object(
 		}),
 		quantity: Type.Optional(Type.Integer({ minimum: 1, default: 1 })),
 		variationId: Type.Optional(Type.String({ description: "eBay variation id when the listing has variants." })),
+		humanReviewedAt: Type.Optional(
+			Type.String({
+				description:
+					"ISO-8601 timestamp from when a human in your interface confirmed THIS specific order, not older than 5 minutes. Required for bridge transport (and for REST unless `EBAY_ORDER_APPROVED=1` is set on the api operator's developer account). The api returns 412 `human_review_required` / `human_review_stale` if missing or stale.",
+			}),
+		),
 	},
 	{ $id: "EbayBuyItemInput" },
 );
@@ -77,8 +83,10 @@ export async function ebayBuyItemExecute(config: Config, args: Record<string, un
 		const { itemId, variationId: parsedVariation } = normalizeItemId(String(args.itemId));
 		const quantity = (args.quantity as number | undefined) ?? 1;
 		const variationId = (args.variationId as string | undefined) ?? parsedVariation;
+		const humanReviewedAt = args.humanReviewedAt as string | undefined;
 		const result = await client.purchases.create({
 			items: [{ itemId, quantity, ...(variationId ? { variationId } : {}) }],
+			...(humanReviewedAt ? { humanReviewedAt } : {}),
 		});
 		// Pin the polling tool name into the response so the agent
 		// doesn't have to remember the verb_noun convention. Mirrors
