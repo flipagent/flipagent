@@ -381,6 +381,10 @@ async function tick(): Promise<void> {
 		return;
 	}
 
+	// Auction proxy-bid via bridge. Same tab-open shape as buy
+	// (ebay.com/itm/{id}); the content script's observer branches on
+	// metadata.task to run the bid-confirmation watcher instead of the
+	// checkout state machine.
 	console.log("[flipagent] picked up job", job.jobId, "item", job.args.itemId, job.args.marketplace);
 	await chrome.storage.local.set({
 		[STORAGE_KEYS.IN_FLIGHT_BUY]: {

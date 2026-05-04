@@ -21,6 +21,7 @@ export type NextActionKind =
 	| "forwarder_signin" // user must re-sign-in to the forwarder (PE) — session expired
 	| "setup_seller_policies" // agent must collect prefs + POST /v1/policies/setup
 	| "configure_ebay" // operator must set EBAY_CLIENT_ID/SECRET/RU_NAME
+	| "configure_bidding_api" // either operator sets EBAY_BIDDING_APPROVED=1 after Buy Offer LR approval, or end user pairs the Chrome extension
 	| "configure_stripe"; // operator must set STRIPE_* env
 
 export interface NextAction {
@@ -29,7 +30,7 @@ export interface NextAction {
 	readonly instructions: string;
 }
 
-const EXTENSION_DOCS = "https://flipagent.dev/docs/extension/install";
+const EXTENSION_DOCS = "https://flipagent.dev/docs/extension/";
 
 /**
  * Build a NextAction for the given kind, using the request's origin to
@@ -42,7 +43,7 @@ export function nextAction(c: Context, kind: NextActionKind): NextAction {
 		case "ebay_oauth":
 			return {
 				kind,
-				url: `${origin}/v1/connect/ebay/start`,
+				url: `${origin}/v1/connect/ebay`,
 				instructions:
 					"Direct the user to this URL in their browser to authorize their eBay seller account. Once they finish, re-call the tool.",
 			};
@@ -51,14 +52,14 @@ export function nextAction(c: Context, kind: NextActionKind): NextAction {
 				kind,
 				url: EXTENSION_DOCS,
 				instructions:
-					"Direct the user to install the flipagent Chrome extension at this URL and pair it with their api key (one-time, via the extension's options panel). Re-call the tool once paired.",
+					"Direct the user to install the flipagent Chrome extension at this URL and pair it with their api key (one-time, via the extension's popup — click the toolbar icon). Re-call the tool once paired.",
 			};
 		case "rest_or_extension":
 			return {
 				kind,
 				url: EXTENSION_DOCS,
 				instructions:
-					"Direct the user to install the flipagent Chrome extension and pair it with their api key — purchases will then drive through their logged-in eBay session. Alternatively the api operator can set EBAY_ORDER_API_APPROVED=1 to use eBay's Buy Order REST API.",
+					"Direct the user to install the flipagent Chrome extension and pair it with their api key — purchases will then drive through their logged-in eBay session. Alternatively the api operator can set EBAY_ORDER_APPROVED=1 to use eBay's Buy Order REST API.",
 			};
 		case "forwarder_signin":
 			return {
@@ -80,6 +81,13 @@ export function nextAction(c: Context, kind: NextActionKind): NextAction {
 				url: `${origin}/v1/health`,
 				instructions:
 					"The api operator must set EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, and EBAY_RU_NAME before any eBay-bound flow can run. This is a server config issue, not something the end user can fix.",
+			};
+		case "configure_bidding_api":
+			return {
+				kind,
+				url: EXTENSION_DOCS,
+				instructions:
+					"Direct the user to install the flipagent Chrome extension and pair it with their api key — auction bids will then drive through their logged-in eBay session (the bridge clicks Place Bid on ebay.com). Alternatively the api operator can apply at developer.ebay.com → Buy APIs → Buy Offer for Limited Release access and set EBAY_BIDDING_APPROVED=1 to use eBay's REST surface instead.",
 			};
 		case "configure_stripe":
 			return {

@@ -31,7 +31,7 @@ interface RestCapability {
 	 * grants access). The flag name is opaque to `selectTransport` —
 	 * the route layer passes the resolved boolean through.
 	 */
-	envFlag?: "EBAY_ORDER_API_APPROVED" | "EBAY_INSIGHTS_APPROVED" | "EBAY_CATALOG_APPROVED";
+	envFlag?: "EBAY_ORDER_APPROVED" | "EBAY_INSIGHTS_APPROVED" | "EBAY_CATALOG_APPROVED" | "EBAY_BIDDING_APPROVED";
 }
 
 interface BridgeCapability {
@@ -84,8 +84,28 @@ export const RESOURCE_TRANSPORTS = {
 	// inside the buyer's real Chrome session. Same `EbayPurchaseOrder`
 	// response shape from either transport.
 	"orders.checkout": {
-		rest: { needsAuth: "user", envFlag: "EBAY_ORDER_API_APPROVED" },
+		rest: { needsAuth: "user", envFlag: "EBAY_ORDER_APPROVED" },
 		bridge: { taskName: BRIDGE_TASKS.EBAY_BUY_ITEM },
+	},
+	// Buy Offer / Bidding — both transports first-class, mirroring the
+	// Buy Order / `orders.checkout` shape. REST is the eBay-native path
+	// (gated by Limited Release `EBAY_BIDDING_APPROVED`, granted per
+	// program independently from Buy Order); bridge drives the Place-Bid
+	// click inside the buyer's real Chrome session against the ebay.com
+	// itm/ DOM. Same `Bid` response shape from either transport. Without
+	// approval AND without a paired extension `selectTransport` raises
+	// `TransportUnavailableError`, which the route translates to 412 +
+	// `next_action.kind: configure_bidding_api`.
+	// (`listBids` reads via Trading `GetMyeBayBuying.BidList`, which
+	// doesn't need this scope — only POST /bid + per-item status read
+	// hit the Buy Offer REST surface.)
+	"bids.place": {
+		rest: { needsAuth: "user", envFlag: "EBAY_BIDDING_APPROVED" },
+		bridge: { taskName: BRIDGE_TASKS.EBAY_PLACE_BID },
+	},
+	"bids.status": {
+		rest: { needsAuth: "user", envFlag: "EBAY_BIDDING_APPROVED" },
+		bridge: { taskName: BRIDGE_TASKS.EBAY_PLACE_BID },
 	},
 	// Sell-side REST (require user OAuth)
 	"inventory.crud": { rest: { needsAuth: "user" } },
@@ -183,9 +203,10 @@ export interface SelectTransportContext {
 	 * named flag here is true.
 	 */
 	envFlags?: {
-		EBAY_ORDER_API_APPROVED?: boolean;
+		EBAY_ORDER_APPROVED?: boolean;
 		EBAY_INSIGHTS_APPROVED?: boolean;
 		EBAY_CATALOG_APPROVED?: boolean;
+		EBAY_BIDDING_APPROVED?: boolean;
 	};
 }
 

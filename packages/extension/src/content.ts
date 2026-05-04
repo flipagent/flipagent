@@ -215,8 +215,14 @@ async function main(): Promise<void> {
  * upgrade somehow bypasses the server validation.
  */
 const CAPTURE_DENYLIST = [
-	/\/mye\//i, /\/myb\//i, /\/myb_summary/i, /\/signin/i,
-	/\/vod\//i, /\/chk\//i, /\/sl\//i, /\/bsh\//i,
+	/\/mye\//i,
+	/\/myb\//i,
+	/\/myb_summary/i,
+	/\/signin/i,
+	/\/vod\//i,
+	/\/chk\//i,
+	/\/sl\//i,
+	/\/bsh\//i,
 ];
 
 async function autoCaptureIfEnabled(): Promise<void> {
@@ -280,6 +286,16 @@ function isCheckoutOrAccountPath(pathname: string): boolean {
 }
 
 function handleEbayJob(job: InFlightSnapshot): void {
+	const task = job.metadata && typeof job.metadata === "object" ? (job.metadata as { task?: string }).task : undefined;
+	// Auction proxy-bid: different state machine. No checkout / post-
+	// purchase pages; the place-bid panel + bid-result indicator both
+	// live on the item page (eBay shows them inline or in a modal that
+	// stays on /itm/). User clicks Place Bid manually — flipagent only
+	// observes the result and reports it to the bridge.
+	if (task === "ebay_place_bid") {
+		if (job.itemId && isItemPage(job.itemId)) handleBidItemPage(job);
+		return;
+	}
 	if (job.itemId && isItemPage(job.itemId)) {
 		handleItemPage(job);
 	} else if (isCheckoutPage()) {
@@ -287,6 +303,173 @@ function handleEbayJob(job: InFlightSnapshot): void {
 	} else if (isPostPurchasePage()) {
 		void handlePostPurchase(job);
 	}
+}
+
+/* ------------------------------- bid flow ------------------------------- */
+
+/**
+ * Auction proxy-bid handler. Stays observational: shows a banner with
+ * the user's max-bid cap, then watches the page (and any modal eBay
+ * opens) for a confirmation indicator. The user clicks Place Bid
+ * themselves — eBay UA Feb-2026 prohibits automated bidding, and the
+ * api-side `humanReviewedAt` gate is the agent-facing half of that
+ * commitment.
+ *
+ * Reports `placing` once the bid panel is open, then `completed` (with
+ * captured proxyBidId / currentPrice / maxAmount when readable from the
+ * confirmation panel) or `failed` (timeout / outbid signal).
+ */
+function handleBidItemPage(job: InFlightSnapshot): void {
+	const meta = (job.metadata ?? {}) as Record<string, unknown>;
+	const maxAmountCents = typeof meta.maxAmountCents === "number" ? meta.maxAmountCents : (job.maxPriceCents ?? null);
+	const currency = typeof meta.currency === "string" ? meta.currency : "USD";
+	showBanner({
+		tone: "info",
+		title: "flipagent · ready to record your bid",
+		body: `${maxAmountCents != null ? `Max bid ${formatCents(maxAmountCents)}. ` : ""}Click "Place bid", enter your max, and confirm. We'll capture the result automatically.`,
+	});
+	void report({ jobId: job.id, outcome: "placing" as BridgeJobStatus });
+	watchForBidOutcome(job, { maxAmountCents, currency });
+}
+
+interface BidOutcomeContext {
+	maxAmountCents: number | null;
+	currency: string;
+}
+
+/**
+ * Watch the page (item view + any bid modal eBay opens) for a
+ * terminal indicator: a confirmation panel ("You're the high bidder",
+ * "Bid placed"), an outbid message ("You've been outbid"), or a price
+ * tick that crosses the user's max. Stops on first match or after the
+ * 25 s wait window the api uses.
+ *
+ * MutationObserver is preferred over polling — the panel can render
+ * inside an aria-live region or a modal that pops in milliseconds
+ * after the click. We poll every 1s as a backstop in case the
+ * observer is on the wrong subtree (eBay rotates layouts).
+ */
+function watchForBidOutcome(job: InFlightSnapshot, ctx: BidOutcomeContext): void {
+	const deadline = Date.now() + 24_000; // slightly under the api's 25s wait
+	let done = false;
+	const finish = (body: ReportBody): void => {
+		if (done) return;
+		done = true;
+		observer.disconnect();
+		clearInterval(poll);
+		void report(body);
+	};
+
+	const tryRead = (): boolean => {
+		const indicator = readBidIndicator();
+		if (!indicator) return false;
+		if (indicator.kind === "won") {
+			showBanner({
+				tone: "success",
+				title: "flipagent · bid captured",
+				body: indicator.proxyBidId
+					? `Proxy bid ${indicator.proxyBidId}. You're the high bidder.`
+					: "You're the high bidder.",
+			});
+			finish({
+				jobId: job.id,
+				outcome: "completed" as BridgeJobStatus,
+				result: {
+					proxyBidId: indicator.proxyBidId,
+					currentPriceCents: indicator.currentPriceCents,
+					maxAmountCents: indicator.maxAmountCents ?? ctx.maxAmountCents,
+					currency: ctx.currency,
+					auctionStatus: "LIVE",
+					highBidder: true,
+				},
+			});
+			return true;
+		}
+		if (indicator.kind === "outbid") {
+			showBanner({
+				tone: "info",
+				title: "flipagent · outbid",
+				body: "Your max wasn't enough. Bid recorded but not winning.",
+			});
+			finish({
+				jobId: job.id,
+				outcome: "completed" as BridgeJobStatus,
+				result: {
+					proxyBidId: indicator.proxyBidId,
+					currentPriceCents: indicator.currentPriceCents,
+					maxAmountCents: indicator.maxAmountCents ?? ctx.maxAmountCents,
+					currency: ctx.currency,
+					auctionStatus: "LIVE",
+					highBidder: false,
+				},
+			});
+			return true;
+		}
+		return false;
+	};
+
+	const observer = new MutationObserver(() => {
+		if (Date.now() > deadline) {
+			finish({
+				jobId: job.id,
+				outcome: "failed" as BridgeJobStatus,
+				failureReason: "bid_observer_timeout",
+			});
+			return;
+		}
+		tryRead();
+	});
+	observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+	const poll = window.setInterval(() => {
+		if (Date.now() > deadline) {
+			finish({
+				jobId: job.id,
+				outcome: "failed" as BridgeJobStatus,
+				failureReason: "bid_observer_timeout",
+			});
+			return;
+		}
+		tryRead();
+	}, 1000);
+
+	// First read in case the user already placed the bid before the page
+	// settled (e.g. they refreshed an /itm/ where they're already winning).
+	tryRead();
+}
+
+interface BidIndicator {
+	kind: "won" | "outbid";
+	proxyBidId?: string;
+	currentPriceCents?: number;
+	maxAmountCents?: number;
+}
+
+/**
+ * Inspect the DOM for a bid-result signal. eBay's confirmation panel
+ * varies — sometimes a banner inline on the item page, sometimes a
+ * modal, sometimes a route to /bid/confirm. We sniff for the textual
+ * signal first (most robust across layout rotations) and pull
+ * proxyBidId from any modal markup that exposes it.
+ */
+function readBidIndicator(): BidIndicator | null {
+	const text = (document.body.innerText ?? "").toLowerCase();
+	const winning =
+		/you'?re the high bidder/.test(text) ||
+		/you are the high bidder/.test(text) ||
+		/your bid was placed/.test(text) ||
+		/bid placed successfully/.test(text);
+	const outbid = /you'?ve been outbid/.test(text) || /you have been outbid/.test(text);
+	if (!winning && !outbid) return null;
+	const out: BidIndicator = { kind: winning ? "won" : "outbid" };
+	const proxyEl = document.querySelector<HTMLElement>(
+		'[data-proxy-bid-id], [data-testid="proxy-bid-id"], [data-bid-id]',
+	);
+	const proxyBidId = proxyEl?.getAttribute("data-proxy-bid-id") ?? proxyEl?.getAttribute("data-bid-id") ?? undefined;
+	if (proxyBidId) out.proxyBidId = proxyBidId;
+	const currentPriceCents = readPriceCents();
+	if (currentPriceCents != null) out.currentPriceCents = currentPriceCents;
+	return out;
 }
 
 /**

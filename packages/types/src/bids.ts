@@ -38,6 +38,23 @@ export const BidCreate = Type.Object(
 		listingId: Type.String(),
 		amount: Money,
 		maxBid: Type.Optional(Money),
+
+		/** Force a specific transport. Auto-picks when omitted. */
+		transport: Type.Optional(Type.Union([Type.Literal("rest"), Type.Literal("bridge")])),
+
+		/**
+		 * Per-bid human-review attestation. eBay's User Agreement
+		 * (effective Feb 20, 2026) prohibits unattended LLM-driven
+		 * bidding. flipagent's bridge transport requires this field
+		 * on every `/v1/bids` POST; REST transport requires it
+		 * unless the developer account holds Buy Offer (Bidding) API
+		 * approval (`EBAY_BIDDING_APPROVED=1`). Pass an ISO-8601
+		 * timestamp not older than 5 minutes — the attestation means
+		 * a human in your interface confirmed THIS specific bid
+		 * within the last few minutes. Shape + freshness validated
+		 * by the orchestrator (uniform 412 on stale / malformed).
+		 */
+		humanReviewedAt: Type.Optional(Type.String({ description: "ISO-8601 timestamp" })),
 	},
 	{ $id: "BidCreate" },
 );

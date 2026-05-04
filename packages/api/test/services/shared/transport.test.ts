@@ -191,7 +191,17 @@ describe("selectTransport", () => {
 			// where bridge is an alternative to scrape/rest.
 			// orders.checkout — eBay Buy Order: rest gated by Limited
 			// Release env, bridge always available; both first-class.
-			expect(dual.sort()).toEqual(["listings.detail", "listings.search", "listings.sold", "orders.checkout"]);
+			// bids.{place,status} — Buy Offer mirrors orders.checkout:
+			// rest gated by EBAY_BIDDING_APPROVED, bridge always available
+			// when the extension is paired.
+			expect(dual.sort()).toEqual([
+				"bids.place",
+				"bids.status",
+				"listings.detail",
+				"listings.search",
+				"listings.sold",
+				"orders.checkout",
+			]);
 		});
 	});
 });

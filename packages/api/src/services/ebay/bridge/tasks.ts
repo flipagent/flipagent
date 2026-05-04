@@ -16,6 +16,7 @@
 export const BRIDGE_TASKS = {
 	// eBay buy-side
 	EBAY_BUY_ITEM: "ebay_buy_item",
+	EBAY_PLACE_BID: "ebay_place_bid",
 	EBAY_QUERY: "ebay_query",
 	// eBay logged-in inboxes (bridge-only, no API equivalent)
 	EBAY_INBOX_WATCHING: "ebay_inbox_watching",
