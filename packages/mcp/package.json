@@ -8,6 +8,28 @@
 	"bin": {
 		"flipagent-mcp": "./dist/index.js"
 	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./http": {
+			"types": "./dist/http.d.ts",
+			"default": "./dist/http.js"
+		},
+		"./server-factory": {
+			"types": "./dist/server-factory.d.ts",
+			"default": "./dist/server-factory.js"
+		},
+		"./tools": {
+			"types": "./dist/tools/index.d.ts",
+			"default": "./dist/tools/index.js"
+		},
+		"./config": {
+			"types": "./dist/config.d.ts",
+			"default": "./dist/config.js"
+		}
+	},
 	"files": [
 		"dist",
 		"README.md"

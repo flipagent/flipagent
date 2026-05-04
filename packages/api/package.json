@@ -38,6 +38,7 @@
 		"@azure/storage-blob": "^12.31.0",
 		"@flipagent/ebay-scraper": "*",
 		"@flipagent/types": "*",
+		"flipagent-mcp": "*",
 		"@google/genai": "^1.50.1",
 		"@hono/node-server": "^1.13.0",
 		"@hono/typebox-validator": "^0.3.0",
