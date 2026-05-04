@@ -1,0 +1,107 @@
+/* Auto-recharge widget. Layout primitives (`.dash-card`,
+ * `.dash-card-eyebrow`, `.dash-card-row[-text]`) come from the
+ * shared global stylesheet — this file owns only the bits unique to
+ * this widget: the threshold input row, the Radix Switch chrome, and
+ * the tooltip-trigger span around the switch.
+ */
+
+.topup-empty {
+	margin: 0;
+	font-size: 13px;
+	color: var(--text-2);
+}
+
+/* Threshold row — label on top, input + suffix + Save on one line.
+ * Sits inside the same card as the heading row above; vertical
+ * spacing matches `.dash-card-divider` (~18px). */
+.topup-field {
+	margin-top: 18px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.topup-field-label {
+	font-size: 12px;
+	color: var(--text-2);
+}
+.topup-field-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.topup-field-row input {
+	width: 120px;
+	padding: 8px 10px;
+	font-size: 13px;
+	font-family: inherit;
+	color: var(--text);
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 4px;
+}
+.topup-field-row input:focus-visible {
+	outline: 2px solid var(--brand);
+	outline-offset: 1px;
+}
+.topup-field-row input:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+.topup-field-suffix {
+	font-size: 13px;
+	color: var(--text-2);
+}
+
+.topup-last {
+	margin: 14px 0 0;
+	font-size: 12px;
+	color: var(--text-2);
+	font-family: var(--mono);
+}
+
+/* Span wrapper around the switch — hosts the Radix Tooltip trigger
+ * because Tooltip can't surface pointer events on a disabled <button>.
+ * Inline-flex so the inner switch keeps its 36×20 box. */
+.topup-switch-wrap {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+/* Radix Switch. Brand orange when checked, neutral otherwise. */
+.topup-switch {
+	all: unset;
+	position: relative;
+	display: inline-block;
+	width: 36px;
+	height: 20px;
+	background: var(--border-faint);
+	border-radius: 999px;
+	cursor: pointer;
+	transition: background 120ms ease;
+	flex-shrink: 0;
+}
+.topup-switch[data-state="checked"] {
+	background: var(--brand);
+}
+.topup-switch[data-disabled] {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+.topup-switch:focus-visible {
+	box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--brand);
+}
+.topup-switch-thumb {
+	display: block;
+	width: 16px;
+	height: 16px;
+	background: #ffffff;
+	border-radius: 50%;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+	transform: translateX(2px);
+	transition: transform 120ms ease;
+	will-change: transform;
+}
+.topup-switch[data-state="checked"] .topup-switch-thumb {
+	transform: translateX(18px);
+}

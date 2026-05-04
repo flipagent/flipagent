@@ -1,0 +1,43 @@
+---
+/**
+ * /embed/search-results — inline UI surface for the
+ * `flipagent_search_items` MCP tool. Mounted inside an iframe by the
+ * chat host (or any MCP Apps-compatible client). Bare layout: no
+ * dashboard chrome, just our design tokens, fonts, and the React island.
+ *
+ * Data flows in via postMessage `embed-init`; user actions flow out as
+ * `embed-tool` / `embed-link`. See `EmbedSearchResults.tsx` for the
+ * exact message protocol.
+ */
+import "../../styles/global.css";
+import { EmbedSearchResults } from "../../components/embed/EmbedSearchResults";
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>flipagent · search results</title>
+		<style>
+			:root {
+				color-scheme: light;
+			}
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+				background: transparent;
+			}
+			body {
+				font-family: "Geist", system-ui, sans-serif;
+				color: var(--text);
+				font-size: 13px;
+				line-height: 1.45;
+			}
+		</style>
+	</head>
+	<body>
+		<EmbedSearchResults client:load />
+	</body>
+</html>

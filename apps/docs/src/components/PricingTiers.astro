@@ -27,7 +27,17 @@ const tiers: Tier[] = [
 		price: "$19",
 		per: "/mo",
 		cta: { label: "Start free", href: "/signup/" },
-		features: ["3,000 searches", "60 evaluations", "30 calls/min", "Email support"],
+		// Top-up rate per 1k so the per-credit price is concrete +
+		// trivially scalable in your head ("25k extras? 25 × $3 = $75").
+		// Sits in the feature checklist because it's a *capability*
+		// the tier unlocks, not part of the base allotment.
+		features: [
+			"3,000 searches",
+			"60 evaluations",
+			"30 calls/min",
+			"$3 / 1k extra credits",
+			"Email support",
+		],
 	},
 	{
 		name: "Standard",
@@ -37,7 +47,13 @@ const tiers: Tier[] = [
 		per: "/mo",
 		badge: "Most popular",
 		cta: { label: "Start free", href: "/signup/", heat: true },
-		features: ["100,000 searches", "2,000 evaluations", "120 calls/min", "Priority support"],
+		features: [
+			"100,000 searches",
+			"2,000 evaluations",
+			"120 calls/min",
+			"$2 / 1k extra credits",
+			"Priority support",
+		],
 	},
 	{
 		name: "Growth",
@@ -46,7 +62,12 @@ const tiers: Tier[] = [
 		price: "$399",
 		per: "/mo",
 		cta: { label: "Start free", href: "/signup/" },
-		features: ["500,000 searches", "10,000 evaluations", "600 calls/min"],
+		features: [
+			"500,000 searches",
+			"10,000 evaluations",
+			"600 calls/min",
+			"$1.50 / 1k extra credits",
+		],
 	},
 ];
 ---

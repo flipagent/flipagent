@@ -21,15 +21,17 @@ import { EvaluateResult } from "./EvaluateResult";
 import {
 	cancelComputeJob,
 	EVALUATE_STEPS,
+	type EvaluateOutcome,
+	type EvaluateVariation,
 	fetchJobStatus,
 	friendlyErrorMessage,
 	initialSteps,
 	parseItemId,
+	readVariationDetails,
 	reopenEvaluate,
 	runEvaluate,
 	runEvaluateMock,
 	toBannerError,
-	type EvaluateOutcome,
 } from "./pipelines";
 import { useResumeSweep } from "./useResumeSweep";
 import { QuickStarts, type QuickStart } from "./QuickStarts";
@@ -103,6 +105,72 @@ function shortenTitle(title: string): string {
 	return `${trimmed.slice(0, 45).trimEnd()}…`;
 }
 
+/**
+ * Build the eBay listing URL for one variation. Same form the user
+ * already understands (whatever they pasted to trigger the error),
+ * just with `?var=<variationId>` pinned. Sending them back through
+ * the URL field — instead of jumping straight to a re-run — keeps
+ * what's in the input box honest about what we're evaluating.
+ */
+function variationUrl(legacyId: string, variationId: string): string {
+	return `https://www.ebay.com/itm/${legacyId}?var=${variationId}`;
+}
+
+function formatVariationPrice(v: EvaluateVariation): string | null {
+	if (v.priceCents == null) return null;
+	const dollars = v.priceCents / 100;
+	if (v.currency === "USD") return `$${dollars.toFixed(2)}`;
+	return `${dollars.toFixed(2)} ${v.currency}`;
+}
+
+/**
+ * Compact label for a variation: comma-joined `Aspect: value` pairs,
+ * size first when present (it's almost always the discriminator users
+ * care about). Falls back to the bare variationId when the SKU has no
+ * aspects parsed — happens occasionally on scrape when the MSKU model
+ * is missing axis labels.
+ */
+function variationLabel(v: EvaluateVariation): string {
+	if (v.aspects.length === 0) return `Variation ${v.variationId}`;
+	const sorted = [...v.aspects].sort((a, b) => {
+		if (a.name === "Size") return -1;
+		if (b.name === "Size") return 1;
+		return 0;
+	});
+	return sorted.map((a) => `${a.name}: ${a.value}`).join(", ");
+}
+
+function VariationPicker({
+	legacyId,
+	variations,
+	onPick,
+}: {
+	legacyId: string;
+	variations: ReadonlyArray<EvaluateVariation>;
+	onPick: (url: string) => void;
+}) {
+	return (
+		<div className="pg-variations">
+			<div className="pg-variations-row">
+				{variations.map((v) => {
+					const price = formatVariationPrice(v);
+					return (
+						<button
+							key={v.variationId}
+							type="button"
+							className="pg-variation"
+							onClick={() => onPick(variationUrl(legacyId, v.variationId))}
+						>
+							<span className="pg-variation-aspects">{variationLabel(v)}</span>
+							{price && <span className="pg-variation-price">{price}</span>}
+						</button>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
 // Min profit / Sell within / Shipping option arrays + the More-panel
 // component live in ./EvaluateSettings — Evaluate-only scoring inputs.
 
@@ -138,7 +206,15 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 	// in pieces (item hero first, then market summary, then evaluation)
 	// instead of staying blank until the whole pipeline finishes.
 	const [outcome, setOutcome] = useState<Partial<EvaluateOutcome>>({});
-	const [err, setErr] = useState<{ message: string; upgradeUrl?: string } | null>(null);
+	const [err, setErr] = useState<{
+		message: string;
+		upgradeUrl?: string;
+		// `variation_required` errors carry the enumerated SKUs so we can
+		// render a picker in place of (well, below) the banner. Clicking
+		// a chip rewrites the input to a variation-pinned URL and re-runs.
+		variations?: ReadonlyArray<EvaluateVariation>;
+		legacyId?: string;
+	} | null>(null);
 	const [hasRun, setHasRun] = useState(false);
 	// Server-curated showcase. Empty until the fetch resolves; we render
 	// the hardcoded fallback in the meantime so the "Try one" row is
@@ -308,7 +384,12 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 				// top-level error in sync; otherwise "Search market"
 				// stays spinning while only "Evaluate" shows red.
 				const friendly = friendlyErrorMessage(result.message, result.code);
-				setErr({ message: friendly });
+				const variationDetails =
+					result.code === "variation_required" ? readVariationDetails(result.details) : null;
+				setErr({
+					message: friendly,
+					...(variationDetails ? { variations: variationDetails.variations, legacyId: variationDetails.legacyId } : {}),
+				});
 				setSteps((prev) =>
 					prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: friendly } : s)),
 				);
@@ -436,7 +517,12 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 			if (result.kind === "success") setOutcome(result.value);
 			else if (result.kind === "failed") {
 				const friendly = friendlyErrorMessage(result.message, result.code);
-				setErr({ message: friendly });
+				const variationDetails =
+					result.code === "variation_required" ? readVariationDetails(result.details) : null;
+				setErr({
+					message: friendly,
+					...(variationDetails ? { variations: variationDetails.variations, legacyId: variationDetails.legacyId } : {}),
+				});
 				setSteps((prev) =>
 					prev.map((s) => (s.status === "running" ? { ...s, status: "error", error: friendly } : s)),
 				);
@@ -557,20 +643,32 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 				{(hasRun || err) && (
 					<ComposeOutput>
 						{err && (
-							<p className="text-[13px] text-[#c0392b] mb-3">
-								{err.message}
-								{err.upgradeUrl && (
-									<>
-										{" "}
-										<a
-											href={err.upgradeUrl}
-											className="underline underline-offset-2 font-medium hover:opacity-80"
-										>
-											Upgrade →
-										</a>
-									</>
+							<>
+								<p className="text-[13px] text-[#c0392b] mb-3">
+									{err.message}
+									{err.upgradeUrl && (
+										<>
+											{" "}
+											<a
+												href={err.upgradeUrl}
+												className="underline underline-offset-2 font-medium hover:opacity-80"
+											>
+												Upgrade →
+											</a>
+										</>
+									)}
+								</p>
+								{err.variations && err.legacyId && (
+									<VariationPicker
+										legacyId={err.legacyId}
+										variations={err.variations}
+										onPick={(url) => {
+											setInput(url);
+											void run(url);
+										}}
+									/>
 								)}
-							</p>
+							</>
 						)}
 						{hasRun && !err && (
 							<EvaluateResult

@@ -95,7 +95,7 @@ const STEPS: Step[] = [
 				<>{"  "}-H {STR('"X-API-Key: fa_…"')}</>,
 			],
 			cli: [
-				<>{FN("flipagent_search")}({"{"} q: {STR('"canon ef 50mm 1.8"')}, marketplace: {STR('"ebay_us"')} {"}"})</>,
+				<>{FN("flipagent_search_items")}({"{"} q: {STR('"canon ef 50mm 1.8"')}, marketplace: {STR('"ebay_us"')} {"}"})</>,
 			],
 		},
 		plain: {
@@ -103,7 +103,7 @@ const STEPS: Step[] = [
 				'import requests\n\nr = requests.get(\n  "https://api.flipagent.dev/v1/items/search",\n  params={"q": "canon ef 50mm 1.8", "marketplace": "ebay_us", "limit": 25},\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'import { createFlipagentClient } from "@flipagent/sdk";\n\nconst client = createFlipagentClient({ apiKey: "fa_…" });\nconst { listings } = await client.items.search({\n  q: "canon ef 50mm 1.8", marketplace: "ebay_us", limit: 25,\n});',
 			curl: 'curl "https://api.flipagent.dev/v1/items/search?q=canon+ef+50mm+1.8&marketplace=ebay_us&limit=25" \\\n  -H "X-API-Key: fa_…"',
-			cli: 'flipagent_search({ q: "canon ef 50mm 1.8", marketplace: "ebay_us" })',
+			cli: 'flipagent_search_items({ q: "canon ef 50mm 1.8", marketplace: "ebay_us" })',
 		},
 		result: [
 			<>{"{"}</>,
@@ -144,7 +144,7 @@ const STEPS: Step[] = [
 				<>{"  "}-d {STR(`'{"itemId": "v1|123456789|0"}'`)}</>,
 			],
 			cli: [
-				<>{FN("flipagent_evaluate")}({"{"} itemId {"}"})</>,
+				<>{FN("flipagent_evaluate_item")}({"{"} itemId {"}"})</>,
 			],
 		},
 		plain: {
@@ -152,7 +152,7 @@ const STEPS: Step[] = [
 				'r = requests.post(\n  "https://api.flipagent.dev/v1/evaluate",\n  json={"itemId": itemId},\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const evaluation = await client.evaluate.listing({\n  itemId,\n  opts: { forwarder: { destState: "NY", weightG: 500 } },\n});',
 			curl: 'curl -X POST https://api.flipagent.dev/v1/evaluate \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"itemId": "v1|123456789|0"}\'',
-			cli: 'flipagent_evaluate({ itemId })',
+			cli: 'flipagent_evaluate_item({ itemId })',
 		},
 		result: [
 			<>{"{"}</>,
@@ -193,7 +193,7 @@ const STEPS: Step[] = [
 				<>{"  "}-d {STR(`'{"items":[{"itemId":"v1|3852…|0"}],"shipTo":{"country":"US","postalCode":"97230"}}'`)}</>,
 			],
 			cli: [
-				<>{FN("flipagent_purchases_create")}({"{"} itemId {"}"})</>,
+				<>{FN("flipagent_create_purchase")}({"{"} itemId {"}"})</>,
 			],
 		},
 		plain: {
@@ -201,7 +201,7 @@ const STEPS: Step[] = [
 				'r = requests.post(\n  "https://api.flipagent.dev/v1/purchases",\n  json={\n    "items": [{"itemId": "v1|3852…|0", "quantity": 1}],\n    "shipTo": {"country": "US", "postalCode": "97230"},\n  },\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const purchase = await client.purchases.create({\n  items: [{ itemId: "v1|3852…|0", quantity: 1 }],\n  shipTo: { country: "US", postalCode: "97230" },\n});',
 			curl: 'curl -X POST https://api.flipagent.dev/v1/purchases \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"items":[{"itemId":"v1|3852…|0"}],"shipTo":{"country":"US","postalCode":"97230"}}\'',
-			cli: 'flipagent_purchases_create({ itemId })',
+			cli: 'flipagent_create_purchase({ itemId })',
 		},
 		result: [
 			<>{"{"}</>,
@@ -248,7 +248,7 @@ const STEPS: Step[] = [
 				<>{"  "}-d {STR(`'{"sku":"canon_…","marketplace":"ebay_us","priceCents":9999,…}'`)}</>,
 			],
 			cli: [
-				<>{FN("flipagent_listings_create")}({"{"} sku, marketplace: {STR('"ebay_us"')}, priceCents {"}"})</>,
+				<>{FN("flipagent_create_listing")}({"{"} sku, marketplace: {STR('"ebay_us"')}, priceCents {"}"})</>,
 			],
 		},
 		plain: {
@@ -256,7 +256,7 @@ const STEPS: Step[] = [
 				'r = requests.post(\n  "https://api.flipagent.dev/v1/listings/{sku}",\n  json={\n    "sku": "canon_ef_50mm_001", "marketplace": "ebay_us",\n    "title": "Canon EF 50mm f/1.8 STM Lens",\n    "priceCents": 9999, "condition": "USED_GOOD",\n    "photos": ["https://cdn.flipagent.dev/canon.jpg"],\n  },\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const { listingId, url } = await client.items.publish({\n  sku: "canon_ef_50mm_001", marketplace: "ebay_us",\n  title: "Canon EF 50mm f/1.8 STM Lens",\n  priceCents: 9999, condition: "USED_GOOD",\n  photos: ["https://cdn.flipagent.dev/canon.jpg"],\n});',
 			curl: 'curl -X POST https://api.flipagent.dev/v1/listings/{sku} \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"sku":"canon_…","marketplace":"ebay_us","priceCents":9999,…}\'',
-			cli: 'flipagent_listings_create({ sku, marketplace: "ebay_us", priceCents })',
+			cli: 'flipagent_create_listing({ sku, marketplace: "ebay_us", priceCents })',
 		},
 		result: [
 			<>{"{"}</>,
@@ -291,7 +291,7 @@ const STEPS: Step[] = [
 				<>{"  "}-H {STR('"X-API-Key: fa_…"')}</>,
 			],
 			cli: [
-				<>{FN("flipagent_sales_list")}({"{"} status: {STR('"paid"')} {"}"})</>,
+				<>{FN("flipagent_list_sales")}({"{"} status: {STR('"paid"')} {"}"})</>,
 			],
 		},
 		plain: {
@@ -299,7 +299,7 @@ const STEPS: Step[] = [
 				'r = requests.get(\n  "https://api.flipagent.dev/v1/sales",\n  params={"status": "paid", "limit": 50},\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const { sales } = await client.sales.list({\n  status: "paid", limit: 50,\n});',
 			curl: 'curl "https://api.flipagent.dev/v1/sales?status=paid&limit=50" \\\n  -H "X-API-Key: fa_…"',
-			cli: 'flipagent_sales_list({ status: "paid" })',
+			cli: 'flipagent_list_sales({ status: "paid" })',
 		},
 		result: [
 			<>{"{"}</>,
@@ -342,7 +342,7 @@ const STEPS: Step[] = [
 				<>{"  "}-d {STR(`'{"trackingNumber":"94001…","carrier":"USPS"}'`)}</>,
 			],
 			cli: [
-				<>{FN("flipagent_ship_order")}({"{"} saleId, trackingNumber, carrier: {STR('"USPS"')} {"}"})</>,
+				<>{FN("flipagent_ship_sale")}({"{"} saleId, trackingNumber, carrier: {STR('"USPS"')} {"}"})</>,
 			],
 		},
 		plain: {
@@ -350,7 +350,7 @@ const STEPS: Step[] = [
 				'r = requests.post(\n  f"https://api.flipagent.dev/v1/sales/{saleId}/ship",\n  json={"trackingNumber": "94001…", "carrier": "USPS"},\n  headers={"X-API-Key": "fa_…"},\n)',
 			node: 'const sale = await client.sales.ship(saleId, {\n  trackingNumber: "94001…",\n  carrier: "USPS",\n});',
 			curl: 'curl -X POST https://api.flipagent.dev/v1/sales/27-12345-67890/ship \\\n  -H "X-API-Key: fa_…" \\\n  -d \'{"trackingNumber":"94001…","carrier":"USPS"}\'',
-			cli: 'flipagent_ship_order({ saleId, trackingNumber, carrier: "USPS" })',
+			cli: 'flipagent_ship_sale({ orderId: saleId, trackingNumber, carrier: "USPS" })',
 		},
 		result: [
 			<>{"{"}</>,

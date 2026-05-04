@@ -478,6 +478,61 @@
 .pg-result-facts-aside--good { color: var(--success); }
 .pg-result-facts-aside--warn { color: var(--danger); }
 
+/* ---------- narrow-viewport responsive ---------- */
+
+/*
+ * The playground's evaluate result is rendered both in the dashboard
+ * (always 700+ px wide) and in narrow embeds — chrome side-panel
+ * iframe at 340–460 px today, possibly other host widgets later. The
+ * 160px label / 1fr value grid breaks under ~440px (label column eats
+ * half the row), and the histogram x-axis ticks pile on top of each
+ * other below ~400 px even with the built-in `interval` skipping.
+ *
+ * This block adapts the same component to any container ≤ 480 px wide.
+ * Dashboard usage is unaffected — it never falls under that breakpoint.
+ */
+@media (max-width: 480px) {
+	.pg-result-facts > div {
+		grid-template-columns: 1fr;
+		gap: 2px;
+		padding: 8px 0;
+	}
+	.pg-result-facts dt {
+		font-family: var(--mono);
+		font-size: 10.5px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-3);
+	}
+	.pg-result-facts dd {
+		line-height: 20px;
+	}
+
+	/* Item hero — drop the gallery thumbnail by 30% so the title
+	 * column gets more room before eliding. */
+	.pg-result-hero-thumb,
+	.pg-result-hero-thumb img {
+		width: 64px !important;
+		height: 64px !important;
+	}
+	.pg-result-hero-title {
+		font-size: 14px;
+		line-height: 1.35;
+	}
+
+	/* Histogram x-axis labels overlap below ~400 px even with
+	 * Recharts' built-in `interval` skipping. Hide the tick groups +
+	 * any `<text>` Recharts might render inside the xAxis (defensive
+	 * against minor version changes in Recharts' DOM hierarchy). The
+	 * chart legend at the top already labels Sold/Active and the
+	 * per-bar tooltip carries the price range, so the axis is
+	 * redundant at this width anyway. */
+	.pg-result-chart .recharts-xAxis,
+	.pg-result-chart .recharts-xAxis * {
+		display: none !important;
+	}
+}
+
 .pg-result-facts-warn {
 	font-size: 11.5px;
 	color: var(--brand);
@@ -717,6 +772,32 @@
 	border-radius: 3px;
 	padding: 0 5px;
 	line-height: 14px;
+}
+
+/* Authenticity Guarantee badge — visually mirrors eBay's own AG chip
+ * (scalloped blue seal + "Authenticity Guarantee" wordmark) so resellers
+ * recognise it instantly. Inline icon + text, no chip frame, sits in
+ * the meta row alongside condition / price / mode tags. Text inherits
+ * the meta row's muted colour so it doesn't outweigh the surrounding
+ * spans; the blue seal alone carries the trust signal. */
+.pg-result-matches-ag {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	color: inherit;
+	letter-spacing: -0.005em;
+}
+.pg-result-matches-ag svg {
+	flex-shrink: 0;
+	display: block;
+}
+
+/* Rejected rows: dim the AG seal alongside the thumb / title so the
+ * row reads as a coherent rejection — without this the bright blue
+ * seal kept the row visually "hot" while everything around it muted. */
+.pg-result-matches-row--reject .pg-result-matches-ag {
+	opacity: 0.55;
+	filter: grayscale(0.4);
 }
 
 /* LLM verdict text under a rejected MatchRow's meta line — explains
@@ -1966,4 +2047,61 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.pg-search-row-eval-spin { animation: none; }
+}
+
+/* ---------- variation picker (variation_required error) ---------- */
+/*
+ * Rendered in place of (well, beside) the generic error banner when the
+ * API returned `variation_required`. The user pasted a multi-SKU parent
+ * URL; we list every SKU as a button and let them re-run with one
+ * pinned. Layout matches the QuickStarts strip — a wrap of pill chips
+ * — so the picker reads as "pick one" rather than as a separate panel.
+ */
+.pg-variations {
+	margin-top: 8px;
+}
+
+.pg-variations-row {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.pg-variation {
+	font: inherit;
+	font-size: 12px;
+	padding: 6px 12px;
+	border: 1px solid var(--border);
+	background: var(--surface);
+	color: var(--text);
+	border-radius: 999px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.pg-variation:hover {
+	border-color: var(--brand);
+	color: var(--brand);
+	background: var(--brand-soft);
+}
+
+.pg-variation:focus-visible {
+	outline: none;
+	border-color: var(--brand);
+	box-shadow: 0 0 0 3px var(--brand-soft);
+}
+
+.pg-variation-aspects {
+	font-weight: 500;
+}
+
+.pg-variation-price {
+	color: var(--text-3);
+	font-variant-numeric: tabular-nums;
+}
+
+.pg-variation:hover .pg-variation-price {
+	color: var(--brand);
 }

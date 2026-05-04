@@ -28,18 +28,31 @@ export type StepUpdate = (key: string, patch: Partial<Step>) => void;
 /* ----------------------------- helpers ----------------------------- */
 
 /**
- * Normalise free-form user input ("123456789012", "v1|…|0", or any
+ * Normalise free-form user input ("123456789012", "v1|…|0", "v1|…|<v>", or any
  * `ebay.com/itm/<id>` URL variant) into the v1 itemId the API expects.
  * Returns null when nothing parses — the caller surfaces a validation
  * error before kicking off the chain.
+ *
+ * Multi-SKU URLs carry the size/colour pick as `?var=<n>` (or as the
+ * third segment of `v1|N|V`). We preserve it so the API skips its
+ * `variation_required` guard and evaluates the SKU the user actually
+ * picked instead of the parent group.
  */
 export function parseItemId(input: string): string | null {
 	const t = input.trim();
 	if (!t) return null;
-	if (/^v1\|\d+\|0$/.test(t)) return t;
+	const v1 = t.match(/^v1\|(\d+)\|(\d+)$/);
+	if (v1) return `v1|${v1[1]}|${v1[2]}`;
 	if (/^\d{9,}$/.test(t)) return `v1|${t}|0`;
 	const m = t.match(/\/itm\/(?:[^/]+\/)?(\d{9,})/) ?? t.match(/[?&]item=(\d{9,})/);
-	return m && m[1] ? `v1|${m[1]}|0` : null;
+	if (!m || !m[1]) return null;
+	const legacy = m[1];
+	// Pull `?var=<n>` off the URL form when present — same id eBay's API
+	// accepts as `legacy_variation_id` and the same id our server's
+	// `parseItemId` routes through to the variation-aware fetchers.
+	const varMatch = t.match(/[?&]var=(\d+)/);
+	const variationId = varMatch && varMatch[1] && varMatch[1] !== "0" ? varMatch[1] : "0";
+	return `v1|${legacy}|${variationId}`;
 }
 
 function asTitleQuery(detail: ItemDetail): string {
@@ -362,7 +375,59 @@ export interface RunEvaluateCallbacks {
 export type StreamOutcome<T> =
 	| { kind: "success"; value: T }
 	| { kind: "cancelled" }
-	| { kind: "failed"; message: string; code?: string };
+	| { kind: "failed"; message: string; code?: string; details?: Record<string, unknown> };
+
+/**
+ * One SKU on a multi-variation listing. The API ships these with the
+ * `variation_required` error so the playground can render a picker
+ * (size/colour + price per row) instead of dumping a generic banner.
+ * Mirrors `EbayVariation` from `@flipagent/ebay-scraper`; redeclared
+ * here because apps/docs intentionally doesn't pull that workspace.
+ */
+export interface EvaluateVariation {
+	variationId: string;
+	priceCents: number | null;
+	currency: string;
+	aspects: Array<{ name: string; value: string }>;
+}
+
+/**
+ * Pull a typed `{legacyId, variations[]}` payload off an
+ * `EvaluateError("variation_required")` envelope. Returns null when
+ * the shape doesn't match — a generic banner falls through.
+ */
+export function readVariationDetails(
+	details: Record<string, unknown> | undefined | null,
+): { legacyId: string; variations: EvaluateVariation[] } | null {
+	if (!details || typeof details !== "object") return null;
+	const legacyId = typeof details.legacyId === "string" ? details.legacyId : null;
+	const raw = Array.isArray(details.variations) ? (details.variations as unknown[]) : null;
+	if (!legacyId || !raw) return null;
+	const variations: EvaluateVariation[] = [];
+	for (const entry of raw) {
+		if (!entry || typeof entry !== "object") continue;
+		const e = entry as Record<string, unknown>;
+		if (typeof e.variationId !== "string") continue;
+		const aspects: Array<{ name: string; value: string }> = [];
+		if (Array.isArray(e.aspects)) {
+			for (const a of e.aspects) {
+				if (a && typeof a === "object" && typeof (a as { name?: unknown }).name === "string") {
+					aspects.push({
+						name: (a as { name: string }).name,
+						value: typeof (a as { value?: unknown }).value === "string" ? (a as { value: string }).value : "",
+					});
+				}
+			}
+		}
+		variations.push({
+			variationId: e.variationId,
+			priceCents: typeof e.priceCents === "number" ? e.priceCents : null,
+			currency: typeof e.currency === "string" ? e.currency : "USD",
+			aspects,
+		});
+	}
+	return variations.length > 0 ? { legacyId, variations } : null;
+}
 
 /**
  * Rewrite a server-side error code into a user-facing line for the
@@ -386,6 +451,12 @@ export function friendlyErrorMessage(message: string, code?: string, body?: Reco
 	}
 	if (code === "no_title") {
 		return "Listing has no title — can't search comparable sales.";
+	}
+	if (code === "variation_required") {
+		// The picker UI renders the variation chips below this line, so
+		// keep the message itself a one-line guide instead of dumping the
+		// server's "retry with a specific variationId" wording.
+		return "This listing has multiple sizes or colours — pick one to evaluate.";
 	}
 	if (code === "credits_exceeded") {
 		const used = typeof body?.creditsUsed === "number" ? (body.creditsUsed as number) : null;
@@ -519,9 +590,21 @@ async function consumeEvaluateStream(
 				// top-level banner + freezes any still-running step rows so
 				// we don't leave Search market spinning while only Evaluate
 				// shows an error.
-				const e = data as { error?: string; message?: string };
+				//
+				// `details` carries structured payloads on typed errors
+				// (today: `variation_required` ships `{legacyId, variations[]}`
+				// so the panel can render a picker). Forward verbatim — the
+				// UI layer reads it through `readVariationDetails`.
+				const e = data as { error?: string; message?: string; details?: unknown };
 				const message = e.message ?? e.error ?? "stream error";
-				return { kind: "failed", message, ...(e.error ? { code: e.error } : {}) };
+				const detailsObj =
+					e.details && typeof e.details === "object" ? (e.details as Record<string, unknown>) : undefined;
+				return {
+					kind: "failed",
+					message,
+					...(e.error ? { code: e.error } : {}),
+					...(detailsObj ? { details: detailsObj } : {}),
+				};
 			}
 			const evt = data as ServerStepEvent;
 			if (evt.kind === "started") {

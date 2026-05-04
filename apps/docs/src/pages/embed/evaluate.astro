@@ -1,0 +1,39 @@
+---
+/**
+ * /embed/evaluate — inline UI for `flipagent_get_evaluate_job` (when
+ * status='completed'). Mounted inside an iframe by the chat host.
+ * Bare layout: tokens + fonts only. Same protocol as
+ * /embed/search-results — see EmbedEvaluateResult.tsx.
+ */
+import "../../styles/global.css";
+import { EmbedEvaluateResult } from "../../components/embed/EmbedEvaluateResult";
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>flipagent · evaluation</title>
+		<style>
+			:root {
+				color-scheme: light;
+			}
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+				background: transparent;
+			}
+			body {
+				font-family: "Geist", system-ui, sans-serif;
+				color: var(--text);
+				font-size: 13px;
+				line-height: 1.45;
+			}
+		</style>
+	</head>
+	<body>
+		<EmbedEvaluateResult client:load />
+	</body>
+</html>

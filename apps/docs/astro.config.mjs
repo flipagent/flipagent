@@ -8,10 +8,11 @@ export default defineConfig({
   site: "https://flipagent.dev",
   output: "static",
   build: { format: "directory" },
-  server: { port: 4321 },
+  server: { port: 4321, allowedHosts: ["dev.flipagent.dev"] },
 
   vite: {
     plugins: [tailwindcss()],
+    server: { allowedHosts: ["dev.flipagent.dev"] },
   },
 
   integrations: [react()],

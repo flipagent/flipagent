@@ -1063,6 +1063,7 @@ function MatchRow({
 					{item.condition && <span>{item.condition}</span>}
 					{priceText && <span className="font-mono">${priceText}</span>}
 					{modeTag && <span className="pg-result-matches-tag">{modeTag}</span>}
+					{item.authenticityGuarantee && <AuthenticityGuaranteeBadge />}
 				</div>
 				{reason && <p className="pg-result-matches-reason">{reason}</p>}
 			</div>
@@ -1089,6 +1090,35 @@ function MatchRow({
 				</svg>
 			</a>
 		</div>
+	);
+}
+
+/**
+ * eBay Authenticity Guarantee badge — visually mirrors the chip eBay
+ * shows on AG-eligible listings (blue scalloped seal with white check
+ * + "Authenticity Guarantee" wordmark). Resellers actively look for
+ * this on comps because AG listings sell at a premium and ship with
+ * lower dispute risk; using eBay's exact visual idiom removes any
+ * "is this the same thing?" hesitation.
+ *
+ * The seal shape is a 12-petal scalloped circle (Lucide-style
+ * `BadgeCheck` outline, recolored to eBay's program blue).
+ */
+function AuthenticityGuaranteeBadge() {
+	return (
+		<span
+			className="pg-result-matches-ag"
+			title="eBay Authenticity Guarantee — third-party authenticated before delivery"
+		>
+			<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+				<path
+					d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"
+					fill="#0064d2"
+				/>
+				<path d="m9 12 2 2 4-4" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+			</svg>
+			Authenticity Guarantee
+		</span>
 	);
 }
 

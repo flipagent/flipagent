@@ -12,15 +12,24 @@
  *   billing   → upgrade buttons + Stripe portal
  */
 
-import { EBAY_CONNECT_DISCLAIMER_VERSION, PENDING_CONSENT_KEY } from "@flipagent/types";
+import {
+	type CapabilitiesResponse,
+	EBAY_CONNECT_DISCLAIMER_VERSION,
+	PENDING_CONSENT_KEY,
+	type SetupStep,
+} from "@flipagent/types";
+import * as RxDialog from "@radix-ui/react-dialog";
 import * as RxPopover from "@radix-ui/react-popover";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { CHANGELOG, type ChangelogEntry, type ChangelogTag } from "../data/changelog";
 import { apiBase, apiFetch, authClient, signOut } from "../lib/authClient";
 import type { ComposeTab } from "./compose/ComposeCard";
+import { BillingHistory } from "./dashboard/BillingHistory";
+import { BillingTopUp } from "./dashboard/BillingTopUp";
 import { EbayConnectConsentModal } from "./dashboard/EbayConnectConsentModal";
 import { TermsConsentModal } from "./dashboard/TermsConsentModal";
+import { PlaygroundAgent } from "./playground/PlaygroundAgent";
 import { PlaygroundEvaluate } from "./playground/PlaygroundEvaluate";
 import { PlaygroundSearch } from "./playground/PlaygroundSearch";
 import { PlaygroundSourcing } from "./playground/PlaygroundSourcing";
@@ -35,7 +44,9 @@ type View =
 	| "playground/search"
 	| "playground/sourcing"
 	| "playground/evaluate"
+	| "playground/agent"
 	| "keys"
+	| "devices"
 	| "settings"
 	| "usage"
 	| "activity"
@@ -56,6 +67,11 @@ type Profile = {
 		bonusCredits?: number;
 		// Null for Free (one-time grant); ISO timestamp for paid (monthly refill).
 		resetAt: string | null;
+		// Tier the api enforces against; differs from `tier` only when the
+		// user's subscription has been past_due past the grace window
+		// (downgrades the *enforcement view* to free without rewriting
+		// `tier`). Drives the "card declined — fix in Stripe" banner.
+		effectiveTier?: Tier;
 	};
 	currentTermsVersion: string;
 	termsAcceptedAt: string | null;
@@ -159,6 +175,7 @@ export default function Dashboard() {
 	const [profile, setProfile] = useState<Profile | null>(null);
 	const [keys, setKeys] = useState<KeyRow[]>([]);
 	const [ebay, setEbay] = useState<EbayStatus | null>(null);
+	const [capabilities, setCapabilities] = useState<CapabilitiesResponse | null>(null);
 	const [permissions, setPermissions] = useState<Permissions | null>(null);
 	// Cross-link from Search → Evaluate: a row click passes its itemId
 	// here, we navigate to evaluate; the panel reads it as its initial
@@ -196,6 +213,14 @@ export default function Dashboard() {
 					verifiedAt: null,
 				},
 			});
+		}
+	}
+	async function refreshCapabilities() {
+		try {
+			const c = await apiFetch<CapabilitiesResponse>("/v1/capabilities");
+			setCapabilities(c);
+		} catch {
+			/* leave stale — checklist is informational, never blocks UI */
 		}
 	}
 	async function refreshPermissions() {
@@ -250,7 +275,7 @@ export default function Dashboard() {
 						}
 					}
 				}
-				await Promise.all([refreshKeys(), refreshEbay(), refreshPermissions()]);
+				await Promise.all([refreshKeys(), refreshEbay(), refreshPermissions(), refreshCapabilities()]);
 			} catch (err) {
 				const status = (err as { status?: number }).status;
 				if (status === 401) {
@@ -269,6 +294,7 @@ export default function Dashboard() {
 		const p = new URLSearchParams(window.location.search);
 		const ebayParam = p.get("ebay");
 		const verified = p.get("verified");
+		const connectParam = p.get("connect");
 		if (ebayParam === "connected") {
 			const u = p.get("user");
 			toast.success(u ? `Connected as @${u}.` : "eBay account connected.");
@@ -280,6 +306,30 @@ export default function Dashboard() {
 			toast.success("Email verified.");
 			window.history.replaceState({}, "", window.location.pathname);
 		}
+		// Deep-link from the extension popup: navigate to settings + signal
+		// SettingsPanel to auto-open the eBay-connect consent modal on mount.
+		// (The modal state lives in SettingsPanel, so we hand off via
+		// sessionStorage rather than lifting state up.)
+		if (connectParam === "ebay") {
+			setView("settings");
+			sessionStorage.setItem("flipagent_open_ebay_connect", "1");
+			window.history.replaceState({}, "", window.location.pathname);
+		}
+	}, []);
+
+	// Cross-component nav: any descendant can dispatch `flipagent-goto`
+	// to switch the dashboard view without a full reload. Used by the
+	// agent hero's connections chip to drop the user on Settings + open
+	// the eBay-connect consent modal in one step.
+	useEffect(() => {
+		function onGoto(e: Event) {
+			const detail = (e as CustomEvent<{ to?: View; flag?: string }>).detail;
+			if (!detail) return;
+			if (detail.flag) sessionStorage.setItem(detail.flag, "1");
+			if (detail.to) setView(detail.to);
+		}
+		window.addEventListener("flipagent-goto", onGoto);
+		return () => window.removeEventListener("flipagent-goto", onGoto);
 	}, []);
 
 	if (error && !profile) {
@@ -336,20 +386,25 @@ export default function Dashboard() {
 							profile={profile}
 							keys={keys}
 							ebay={ebay}
+							capabilities={capabilities}
 							onGoto={setView}
 							refreshProfile={refreshProfile}
+							refreshCapabilities={refreshCapabilities}
 						/>
 					)}
 					{(view === "playground/search" ||
 						view === "playground/sourcing" ||
-						view === "playground/evaluate") && (
+						view === "playground/evaluate" ||
+						view === "playground/agent") && (
 						<PlaygroundShell
 							active={
 								view === "playground/search"
 									? "search"
 									: view === "playground/sourcing"
 										? "sourcing"
-										: "evaluate"
+										: view === "playground/evaluate"
+											? "evaluate"
+											: "agent"
 							}
 							onChange={(next) =>
 								setView(
@@ -357,7 +412,9 @@ export default function Dashboard() {
 										? "playground/search"
 										: next === "sourcing"
 											? "playground/sourcing"
-											: "playground/evaluate",
+											: next === "evaluate"
+												? "playground/evaluate"
+												: "playground/agent",
 								)
 							}
 							evaluateSeed={evaluateSeed}
@@ -376,17 +433,19 @@ export default function Dashboard() {
 							onError={setError}
 						/>
 					)}
+					{view === "devices" && <DevicesPanel onError={setError} />}
 					{view === "settings" && (
 						<SettingsPanel
 							profile={profile}
 							ebay={ebay}
 							keys={keys}
 							features={features}
-							permissions={permissions}
 							onError={setError}
 							refreshEbay={async () => {
 								await Promise.all([refreshEbay(), refreshPermissions()]);
 							}}
+							refreshProfile={refreshProfile}
+							onGoto={setView}
 						/>
 					)}
 					{view === "usage" && <UsagePanel profile={profile} />}
@@ -566,6 +625,13 @@ function EmailVerifyBanner({ email }: { email: string }) {
 
 /* ─────────── Sidebar ─────────── */
 
+interface SidebarAgentThread {
+	id: string;
+	title?: string;
+	pinnedAt?: string;
+	lastActiveAt: string;
+}
+
 function Sidebar({
 	view,
 	setView,
@@ -583,11 +649,136 @@ function Sidebar({
 	const q = query.trim().toLowerCase();
 	const matches = (label: string) => !q || label.toLowerCase().includes(q);
 
+	// Agent thread list — fetched once + refreshed on focus and on the
+	// custom `flipagent-sessions-changed` event the agent surface fires
+	// after creating a new thread. Sub-nav under the Agent NavItem.
+	const [agentExpanded, setAgentExpanded] = useState(view === "playground/agent");
+	const [agentThreads, setAgentThreads] = useState<SidebarAgentThread[]>([]);
+	const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+	useEffect(() => {
+		if (view === "playground/agent") setAgentExpanded(true);
+	}, [view]);
+	useEffect(() => {
+		const ac = new AbortController();
+		async function pull() {
+			try {
+				const res = await fetch(`${apiBase}/v1/agent/sessions`, {
+					credentials: "include",
+					signal: ac.signal,
+				});
+				if (!res.ok) return;
+				const body = (await res.json().catch(() => null)) as
+					| { sessions?: SidebarAgentThread[] }
+					| null;
+				setAgentThreads(body?.sessions ?? []);
+			} catch {
+				/* swallow — sidebar is best-effort */
+			}
+		}
+		pull();
+		const onFocus = () => pull();
+		const onChanged = () => pull();
+		const onActivate = (e: Event) => {
+			const detail = (e as CustomEvent<{ sessionId: string | null }>).detail;
+			setActiveThreadId(detail?.sessionId ?? null);
+		};
+		window.addEventListener("focus", onFocus);
+		window.addEventListener("flipagent-sessions-changed", onChanged);
+		window.addEventListener("flipagent-active-thread", onActivate);
+		return () => {
+			ac.abort();
+			window.removeEventListener("focus", onFocus);
+			window.removeEventListener("flipagent-sessions-changed", onChanged);
+			window.removeEventListener("flipagent-active-thread", onActivate);
+		};
+	}, []);
+
+	function jumpToThread(sessionId: string | null) {
+		setActiveThreadId(sessionId);
+		setView("playground/agent");
+		window.dispatchEvent(
+			new CustomEvent("flipagent-load-thread", { detail: { sessionId } }),
+		);
+	}
+
+	const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+	const [renameTarget, setRenameTarget] = useState<{ id: string; current: string } | null>(null);
+	const [renameValue, setRenameValue] = useState("");
+	const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+	const [dialogPending, setDialogPending] = useState(false);
+	useEffect(() => {
+		if (!openMenuId) return;
+		function close() {
+			setOpenMenuId(null);
+		}
+		window.addEventListener("click", close);
+		window.addEventListener("keydown", (e) => {
+			if (e.key === "Escape") close();
+		});
+		return () => window.removeEventListener("click", close);
+	}, [openMenuId]);
+
+	async function patchThread(id: string, body: { title?: string; pinned?: boolean }) {
+		try {
+			const res = await fetch(`${apiBase}/v1/agent/sessions/${encodeURIComponent(id)}`, {
+				method: "PATCH",
+				credentials: "include",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+			if (!res.ok) return;
+			const updated = (await res.json()) as SidebarAgentThread;
+			setAgentThreads((prev) => {
+				const next = prev.map((t) => (t.id === id ? { ...t, ...updated } : t));
+				// Re-sort: pinned (most-recent first) over the rest.
+				next.sort((a, b) => {
+					if (!!a.pinnedAt !== !!b.pinnedAt) return a.pinnedAt ? -1 : 1;
+					if (a.pinnedAt && b.pinnedAt) return b.pinnedAt.localeCompare(a.pinnedAt);
+					return b.lastActiveAt.localeCompare(a.lastActiveAt);
+				});
+				return next;
+			});
+			window.dispatchEvent(new CustomEvent("flipagent-sessions-changed"));
+		} catch {
+			/* swallow */
+		}
+	}
+
+	async function performDelete(id: string) {
+		try {
+			const res = await fetch(`${apiBase}/v1/agent/sessions/${encodeURIComponent(id)}`, {
+				method: "DELETE",
+				credentials: "include",
+			});
+			if (!res.ok && res.status !== 404) return;
+			setAgentThreads((prev) => prev.filter((t) => t.id !== id));
+			if (activeThreadId === id) {
+				setActiveThreadId(null);
+				window.dispatchEvent(
+					new CustomEvent("flipagent-load-thread", { detail: { sessionId: null } }),
+				);
+			}
+			window.dispatchEvent(new CustomEvent("flipagent-sessions-changed"));
+		} catch {
+			/* swallow */
+		}
+	}
+
+	function openRenameDialog(id: string, current: string) {
+		setRenameTarget({ id, current });
+		setRenameValue(current);
+	}
+
+	function openDeleteDialog(id: string, title: string) {
+		setDeleteTarget({ id, title });
+	}
+
 	const overviewMatch = matches("Overview");
 	const pgItems: { v: View; icon: keyof typeof ICONS; label: string; pill?: string }[] = [
 		{ v: "playground/search", icon: "search", label: "Search" },
 		{ v: "playground/sourcing", icon: "tree", label: "Sourcing" },
 		{ v: "playground/evaluate", icon: "gauge", label: "Evaluate" },
+		{ v: "playground/agent", icon: "spark", label: "Agent", pill: "preview" },
 	];
 	type SidebarGroup = { label: string; items: { v: View; icon: keyof typeof ICONS; label: string }[] };
 	const groups: SidebarGroup[] = [
@@ -595,6 +786,7 @@ function Sidebar({
 			label: "Account",
 			items: [
 				{ v: "keys", icon: "key", label: "API keys" },
+				{ v: "devices", icon: "device", label: "Devices" },
 				{ v: "activity", icon: "list", label: "Activity" },
 				{ v: "usage", icon: "bar", label: "Usage" },
 				{ v: "settings", icon: "cog", label: "Settings" },
@@ -638,9 +830,133 @@ function Sidebar({
 				{pgVisible.length > 0 && (
 					<>
 						<NavGroup label="Playground" collapsed={collapsed} />
-						{pgVisible.map((i) => (
-							<NavItem key={i.v} icon={i.icon} label={i.label} active={view === i.v} onClick={() => setView(i.v)} collapsed={collapsed} pill={i.pill} />
-						))}
+						{pgVisible.map((i) => {
+							if (i.v !== "playground/agent") {
+								return (
+									<NavItem
+										key={i.v}
+										icon={i.icon}
+										label={i.label}
+										active={view === i.v}
+										onClick={() => setView(i.v)}
+										collapsed={collapsed}
+										pill={i.pill}
+									/>
+								);
+							}
+							return (
+								<Fragment key={i.v}>
+									<NavItem
+										icon={i.icon}
+										label={i.label}
+										active={view === i.v}
+										onClick={() => setView(i.v)}
+										collapsed={collapsed}
+										pill={i.pill}
+										expandable
+										expanded={agentExpanded}
+										onToggleExpand={() => setAgentExpanded((v) => !v)}
+									/>
+									{!collapsed && agentExpanded && (
+										<div className="dash-agent-threads">
+											<button
+												type="button"
+												className="dash-agent-thread dash-agent-thread-new"
+												onClick={() => jumpToThread(null)}
+											>
+												<span className="dash-agent-thread-title">+ New thread</span>
+											</button>
+											{agentThreads.length === 0 ? (
+												<span className="dash-agent-thread-empty">No threads yet.</span>
+											) : (
+												agentThreads.slice(0, 24).map((t) => {
+													const title = t.title ?? "Untitled";
+													const isActive = activeThreadId === t.id && view === "playground/agent";
+													const isMenuOpen = openMenuId === t.id;
+													return (
+														<div key={t.id} className="dash-agent-thread-row">
+															<button
+																type="button"
+																className={`dash-agent-thread${isActive ? " active" : ""}`}
+																onClick={() => jumpToThread(t.id)}
+																title={title}
+															>
+																{t.pinnedAt && (
+																	<span className="dash-agent-thread-pin" aria-hidden="true">
+																		<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+																			<path d="M14.4 6.6l-3 3-3.3-1.1c-.4-.1-.8 0-1.1.3l-1.4 1.4c-.3.3-.3.8 0 1.1l3.4 3.4-4.6 4.6 1.4 1.4 4.6-4.6 3.4 3.4c.3.3.8.3 1.1 0l1.4-1.4c.3-.3.4-.7.3-1.1L14.6 12l3-3 1.4 1.4 1.4-1.4-7.4-7.4-1.4 1.4 1.4 1.6z" />
+																		</svg>
+																	</span>
+																)}
+																<span className="dash-agent-thread-title">{title}</span>
+															</button>
+															<button
+																type="button"
+																className={`dash-agent-thread-more${isMenuOpen ? " open" : ""}`}
+																aria-haspopup="menu"
+																aria-expanded={isMenuOpen}
+																aria-label="Thread options"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	setOpenMenuId(isMenuOpen ? null : t.id);
+																}}
+															>
+																<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+																	<circle cx="5" cy="12" r="1.6" />
+																	<circle cx="12" cy="12" r="1.6" />
+																	<circle cx="19" cy="12" r="1.6" />
+																</svg>
+															</button>
+															{isMenuOpen && (
+																<div
+																	className="dash-agent-thread-menu"
+																	role="menu"
+																	onClick={(e) => e.stopPropagation()}
+																>
+																	<button
+																		type="button"
+																		role="menuitem"
+																		className="dash-agent-thread-menu-item"
+																		onClick={() => {
+																			setOpenMenuId(null);
+																			patchThread(t.id, { pinned: !t.pinnedAt });
+																		}}
+																	>
+																		{t.pinnedAt ? "Unpin" : "Pin"}
+																	</button>
+																	<button
+																		type="button"
+																		role="menuitem"
+																		className="dash-agent-thread-menu-item"
+																		onClick={() => {
+																			setOpenMenuId(null);
+																			openRenameDialog(t.id, title);
+																		}}
+																	>
+																		Rename
+																	</button>
+																	<button
+																		type="button"
+																		role="menuitem"
+																		className="dash-agent-thread-menu-item danger"
+																		onClick={() => {
+																			setOpenMenuId(null);
+																			openDeleteDialog(t.id, title);
+																		}}
+																	>
+																		Delete
+																	</button>
+																</div>
+															)}
+														</div>
+													);
+												})
+											)}
+										</div>
+									)}
+								</Fragment>
+							);
+						})}
 					</>
 				)}
 
@@ -687,6 +1003,101 @@ function Sidebar({
 					{!collapsed && <span>Collapse</span>}
 				</button>
 			</div>
+
+			<RxDialog.Root
+				open={renameTarget != null}
+				onOpenChange={(o) => {
+					if (!o) {
+						setRenameTarget(null);
+						setRenameValue("");
+					}
+				}}
+			>
+				<RxDialog.Portal>
+					<RxDialog.Overlay className="rx-dialog-overlay" />
+					<RxDialog.Content className="rx-dialog-content">
+						<RxDialog.Title className="rx-dialog-title">Rename thread</RxDialog.Title>
+						<form
+							onSubmit={async (e) => {
+								e.preventDefault();
+								if (!renameTarget) return;
+								const trimmed = renameValue.trim();
+								if (!trimmed || trimmed === renameTarget.current) {
+									setRenameTarget(null);
+									return;
+								}
+								setDialogPending(true);
+								await patchThread(renameTarget.id, { title: trimmed });
+								setDialogPending(false);
+								setRenameTarget(null);
+								setRenameValue("");
+							}}
+						>
+							<input
+								className="rx-dialog-input"
+								autoFocus
+								value={renameValue}
+								onChange={(e) => setRenameValue(e.target.value)}
+								maxLength={200}
+								placeholder="Thread name"
+							/>
+							<div className="rx-dialog-actions">
+								<RxDialog.Close asChild>
+									<button type="button" className="rx-dialog-btn">
+										Cancel
+									</button>
+								</RxDialog.Close>
+								<button
+									type="submit"
+									className="rx-dialog-btn rx-dialog-btn-primary"
+									disabled={dialogPending || !renameValue.trim()}
+								>
+									{dialogPending ? "Saving…" : "Save"}
+								</button>
+							</div>
+						</form>
+					</RxDialog.Content>
+				</RxDialog.Portal>
+			</RxDialog.Root>
+
+			<RxDialog.Root
+				open={deleteTarget != null}
+				onOpenChange={(o) => {
+					if (!o) setDeleteTarget(null);
+				}}
+			>
+				<RxDialog.Portal>
+					<RxDialog.Overlay className="rx-dialog-overlay" />
+					<RxDialog.Content className="rx-dialog-content">
+						<RxDialog.Title className="rx-dialog-title">Delete thread?</RxDialog.Title>
+						<RxDialog.Description className="rx-dialog-desc">
+							"{deleteTarget?.title}" and its full chat history will be permanently removed.
+							This can't be undone.
+						</RxDialog.Description>
+						<div className="rx-dialog-actions">
+							<RxDialog.Close asChild>
+								<button type="button" className="rx-dialog-btn">
+									Cancel
+								</button>
+							</RxDialog.Close>
+							<button
+								type="button"
+								className="rx-dialog-btn rx-dialog-btn-danger"
+								disabled={dialogPending}
+								onClick={async () => {
+									if (!deleteTarget) return;
+									setDialogPending(true);
+									await performDelete(deleteTarget.id);
+									setDialogPending(false);
+									setDeleteTarget(null);
+								}}
+							>
+								{dialogPending ? "Deleting…" : "Delete"}
+							</button>
+						</div>
+					</RxDialog.Content>
+				</RxDialog.Portal>
+			</RxDialog.Root>
 		</aside>
 	);
 }
@@ -719,7 +1130,7 @@ function UserMenu({
 					aria-label="Account menu"
 				>
 					{profile.image ? (
-						<img src={profile.image} alt="" />
+						<img src={profile.image} alt="" referrerPolicy="no-referrer" />
 					) : (
 						<span className="dash-user-avatar">{initial}</span>
 					)}
@@ -829,6 +1240,9 @@ function NavItem({
 	onClick,
 	collapsed,
 	pill,
+	expandable,
+	expanded,
+	onToggleExpand,
 }: {
 	icon: keyof typeof ICONS;
 	label: string;
@@ -836,14 +1250,44 @@ function NavItem({
 	onClick: () => void;
 	collapsed: boolean;
 	pill?: string;
+	expandable?: boolean;
+	expanded?: boolean;
+	onToggleExpand?: () => void;
 }) {
+	const className = ["dash-nav-item", active ? "active" : "", expandable && expanded ? "dash-nav-agent-open" : ""]
+		.filter(Boolean)
+		.join(" ");
 	return (
-		<button type="button" className={`dash-nav-item ${active ? "active" : ""}`} onClick={onClick} title={collapsed ? label : undefined}>
+		<button type="button" className={className} onClick={onClick} title={collapsed ? label : undefined}>
 			<span className="dash-nav-icon" aria-hidden="true">{ICONS[icon]}</span>
 			{!collapsed && (
 				<>
 					<span className="dash-nav-label">{label}</span>
 					{pill && <span className="dash-nav-pill">{pill}</span>}
+					{expandable && (
+						<span
+							className={`dash-nav-chev${expanded ? " open" : ""}`}
+							role="button"
+							tabIndex={0}
+							aria-label={expanded ? "Collapse threads" : "Expand threads"}
+							aria-expanded={!!expanded}
+							onClick={(e) => {
+								e.stopPropagation();
+								onToggleExpand?.();
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									e.stopPropagation();
+									onToggleExpand?.();
+								}
+							}}
+						>
+							<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+								<path d="m6 9 6 6 6-6" />
+							</svg>
+						</span>
+					)}
 				</>
 			)}
 		</button>
@@ -863,7 +1307,9 @@ const ICONS = {
 	list: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 4h8M5 8h8M5 12h8" /><circle cx="2.5" cy="4" r="0.5" fill="currentColor" /><circle cx="2.5" cy="8" r="0.5" fill="currentColor" /><circle cx="2.5" cy="12" r="0.5" fill="currentColor" /></svg>,
 	link: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 9.5a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5L7.5 5" /><path d="M9.5 6.5a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5L8.5 11" /></svg>,
 	wallet: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 4H4a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 13h9z" /><path d="M2.5 5.5h11M10 9h1.5" /></svg>,
+	device: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="12" height="8.5" rx="1" /><path d="M5.5 14h5M8 11.5V14" /></svg>,
 	cog: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="2.5" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>,
+	spark: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2.5l1.4 3.6L13 7.5l-3.6 1.4L8 12.5 6.6 8.9 3 7.5l3.6-1.4z" /><path d="M13 2v2M14 3h-2" /></svg>,
 };
 
 /* ─────────── Top bar ─────────── */
@@ -910,24 +1356,22 @@ function TopBar({
 	);
 }
 
-/* ─────────── Onboarding checklist ─────────── */
+/* ─────────── Setup checklist ─────────── */
+/* Mirrors the extension popup's 4-row checklist 1:1. Same step ids,
+ * statuses, labels — sourced from `/v1/capabilities.checklist`. The
+ * dashboard surface adds richer per-row CTAs (scroll into settings,
+ * trigger consent modal in-place) but the underlying state machine is
+ * shared. Hidden once every required step is `done` (Optional rows
+ * left undone don't keep the card on screen). */
 
-const ONBOARDING_DISMISSED_KEY = "flipagent.onboardingDismissed";
+const SETUP_DISMISSED_KEY = "flipagent.setupDismissed";
 
-function useShowChecklist({
-	hasKey,
-	hasCall,
-	hasEbay,
-}: {
-	hasKey: boolean;
-	hasCall: boolean;
-	hasEbay: boolean;
-}): boolean {
+function useShowSetup(checklist: CapabilitiesResponse["checklist"] | undefined): boolean {
 	const [dismissed, setDismissed] = useState(false);
 	useEffect(() => {
 		const read = () => {
 			try {
-				setDismissed(localStorage.getItem(ONBOARDING_DISMISSED_KEY) === "1");
+				setDismissed(localStorage.getItem(SETUP_DISMISSED_KEY) === "1");
 			} catch {
 				/* no-op */
 			}
@@ -936,133 +1380,123 @@ function useShowChecklist({
 		window.addEventListener("storage", read);
 		return () => window.removeEventListener("storage", read);
 	}, []);
+	if (!checklist) return false;
 	if (dismissed) return false;
-	return !(hasKey && hasCall && hasEbay);
+	return !checklist.allRequiredDone;
 }
 
-function OnboardingChecklist({
-	hasKey,
-	hasCall,
-	hasEbay,
+function SetupCard({
+	checklist,
+	ebayUserName,
 	onGoto,
 }: {
-	hasKey: boolean;
-	hasCall: boolean;
-	hasEbay: boolean;
+	checklist: CapabilitiesResponse["checklist"];
+	ebayUserName: string | null;
 	onGoto: (v: View) => void;
 }) {
-	const requiredDone = hasKey && hasCall;
-
 	function dismiss() {
 		try {
-			localStorage.setItem(ONBOARDING_DISMISSED_KEY, "1");
+			localStorage.setItem(SETUP_DISMISSED_KEY, "1");
 		} catch {
 			/* no-op */
 		}
-		// Notify the parent's useShowChecklist hook to re-read the flag.
 		window.dispatchEvent(new Event("storage"));
 	}
 
-	type Step = {
-		done: boolean;
-		title: string;
-		text: string;
-		cta: string;
-		view: View;
-		anchor?: string;
-		optional?: boolean;
-		locked?: boolean;
-		lockedReason?: string;
-	};
-
-	const steps: Step[] = [
-		{
-			done: hasKey,
-			title: "Create your first API key",
-			text: "Bearer token scoped to your account. Plaintext is shown once.",
-			cta: "Create key",
-			view: "keys",
-		},
-		{
-			done: hasCall,
-			title: "Make your first API call",
-			text: "Copy the cURL below, paste in your terminal — or click through Sourcing to navigate eBay's tree live.",
-			cta: "Show cURL",
-			view: "overview",
-			anchor: "quickstart-curl",
-			locked: !hasKey,
-			lockedReason: "Create a key first.",
-		},
-		{
-			done: hasEbay,
-			title: "Connect your eBay account",
-			text: "One-click OAuth so flipagent can call sell-side routes (listings, sales, payouts, transactions) on your behalf.",
-			cta: "Connect",
-			view: "settings",
-			anchor: "settings-ebay",
-			optional: true,
-			locked: !hasKey,
-			lockedReason: "Create a key first.",
-		},
-	];
-
-	const doneCount = steps.filter((s) => s.done).length;
-	const firstIncomplete = steps.findIndex((s) => !s.done);
+	const doneCount = checklist.steps.filter((s) => s.status === "done").length;
+	const totalCount = checklist.steps.length;
+	const firstActiveIdx = checklist.steps.findIndex((s) => s.status === "active");
 
 	return (
 		<div className="dash-card dash-checklist">
 			<div className="dash-checklist-head">
 				<div>
-					<div className="dash-card-eyebrow">Get started</div>
+					<div className="dash-card-eyebrow">Setup</div>
 					<div className="dash-card-h2">
-						{doneCount} <span className="dash-of">/ {steps.length} steps complete</span>
+						{doneCount} <span className="dash-of">/ {totalCount} steps complete</span>
 					</div>
 				</div>
-				{requiredDone && (
+				{checklist.allRequiredDone && (
 					<button type="button" className="dash-btn dash-btn--sm" onClick={dismiss}>Hide</button>
 				)}
 			</div>
 			<ol className="dash-checklist-list">
-				{steps.map((s, i) => (
-					<li key={s.title} className={`dash-checklist-item ${s.done ? "is-done" : ""}`}>
-						<span className={`dash-checklist-check ${s.done ? "is-done" : ""}`} aria-hidden="true">
-							{s.done ? (
-								<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3.5 3.5L13 5" /></svg>
-							) : (
-								i + 1
-							)}
-						</span>
-						<div className="dash-checklist-body">
-							<div className="dash-checklist-title">
-								<span>{s.title}</span>
-								{s.optional && <span className="dash-checklist-pill">Optional</span>}
+				{checklist.steps.map((step, i) => {
+					const done = step.status === "done";
+					const locked = step.status === "locked";
+					const cta = ctaForStep(step, onGoto);
+					const titleOverride = renderTitle(step, ebayUserName);
+					return (
+						<li key={step.id} className={`dash-checklist-item ${done ? "is-done" : ""}`}>
+							<span className={`dash-checklist-check ${done ? "is-done" : ""}`} aria-hidden="true">
+								{done ? (
+									<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3.5 3.5L13 5" /></svg>
+								) : (
+									i + 1
+								)}
+							</span>
+							<div className="dash-checklist-body">
+								<div className="dash-checklist-title">
+									<span>{titleOverride}</span>
+									{!step.required && !done && <span className="dash-checklist-pill">Optional</span>}
+								</div>
+								<div className="dash-checklist-text">{step.description}</div>
 							</div>
-							<div className="dash-checklist-text">{s.text}</div>
-						</div>
-						{!s.done && (
-							<button
-								type="button"
-								className={`dash-btn ${i === firstIncomplete ? "dash-btn--brand" : ""}`}
-								onClick={() => {
-									onGoto(s.view);
-									if (s.anchor) {
-										const id = s.anchor;
-										requestAnimationFrame(() => {
-											document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
-										});
-									}
-								}}
-								disabled={s.locked}
-								title={s.locked ? s.lockedReason : undefined}
-							>
-								{s.cta}
-							</button>
-						)}
-					</li>
-				))}
+							{!done && cta && (
+								<button
+									type="button"
+									className={`dash-btn ${i === firstActiveIdx ? "dash-btn--brand" : ""}`}
+									onClick={cta.onClick}
+									disabled={locked}
+									title={locked ? "Pair the extension first." : undefined}
+								>
+									{cta.label}
+								</button>
+							)}
+						</li>
+					);
+				})}
 			</ol>
 		</div>
 	);
+}
+
+function renderTitle(step: SetupStep, ebayUserName: string | null): string {
+	if (step.id === "ebay_signin" && step.status === "done" && ebayUserName) {
+		return `Signed in to eBay · ${ebayUserName}`;
+	}
+	return step.title;
+}
+
+function ctaForStep(step: SetupStep, onGoto: (v: View) => void): { label: string; onClick: () => void } | null {
+	switch (step.id) {
+		case "pair_extension":
+			return {
+				label: "Install extension",
+				onClick: () => window.open("/docs/extension/", "_blank"),
+			};
+		case "ebay_signin":
+			return {
+				label: "Open ebay.com",
+				onClick: () => window.open("https://www.ebay.com/", "_blank", "noopener"),
+			};
+		case "seller_oauth":
+			return {
+				label: "Connect",
+				onClick: () => {
+					onGoto("settings");
+					sessionStorage.setItem("flipagent_open_ebay_connect", "1");
+					requestAnimationFrame(() => {
+						document.getElementById("settings-ebay")?.scrollIntoView({ behavior: "smooth", block: "center" });
+					});
+				},
+			};
+		case "planetexpress":
+			return {
+				label: "Open Planet Express",
+				onClick: () => window.open("https://app.planetexpress.com/", "_blank", "noopener"),
+			};
+	}
 }
 
 /* ─────────── Overview ─────────── */
@@ -1071,32 +1505,32 @@ function Overview({
 	profile,
 	keys,
 	ebay,
+	capabilities,
 	onGoto,
 	refreshProfile,
+	refreshCapabilities,
 }: {
 	profile: Profile;
 	keys: KeyRow[];
 	ebay: EbayStatus | null;
+	capabilities: CapabilitiesResponse | null;
 	onGoto: (v: View) => void;
 	refreshProfile: () => Promise<void>;
+	refreshCapabilities: () => Promise<void>;
 }) {
 	const primaryKey = keys[0];
 
-	// Re-pull profile when Overview mounts so usage reflects any playground
-	// calls made earlier this session (drives the checklist).
+	// Re-pull profile + capabilities when Overview mounts so usage and
+	// extension/oauth status reflect any changes since the last load.
 	useEffect(() => {
 		refreshProfile();
+		refreshCapabilities();
 	}, []);
 
+	const checklist = capabilities?.checklist;
+	const showSetup = useShowSetup(checklist);
 	const hasKey = keys.length > 0;
-	const hasCall = profile.usage.creditsUsed > 0;
-	const hasEbay = ebay?.oauth.connected ?? false;
-	const showChecklist = useShowChecklist({ hasKey, hasCall, hasEbay });
-	// During onboarding the checklist already nudges "Create your first key",
-	// so we hide the redundant API key card. eBay is the opposite: brand-new
-	// users are exactly the ones who need the connect button most prominent,
-	// so we keep that card visible whether they've connected yet or not.
-	const showKeyCard = !showChecklist || hasKey;
+	const showKeyCard = !showSetup || hasKey;
 
 	return (
 		<>
@@ -1105,13 +1539,8 @@ function Overview({
 				<p>Try the live API from the browser — search, evaluate, and ship — without leaving the dashboard.</p>
 			</section>
 
-			{showChecklist && (
-				<OnboardingChecklist
-					hasKey={hasKey}
-					hasCall={hasCall}
-					hasEbay={hasEbay}
-					onGoto={onGoto}
-				/>
+			{showSetup && checklist && (
+				<SetupCard checklist={checklist} ebayUserName={ebay?.bridge.ebayUserName ?? null} onGoto={onGoto} />
 			)}
 
 			<div className="dash-cards">
@@ -1300,9 +1729,15 @@ const PG_TAB_ICONS = {
 			<circle cx="12" cy="14" r="0.9" fill="currentColor" />
 		</svg>
 	),
+	agent: (
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+			<path d="M12 3l2.2 5.4L20 10.5l-5.8 2.1L12 18l-2.2-5.4L4 10.5l5.8-2.1z" />
+			<path d="M19 3v3M20.5 4.5h-3" />
+		</svg>
+	),
 };
 
-type PgTabId = "search" | "sourcing" | "evaluate";
+type PgTabId = "search" | "sourcing" | "evaluate" | "agent";
 
 const PG_TABS: ReadonlyArray<ComposeTab<PgTabId>> = [
 	{
@@ -1322,6 +1757,11 @@ const PG_TABS: ReadonlyArray<ComposeTab<PgTabId>> = [
 		label: "Evaluate",
 		icon: PG_TAB_ICONS.evaluate,
 		caption: "Pick a listing. Get its profit, sell-through, and a buy or skip call.",
+	},
+	{
+		id: "agent",
+		label: "Agent",
+		icon: PG_TAB_ICONS.agent,
 	},
 ];
 
@@ -1354,6 +1794,9 @@ function PlaygroundShell({
 			</div>
 			<div className={active === "evaluate" ? "" : "hidden"}>
 				<PlaygroundEvaluate tabsProps={tabsProps} seed={evaluateSeed} />
+			</div>
+			<div className={active === "agent" ? "" : "hidden"}>
+				<PlaygroundAgent tabsProps={tabsProps} />
 			</div>
 		</>
 	);
@@ -1518,6 +1961,101 @@ function KeysPanel({ keys, issued, setIssued, refresh, onError }: {
 					onError={onError}
 				/>
 			)}
+		</>
+	);
+}
+
+/* ─────────── Connected devices ─────────── */
+
+type DeviceRow = {
+	id: string;
+	deviceName: string | null;
+	tokenPrefix: string;
+	ebayLoggedIn: boolean;
+	ebayUserName: string | null;
+	createdAt: string;
+	lastSeenAt: string | null;
+};
+
+/**
+ * Connected devices = active bridge tokens. One row per Chrome extension
+ * instance the user OAuth'd through `/extension/connect`. Mirrors the
+ * KeysPanel structure (header + dash-card + list with revoke action) so
+ * a future redesign of one picks the other up for free.
+ */
+function DevicesPanel({ onError }: { onError: (s: string | null) => void }) {
+	const [rows, setRows] = useState<DeviceRow[]>([]);
+	const [loading, setLoading] = useState(true);
+
+	async function refresh() {
+		try {
+			const res = await apiFetch<{ devices: DeviceRow[] }>("/v1/me/devices");
+			setRows(res.devices);
+		} catch (err) {
+			onError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setLoading(false);
+		}
+	}
+
+	useEffect(() => {
+		void refresh();
+	}, []);
+
+	async function revoke(id: string) {
+		if (!confirm("Revoke this device? The Chrome extension on that machine will stop polling.")) return;
+		try {
+			await apiFetch(`/v1/me/devices/${id}`, { method: "DELETE" });
+			await refresh();
+		} catch (err) {
+			onError(err instanceof Error ? err.message : String(err));
+		}
+	}
+
+	return (
+		<>
+			<section className="dash-page-head">
+				<h1>Devices</h1>
+				<p>Browsers paired with flipagent through the Chrome extension. Revoke any device to stop it from polling.</p>
+			</section>
+			<div className="dash-card">
+				<header className="dash-keys-head">
+					<h2>Connected devices</h2>
+				</header>
+				<ul className="dash-keys">
+					{loading && <li className="dash-keys-empty">Loading…</li>}
+					{!loading && rows.length === 0 && (
+						<li className="dash-keys-empty">
+							No devices yet. Install the Chrome extension and click <strong>Sign in to flipagent</strong> in its popup.
+						</li>
+					)}
+					{rows.map((d) => {
+						const last = d.lastSeenAt ? new Date(d.lastSeenAt) : null;
+						const lastStr = last ? last.toLocaleString() : "never";
+						const ebayLine = d.ebayLoggedIn
+							? `eBay signed in${d.ebayUserName ? ` as ${d.ebayUserName}` : ""}`
+							: "eBay not signed in";
+						return (
+							<li key={d.id} className="dash-key">
+								<div className="dash-key-name">{d.deviceName ?? "(unnamed)"}</div>
+								<div className="dash-key-display">
+									<code className="dash-key-mask">{d.tokenPrefix}{"·".repeat(20)}</code>
+								</div>
+								<div className="dash-key-meta">
+									<span>Connected {new Date(d.createdAt).toLocaleDateString()}</span>
+									<span aria-hidden="true">·</span>
+									<span>Last seen {lastStr}</span>
+									<span aria-hidden="true">·</span>
+									<span>{ebayLine}</span>
+									<button type="button" className="dash-key-revoke" onClick={() => revoke(d.id)}>
+										Revoke
+									</button>
+								</div>
+							</li>
+						);
+					})}
+				</ul>
+			</div>
 		</>
 	);
 }
@@ -2016,17 +2554,19 @@ function SettingsPanel({
 	ebay,
 	keys,
 	features,
-	permissions,
 	onError,
 	refreshEbay,
+	refreshProfile,
+	onGoto,
 }: {
 	profile: Profile;
 	ebay: EbayStatus | null;
 	keys: KeyRow[];
 	features: Features;
-	permissions: Permissions | null;
 	onError: (s: string | null) => void;
 	refreshEbay: () => Promise<void>;
+	refreshProfile: () => Promise<void>;
+	onGoto: (view: View) => void;
 }) {
 	const [pwModalOpen, setPwModalOpen] = useState(false);
 	const [pendingResend, setPendingResend] = useState(false);
@@ -2034,6 +2574,20 @@ function SettingsPanel({
 	const [ebayConsentOpen, setEbayConsentOpen] = useState(false);
 	const [ebayConsentAgreed, setEbayConsentAgreed] = useState(false);
 	const [billingBusy, setBillingBusy] = useState<string | null>(null);
+
+	// Deep-link handoff from the extension popup. Dashboard sets the
+	// sessionStorage flag when the URL had `?connect=ebay`; we open the
+	// consent modal once on mount and clear the flag.
+	useEffect(() => {
+		if (sessionStorage.getItem("flipagent_open_ebay_connect")) {
+			sessionStorage.removeItem("flipagent_open_ebay_connect");
+			setEbayConsentAgreed(false);
+			setEbayConsentOpen(true);
+			requestAnimationFrame(() => {
+				document.getElementById("settings-ebay")?.scrollIntoView({ behavior: "smooth", block: "center" });
+			});
+		}
+	}, []);
 
 	async function resendVerify() {
 		setPendingResend(true);
@@ -2109,78 +2663,74 @@ function SettingsPanel({
 				<h1>Settings</h1>
 			</section>
 
-			{/* Account: identity + plan/billing + password — one card */}
+			{/* Account: identity + plan/billing + password — one card.
+				Each item inside is a `.dash-card-row` (label h3 + value
+				p + optional action) so the visual weight matches the
+				eBay and Auto-recharge cards exactly. */}
 			<div className="dash-card" id="settings-account">
 				<div className="dash-card-eyebrow">Account</div>
-				<div className="dash-card-h2">{profile.name || profile.email}</div>
 
-				<dl className="dash-meta" style={{ marginTop: 14 }}>
-					<div><span>Email</span><span>{profile.email}</span></div>
-					<div>
-						<span>Verified</span>
-						<span className="dash-verified">
-							{profile.emailVerified ? (
-								<svg
-									className="dash-verified-ok"
-									width="13"
-									height="13"
-									viewBox="0 0 16 16"
-									fill="none"
-									stroke="currentColor"
-									strokeWidth="1.5"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									aria-label="Verified"
-								>
-									<path d="M3 8.5 6.5 12 13 5" />
-								</svg>
-							) : (
-								<>
-									<svg
-										className="dash-verified-no"
-										width="13"
-										height="13"
-										viewBox="0 0 16 16"
-										fill="none"
-										stroke="currentColor"
-										strokeWidth="1.5"
-										strokeLinecap="round"
-										aria-label="Not verified"
-									>
-										<path d="M4 4l8 8M12 4 4 12" />
-									</svg>
-									<button
-										type="button"
-										className="dash-link"
-										onClick={resendVerify}
-										disabled={pendingResend}
-									>
-										{pendingResend ? "Sending…" : "Resend link"}
-									</button>
-								</>
-							)}
-						</span>
+				{profile.name && (
+					<div className="dash-card-row">
+						<div className="dash-card-row-text">
+							<h3>Name</h3>
+							<p>{profile.name}</p>
+						</div>
 					</div>
-					<div><span>Plan</span><span><span className="dash-tier-pill" data-tier={profile.tier}>{profile.tier.toUpperCase()}</span></span></div>
-				</dl>
+				)}
 
-				<div className="dash-card-divider" />
-				<div className="dash-actions">
+				<div className="dash-card-row">
+					<div className="dash-card-row-text">
+						<h3>Email</h3>
+						<p>
+							{profile.email} · {profile.emailVerified ? "Verified" : "Not verified"}
+						</p>
+					</div>
+					{!profile.emailVerified && features.betterAuth && (
+						<button type="button" className="dash-btn" onClick={resendVerify} disabled={pendingResend}>
+							{pendingResend ? "Sending…" : "Resend link"}
+						</button>
+					)}
+				</div>
+
+				<div className="dash-card-row">
+					<div className="dash-card-row-text">
+						<h3>Plan</h3>
+						<p>
+							<span className="dash-tier-pill" data-tier={profile.tier}>
+								{profile.tier.toUpperCase()}
+							</span>
+						</p>
+					</div>
 					{features.stripe && profile.tier === "free" && (
-						<>
-							<button type="button" className="dash-btn" onClick={() => upgrade("hobby")} disabled={billingBusy !== null}>
+						<div className="dash-actions">
+							<button
+								type="button"
+								className="dash-btn"
+								onClick={() => upgrade("hobby")}
+								disabled={billingBusy !== null}
+							>
 								{billingBusy === "hobby" ? "Opening…" : "Upgrade to Hobby"}
 							</button>
-							<button type="button" className="dash-btn dash-btn--brand" onClick={() => upgrade("standard")} disabled={billingBusy !== null}>
+							<button
+								type="button"
+								className="dash-btn dash-btn--brand"
+								onClick={() => upgrade("standard")}
+								disabled={billingBusy !== null}
+							>
 								{billingBusy === "standard" ? "Opening…" : "Upgrade to Standard"}
 							</button>
-						</>
+						</div>
 					)}
 					{features.stripe && (profile.tier === "hobby" || profile.tier === "standard" || profile.tier === "growth") && (
 						<button type="button" className="dash-btn" onClick={billingPortal} disabled={billingBusy !== null}>
 							{billingBusy === "portal" ? "Opening…" : "Manage billing"}
 						</button>
 					)}
+				</div>
+
+				<div className="dash-card-divider" />
+				<div className="dash-actions">
 					{features.betterAuth && (
 						<button type="button" className="dash-btn" onClick={() => setPwModalOpen(true)}>
 							Change password
@@ -2200,65 +2750,84 @@ function SettingsPanel({
 				<ChangePasswordModal onClose={() => setPwModalOpen(false)} />
 			)}
 
+			{features.stripe && (
+				<BillingTopUp
+					tier={profile.tier}
+					onError={onError}
+					// Auto-recharge fires off-session PaymentIntents from
+					// middleware; refresh the profile after a config save
+					// so any landing credit_grants rows surface in the
+					// usage gauge without a hard reload.
+					onChanged={refreshProfile}
+				/>
+			)}
+
 			{/* eBay — scope table is always visible. The disconnected state
 				doesn't mean "nothing works": browse + sold are scrape-backed and
 				active out of the box. The table communicates that directly so
 				users see the actual ground truth instead of a vague CTA. */}
-			<div className="dash-card" style={{ marginTop: 16 }} id="settings-ebay">
+			<div className="dash-card" id="settings-ebay">
 				<div className="dash-card-eyebrow">eBay account</div>
-				<div className="dash-card-h2">
-					{!features.ebayOAuth
-						? "Not configured on this host"
-						: ebay?.oauth.connected
-							? `Connected${ebay.oauth.ebayUserName ? ` as @${ebay.oauth.ebayUserName}` : ""}`
-							: "Not connected"}
+
+				{/* OAuth row — sell-side authorization. */}
+				<div className="dash-card-row">
+					<div className="dash-card-row-text">
+						<h3>
+							{!features.ebayOAuth
+								? "Not configured on this host"
+								: ebay?.oauth.connected
+									? `Connected${ebay.oauth.ebayUserName ? ` as @${ebay.oauth.ebayUserName}` : ""}`
+									: "Connect your eBay account"}
+						</h3>
+						<p>
+							{!features.ebayOAuth ? (
+								<>
+									<code>EBAY_CLIENT_ID</code> / <code>EBAY_CLIENT_SECRET</code> / <code>EBAY_RU_NAME</code>{" "}
+									unset. Sell-side endpoints return <code>503</code>. See{" "}
+									<a href="/docs/self-host/">self-host docs</a>.
+								</>
+							) : ebay?.oauth.connected && ebay.oauth.accessTokenExpiresAt ? (
+								`Token refreshes ${new Date(ebay.oauth.accessTokenExpiresAt).toLocaleString()}.`
+							) : (
+								"Authorize flipagent to manage listings, orders, and payouts on your behalf."
+							)}
+						</p>
+					</div>
+					{features.ebayOAuth && !ebay?.oauth.connected && (
+						<button
+							type="button"
+							className="dash-btn dash-btn--brand"
+							onClick={ebayConnect}
+							disabled={keys.length === 0}
+							title={keys.length === 0 ? "Create an API key first" : undefined}
+						>
+							Connect
+						</button>
+					)}
+					{features.ebayOAuth && ebay?.oauth.connected && (
+						<button
+							type="button"
+							className="dash-btn"
+							onClick={ebayDisconnect}
+							disabled={ebayBusy}
+						>
+							{ebayBusy ? "Disconnecting…" : "Disconnect"}
+						</button>
+					)}
 				</div>
 
-				{!features.ebayOAuth ? (
-					<p className="dash-muted">
-						<code>EBAY_CLIENT_ID</code> / <code>EBAY_CLIENT_SECRET</code> / <code>EBAY_RU_NAME</code> unset. Sell-side endpoints return <code>503</code>. See <a href="/docs/self-host/">self-host docs</a>.
-					</p>
-				) : (
-					<>
-						{permissions && ebay ? (
-							<CategoryList
-								permissions={permissions}
-								ebay={ebay}
-								onConnect={ebayConnect}
-								canConnect={keys.length > 0}
-							/>
-						) : (
-							!ebay?.oauth.connected && (
-								<div className="dash-actions" style={{ marginTop: 16 }}>
-									<button
-										type="button"
-										className="dash-btn dash-btn--brand"
-										onClick={ebayConnect}
-										disabled={keys.length === 0}
-										title={keys.length === 0 ? "Create an API key first" : undefined}
-									>
-										Connect eBay account
-									</button>
-								</div>
-							)
-						)}
-
-						{ebay?.oauth.connected && ebay.oauth.accessTokenExpiresAt && (
-							<dl className="dash-meta" style={{ marginTop: 14 }}>
-								<div>
-									<span>Token refreshes</span>
-									<span>
-										{new Date(ebay.oauth.accessTokenExpiresAt).toLocaleString()} ·{" "}
-										<button type="button" className="dash-link" onClick={ebayDisconnect} disabled={ebayBusy}>
-											{ebayBusy ? "Disconnecting…" : "Disconnect"}
-										</button>
-									</span>
-								</div>
-							</dl>
-						)}
-					</>
-				)}
+				{/* Browser-extension row — buy-side bridge, separate
+					concept from OAuth above. Only render when the host
+					supports OAuth (otherwise the whole eBay flow is dead
+					and the card is just an env-config hint). */}
+				{features.ebayOAuth && ebay && <BridgeRow ebay={ebay} onGoto={onGoto} />}
 			</div>
+
+			{/* Billing History — at the bottom, below the eBay card.
+				Stripe subscription invoices + auto-recharge top-up
+				receipts in one newest-first table. Self-hosts without
+				Stripe see nothing (component returns null). */}
+			<BillingHistory stripeEnabled={features.stripe} onError={onError} />
 
 			<EbayConnectConsentModal
 				open={ebayConsentOpen}
@@ -2271,148 +2840,61 @@ function SettingsPanel({
 	);
 }
 
-const STATUS_COPY: Record<ScopeStatus, { label: string; tone: "ok" | "warn" | "info" | "off"; help: string }> = {
-	ok: { label: "Active", tone: "ok", help: "Calls succeed against this user's token." },
-	scrape: {
-		label: "Active",
-		tone: "info",
-		help: "Served via the scrape transport — works without connecting your eBay account.",
-	},
-	needs_oauth: {
-		label: "Connect required",
-		tone: "warn",
-		help: "Click 'Connect eBay account' to grant this scope.",
-	},
-	approval_pending: {
-		label: "Awaiting eBay approval",
-		tone: "warn",
-		help: "Order API is in Limited Release. Apply at developer.ebay.com — flipagent flips this on once eBay grants tenant approval.",
-	},
-	unavailable: { label: "Unavailable", tone: "off", help: "This api instance has no eBay env wired." },
-};
-
-/** 5 backend states → 3 visual tones for the status pill. */
-function statusTone(s: ScopeStatus): "good" | "warn" | "off" {
-	if (s === "ok" || s === "scrape") return "good";
-	if (s === "approval_pending" || s === "needs_oauth") return "warn";
-	return "off";
-}
-
-/** Worst-blocker rollup. When several scopes share a category (e.g. Sell uses
- *  inventory+fulfillment+finance), category status reflects whichever scope is
- *  most-blocking. In practice all 3 sell scopes flip together via one OAuth, so
- *  partial-grant cases are rare — but we still pick the worst to be safe. */
-function rollupStatus(statuses: ScopeStatus[]): ScopeStatus {
-	const order: ScopeStatus[] = ["unavailable", "needs_oauth", "approval_pending", "scrape", "ok"];
-	return statuses.reduce<ScopeStatus>(
-		(worst, cur) => (order.indexOf(cur) < order.indexOf(worst) ? cur : worst),
-		"ok",
-	);
-}
 
 /**
- * Connection-focused access view — only surfaces what the user can actually
- * connect or act on. Two rows:
+ * Browser-extension status row inside the eBay account card. Distinct
+ * from OAuth (the heading row above): the bridge runs in the user's
+ * own Chrome, drives buy-side flows, and has its own three-state model
+ * (not installed / paired but signed out / active).
  *
- *   - Sell-side API access: one eBay OAuth lights up the listings / sales /
- *     payouts / transactions / policies routes simultaneously.
- *   - Browser extension (optional): paired Chrome extension + browser eBay
- *     login, drives buy-side flows. Surface both sub-states (not installed /
- *     installed but signed out / active) since they have different actions.
- *
- * Search / Sold / Taxonomy are always-on (managed scraper or REST passthrough)
- * — they don't represent a connection the user can make, so we mention them
- * once in a footer line rather than as a row.
+ * Lives inline as a `.dash-card-row` so the visual pattern matches
+ * every other row in the Settings panel.
  */
-function CategoryList({
-	permissions,
-	ebay,
-	onConnect,
-	canConnect,
-}: {
-	permissions: Permissions;
-	ebay: EbayStatus;
-	onConnect: () => void;
-	canConnect: boolean;
-}) {
-	const sellStatus = rollupStatus([
-		permissions.scopes.inventory,
-		permissions.scopes.fulfillment,
-		permissions.scopes.finance,
-	]);
-	const sellTone = statusTone(sellStatus);
-	const sellLabel = sellTone === "good" ? "Active" : "Connect required";
-
-	// Bridge state determines the buy-side row. We don't show the Order API
-	// REST path as a status here — it's a host-level approval that 99% of
-	// users never get, and surfacing it as "awaiting approval" misleads
-	// people into thinking they need to wait for something.
-	const bridgeState: "active" | "needs_signin" | "not_installed" = !ebay.bridge.paired
+function BridgeRow({ ebay, onGoto }: { ebay: EbayStatus; onGoto: (view: View) => void }) {
+	const state: "active" | "needs_signin" | "not_installed" = !ebay.bridge.paired
 		? "not_installed"
 		: ebay.bridge.ebayLoggedIn
 			? "active"
 			: "needs_signin";
-	// Both "not installed" and "needs sign-in" are actionable — surface them
-	// at the same warn weight as "Connect required" on the seller row, not as
-	// a muted "off" state. The user has a clear next step in both cases.
-	const buyTone: "good" | "warn" =
-		bridgeState === "active" ? "good" : "warn";
-	const buyLabel =
-		bridgeState === "active"
-			? `Active${ebay.bridge.ebayUserName ? ` · @${ebay.bridge.ebayUserName}` : ""}${ebay.bridge.deviceName ? ` on ${ebay.bridge.deviceName}` : ""}`
-			: bridgeState === "needs_signin"
-				? `Sign in to eBay${ebay.bridge.deviceName ? ` on ${ebay.bridge.deviceName}` : ""}`
-				: "Not installed";
+
+	// Parallel phrasing across all three states — each one explains
+	// what the bridge actually does (buy items + private data fetches
+	// via the user's own Chrome) so the row reads as a benefit, not a
+	// status code. Device + user details fold in as context.
+	const device = ebay.bridge.deviceName ?? "your device";
+	const userSuffix = ebay.bridge.ebayUserName ? ` (signed in as @${ebay.bridge.ebayUserName})` : "";
+	const description =
+		state === "active"
+			? `Lets flipagent buy items and fetch private data through your Chrome on ${device}${userSuffix}.`
+			: state === "needs_signin"
+				? `Paired on ${device}. Sign in to eBay to let flipagent buy items and fetch private data through your Chrome.`
+				: "Lets flipagent buy items and fetch private data through your own Chrome session. Optional.";
 
 	return (
-		<ul className="dash-categories">
-				{/* Sell-side API */}
-				<li className="dash-cat-row" data-state={sellTone}>
-					<div className="dash-cat-body">
-						<div className="dash-cat-head">
-							<span className="dash-cat-name">Sell-side API</span>
-						</div>
-						<div className="dash-cat-endpoints">Inventory · Fulfillment · Finance</div>
-					</div>
-					<div className="dash-cat-tail">
-						<span className={`dash-status dash-status--${sellTone}`}>{sellLabel}</span>
-						{sellTone !== "good" && (
-							<button
-								type="button"
-								className="dash-btn dash-btn--sm"
-								onClick={onConnect}
-								disabled={!canConnect}
-								title={!canConnect ? "Create an API key first" : undefined}
-							>
-								Connect eBay account
-							</button>
-						)}
-					</div>
-				</li>
-
-				{/* Browser extension */}
-				<li className="dash-cat-row" data-state={buyTone}>
-					<div className="dash-cat-body">
-						<div className="dash-cat-head">
-							<span className="dash-cat-name">Browser extension</span>
-						</div>
-						<div className="dash-cat-endpoints">Buy items · private data fetch via your browser</div>
-					</div>
-					<div className="dash-cat-tail">
-						<span className={`dash-status dash-status--${buyTone}`}>{buyLabel}</span>
-						{bridgeState === "not_installed" && (
-							<a href="/docs/extension/" className="dash-btn dash-btn--sm">
-								Install extension
-							</a>
-						)}
-						{bridgeState === "needs_signin" && (
-							<a href="https://www.ebay.com/signin" target="_blank" rel="noopener noreferrer" className="dash-btn dash-btn--sm">
-								Open eBay
-							</a>
-						)}
-					</div>
-				</li>
-		</ul>
+		<>
+			<div className="dash-card-divider" />
+			<div className="dash-card-row">
+				<div className="dash-card-row-text">
+					<h3>Browser extension</h3>
+					<p>{description}</p>
+				</div>
+				{state === "not_installed" && (
+					<a href="/docs/extension/" className="dash-btn">
+						Install extension
+					</a>
+				)}
+				{state === "needs_signin" && (
+					<a href="https://www.ebay.com/signin" target="_blank" rel="noopener noreferrer" className="dash-btn">
+						Open eBay
+					</a>
+				)}
+				{state === "active" && (
+					<button type="button" className="dash-btn" onClick={() => onGoto("devices")}>
+						Manage devices
+					</button>
+				)}
+			</div>
+		</>
 	);
 }
 

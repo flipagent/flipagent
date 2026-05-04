@@ -1,0 +1,25 @@
+---
+/**
+ * /extension/connect — the page the Chrome extension opens to onboard
+ * a user. Reuses the chromeless AuthLayout (the same surface signup/
+ * reset-password live on) so the visual vocabulary stays consistent.
+ *
+ * Flow inside the React island:
+ *   1. read `ext` (extension id) + `device` (label) from the query
+ *   2. fetch /v1/me — 401 → redirect to /signup with `?return=` back
+ *      here (Auth.tsx already implements that contract)
+ *   3. signed in → render a one-button confirm
+ *   4. click → POST /v1/me/devices, then
+ *      `chrome.runtime.sendMessage(ext, { apiKey, bridgeToken, deviceName })`
+ *   5. show "Connected ✓" and auto-close the tab
+ *
+ * No new layout / CSS. The island only adds a few tokens via the
+ * existing `auth-section` rails so a future redesign of the signup
+ * surface picks the connect page up for free.
+ */
+import AuthLayout from "../../layouts/AuthLayout.astro";
+import ConnectExtension from "../../components/extension/ConnectExtension.tsx";
+---
+<AuthLayout title="Connect Chrome extension · flipagent">
+	<ConnectExtension client:load />
+</AuthLayout>

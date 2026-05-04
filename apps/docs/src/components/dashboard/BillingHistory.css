@@ -1,0 +1,74 @@
+/* Billing History — table layout matching the OpenAI Console pattern.
+ * 5 columns: Number / Date / Amount / Status / Download. Header row +
+ * data rows share the same grid template so columns stay aligned. */
+
+.billing-history-table {
+	border-top: 1px solid var(--border-faint);
+}
+
+.billing-history-head,
+.billing-history-row {
+	display: grid;
+	grid-template-columns: 1.4fr 1fr 0.9fr 0.9fr 0.9fr;
+	gap: 16px;
+	padding: 12px 4px;
+	align-items: center;
+	font-size: 13px;
+}
+
+.billing-history-head {
+	font-size: 12px;
+	color: var(--text-2);
+	font-weight: 500;
+	letter-spacing: 0.02em;
+}
+
+.billing-history-row {
+	border-top: 1px solid var(--border-faint);
+	color: var(--text);
+}
+.billing-history-row:hover {
+	background: var(--surface);
+}
+
+.billing-history-number {
+	font-family: var(--mono);
+	color: var(--text);
+}
+
+.billing-history-empty {
+	padding: 28px 4px;
+	text-align: center;
+	color: var(--text-2);
+	font-size: 13px;
+	border-top: 1px solid var(--border-faint);
+}
+
+/* Status pill — neutral grey for most, brand orange for failures. */
+.billing-history-status {
+	display: inline-block;
+	padding: 2px 8px;
+	font-size: 11.5px;
+	font-family: var(--mono);
+	text-transform: capitalize;
+	border-radius: 999px;
+	border: 1px solid var(--border-faint);
+	color: var(--text-2);
+	background: var(--surface);
+}
+.billing-history-status--paid {
+	color: #1a7f37;
+	border-color: color-mix(in srgb, #1a7f37 30%, var(--border-faint));
+	background: color-mix(in srgb, #1a7f37 8%, var(--surface));
+}
+.billing-history-status--failed,
+.billing-history-status--refunded,
+.billing-history-status--void {
+	color: var(--brand);
+	border-color: color-mix(in srgb, var(--brand) 30%, var(--border-faint));
+	background: color-mix(in srgb, var(--brand) 8%, var(--surface));
+}
+
+.billing-history-muted {
+	color: var(--text-2);
+}

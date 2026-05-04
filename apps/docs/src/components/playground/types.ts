@@ -69,6 +69,15 @@ export interface ItemSummary {
 	seller?: Seller;
 	/** Shipping cost block. First entry is the primary domestic option; cents collapsed for the all-in line. */
 	shippingOptions?: ReadonlyArray<ShippingOption>;
+	/** True when eBay's third-party Authenticity Guarantee program covers
+	 * this listing. Detail-only on Browse REST; the api's match enrich
+	 * pass splices it onto every comp row before returning the pool, so
+	 * the matches list can render an "AG" badge. */
+	authenticityGuarantee?: boolean;
+	/** Programs the listing qualifies for — `AUTHENTICITY_GUARANTEE`,
+	 * `EBAY_REFURBISHED`, `EBAY_PLUS`, etc. Same source as `authenticityGuarantee`
+	 * (matcher splice). Reserved for future per-program badges. */
+	qualifiedPrograms?: ReadonlyArray<string>;
 }
 
 export interface LocalizedAspect {

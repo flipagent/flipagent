@@ -1,0 +1,54 @@
+---
+/**
+ * `/extension/result/` — embedded inside the flipagent Chrome extension's
+ * side panel via iframe. Receives the evaluate outcome (partial or
+ * final) from the parent (sidepanel.ts) over `window.postMessage` and
+ * mounts the same `<EvaluateResult>` the dashboard's playground uses,
+ * so the on-page experience is 1:1 with the playground rendering —
+ * same Facts grid, same color tokens, same matcher View toggles.
+ *
+ * No data fetching here — the iframe is a thin renderer. The parent
+ * already has the cached / streaming outcome in `chrome.storage`; it
+ * posts updates as they arrive. This keeps cross-origin auth simple
+ * (no cookies / api-key needed inside the iframe) and avoids
+ * double-charging credits for an evaluate the extension already paid
+ * for.
+ */
+import "../../styles/global.css";
+import "../../components/ui/ui.css";
+import "../../components/playground/Playground.css";
+import ExtensionResult from "../../components/extension/ExtensionResult.tsx";
+---
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>flipagent</title>
+		<meta name="robots" content="noindex" />
+	</head>
+	<body class="ext-body">
+		<ExtensionResult client:only="react" />
+	</body>
+</html>
+
+<style is:global>
+	/* iframe host concerns only — narrow-viewport responsiveness for
+	 * `<EvaluateResult>` lives in Playground.css's `@media (max-width:
+	 * 480px)` block. */
+	body.ext-body {
+		margin: 0;
+		padding: 14px 14px 32px;
+		background: var(--surface);
+		color: var(--text);
+		font-family: var(--sans, system-ui, -apple-system, sans-serif);
+	}
+	/* `html` is the iframe's intrinsic scroll container — let the
+	 * document grow with content (trace expands when the user clicks
+	 * Show trace) and the iframe's native scrollbar takes over. We
+	 * previously locked body to `min-height: 100vh; overflow-y: auto`,
+	 * which made body its own clipped scroll context and the trace
+	 * fell off the bottom. The bottom padding above gives the last
+	 * trace row breathing room from the iframe edge. */
+	html { height: auto; overflow-x: hidden; }
+</style>

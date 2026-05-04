@@ -39,7 +39,12 @@ export default function UserMenu() {
 			)}
 			<a href="/dashboard/" className="user-menu" aria-label="Open dashboard">
 				{profile.image ? (
-					<img src={profile.image} alt="" className="user-menu-avatar" />
+					<img
+						src={profile.image}
+						alt=""
+						className="user-menu-avatar"
+						referrerPolicy="no-referrer"
+					/>
 				) : (
 					<span className="user-menu-fallback">{profile.name?.[0]?.toUpperCase() ?? "?"}</span>
 				)}

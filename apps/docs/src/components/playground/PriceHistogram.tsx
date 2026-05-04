@@ -8,6 +8,7 @@
  * tokens so it doesn't look like a default chart-library widget.
  */
 
+import { useEffect, useRef, useState } from "react";
 import {
 	Bar,
 	BarChart,
@@ -20,6 +21,21 @@ import {
 	YAxis,
 } from "recharts";
 import type { ItemSummary } from "./types";
+
+/** Width below which we switch from the playground's original "show 14
+ * bins, skip every other label" layout to "show fewer bins, every label
+ * visible". 540px is roughly where 7 visible `$103–$155` labels (each
+ * ~50px) start to overlap given the chart's plot area
+ * (container − YAxis 28 − margins 20 ≈ 60px/label budget). */
+const NARROW_THRESHOLD_PX = 540;
+
+/** Histogram bin count that lets every X-axis label render in full
+ * without overlap. fontSize-10 Geist sans `$103–$155` ≈ 50px + ~10px
+ * gap = 60px/label. Plot area = width − 48px (YAxis 28 + margins 20). */
+function pickNarrowBins(containerWidth: number, requested: number): number {
+	const fit = Math.max(3, Math.floor((containerWidth - 48) / 60));
+	return Math.min(requested, fit);
+}
 
 interface Props {
 	sold: ItemSummary[];
@@ -43,6 +59,11 @@ interface Bucket {
 	mid: number;
 	sold: number;
 	active: number;
+	/** Actual cent values of every sold listing in this bin — surfaced
+	 * in the tooltip so the user sees the individual prices, not just
+	 * a count. Sorted ascending. */
+	soldPrices: number[];
+	activePrices: number[];
 	label: string;
 }
 
@@ -69,6 +90,8 @@ function buildBuckets(soldCents: number[], activeCents: number[], candidate: num
 			mid: Math.round((loCents + hiCents) / 2),
 			sold: 0,
 			active: 0,
+			soldPrices: [],
+			activePrices: [],
 			label: `$${Math.round(loCents / 100)}–$${Math.round(hiCents / 100)}`,
 		});
 	}
@@ -76,17 +99,39 @@ function buildBuckets(soldCents: number[], activeCents: number[], candidate: num
 	function place(c: number, key: "sold" | "active") {
 		const idx = Math.min(buckets.length - 1, Math.floor((c - lo) / step));
 		const b = buckets[idx];
-		if (b) b[key]++;
+		if (!b) return;
+		b[key]++;
+		(key === "sold" ? b.soldPrices : b.activePrices).push(c);
 	}
 	for (const c of soldCents) place(c, "sold");
 	for (const c of activeCents) place(c, "active");
+	for (const b of buckets) {
+		b.soldPrices.sort((a, z) => a - z);
+		b.activePrices.sort((a, z) => a - z);
+	}
 	return buckets;
 }
 
 export function PriceHistogram({ sold, active, candidatePriceCents, bins = 14 }: Props) {
+	const wrapRef = useRef<HTMLDivElement>(null);
+	const [width, setWidth] = useState(0);
+	useEffect(() => {
+		const el = wrapRef.current;
+		if (!el) return;
+		const ro = new ResizeObserver((entries) => {
+			const w = entries[0]?.contentRect.width ?? 0;
+			if (w > 0) setWidth(w);
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, []);
+
+	const isNarrow = width > 0 && width < NARROW_THRESHOLD_PX;
+	const effectiveBins = isNarrow ? pickNarrowBins(width, bins) : bins;
+
 	const soldCents = sold.map(priceCents).filter((c): c is number => c != null);
 	const activeCents = active.map(priceCents).filter((c): c is number => c != null);
-	const buckets = buildBuckets(soldCents, activeCents, candidatePriceCents, bins);
+	const buckets = buildBuckets(soldCents, activeCents, candidatePriceCents, effectiveBins);
 	if (buckets.length === 0) return null;
 
 	const data = buckets.map((b) => ({
@@ -94,6 +139,8 @@ export function PriceHistogram({ sold, active, candidatePriceCents, bins = 14 }:
 		mid: b.mid / 100,
 		sold: b.sold,
 		active: b.active,
+		soldPrices: b.soldPrices,
+		activePrices: b.activePrices,
 	}));
 
 	const candidatePrice = candidatePriceCents != null ? candidatePriceCents / 100 : null;
@@ -106,7 +153,7 @@ export function PriceHistogram({ sold, active, candidatePriceCents, bins = 14 }:
 			: null;
 
 	return (
-		<div className="pg-result-chart">
+		<div className="pg-result-chart" ref={wrapRef}>
 			<div className="pg-result-chart-head">
 				<span className="pg-result-chart-title">Price distribution</span>
 				<span className="pg-result-chart-meta">
@@ -117,14 +164,17 @@ export function PriceHistogram({ sold, active, candidatePriceCents, bins = 14 }:
 				</span>
 			</div>
 			<ResponsiveContainer width="100%" height={210}>
-				<BarChart data={data} margin={{ top: 28, right: 16, left: 0, bottom: 4 }}>
+				<BarChart data={data} margin={{ top: 28, right: 16, left: 4, bottom: 4 }}>
 					<CartesianGrid strokeDasharray="2 4" vertical={false} stroke="var(--border-faint)" />
 					<XAxis
 						dataKey="bin"
 						tick={{ fontSize: 10, fill: "var(--text-3)" }}
 						tickLine={false}
 						axisLine={{ stroke: "var(--border-faint)" }}
-						interval={Math.max(0, Math.floor(buckets.length / 7) - 1)}
+						/* Wide layouts keep the original "14 bins + skip every
+						 * other label" density. Narrow layouts already trimmed
+						 * the bin count to fit, so every tick is shown. */
+						interval={isNarrow ? 0 : Math.max(0, Math.floor(buckets.length / 7) - 1)}
 					/>
 					<YAxis
 						allowDecimals={false}
@@ -133,18 +183,7 @@ export function PriceHistogram({ sold, active, candidatePriceCents, bins = 14 }:
 						axisLine={{ stroke: "var(--border-faint)" }}
 						width={28}
 					/>
-					<Tooltip
-						cursor={{ fill: "var(--surface-2)" }}
-						contentStyle={{
-							background: "var(--surface)",
-							border: "1px solid var(--border)",
-							borderRadius: 6,
-							fontSize: 12,
-							padding: "6px 10px",
-						}}
-						labelStyle={{ color: "var(--text-3)", fontSize: 11, marginBottom: 2 }}
-						itemStyle={{ color: "var(--text)", padding: 0 }}
-					/>
+					<Tooltip cursor={{ fill: "var(--surface-2)" }} content={<HistogramTooltip />} />
 					{candidateBinLabel != null && (
 						<ReferenceLine
 							x={candidateBinLabel}
@@ -166,6 +205,70 @@ export function PriceHistogram({ sold, active, candidatePriceCents, bins = 14 }:
 					<Bar dataKey="sold" stackId="dist" fill="var(--text-4)" radius={[2, 2, 0, 0]} name="Sold" />
 				</BarChart>
 			</ResponsiveContainer>
+		</div>
+	);
+}
+
+interface TooltipProps {
+	active?: boolean;
+	label?: string;
+	payload?: Array<{ payload?: { soldPrices?: number[]; activePrices?: number[] } }>;
+}
+
+/** Custom tooltip — replaces Recharts' default "Active: 2 / Sold: 7"
+ * count pair with the actual price values that fall in this bin, so
+ * the user reads concrete comps instead of just frequencies.
+ *
+ * Visual spacing + colors mirror the chart legend (`pg-result-chart-key`)
+ * so Active = brand-orange, Sold = muted, Your price reference matches
+ * the dashed reference line. */
+function HistogramTooltip({ active, label, payload }: TooltipProps) {
+	if (!active || !payload?.length) return null;
+	const datum = payload[0]?.payload;
+	if (!datum) return null;
+	const sold = datum.soldPrices ?? [];
+	const activeP = datum.activePrices ?? [];
+	if (sold.length === 0 && activeP.length === 0) return null;
+	return (
+		<div
+			style={{
+				background: "var(--surface)",
+				border: "1px solid var(--border)",
+				borderRadius: 6,
+				padding: "8px 10px",
+				fontSize: 12,
+				color: "var(--text)",
+				minWidth: 140,
+				maxWidth: 220,
+			}}
+		>
+			<div style={{ color: "var(--text-3)", fontSize: 11, marginBottom: 6 }}>{label}</div>
+			{activeP.length > 0 && <PriceLine label={`Active ${activeP.length}`} prices={activeP} accent="brand" />}
+			{sold.length > 0 && <PriceLine label={`Sold ${sold.length}`} prices={sold} accent="muted" />}
+		</div>
+	);
+}
+
+function PriceLine({ label, prices, accent }: { label: string; prices: number[]; accent: "brand" | "muted" }) {
+	const dot = accent === "brand" ? "var(--brand)" : "var(--text-4)";
+	return (
+		<div style={{ display: "flex", gap: 8, alignItems: "baseline", lineHeight: 1.45 }}>
+			<span
+				aria-hidden
+				style={{
+					width: 8,
+					height: 8,
+					borderRadius: 2,
+					background: dot,
+					display: "inline-block",
+					flexShrink: 0,
+					transform: "translateY(1px)",
+				}}
+			/>
+			<span style={{ color: "var(--text-3)", fontSize: 11, minWidth: 56 }}>{label}</span>
+			<span style={{ color: "var(--text)", fontFamily: "var(--mono)", fontSize: 11 }}>
+				{prices.map((c) => `$${(c / 100).toFixed(c % 100 === 0 ? 0 : 2)}`).join(", ")}
+			</span>
 		</div>
 	);
 }

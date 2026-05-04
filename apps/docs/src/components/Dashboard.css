@@ -104,6 +104,343 @@
 	color: var(--brand);
 }
 
+/* Inline chevron slot inside a NavItem (used by the Agent row to
+ * expand/collapse the thread sub-list). Clicking the chevron toggles
+ * via stopPropagation so the parent NavItem doesn't also fire its
+ * onClick navigation. */
+.dash-nav-chev {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	margin-left: auto;
+	border-radius: 3px;
+	color: var(--text-4);
+	transition: background 120ms ease, color 120ms ease;
+	cursor: pointer;
+}
+
+.dash-nav-chev:hover {
+	background: color-mix(in srgb, var(--text) 8%, transparent);
+	color: var(--text-2);
+}
+
+.dash-nav-chev svg {
+	transform: rotate(-90deg);
+	transition: transform 140ms ease;
+}
+
+.dash-nav-chev.open svg {
+	transform: rotate(0deg);
+}
+
+/* Thread sub-list under the Agent NavItem. Flush-left like every
+ * other NavItem, but the whole list shares a faint background so the
+ * group reads as "belonging to Agent" without indentation. */
+.dash-agent-threads {
+	display: flex;
+	flex-direction: column;
+	padding: 4px 0;
+	background: var(--bg-soft);
+	border-radius: 6px;
+}
+
+/* Connect the Agent row visually with the threads list when expanded
+ * (only when not active — active uses brand-soft and shouldn't be
+ * overridden). Square the bottom corners on Agent + top corners on
+ * threads so they look like one continuous panel. */
+.dash-nav-item.dash-nav-agent-open:not(.active) {
+	background: var(--bg-soft);
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.dash-nav-item.dash-nav-agent-open + .dash-agent-threads {
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+	margin-top: -1px;
+}
+
+/* Match NavItem height (7px 10px / 13px) so the whole left rail
+ * shares one vertical rhythm. The bg-soft container is the only
+ * visual cue threads belong to Agent. */
+.dash-agent-thread-row {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.dash-agent-thread {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	padding: 7px 10px;
+	background: transparent;
+	border: 0;
+	border-radius: 4px;
+	font: inherit;
+	font-size: 13px;
+	color: var(--text-3);
+	cursor: pointer;
+	text-align: left;
+	transition: background 0.12s ease, color 0.12s ease;
+}
+
+.dash-agent-thread:hover {
+	background: color-mix(in srgb, var(--text) 6%, transparent);
+	color: var(--text);
+}
+
+.dash-agent-thread.active {
+	background: var(--brand-soft);
+	color: var(--brand);
+	font-weight: 500;
+}
+
+.dash-agent-thread-title {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+	padding-right: 4px;
+}
+
+.dash-agent-thread-pin {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	color: var(--brand);
+	margin-right: 6px;
+}
+
+.dash-agent-thread-new {
+	color: var(--text-3);
+}
+
+.dash-agent-thread-new:hover {
+	color: var(--text);
+}
+
+.dash-agent-thread-empty {
+	font-size: 12px;
+	color: var(--text-4);
+	padding: 6px 10px 8px;
+}
+
+/* Hover-revealed "..." action button. Lives in the same row as the
+ * thread button, layered on top of its right edge so it doesn't push
+ * the title out of place. */
+.dash-agent-thread-more {
+	position: absolute;
+	top: 50%;
+	right: 6px;
+	transform: translateY(-50%);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	background: transparent;
+	border: 0;
+	border-radius: 4px;
+	color: var(--text-3);
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.dash-agent-thread-row:hover .dash-agent-thread-more,
+.dash-agent-thread-more:focus-visible,
+.dash-agent-thread-more.open {
+	opacity: 1;
+}
+
+.dash-agent-thread-more:hover {
+	background: color-mix(in srgb, var(--text) 10%, transparent);
+	color: var(--text);
+}
+
+.dash-agent-thread-menu {
+	position: absolute;
+	top: 28px;
+	right: 6px;
+	z-index: 30;
+	min-width: 140px;
+	padding: 4px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.dash-agent-thread-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 6px 8px;
+	background: transparent;
+	border: 0;
+	border-radius: 4px;
+	font: inherit;
+	font-size: 12.5px;
+	color: var(--text-2);
+	cursor: pointer;
+	text-align: left;
+	transition: background 0.12s ease, color 0.12s ease;
+}
+
+.dash-agent-thread-menu-item:hover {
+	background: var(--surface-2);
+	color: var(--text);
+}
+
+.dash-agent-thread-menu-item.danger {
+	color: #c0392b;
+}
+
+.dash-agent-thread-menu-item.danger:hover {
+	background: color-mix(in srgb, #c0392b 8%, transparent);
+}
+
+/* Radix Dialog primitives — used by rename + delete confirms in the
+ * sidebar. Layout pattern matches the existing dash-modal so the look
+ * is consistent across the dashboard. */
+.rx-dialog-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.32);
+	backdrop-filter: blur(2px);
+	z-index: 80;
+	animation: rx-dialog-fade 140ms ease-out;
+}
+
+.rx-dialog-content {
+	position: fixed;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: 92vw;
+	max-width: 380px;
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 10px;
+	padding: 18px 18px 14px;
+	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.04);
+	z-index: 81;
+	animation: rx-dialog-pop 140ms ease-out;
+}
+
+.rx-dialog-title {
+	margin: 0 0 6px;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.rx-dialog-desc {
+	margin: 0 0 14px;
+	font-size: 12.5px;
+	color: var(--text-2);
+	line-height: 1.5;
+}
+
+.rx-dialog-input {
+	width: 100%;
+	margin-bottom: 14px;
+	padding: 8px 10px;
+	font-size: 13px;
+	font-family: inherit;
+	color: var(--text);
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	outline: none;
+	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.rx-dialog-input:focus {
+	border-color: color-mix(in srgb, var(--brand) 50%, var(--border));
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent);
+}
+
+.rx-dialog-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+}
+
+.rx-dialog-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 30px;
+	padding: 0 12px;
+	background: transparent;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font: inherit;
+	font-size: 12.5px;
+	font-weight: 500;
+	color: var(--text-2);
+	cursor: pointer;
+	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.rx-dialog-btn:hover:not(:disabled) {
+	background: var(--surface-2);
+	color: var(--text);
+}
+
+.rx-dialog-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.rx-dialog-btn-primary {
+	background: var(--brand);
+	border-color: var(--brand);
+	color: white;
+}
+
+.rx-dialog-btn-primary:hover:not(:disabled) {
+	background: var(--brand-hover, var(--brand));
+	border-color: var(--brand-hover, var(--brand));
+	color: white;
+}
+
+.rx-dialog-btn-danger {
+	background: #c0392b;
+	border-color: #c0392b;
+	color: white;
+}
+
+.rx-dialog-btn-danger:hover:not(:disabled) {
+	background: #a32a1f;
+	border-color: #a32a1f;
+	color: white;
+}
+
+@keyframes rx-dialog-fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@keyframes rx-dialog-pop {
+	from { opacity: 0; transform: translate(-50%, -48%) scale(0.96); }
+	to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.rx-dialog-overlay,
+	.rx-dialog-content {
+		animation: none;
+	}
+}
+
 .dash-sidebar-foot {
 	border-top: 1px solid var(--border-faint);
 	margin: 8px -12px 0;
@@ -344,6 +681,11 @@
 	display: flex;
 	flex-direction: column;
 }
+/* Stacked cards inside a single panel get a uniform 16px gap so each
+ * call-site doesn't need its own `style={{ marginTop: 16 }}`. */
+.dash-card + .dash-card {
+	margin-top: 16px;
+}
 .dash-card--inline-stat {
 	flex-direction: row;
 	align-items: center;
@@ -356,6 +698,12 @@
 	letter-spacing: 0.06em;
 	color: var(--text-3);
 	text-transform: uppercase;
+	/* Bake the gap to the first row of card content into the eyebrow
+	 * itself so every card lands at the same vertical rhythm without
+	 * each call-site setting `style={{ marginTop: 14 }}` on its first
+	 * sibling. Dropping this would re-introduce the "Auto-recharge
+	 * looks tight, eBay looks airy" inconsistency we just fixed. */
+	margin-bottom: 14px;
 }
 .dash-card-h2 {
 	font-size: 18px;
@@ -371,6 +719,59 @@
 .dash-muted { font-size: 13px; color: var(--text-3); margin: 8px 0 0; }
 .dash-mono { font-family: var(--mono); font-size: 12px; }
 .dash-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Shared header row used inside `.dash-card` whenever a card pairs a
+ * compact heading + one-line description on the left with a primary
+ * action on the right (toggle / button / status pill). Lifted out of
+ * BillingTopUp so eBay-account, Auto-recharge, Profile, and any
+ * future Settings card all read at the same visual weight.
+ *
+ * Heading size is tuned a step smaller than `.dash-card-h2` (which
+ * remains the heavier "card title" at 18px); the row's h3 is the
+ * "section heading inside a card" tier — strong enough to anchor a
+ * row, light enough that two or three of them stack cleanly. */
+.dash-card-row {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 24px;
+}
+/* Two card-rows in a row stack with a fixed 18px gap. Putting the
+ * spacing on the LATER sibling means the FIRST row sits right under
+ * the eyebrow's own bottom margin (no doubled gap). */
+.dash-card-row + .dash-card-row {
+	margin-top: 18px;
+}
+/* The shared divider sits centered between rows; its own margin
+ * (`.dash-card-divider { margin: 18px 0 }`) handles the spacing on
+ * both sides, so suppress the row-after-divider gap to avoid the
+ * "extra-tall divider band" look. */
+.dash-card-divider + .dash-card-row {
+	margin-top: 0;
+}
+.dash-card-row-text {
+	flex: 1;
+	min-width: 0;
+}
+.dash-card-row-text h3 {
+	margin: 0 0 4px;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text);
+}
+.dash-card-row-text p {
+	margin: 0;
+	font-size: 13px;
+	color: var(--text-2);
+	line-height: 1.5;
+}
+.dash-card-row-text p code {
+	font-family: var(--mono);
+	font-size: 12px;
+	background: var(--surface-2);
+	padding: 0 4px;
+	border-radius: 3px;
+}
 
 /* ─── code block (Integrations + onboarding snippets) ─── */
 .dash-code {
@@ -756,13 +1157,18 @@
 .dash-bar-fill--warn { background: #d97706; }
 .dash-bar-fill--danger { background: #dc2626; }
 
+/* Two-column data list used inside `.dash-card` for identity / status
+ * rows (Email, Verified, Plan, Token refresh, …). Label and value
+ * share the same 13px size so the row reads as one line of text in
+ * two colors — matches the visual weight of `.dash-card-row-text p`
+ * so a card mixing a heading + meta rows feels uniform. */
 .dash-meta {
 	margin-top: 14px;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	font-size: 12.5px;
-	color: var(--text-2);
+	gap: 6px;
+	font-size: 13px;
+	color: var(--text);
 }
 .dash-meta > div {
 	display: flex;
@@ -771,10 +1177,8 @@
 	min-height: 26px;
 }
 .dash-meta > div > span:first-child {
-	min-width: 130px;
-	font-size: 10.5px;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	min-width: 110px;
+	font-size: 13px;
 	color: var(--text-3);
 }
 

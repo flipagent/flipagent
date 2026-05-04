@@ -1,0 +1,340 @@
+/* Shared styles for /embed/* iframe surfaces. Tokens come from
+ * global.css (imported by the layout); no hardcoded colors. */
+
+html,
+body,
+#root,
+.astro-island {
+	margin: 0;
+	padding: 0;
+	background: transparent;
+	font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.embed-card {
+	display: flex;
+	flex-direction: column;
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 12px;
+	overflow: hidden;
+	color: var(--text);
+}
+
+.embed-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--border-faint);
+	background: var(--bg-soft);
+}
+
+.embed-card-title {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+}
+
+.embed-card-kicker {
+	font-size: 10px;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--text-4);
+	font-weight: 600;
+}
+
+.embed-card-q {
+	font-size: 12.5px;
+	color: var(--text-2);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.embed-card-count {
+	font-size: 11px;
+	color: var(--text-4);
+	font-variant-numeric: tabular-nums;
+	flex-shrink: 0;
+}
+
+.embed-loading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 20px;
+	font-size: 12.5px;
+	color: var(--text-3);
+}
+
+.embed-spinner {
+	width: 12px;
+	height: 12px;
+	border: 1.5px solid var(--border);
+	border-top-color: var(--brand);
+	border-radius: 50%;
+	animation: embed-spin 0.7s linear infinite;
+}
+
+@keyframes embed-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.embed-spinner {
+		animation: none;
+	}
+}
+
+.embed-empty {
+	padding: 24px;
+	text-align: center;
+	color: var(--text-4);
+	font-size: 13px;
+}
+
+/* Skeleton primitives — used by /embed/* loading states so the
+ * placeholder mirrors the eventual content shape (search rows,
+ * evaluate stats grid, etc.). Pulse animation is the only motion;
+ * everything else is solid muted blocks. */
+.embed-skeleton .skel {
+	display: inline-block;
+	background: linear-gradient(
+		90deg,
+		color-mix(in srgb, var(--text) 6%, transparent) 0%,
+		color-mix(in srgb, var(--text) 11%, transparent) 50%,
+		color-mix(in srgb, var(--text) 6%, transparent) 100%
+	);
+	background-size: 200% 100%;
+	border-radius: 4px;
+	animation: embed-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.embed-skeleton .skel-bar {
+	height: 12px;
+	min-width: 24px;
+}
+
+.embed-skeleton .skel-thumb {
+	width: 56px;
+	height: 56px;
+	border-radius: 6px;
+}
+
+.embed-skeleton .skel-thumb-lg {
+	width: 64px;
+	height: 64px;
+}
+
+.embed-skeleton .skel-pill {
+	height: 22px;
+	border-radius: 11px;
+}
+
+.embed-skeleton .skel-pill-lg {
+	width: 60px;
+	height: 22px;
+}
+
+.embed-skeleton .embed-skeleton-reason {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+
+@keyframes embed-skeleton-pulse {
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.embed-skeleton .skel {
+		animation: none;
+	}
+}
+
+.embed-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.embed-item {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.embed-item:last-child {
+	border-bottom: none;
+}
+
+.embed-thumb-wrap {
+	flex-shrink: 0;
+	width: 56px;
+	height: 56px;
+	border-radius: 6px;
+	overflow: hidden;
+	background: var(--bg-soft);
+	display: block;
+}
+
+.embed-thumb,
+.embed-thumb-placeholder {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.embed-thumb-placeholder {
+	background: var(--surface-3);
+}
+
+.embed-item-body {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.embed-item-title {
+	font-size: 13px;
+	color: var(--text);
+	font-weight: 500;
+	line-height: 1.35;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	text-decoration: none;
+}
+
+.embed-item-title:hover {
+	color: var(--brand);
+}
+
+.embed-item-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 10px;
+	font-size: 11.5px;
+	color: var(--text-3);
+	font-variant-numeric: tabular-nums;
+}
+
+.embed-price {
+	font-weight: 600;
+	color: var(--text);
+}
+
+.embed-condition,
+.embed-ship,
+.embed-bids,
+.embed-seller {
+	color: var(--text-3);
+}
+
+.embed-action {
+	flex-shrink: 0;
+	height: 26px;
+	padding: 0 10px;
+	background: transparent;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font-size: 11.5px;
+	font-weight: 500;
+	color: var(--text-2);
+	cursor: pointer;
+	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.embed-action:hover {
+	background: var(--brand);
+	color: white;
+	border-color: var(--brand);
+}
+
+.embed-card-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 12px;
+	border-top: 1px solid var(--border-faint);
+	background: var(--bg-soft);
+}
+
+.embed-card-range {
+	font-size: 11px;
+	color: var(--text-4);
+	font-variant-numeric: tabular-nums;
+}
+
+.embed-pager {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.embed-pager-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 5px;
+	color: var(--text-2);
+	font-size: 13px;
+	line-height: 1;
+	cursor: pointer;
+	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.embed-pager-btn:hover:not(:disabled) {
+	background: var(--bg-soft);
+	border-color: var(--border);
+	color: var(--text);
+}
+
+.embed-pager-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.embed-pager-pos {
+	min-width: 36px;
+	text-align: center;
+	font-size: 11px;
+	color: var(--text-3);
+	font-variant-numeric: tabular-nums;
+}
+
+.embed-pager-load {
+	width: auto;
+	padding: 0 9px;
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--brand);
+	border-color: color-mix(in srgb, var(--brand) 25%, transparent);
+}
+
+.embed-pager-load:hover {
+	background: color-mix(in srgb, var(--brand) 8%, transparent);
+	color: var(--brand);
+	border-color: color-mix(in srgb, var(--brand) 45%, transparent);
+}
