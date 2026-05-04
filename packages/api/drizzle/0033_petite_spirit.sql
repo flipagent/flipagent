@@ -6,7 +6,7 @@ CREATE TABLE "bridge_captures" (
 	"captured_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "credit_grants" ADD COLUMN "idempotency_key" text;--> statement-breakpoint
+-- credit_grants.idempotency_key already added in 0032_credits_lifecycle.sql; drizzle's snapshot diff re-emitted it from a stale state.
 ALTER TABLE "usage_events" ADD COLUMN "credits_charged" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE "usage_events" ADD COLUMN "tier" "api_key_tier" DEFAULT 'free' NOT NULL;--> statement-breakpoint
 ALTER TABLE "usage_events" ADD COLUMN "source" text;--> statement-breakpoint
