@@ -25,8 +25,8 @@ import { ListingsError } from "./errors.js";
 import { fetchItemDetailRest } from "./rest.js";
 import type { ListingsSource } from "./search.js";
 
-const DETAIL_PATH = "/buy/browse/v1/item";
-const DETAIL_TTL_SEC = 60 * 60 * 4;
+export const DETAIL_PATH = "/buy/browse/v1/item";
+export const DETAIL_TTL_SEC = 60 * 60 * 4;
 
 export interface DetailContext {
 	/** Defaults to `config.EBAY_DETAIL_SOURCE` when omitted. */

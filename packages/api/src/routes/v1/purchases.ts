@@ -38,6 +38,7 @@ import {
 	updatePurchaseShipping,
 } from "../../services/purchases/orchestrate.js";
 import { renderResultHeaders } from "../../services/shared/headers.js";
+import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
 export const purchasesRoute = new Hono();
@@ -51,7 +52,11 @@ const COMMON_RESPONSES = {
 
 function mapPurchaseError(c: Context, err: unknown) {
 	if (err instanceof PurchaseError) {
-		return c.json({ error: err.code, message: err.message }, err.status as 400 | 401 | 404 | 412 | 502);
+		const next_action = err.nextActionKind ? nextAction(c, err.nextActionKind) : undefined;
+		return c.json(
+			{ error: err.code, message: err.message, ...(next_action ? { next_action } : {}) },
+			err.status as 400 | 401 | 404 | 412 | 502,
+		);
 	}
 	return null;
 }

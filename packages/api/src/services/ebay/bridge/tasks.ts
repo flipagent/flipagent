@@ -26,6 +26,11 @@ export const BRIDGE_TASKS = {
 	PLANETEXPRESS_PULL_PACKAGES: "pull_packages",
 	PLANETEXPRESS_PACKAGE_PHOTOS: "planetexpress_package_photos",
 	PLANETEXPRESS_PACKAGE_DISPATCH: "planetexpress_package_dispatch",
+	// Read the user's assigned suite + warehouse address from PE
+	// dashboard. The agent uses the result to create an eBay merchant
+	// location (so listings have a valid US ship-from). One-time per
+	// onboarding; extension scrapes from PE's account / address page.
+	PLANETEXPRESS_GET_ADDRESS: "planetexpress_get_address",
 	// Generic primitives
 	BROWSER_OP: "browser_op",
 	RELOAD_EXTENSION: "reload_extension",

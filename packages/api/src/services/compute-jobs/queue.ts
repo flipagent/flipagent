@@ -50,6 +50,34 @@ export async function createJob(input: CreateComputeJobInput): Promise<ComputeJo
 	return row;
 }
 
+/**
+ * Find an in-progress evaluate job for `(apiKeyId, itemId)`. Returns
+ * null if no non-terminal job exists. Used by the route layer to make
+ * `POST /v1/evaluate(/jobs)` idempotent — when a second client (e.g.
+ * the Chrome extension) hits Evaluate for an item the dashboard has
+ * already kicked off, both surfaces converge on the same job and
+ * stream the same trace instead of spawning a duplicate.
+ *
+ * Indexed on `(api_key_id, kind, params->>'itemId')` filtered to
+ * non-terminal status, so the lookup is sub-millisecond.
+ */
+export async function findInProgressEvaluateJob(apiKeyId: string, itemId: string): Promise<ComputeJob | null> {
+	const rows = await db
+		.select()
+		.from(computeJobs)
+		.where(
+			and(
+				eq(computeJobs.apiKeyId, apiKeyId),
+				eq(computeJobs.kind, "evaluate"),
+				sql`${computeJobs.params}->>'itemId' = ${itemId}`,
+				or(eq(computeJobs.status, "queued"), eq(computeJobs.status, "running")),
+			),
+		)
+		.orderBy(asc(computeJobs.createdAt))
+		.limit(1);
+	return rows[0] ?? null;
+}
+
 export async function getJob(id: string, apiKeyId: string): Promise<ComputeJob | null> {
 	const rows = await db
 		.select()
@@ -201,6 +229,7 @@ export async function transitionToFailed(
 	workerId: string,
 	errorCode: string,
 	errorMessage: string,
+	errorDetails?: unknown,
 ): Promise<ComputeJob | null> {
 	const now = new Date();
 	const [row] = await db
@@ -209,6 +238,7 @@ export async function transitionToFailed(
 			status: "failed",
 			errorCode,
 			errorMessage,
+			errorDetails: errorDetails === undefined ? null : (errorDetails as object),
 			completedAt: now,
 			updatedAt: now,
 			leaseUntil: null,

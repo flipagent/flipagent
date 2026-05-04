@@ -12,7 +12,16 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { createPromotion, listPromotions } from "../../services/marketing/promotions.js";
+import {
+	createPromotion,
+	deletePromotion,
+	getPromotion,
+	getPromotionListingSet,
+	listPromotions,
+	pausePromotion,
+	resumePromotion,
+	updatePromotion,
+} from "../../services/marketing/promotions.js";
 import { createReportTask, getReportTask, listReportTasks } from "../../services/marketing/reports.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
@@ -56,6 +65,111 @@ promotionsRoute.post(
 		});
 		return c.json(r, 201);
 	},
+);
+
+promotionsRoute.get(
+	"/:id",
+	describeRoute({
+		tags: ["Promotions"],
+		summary: "Get a promotion by id",
+		responses: { 200: { description: "Promotion." }, 404: errorResponse("Not found."), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const r = await getPromotion(c.req.param("id"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		if (!r) return c.json({ error: "promotion_not_found" }, 404);
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+promotionsRoute.put(
+	"/:id",
+	describeRoute({
+		tags: ["Promotions"],
+		summary: "Update a promotion",
+		responses: { 200: { description: "Updated." }, ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(PromotionCreate),
+	async (c) => {
+		const r = await updatePromotion(c.req.param("id"), c.req.valid("json"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+promotionsRoute.delete(
+	"/:id",
+	describeRoute({
+		tags: ["Promotions"],
+		summary: "Delete a promotion",
+		responses: { 200: { description: "Deleted." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await deletePromotion(c.req.param("id"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ok: true, source: "rest" as const });
+	},
+);
+
+promotionsRoute.post(
+	"/:id/pause",
+	describeRoute({
+		tags: ["Promotions"],
+		summary: "Pause a running promotion",
+		responses: { 200: { description: "Paused." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await pausePromotion(c.req.param("id"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ok: true, source: "rest" as const });
+	},
+);
+
+promotionsRoute.post(
+	"/:id/resume",
+	describeRoute({
+		tags: ["Promotions"],
+		summary: "Resume a paused promotion",
+		responses: { 200: { description: "Resumed." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await resumePromotion(c.req.param("id"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ok: true, source: "rest" as const });
+	},
+);
+
+promotionsRoute.get(
+	"/:id/listings",
+	describeRoute({
+		tags: ["Promotions"],
+		summary: "List the listing IDs participating in a promotion",
+		responses: { 200: { description: "Listings." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) =>
+		c.json({
+			...(await getPromotionListingSet(c.req.param("id"), {
+				apiKeyId: c.var.apiKey.id,
+				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			})),
+			source: "rest" as const,
+		}),
 );
 
 /* ----- /v1/promotions/reports ---------------------------------------- */

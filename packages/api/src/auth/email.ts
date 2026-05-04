@@ -124,6 +124,74 @@ export async function sendVerificationEmail(input: VerificationEmailInput): Prom
 	if (error) throw new Error(`resend_failed: ${error.message ?? "unknown"}`);
 }
 
+export interface AutoRechargeFailedEmailInput {
+	to: string;
+	name: string | null | undefined;
+	/** What we tried to charge — e.g. "$50" — for the message body. */
+	amountDisplay: string;
+	/** What pack — e.g. "25,000 credits" — so the user knows what was lost. */
+	creditsDisplay: string;
+	/** Stripe-supplied decline reason where available. Optional — fallback
+	 *  to a generic "your card was declined" line when null. */
+	declineReason: string | null;
+	/** Dashboard URL pointing at the billing/portal flow so the user can
+	 *  fix the card in one click. */
+	manageBillingUrl: string;
+}
+
+/**
+ * Sent when an off-session auto-recharge PaymentIntent fails (declined
+ * card, expired, 3DS-required, etc.). Auto-recharge has just been
+ * disabled by the webhook; this email is the user's first signal —
+ * without it they only notice the next time they look at the dashboard
+ * and see the toggle off.
+ */
+export async function sendAutoRechargeFailedEmail(input: AutoRechargeFailedEmailInput): Promise<void> {
+	const resend = getResend();
+	// Same silent no-op as `sendOpsEmail` — caller (webhook handler)
+	// already logs the event, so a missing Resend key shouldn't crash
+	// the webhook receiver and trigger Stripe redelivery.
+	if (!resend) return;
+	const greeting = input.name ? `Hi ${input.name},` : "Hi,";
+	const reasonLine = input.declineReason
+		? `Stripe said: <em>${escapeHtml(input.declineReason)}</em>.`
+		: "Your card was declined by the issuer.";
+	const html = `
+<!doctype html>
+<html><body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#fafafa;padding:32px;color:#0a0a0a;">
+  <div style="max-width:480px;margin:0 auto;background:#ffffff;border:1px solid #ececec;border-radius:12px;padding:32px;">
+    <h1 style="font-size:20px;margin:0 0 16px;font-weight:600;">Auto-recharge couldn't go through</h1>
+    <p style="font-size:14px;line-height:1.55;margin:0 0 12px;color:#525252;">${greeting} we tried to top up your flipagent credits with <strong>${escapeHtml(input.creditsDisplay)}</strong> for <strong>${escapeHtml(input.amountDisplay)}</strong> and the charge didn't go through.</p>
+    <p style="font-size:14px;line-height:1.55;margin:0 0 16px;color:#525252;">${reasonLine}</p>
+    <p style="font-size:14px;line-height:1.55;margin:0 0 20px;color:#525252;">Auto-recharge is paused until you update your card. Your existing credits are safe — you'll only stop getting more if you actually run out before fixing this.</p>
+    <p style="margin:24px 0;">
+      <a href="${input.manageBillingUrl}" style="display:inline-block;background:#ff4c00;color:#ffffff;text-decoration:none;padding:11px 20px;border-radius:999px;font-weight:500;font-size:14px;">Update card</a>
+    </p>
+    <p style="font-size:12px;color:#737373;margin:0;">Once you've updated the card, re-enable auto-recharge from the dashboard and we'll pick up where we left off.</p>
+  </div>
+  <p style="text-align:center;font-size:11px;color:#a3a3a3;margin:24px 0 0;">flipagent · hello@flipagent.dev</p>
+</body></html>
+	`.trim();
+	const text = [
+		`${greeting} we tried to top up your flipagent credits with ${input.creditsDisplay} for ${input.amountDisplay} and the charge didn't go through.`,
+		input.declineReason ? `Stripe said: ${input.declineReason}.` : "Your card was declined by the issuer.",
+		``,
+		`Auto-recharge is paused until you update your card. Existing credits stay.`,
+		``,
+		`Update card: ${input.manageBillingUrl}`,
+		``,
+		`— flipagent`,
+	].join("\n");
+	const { error } = await resend.emails.send({
+		from: config.EMAIL_FROM,
+		to: input.to,
+		subject: "Auto-recharge failed — top-ups paused",
+		html,
+		text,
+	});
+	if (error) throw new Error(`resend_failed: ${error.message ?? "unknown"}`);
+}
+
 export interface OpsEmailInput {
 	to: string | string[];
 	subject: string;

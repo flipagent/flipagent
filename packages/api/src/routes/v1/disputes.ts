@@ -28,7 +28,13 @@ import {
 	updateEvidence,
 	uploadEvidenceFile,
 } from "../../services/disputes/evidence.js";
-import { getDispute, getDisputeActivity, listDisputes, respondToDispute } from "../../services/disputes/operations.js";
+import {
+	closeInquiry,
+	getDispute,
+	getDisputeActivity,
+	listDisputes,
+	respondToDispute,
+} from "../../services/disputes/operations.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
 export const disputesRoute = new Hono();
@@ -121,6 +127,23 @@ disputesRoute.post(
 			apiKeyId: c.var.apiKey.id,
 		});
 		return c.json({ ...result, source: "rest" as const }, 201);
+	},
+);
+
+disputesRoute.post(
+	"/:id/close",
+	describeRoute({
+		tags: ["Disputes"],
+		summary: "Close an open inquiry (no further action)",
+		description:
+			"Wraps `POST /post-order/v2/inquiry/{id}/close`. Inquiry-only; the call 404s for return / case / cancellation / payment dispute ids. Returns the refreshed Dispute (now `closed`).",
+		responses: { 200: { description: "Closed." }, 404: errorResponse("Not an inquiry."), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const r = await closeInquiry(c.req.param("id"), { apiKeyId: c.var.apiKey.id });
+		if (!r) return c.json({ error: "dispute_not_found" }, 404);
+		return c.json({ ...r, source: "rest" as const });
 	},
 );
 

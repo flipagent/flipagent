@@ -1,11 +1,24 @@
 /**
  * buy/deal — eBay's curated daily deals + events.
+ * buy/marketing — merchandised products + also-bought / also-viewed (LR).
+ *
+ * Both belong here because they're buy-side marketplace recommendation
+ * surfaces (eBay-curated, not seller-specific). The `/v1/recommendations`
+ * surface is the inverse: sell-side listing-optimization tips for the
+ * caller's own listings.
  */
 
-import type { FeaturedDeal, FeaturedDealKind } from "@flipagent/types";
+import type {
+	FeaturedDeal,
+	FeaturedDealKind,
+	MerchandisedProduct,
+	MerchandisedProductsResponse,
+	RelatedByProductResponse,
+} from "@flipagent/types";
 import { config, isEbayAppConfigured } from "../config.js";
 import { fetchRetry } from "../utils/fetch-retry.js";
 import { getAppAccessToken } from "./ebay/oauth.js";
+import { appRequest } from "./ebay/rest/app-client.js";
 import { ebayItemToFlipagent } from "./items/transform.js";
 
 interface EbayDealItem {
@@ -52,4 +65,81 @@ export async function listFeatured(
 		...(d.endDate ? { endsAt: d.endDate } : {}),
 	}));
 	return { deals, limit, offset, ...(body.total !== undefined ? { total: body.total } : {}) };
+}
+
+/* ---------------- Buy Marketing (LR) ---------------- */
+
+interface EbayMerchandisedProduct {
+	epid?: string;
+	title?: string;
+	image?: { imageUrl?: string };
+	averagePrice?: { value?: string; currency?: string };
+	ratingAggregate?: number;
+	reviewCount?: number;
+}
+
+function ebayMerchandisedToFlipagent(p: EbayMerchandisedProduct): MerchandisedProduct {
+	return {
+		title: p.title ?? "",
+		...(p.epid ? { epid: p.epid } : {}),
+		...(p.image?.imageUrl ? { image: p.image.imageUrl } : {}),
+		...(p.averagePrice?.value ? { averagePrice: p.averagePrice.value } : {}),
+		...(p.ratingAggregate !== undefined ? { ratingAggregate: p.ratingAggregate } : {}),
+		...(p.reviewCount !== undefined ? { reviewCount: p.reviewCount } : {}),
+	};
+}
+
+export async function listMerchandisedProducts(
+	q: { categoryId: string; metricName?: string; aspectFilter?: string; limit?: number },
+	marketplace?: string,
+): Promise<MerchandisedProductsResponse> {
+	const params = new URLSearchParams({
+		category_id: q.categoryId,
+		metric_name: q.metricName ?? "BEST_SELLING",
+	});
+	if (q.aspectFilter) params.set("aspect_filter", q.aspectFilter);
+	if (q.limit) params.set("limit", String(q.limit));
+	const res = await appRequest<{ merchandisedProducts?: EbayMerchandisedProduct[] }>({
+		method: "GET",
+		path: `/buy/marketing/v1_beta/merchandised_product?${params.toString()}`,
+		marketplace,
+	});
+	return {
+		products: (res?.merchandisedProducts ?? []).map(ebayMerchandisedToFlipagent),
+	};
+}
+
+async function relatedByProduct(
+	verb: "get_also_bought_products" | "get_also_viewed_products",
+	q: { epid?: string; gtin?: string },
+	marketplace?: string,
+): Promise<RelatedByProductResponse> {
+	if (!q.epid && !q.gtin) {
+		return { products: [] };
+	}
+	const params = new URLSearchParams();
+	if (q.epid) params.set("epid", q.epid);
+	if (q.gtin) params.set("gtin", q.gtin);
+	const res = await appRequest<{ merchandisedProducts?: EbayMerchandisedProduct[] }>({
+		method: "GET",
+		path: `/buy/marketing/v1_beta/merchandised_product/${verb}?${params.toString()}`,
+		marketplace,
+	});
+	return {
+		products: (res?.merchandisedProducts ?? []).map(ebayMerchandisedToFlipagent),
+	};
+}
+
+export async function listAlsoBoughtByProduct(
+	q: { epid?: string; gtin?: string },
+	marketplace?: string,
+): Promise<RelatedByProductResponse> {
+	return relatedByProduct("get_also_bought_products", q, marketplace);
+}
+
+export async function listAlsoViewedByProduct(
+	q: { epid?: string; gtin?: string },
+	marketplace?: string,
+): Promise<RelatedByProductResponse> {
+	return relatedByProduct("get_also_viewed_products", q, marketplace);
 }

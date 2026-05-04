@@ -43,6 +43,14 @@ export function coerceSourceKind(raw: string): SourceKind {
 		case "trading":
 		case "llm":
 			return raw;
+		case "capture":
+			// `capture` is the internal source label for cache rows pushed by
+			// the bridge extension's passive-capture endpoint. Externally the
+			// data is shape-identical to a scrape result (same parser, same
+			// normalize), so we coerce to "scrape" on the public API surface.
+			// Real provenance is recorded in the `bridge_captures` audit
+			// table for ops/billing visibility.
+			return "scrape";
 		default:
 			return "rest";
 	}

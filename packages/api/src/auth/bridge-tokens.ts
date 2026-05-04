@@ -12,7 +12,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { type BridgeToken, bridgeTokens } from "../db/schema.js";
 
@@ -82,4 +82,34 @@ export async function touchBridgeToken(id: string): Promise<void> {
 
 export async function revokeBridgeToken(id: string): Promise<void> {
 	await db.update(bridgeTokens).set({ revokedAt: new Date() }).where(eq(bridgeTokens.id, id));
+}
+
+/**
+ * List active bridge tokens owned by a user. Powers the dashboard's
+ * "Connected devices" list. Tokens belonging to a revoked api key are
+ * already filtered by the cascade-on-revoke pattern + the `revokedAt`
+ * column; we additionally guard with an `isNull(revokedAt)` to match
+ * `findActiveBridgeToken`'s active-only contract.
+ */
+export async function listBridgeTokensForUser(userId: string): Promise<BridgeToken[]> {
+	return db
+		.select()
+		.from(bridgeTokens)
+		.where(and(eq(bridgeTokens.userId, userId), isNull(bridgeTokens.revokedAt)))
+		.orderBy(desc(bridgeTokens.createdAt));
+}
+
+/**
+ * Look up a single bridge token row by id, scoped to the owning user.
+ * Returns null when missing or owned by someone else — callers (the
+ * /v1/me/devices DELETE route) treat both as 404 to avoid leaking
+ * existence of other users' rows.
+ */
+export async function getBridgeTokenForUser(id: string, userId: string): Promise<BridgeToken | null> {
+	const rows = await db
+		.select()
+		.from(bridgeTokens)
+		.where(and(eq(bridgeTokens.id, id), eq(bridgeTokens.userId, userId)))
+		.limit(1);
+	return rows[0] ?? null;
 }

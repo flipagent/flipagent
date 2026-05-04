@@ -46,6 +46,15 @@ export const ComputeJobBase = Type.Object(
 		status: ComputeJobStatus,
 		errorCode: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 		errorMessage: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+		/**
+		 * Structured payload attached by the failing pipeline step.
+		 * `variation_required` ships `{legacyId, variations[]}` so an
+		 * agent can pick a SKU and retry without a second round-trip.
+		 * Shape is pipeline-specific; treat as opaque and forward
+		 * verbatim. Null/absent on success and on errors that don't
+		 * carry structured details (most don't).
+		 */
+		errorDetails: Type.Optional(Type.Union([Type.Unknown(), Type.Null()])),
 		cancelRequested: Type.Boolean(),
 		createdAt: Type.String({ format: "date-time" }),
 		startedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),

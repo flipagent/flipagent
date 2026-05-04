@@ -28,13 +28,14 @@ import { describeRoute } from "hono-openapi";
 import { decryptKeyPlaintext, isKeyRevealConfigured } from "../../auth/key-cipher.js";
 import { issueKey, revokeKey, type Tier } from "../../auth/keys.js";
 import { TERMS_VERSION } from "../../auth/legal-versions.js";
-import { snapshotUsage, usageToWire } from "../../auth/limits.js";
+import { effectiveTierForUser, snapshotUsage, usageToWire } from "../../auth/limits.js";
 import { computePermissionsForUser } from "../../auth/permissions.js";
 import { db } from "../../db/client.js";
 import { apiKeys, usageEvents, user as userTable } from "../../db/schema.js";
 import { requireSession } from "../../middleware/session.js";
 import { clientIpFromRequest } from "../../utils/client-ip.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
+import { meDevicesRoute } from "./me-devices.js";
 import { meEbayRoute } from "./me-ebay.js";
 import { meOverviewRoute } from "./me-overview.js";
 
@@ -48,6 +49,7 @@ meRoute.route("/", meOverviewRoute);
 
 meRoute.use("*", requireSession);
 meRoute.route("/ebay", meEbayRoute);
+meRoute.route("/devices", meDevicesRoute);
 
 meRoute.get(
 	"/",
@@ -63,7 +65,12 @@ meRoute.get(
 	async (c) => {
 		const user = c.var.user;
 		const tier = user.tier as Tier;
-		const usage = await snapshotUsage({ apiKeyId: "", userId: user.id }, tier);
+		// Run usage math against the *enforcement* tier — past-due grace
+		// expiry downgrades a paid user to free for limit purposes without
+		// touching `user.tier` itself, so the dashboard sees the same view
+		// the api middleware enforces.
+		const enforced = await effectiveTierForUser(user.id, tier);
+		const usage = await snapshotUsage({ apiKeyId: "", userId: user.id }, enforced);
 		const consent = user as { termsAcceptedAt?: Date | string | null; termsVersion?: string | null };
 		const acceptedAt = consent.termsAcceptedAt
 			? typeof consent.termsAcceptedAt === "string"
@@ -177,7 +184,8 @@ meRoute.get(
 	}),
 	async (c) => {
 		const user = c.var.user;
-		const usage = await snapshotUsage({ apiKeyId: "", userId: user.id }, user.tier as Tier);
+		const enforced = await effectiveTierForUser(user.id, user.tier as Tier);
+		const usage = await snapshotUsage({ apiKeyId: "", userId: user.id }, enforced);
 		return c.json(usageToWire(usage));
 	},
 );

@@ -372,6 +372,74 @@ export interface RawEbayDetail {
 	 * on the wire side. Null when SEMANTIC_DATA is missing.
 	 */
 	guestCheckout: boolean | null;
+	/**
+	 * eBay catalog product id — present when the listing is linked to a
+	 * canonical catalog entry (`/p/{epid}`). Same identifier across every
+	 * listing of the same SKU, so callers can group / dedup / shortcut
+	 * matching without any LLM call. Mirror of Browse REST `getItem.epid`.
+	 *
+	 * Pulled from the "See more like this" / catalog link the PDP renders
+	 * (`https://www.ebay.com/p/{epid}`), or the URL `?epid=` parameter on
+	 * cross-product navigation links. Null when the listing isn't catalog-
+	 * linked (custom resale items, sneakers without catalog mapping, etc.).
+	 */
+	epid: string | null;
+	/**
+	 * Manufacturer Part Number — Item Specifics row. Promoted to a top-level
+	 * field to match Browse REST's `getItem.mpn`. Also a useful variant
+	 * disambiguator when the title is silent (e.g. an iPhone listing whose
+	 * title omits the storage capacity but whose MPN encodes it).
+	 */
+	mpn: string | null;
+	/**
+	 * Number of physical units the listing covers. Browse REST emits this as
+	 * a top-level integer separate from `quantity`. Pulled from the "Lot
+	 * Size" / "Number in lot" / "Number in pack" Item Specifics row. Null
+	 * when the listing isn't a lot.
+	 */
+	lotSize: number | null;
+	/**
+	 * Long-form condition note from the seller (above-and-beyond the
+	 * canonical `conditionText`). Mirror of Browse REST
+	 * `getItem.conditionDescription`. Useful for distinguishing fulfilment
+	 * notes ("BOX SOLD SEPARATELY") from actual defects.
+	 */
+	conditionDescription: string | null;
+	/**
+	 * Structured grade/cert rows — Browse REST `conditionDescriptors[]`.
+	 * Pulled from the schema.org JSON-LD `additionalProperty` block when
+	 * present; emitted in REST shape (`{name, values: [{content}]}`) so a
+	 * single transform handles both transports.
+	 *
+	 * Populated for graded categories (PSA / BGS / CGC / SGC trading cards,
+	 * professional grader-stamped jewelry, etc.) and a few condition-heavy
+	 * verticals (CPU brand on used computers). Null when the listing has
+	 * no JSON-LD structured-data block.
+	 */
+	conditionDescriptors: Array<{ name: string; values: Array<{ content: string }> }> | null;
+	/**
+	 * Strikethrough / list price + discount metadata when the listing
+	 * advertises a markdown. Mirror of Browse REST `getItem.marketingPrice`.
+	 * Pulled from the price block's STRIKETHROUGH `TextSpan` plus the
+	 * adjacent "X% off" textspan. Strong fake-listing signal: a brand-new
+	 * iPhone "$400 (was $1199, 67% off)" is almost always a replica.
+	 */
+	marketingPrice: {
+		originalPrice: { value: string; currency: string };
+		discountPercentage?: string;
+	} | null;
+	/**
+	 * Multi-variation parent metadata — group id + (when available) parent
+	 * title + group page href. Browse REST attaches this when the listing is
+	 * one SKU of a `SELLER_DEFINED_VARIATIONS` group; from PDP markup we
+	 * surface what we can find in the embedded JSON. Null when the listing
+	 * isn't part of a variation group.
+	 */
+	primaryItemGroup: {
+		itemGroupId: string;
+		itemGroupTitle?: string;
+		itemGroupHref?: string;
+	} | null;
 }
 
 /**
@@ -574,16 +642,6 @@ function txt(root: ParentNode, sel: string): string | null {
 const DETAIL_SELECTORS = {
 	title: ["#itemTitle", ".x-item-title__mainTitle", ".x-item-title span"],
 	price: ["#prcIsum", "#mm-saleDscPrc", ".x-price-primary span", ".ux-price-secondary"],
-	// 2026 layout: condition + brand + a few other top-fold facts live in
-	// `.elevated-info__item` rows (label/value pair). Older fixtures kept
-	// as fallbacks below — the page hasn't shipped both at once but a
-	// rollback is cheap to absorb.
-	condition: [
-		".x-item-condition-text .ux-textspans:not(.clipped)",
-		".x-item-condition-text span",
-		".x-item-condition-value",
-		"#vi-itm-cond",
-	],
 	shipping: ["#fshippingCost", ".ux-labels-values--shipping .ux-labels-values__values"],
 	timeLeft: ["#vi-cdown_timeLeft", ".x-time-left__time-left-text", ".vi-evo-main-tm"],
 	bidCount: ["#qty-test", ".x-bid-count", "#qtySubTxt"],
@@ -639,16 +697,22 @@ function firstMatchText(root: ParentNode, selectors: string[]): string | null {
  * `"New with box and papers"`.
  */
 function extractCondition(root: ParentNode): string | null {
-	const items = root.querySelectorAll<HTMLElement>(".elevated-info__item");
-	for (const item of Array.from(items)) {
-		const label = item.querySelector(".elevated-info__item__label")?.textContent?.trim();
-		if (!label || !/^condition$/i.test(label)) continue;
-		const valueEl = item.querySelector(".elevated-info__item__value");
-		if (!valueEl) continue;
-		// `.textContent` walks into the tooltip button and yields just
-		// the visible label — no need to special-case the button.
-		const text = valueEl.textContent?.replace(/\s+/g, " ").trim();
-		if (text) return text;
+	// Condition lives in the same `dl[data-testid="ux-labels-values"]`
+	// Item Specifics table that `extractItemAspects` walks — but with the
+	// `Condition` row explicitly skipped there to keep `condition` and
+	// `localizedAspects` separate (matching Browse REST). We walk the
+	// same table ourselves to pull just the Condition row (PDP renders
+	// "Graded - PSA 10: Professionally graded ..." here; canonicalise
+	// downstream maps it to the eBay enum).
+	const dls = root.querySelectorAll<HTMLElement>('dl[data-testid="ux-labels-values"], dl.ux-labels-values');
+	for (const dl of Array.from(dls)) {
+		const labelEl = dl.querySelector(".ux-labels-values__labels");
+		const valueEl = dl.querySelector(".ux-labels-values__values");
+		if (!labelEl || !valueEl) continue;
+		const name = aspectText(labelEl);
+		if (!name || !/^condition$/i.test(name)) continue;
+		const value = aspectText(valueEl);
+		if (value) return value;
 	}
 	return null;
 }
@@ -982,6 +1046,138 @@ function extractReturnTerms(html: string | undefined): EbayReturnTerms | null {
 	return out;
 }
 
+/**
+ * Catalog product id (`epid`). Pulled from the PDP's "See more like this"
+ * catalog link or any in-page navigation to `/p/{epid}`. The PDP doesn't
+ * typically render `?epid=` as a URL parameter on its own /itm/ link, but
+ * cross-listing nav tiles often do; we accept either form.
+ *
+ * Returns the first 6+ digit id we find. eBay's catalog ids are always
+ * 7-11 digits, so the 6+ floor avoids accidentally matching shorter
+ * numerics that share the URL space (auction prices, page numbers).
+ */
+function extractEpidFromHtml(html: string | undefined): string | null {
+	if (!html) return null;
+	const path = html.match(/\/p\/(\d{6,})/);
+	if (path?.[1]) return path[1];
+	const param = html.match(/[?&]epid=(\d{6,})/);
+	if (param?.[1]) return param[1];
+	return null;
+}
+
+/**
+ * Manufacturer Part Number — Item Specifics row. Walks the already-parsed
+ * `aspects` array rather than re-querying the DOM (cheaper, and aspect
+ * extraction already handles eBay's "Read more" controls + `clipped`
+ * variants). Falls back to the alternative naming "Manufacturer Part
+ * Number" some categories use.
+ */
+function extractMpnFromAspects(aspects: ReadonlyArray<{ name: string; value: string }>): string | null {
+	for (const a of aspects) {
+		const n = a.name.toLowerCase();
+		if (n === "mpn" || n === "manufacturer part number") return a.value;
+	}
+	return null;
+}
+
+/**
+ * Lot size from Item Specifics. eBay categorises lot listings under
+ * "Lot Size" (most categories), "Number in lot" (older shape), and
+ * "Number in pack" (some grocery / supplement listings). Returns null
+ * when no lot field is present (i.e. single-unit listing).
+ */
+function extractLotSizeFromAspects(aspects: ReadonlyArray<{ name: string; value: string }>): number | null {
+	for (const a of aspects) {
+		const n = a.name.toLowerCase();
+		if (n === "lot size" || n === "number in lot" || n === "number in pack") {
+			const num = Number.parseInt(a.value, 10);
+			if (Number.isFinite(num)) return num;
+		}
+	}
+	return null;
+}
+
+/**
+ * Structured grade/cert rows from the schema.org JSON-LD `additionalProperty`
+ * block embedded in the PDP. eBay populates this for graded trading cards
+ * (PSA / BGS / CGC / SGC) and a few condition-heavy verticals (used CPUs,
+ * graded coins). We emit Browse REST's shape (`{name, values: [{content}]}`)
+ * so the normalize layer can pass it through without re-shaping.
+ *
+ * The block is plain JSON inside a `<script>` tag; we use a non-strict regex
+ * scan because parsing the full document JSON-LD just to read one array is
+ * expensive on a 1MB page.
+ */
+function extractConditionDescriptorsFromHtml(
+	html: string | undefined,
+): Array<{ name: string; values: Array<{ content: string }> }> | null {
+	if (!html) return null;
+	const block = html.match(/"additionalProperty"\s*:\s*\[([\s\S]*?)\]/);
+	if (!block?.[1]) return null;
+	const out: Array<{ name: string; values: Array<{ content: string }> }> = [];
+	const propRegex = /"name"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*"([^"]+)"/g;
+	let m: RegExpExecArray | null;
+	// biome-ignore lint/suspicious/noAssignInExpressions: regex.exec idiom
+	while ((m = propRegex.exec(block[1])) !== null) {
+		out.push({ name: m[1]!, values: [{ content: m[2]! }] });
+	}
+	return out.length > 0 ? out : null;
+}
+
+/**
+ * Strikethrough / "compare-at" price plus the headline discount, when the
+ * PDP renders one. eBay encodes the price block as a tree of `TextSpan`
+ * nodes; the strikethrough node carries `styles: ["STRIKETHROUGH", ...]`
+ * with an `accessibilityText` like "previous price $333.49", and a
+ * sibling node carries the "X% off" tag.
+ *
+ * We use a regex over the raw HTML rather than walking the DOM because
+ * the block is buried inside a JSON-encoded React payload, not a stable
+ * CSS selector. Returns null when no strikethrough block is present.
+ */
+function extractMarketingPriceFromHtml(
+	html: string | undefined,
+): { originalPrice: { value: string; currency: string }; discountPercentage?: string } | null {
+	if (!html) return null;
+	// Match `"text":"$333.49","styles":["STRIKETHROUGH"...`. eBay always
+	// quotes the prefix; tolerate any decimal precision and thousands sep.
+	const priceMatch = html.match(/"text"\s*:\s*"\$([0-9][0-9,]*\.?[0-9]*)"\s*,\s*"styles"\s*:\s*\[\s*"STRIKETHROUGH"/);
+	if (!priceMatch?.[1]) return null;
+	const value = priceMatch[1].replace(/,/g, "");
+	const discountMatch = html.match(/"text"\s*:\s*"(\d{1,3})% off"/);
+	return {
+		originalPrice: { value, currency: "USD" },
+		discountPercentage: discountMatch?.[1],
+	};
+}
+
+/**
+ * Multi-variation parent metadata. eBay's PDP embeds the parent's group id
+ * in the React payload under various keys depending on layout; we accept
+ * `itemGroupId` (most common) and `itemGroupHref` (cross-link form). The
+ * group title flows from `itemGroupTitle` when the embed includes it.
+ *
+ * Returns null when the listing isn't part of a variation group — distinct
+ * from `variations` which is populated from the MSKU model on the parent
+ * itself.
+ */
+function extractPrimaryItemGroupFromHtml(
+	html: string | undefined,
+): { itemGroupId: string; itemGroupTitle?: string; itemGroupHref?: string } | null {
+	if (!html) return null;
+	const idMatch = html.match(/"itemGroupId"\s*:\s*"(\d+)"/);
+	const hrefMatch = html.match(/"itemGroupHref"\s*:\s*"([^"]+)"/);
+	if (!idMatch && !hrefMatch) return null;
+	const titleMatch = html.match(/"itemGroupTitle"\s*:\s*"([^"]+)"/);
+	const id = idMatch?.[1] ?? hrefMatch?.[1]?.match(/\/(\d{8,})/)?.[1];
+	if (!id) return null;
+	return {
+		itemGroupId: id,
+		itemGroupTitle: titleMatch?.[1],
+		itemGroupHref: hrefMatch?.[1],
+	};
+}
+
 export function extractEbayDetail(root: ParentNode, sourceUrl: string, html?: string): RawEbayDetail {
 	const breadcrumb = extractBreadcrumb(root);
 
@@ -1026,7 +1222,7 @@ export function extractEbayDetail(root: ParentNode, sourceUrl: string, html?: st
 		itemId: extractItemIdFromUrl(sourceUrl),
 		title: firstMatchText(root, DETAIL_SELECTORS.title) ?? "",
 		priceText: firstMatchText(root, DETAIL_SELECTORS.price),
-		conditionText: extractCondition(root) ?? firstMatchText(root, DETAIL_SELECTORS.condition),
+		conditionText: extractCondition(root),
 		shippingText: firstMatchText(root, DETAIL_SELECTORS.shipping),
 		categoryPath: breadcrumb.names,
 		categoryIds: breadcrumb.ids,
@@ -1062,6 +1258,22 @@ export function extractEbayDetail(root: ParentNode, sourceUrl: string, html?: st
 		// tags twice.
 		immediatePay: typeof semantic?.immediatePay === "boolean" ? semantic.immediatePay : null,
 		guestCheckout: typeof semantic?.guestCheckout === "boolean" ? semantic.guestCheckout : null,
+		epid: extractEpidFromHtml(html),
+		mpn: extractMpnFromAspects(aspects),
+		lotSize: extractLotSizeFromAspects(aspects),
+		// REST emits `conditionDescription` only when the seller adds a
+		// free-text note BEYOND the canonical label; the canonical text
+		// itself goes into `conditionText` above. We don't currently have a
+		// reliable DOM target for that seller-supplied note (the expanded
+		// "see all condition definitions" tooltip mixes eBay copy with the
+		// note), so leave null until a separate signal is wired. This
+		// matches REST's behaviour on standard listings (where the field is
+		// absent) and avoids duplicating the canonical text into both
+		// fields.
+		conditionDescription: null,
+		conditionDescriptors: extractConditionDescriptorsFromHtml(html),
+		marketingPrice: extractMarketingPriceFromHtml(html),
+		primaryItemGroup: extractPrimaryItemGroupFromHtml(html),
 	};
 }
 
@@ -1221,6 +1433,13 @@ const CANONICAL_CONDITIONS: ReadonlyArray<{ label: string; id: string }> = [
 	{ label: "New (Other)", id: "1500" },
 	{ label: "Open box", id: "1500" },
 	{ label: "Like New", id: "2750" },
+	// Trading-card / collectibles "Graded" condition — same id (2750) eBay
+	// Browse REST emits as `condition: "Graded"` for PSA / BGS / CGC / SGC
+	// slabbed listings. Without this row, scrape returned `null` for graded
+	// cards; the matcher then couldn't filter graded vs raw in the same pool.
+	// Listed BEFORE "Like New" so substring resolveConditionId() prefers it
+	// when text begins with "Graded - PSA 10: ..." (PDP long-form).
+	{ label: "Graded", id: "2750" },
 	{ label: "Brand New", id: "1000" },
 	{ label: "Pre-Owned", id: "3000" },
 	{ label: "For parts or not working", id: "7000" },
@@ -1287,6 +1506,30 @@ export function parseSoldQuantity(text: string | null): number | null {
  * label. A simple substring scan over `CANONICAL_CONDITIONS` covers
  * both cases without per-locale parsing.
  */
+/**
+ * Strip seller-added detail from PDP condition text and return just the
+ * canonical eBay label. PDPs often render long forms like
+ * `"Graded - PSA 10: Professionally graded ..."` or `"New: A brand-new,
+ * unused item ..."`; Browse REST exposes only the canonical label
+ * (`"Graded"`, `"New"`). This brings scrape into line with REST so
+ * downstream callers can compare condition text directly.
+ *
+ * Returns the canonical label when the text begins with one; otherwise
+ * the original text is returned unchanged (seller-custom strings flow
+ * through as-is).
+ */
+export function canonicaliseConditionText(text: string | null | undefined): string | null {
+	if (!text) return null;
+	const lower = text.toLowerCase().trim();
+	for (const c of CANONICAL_CONDITIONS) {
+		const lbl = c.label.toLowerCase();
+		if (lower === lbl || lower.startsWith(`${lbl}:`) || lower.startsWith(`${lbl} -`) || lower.startsWith(`${lbl} `)) {
+			return c.label;
+		}
+	}
+	return text.trim();
+}
+
 export function resolveConditionId(text: string | null | undefined): string | null {
 	if (!text) return null;
 	const lower = text.toLowerCase();

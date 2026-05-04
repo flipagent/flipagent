@@ -64,7 +64,8 @@ export type EvaluateErrorCode =
 	| "no_title"
 	| "not_enough_sold"
 	| "no_candidates"
-	| "search_failed";
+	| "search_failed"
+	| "variation_required";
 
 /** Typed error the route layer maps to an HTTP response. */
 export class EvaluateError extends Error {
@@ -72,6 +73,15 @@ export class EvaluateError extends Error {
 		readonly code: EvaluateErrorCode,
 		readonly status: 400 | 404 | 422 | 502,
 		message: string,
+		/**
+		 * Optional structured payload surfaced alongside `code` + `message`.
+		 * `variation_required` uses this to carry the enumerated variations
+		 * (`{variations: EbayVariation[]}`) so the caller picks one and
+		 * retries without a second round-trip. Routes serialise it under
+		 * a top-level `details` field; SSE error events include it on the
+		 * `error` payload.
+		 */
+		readonly details?: unknown,
 	) {
 		super(message);
 		this.name = "EvaluateError";
@@ -174,6 +184,11 @@ export interface MatchFilterResult {
 	 *  `itemId`. Empty when `llmRan === false` (no provider configured)
 	 *  or when the matcher rejected nothing. */
 	rejectionReasons: Record<string, string>;
+	/** Per-itemId LLM-emitted rejection category (`wrong_product` |
+	 *  `bundle_or_lot` | `off_condition` | `other`). Same key set as
+	 *  `rejectionReasons`; consumed by the digest's
+	 *  `filter.rejectionsByCategory` count map. */
+	rejectionCategories: Record<string, string>;
 	/** True iff the LLM actually ran. False on graceful fallback. */
 	llmRan: boolean;
 }
@@ -194,7 +209,12 @@ export async function runMatchFilter(
 	rawSold: ReadonlyArray<ItemSummary>,
 	rawActive: ReadonlyArray<ItemSummary>,
 	apiKey: ApiKey | undefined,
-	matchOptions: MatchOptions = {},
+	// Default `useImages: false` — measured F1 the same (-0.03 at most) as
+	// images=on for our top model (gemini-3.1-flash-lite-preview), but cuts
+	// wall time 60% (3-4s vs 8-12s) and makes verify caching simpler. Caller
+	// can override per-request when they specifically want visual matching
+	// (e.g. categories where titles are sparse).
+	matchOptions: MatchOptions = { useImages: false },
 	sources: { seed?: string | null; sold?: string | null; active?: string | null } = {},
 ): Promise<MatchFilterResult> {
 	const soldIds = new Set(rawSold.map((s) => s.itemId));
@@ -203,6 +223,7 @@ export async function runMatchFilter(
 	let matched: ItemSummary[] = dedupedPool;
 	let rejected: ItemSummary[] = [];
 	const rejectionReasons: Record<string, string> = {};
+	const rejectionCategories: Record<string, string> = {};
 	let llmRan = false;
 	// DPLA gate. eBay's Developer Program License Agreement (June 2025
 	// amendment) prohibits ingesting Restricted API responses into
@@ -224,6 +245,7 @@ export async function runMatchFilter(
 			rejectedSold: [],
 			rejectedActive: [],
 			rejectionReasons: {},
+			rejectionCategories: {},
 			llmRan: false,
 		};
 	}
@@ -239,6 +261,7 @@ export async function runMatchFilter(
 		// drill into the trace / DB.
 		for (const r of result.body.reject) {
 			if (r.reason) rejectionReasons[r.item.itemId] = r.reason;
+			if (r.category) rejectionCategories[r.item.itemId] = r.category;
 		}
 		llmRan = true;
 	} catch (err) {
@@ -254,6 +277,7 @@ export async function runMatchFilter(
 		rejectedSold: rej.sold,
 		rejectedActive: rej.active,
 		rejectionReasons,
+		rejectionCategories,
 		llmRan,
 	};
 }

@@ -40,6 +40,145 @@ export interface MarketplaceMetaContext {
 	apiKeyId: string;
 }
 
+/**
+ * Generic per-marketplace metadata read. eBay exposes 17 different
+ * `/sell/metadata/v1/marketplace/{m}/get_*_policies` endpoints — they
+ * all share the same `(marketplace, kind)` shape; this helper avoids
+ * defining 17 near-identical typed wrappers. Caller picks the kind
+ * from the documented enum and gets back eBay's raw response.
+ *
+ * Verified live 2026-05-03: `get_return_policies`, `get_listing_structure_policies`,
+ * `get_currencies`, `get_extended_producer_responsibility_policies`,
+ * `get_hazardous_materials_labels`, `get_motors_listing_policies` (with
+ * filter), `get_negotiated_price_policies` all return 200; the older
+ * `get_payment_policies` and `get_product_adoption_policies` 404 (eBay
+ * removed them).
+ */
+export type MarketplacePolicyKind =
+	| "automotive_parts_compatibility"
+	| "category"
+	| "classified_ad"
+	| "currencies"
+	| "extended_producer_responsibility"
+	| "hazardous_materials_labels"
+	| "item_condition"
+	| "listing_structure"
+	| "listing_type"
+	| "motors_listing"
+	| "negotiated_price"
+	| "product_safety_labels"
+	| "regulatory"
+	| "return"
+	| "shipping"
+	| "site_visibility";
+
+const KIND_TO_PATH: Record<MarketplacePolicyKind, string> = {
+	automotive_parts_compatibility: "get_automotive_parts_compatibility_policies",
+	category: "get_category_policies",
+	classified_ad: "get_classified_ad_policies",
+	currencies: "get_currencies",
+	extended_producer_responsibility: "get_extended_producer_responsibility_policies",
+	hazardous_materials_labels: "get_hazardous_materials_labels",
+	item_condition: "get_item_condition_policies",
+	listing_structure: "get_listing_structure_policies",
+	listing_type: "get_listing_type_policies",
+	motors_listing: "get_motors_listing_policies",
+	negotiated_price: "get_negotiated_price_policies",
+	product_safety_labels: "get_product_safety_labels",
+	regulatory: "get_regulatory_policies",
+	return: "get_return_policies",
+	shipping: "get_shipping_policies",
+	site_visibility: "get_site_visibility_policies",
+};
+
+export async function getMarketplacePolicy(
+	kind: MarketplacePolicyKind,
+	marketplace: string,
+	ctx: MarketplaceMetaContext,
+	filter?: string,
+): Promise<unknown> {
+	const path = `/sell/metadata/v1/marketplace/${encodeURIComponent(marketplace)}/${KIND_TO_PATH[kind]}${filter ? `?filter=${encodeURIComponent(filter)}` : ""}`;
+	return await sellRequest({ apiKeyId: ctx.apiKeyId, method: "GET", path }).catch(() => null);
+}
+
+/* ============================================================ Compatibilities — POST helpers */
+
+/**
+ * Cross-category compatibility lookup helpers. Each takes a body of
+ * compatibility-property name/value pairs and returns matching products
+ * or property metadata. Used by the listing-create flow to validate
+ * "fits 2020 Toyota Corolla"-style aspects before publishing.
+ */
+export async function getCompatibilitiesBySpecification(
+	body: Record<string, unknown>,
+	ctx: MarketplaceMetaContext,
+	marketplace: string,
+): Promise<unknown> {
+	return await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: "/sell/metadata/v1/compatibilities/get_compatibilities_by_specification",
+		body,
+		marketplace,
+	}).catch(() => null);
+}
+
+export async function getCompatibilityPropertyNames(
+	body: Record<string, unknown>,
+	ctx: MarketplaceMetaContext,
+	marketplace: string,
+): Promise<unknown> {
+	return await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: "/sell/metadata/v1/compatibilities/get_compatibility_property_names",
+		body,
+		marketplace,
+	}).catch(() => null);
+}
+
+export async function getCompatibilityPropertyValues(
+	body: Record<string, unknown>,
+	ctx: MarketplaceMetaContext,
+	marketplace: string,
+): Promise<unknown> {
+	return await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: "/sell/metadata/v1/compatibilities/get_compatibility_property_values",
+		body,
+		marketplace,
+	}).catch(() => null);
+}
+
+export async function getMultiCompatibilityPropertyValues(
+	body: Record<string, unknown>,
+	ctx: MarketplaceMetaContext,
+	marketplace: string,
+): Promise<unknown> {
+	return await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: "/sell/metadata/v1/compatibilities/get_multi_compatibility_property_values",
+		body,
+		marketplace,
+	}).catch(() => null);
+}
+
+export async function getProductCompatibilities(
+	body: Record<string, unknown>,
+	ctx: MarketplaceMetaContext,
+	marketplace: string,
+): Promise<unknown> {
+	return await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: "/sell/metadata/v1/compatibilities/get_product_compatibilities",
+		body,
+		marketplace,
+	}).catch(() => null);
+}
+
 export async function getMarketplaceMetadata(
 	country: string,
 	ctx: MarketplaceMetaContext,

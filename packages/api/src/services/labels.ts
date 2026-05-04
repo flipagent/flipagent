@@ -58,12 +58,20 @@ export async function purchaseLabel(input: LabelPurchaseRequest, ctx: LabelsCont
 	}>({
 		apiKeyId: ctx.apiKeyId,
 		method: "POST",
-		path: "/sell/logistics/v1_beta/shipment",
-		body: {
-			shippingQuoteId,
-			rateId,
-			...(input.orderId ? { orderId: input.orderId } : {}),
-		},
+		// Verified live 2026-05-03 against the OAS3 spec at
+		// `references/ebay-mcp/docs/_mirror/sell_logistics_v1_oas3.json`:
+		// the only POST under /shipment is `create_from_shipping_quote`.
+		// The bare path `/sell/logistics/v1_beta/shipment` returns
+		// errorId 2002 ("Resource not found") — wrong path. The wrapper
+		// silently 404'd whenever a label purchase was attempted.
+		path: "/sell/logistics/v1_beta/shipment/create_from_shipping_quote",
+		// `CreateShipmentFromQuoteRequest` per OAS3 spec only accepts:
+		// `shippingQuoteId`, `rateId`, `additionalOptions`,
+		// `labelCustomMessage`, `labelSize`, `returnTo`. There is NO
+		// `orderId` field — verified via field-diff 2026-05-03. Sending
+		// `orderId` was a no-op (eBay silently dropped it). The order
+		// linkage actually happens earlier on the shipping quote itself.
+		body: { shippingQuoteId, rateId },
 	});
 	return {
 		id: res.shipmentId,
@@ -86,4 +94,30 @@ export async function voidLabel(id: string, ctx: LabelsContext): Promise<{ succe
 		path: `/sell/logistics/v1_beta/shipment/${encodeURIComponent(id)}/cancel`,
 	});
 	return { success: true };
+}
+
+/* ---------- additional Sell Logistics paths (LR — wrappers in place) ---------- */
+
+export async function getShipment(id: string, ctx: LabelsContext): Promise<unknown> {
+	return await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/sell/logistics/v1_beta/shipment/${encodeURIComponent(id)}`,
+	});
+}
+
+export async function downloadLabelFile(id: string, ctx: LabelsContext): Promise<unknown> {
+	return await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/sell/logistics/v1_beta/shipment/${encodeURIComponent(id)}/download_label_file`,
+	});
+}
+
+export async function getShippingQuote(id: string, ctx: LabelsContext): Promise<unknown> {
+	return await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/sell/logistics/v1_beta/shipping_quote/${encodeURIComponent(id)}`,
+	});
 }

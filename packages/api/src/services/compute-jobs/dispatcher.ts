@@ -64,16 +64,21 @@ export async function runJob(opts: RunJobOptions): Promise<ComputeJob | null> {
 		if (err instanceof CancelledError) {
 			return await transitionToCancelled(job.id, workerId);
 		}
-		const { code, message } = errorToFields(err);
-		return await transitionToFailed(job.id, workerId, code, message);
+		const { code, message, details } = errorToFields(err);
+		return await transitionToFailed(job.id, workerId, code, message, details);
 	}
 }
 
-function errorToFields(err: unknown): { code: string; message: string } {
+function errorToFields(err: unknown): { code: string; message: string; details?: unknown } {
 	if (err && typeof err === "object" && "code" in err && typeof (err as { code: unknown }).code === "string") {
 		const code = (err as { code: string }).code;
 		const message = err instanceof Error ? err.message : String(err);
-		return { code, message };
+		// `EvaluateError.details` (and any sibling typed error that adopts
+		// the same convention) carries a structured payload — e.g. the
+		// enumerated `variations[]` for `variation_required`. Forward it
+		// so the route + SSE layers can surface it to the caller.
+		const detailsField = (err as { details?: unknown }).details;
+		return detailsField !== undefined ? { code, message, details: detailsField } : { code, message };
 	}
 	return {
 		code: "internal",

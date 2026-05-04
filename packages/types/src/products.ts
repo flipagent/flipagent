@@ -50,3 +50,64 @@ export const ProductResponse = Type.Composite([Product, Type.Object({ source: Ty
 	$id: "ProductResponse",
 });
 export type ProductResponse = Static<typeof ProductResponse>;
+
+/**
+ * Catalog product-metadata read. Returns required-/recommended-aspect
+ * names and sample values for a given EPID (or category). Useful for
+ * agents that need to fill `aspects` correctly before listing.
+ */
+export const ProductMetadataQuery = Type.Object(
+	{
+		epid: Type.Optional(Type.String()),
+		categoryId: Type.Optional(Type.String()),
+		marketplace: Type.Optional(Marketplace),
+	},
+	{ $id: "ProductMetadataQuery" },
+);
+export type ProductMetadataQuery = Static<typeof ProductMetadataQuery>;
+
+export const ProductMetadataAspect = Type.Object(
+	{
+		name: Type.String(),
+		dataType: Type.Optional(Type.String()),
+		required: Type.Optional(Type.Boolean()),
+		multiValued: Type.Optional(Type.Boolean()),
+		values: Type.Optional(Type.Array(Type.String())),
+	},
+	{ $id: "ProductMetadataAspect" },
+);
+export type ProductMetadataAspect = Static<typeof ProductMetadataAspect>;
+
+export const ProductMetadataResponse = Type.Object(
+	{
+		epid: Type.Optional(Type.String()),
+		categoryId: Type.Optional(Type.String()),
+		aspects: Type.Array(ProductMetadataAspect),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "ProductMetadataResponse" },
+);
+export type ProductMetadataResponse = Static<typeof ProductMetadataResponse>;
+
+export const ProductMetadataForCategoriesQuery = Type.Object(
+	{
+		categoryIds: Type.String({ description: "Comma-separated category ids." }),
+		marketplace: Type.Optional(Marketplace),
+	},
+	{ $id: "ProductMetadataForCategoriesQuery" },
+);
+export type ProductMetadataForCategoriesQuery = Static<typeof ProductMetadataForCategoriesQuery>;
+
+export const ProductMetadataForCategoriesResponse = Type.Object(
+	{
+		entries: Type.Array(
+			Type.Object({
+				categoryId: Type.String(),
+				aspects: Type.Array(ProductMetadataAspect),
+			}),
+		),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "ProductMetadataForCategoriesResponse" },
+);
+export type ProductMetadataForCategoriesResponse = Static<typeof ProductMetadataForCategoriesResponse>;

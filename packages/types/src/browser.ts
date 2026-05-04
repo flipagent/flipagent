@@ -66,3 +66,45 @@ export const BrowserQueryResponse = Type.Object(
 	{ $id: "BrowserQueryResponse" },
 );
 export type BrowserQueryResponse = Static<typeof BrowserQueryResponse>;
+
+/* ----------------------------- cookies ----------------------------- */
+/* Cookie inventory for a domain via `chrome.cookies.getAll`. Used to
+ * measure real session expiry (HttpOnly auth cookies aren't visible to
+ * `document.cookie`, so we have to go through the cookies API). Values
+ * are NEVER returned — only metadata (name, expiry, flags). */
+
+export const BrowserCookiesRequest = Type.Object(
+	{
+		/** Domain to inventory (e.g. "ebay.com", "app.planetexpress.com"). Matches `chrome.cookies.getAll({ domain })`. */
+		domain: Type.String({ minLength: 3, maxLength: 200 }),
+	},
+	{ $id: "BrowserCookiesRequest" },
+);
+export type BrowserCookiesRequest = Static<typeof BrowserCookiesRequest>;
+
+export const BrowserCookieEntry = Type.Object(
+	{
+		name: Type.String(),
+		domain: Type.String(),
+		path: Type.String(),
+		/** ISO-8601 expiry. Null for session cookies (cleared when browser closes). */
+		expiresAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+		httpOnly: Type.Boolean(),
+		secure: Type.Boolean(),
+		sameSite: Type.Union([Type.Literal("strict"), Type.Literal("lax"), Type.Literal("no_restriction"), Type.Literal("unspecified")]),
+	},
+	{ $id: "BrowserCookieEntry" },
+);
+export type BrowserCookieEntry = Static<typeof BrowserCookieEntry>;
+
+export const BrowserCookiesResponse = Type.Object(
+	{
+		domain: Type.String(),
+		count: Type.Integer(),
+		/** Earliest non-null expiry across all returned cookies — first thing to break. Null if every cookie is session-bound. */
+		earliestExpiresAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+		cookies: Type.Array(BrowserCookieEntry),
+	},
+	{ $id: "BrowserCookiesResponse" },
+);
+export type BrowserCookiesResponse = Static<typeof BrowserCookiesResponse>;

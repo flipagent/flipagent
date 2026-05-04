@@ -17,6 +17,7 @@
  */
 
 import type {
+	ForwarderAddress,
 	ForwarderJobResponse,
 	ForwarderJobStatus,
 	ForwarderPackage,
@@ -25,7 +26,10 @@ import type {
 	ForwarderShipment,
 	ForwarderShipmentRequest,
 } from "@flipagent/types";
+import { and, desc, eq, isNull } from "drizzle-orm";
+import { db } from "../../db/client.js";
 import type { BridgeJob } from "../../db/schema.js";
+import { bridgeTokens } from "../../db/schema.js";
 import { createBridgeJob, getJobForApiKey } from "../bridge-jobs.js";
 import { BRIDGE_TASKS } from "../ebay/bridge/tasks.js";
 
@@ -130,6 +134,91 @@ export async function dispatchPackage(args: DispatchArgs): Promise<ForwarderJobR
 	return toForwarderJob(args.provider, order);
 }
 
+export interface GetAddressArgs {
+	provider: ForwarderProvider;
+	apiKeyId: string;
+	userId: string | null;
+}
+
+/**
+ * Queue a "read my warehouse address + suite" job. The bridge extension
+ * navigates the forwarder's account / address page (logged-in session
+ * required), scrapes the assigned suite + warehouse address, posts back
+ * `{ address: { name, line1, line2 (suite), city, region, postalCode,
+ * country, phone } }`. Caller polls
+ * `GET /v1/forwarder/{provider}/jobs/{jobId}` until terminal.
+ *
+ * Used during onboarding: agent calls this once → uses the returned
+ * address to create an eBay merchant location → listing-create
+ * unblocked.
+ */
+export async function getForwarderAddress(args: GetAddressArgs): Promise<ForwarderJobResponse> {
+	await assertForwarderSignedIn(args.apiKeyId, args.provider);
+	const order = await createBridgeJob({
+		apiKeyId: args.apiKeyId,
+		userId: args.userId,
+		source: args.provider,
+		itemId: "address",
+		quantity: 1,
+		maxPriceCents: null,
+		idempotencyKey: null,
+		metadata: {
+			kind: "forwarder.address",
+			task: pickAddressTask(args.provider),
+		},
+	});
+	return toForwarderJob(args.provider, order);
+}
+
+/**
+ * Thrown when the bridge extension isn't paired for this api key.
+ * Distinct from `ForwarderSignedOutError` so the route can hand the
+ * agent the *right* remediation: install + pair the Chrome extension
+ * (one-time setup), not "sign in to forwarder" (a session refresh).
+ */
+export class ExtensionNotPairedError extends Error {
+	constructor() {
+		super("Chrome extension not paired for this api key");
+		this.name = "ExtensionNotPairedError";
+	}
+}
+
+/**
+ * Thrown by forwarder ops when the bridge's last-seen state for the
+ * provider is signed-out. Lets the route return 412 + next_action
+ * *before* opening a tab — agent sees a clean precondition error and
+ * can prompt the user to sign in instead of waiting on a job that's
+ * destined to fail.
+ *
+ * Sticky-by-design: even if the user IS still signed in but their
+ * session expired and we missed the probe, the bridge dispatch path
+ * will catch it as a backstop (`planetexpress_signed_out` failure).
+ */
+export class ForwarderSignedOutError extends Error {
+	readonly provider: ForwarderProvider;
+	constructor(provider: ForwarderProvider) {
+		super(`${provider} session is not active`);
+		this.provider = provider;
+		this.name = "ForwarderSignedOutError";
+	}
+}
+
+async function assertForwarderSignedIn(apiKeyId: string, provider: ForwarderProvider): Promise<void> {
+	if (provider !== "planetexpress") return; // others not yet wired
+	const rows = await db
+		.select({ peLoggedIn: bridgeTokens.peLoggedIn })
+		.from(bridgeTokens)
+		.where(and(eq(bridgeTokens.apiKeyId, apiKeyId), isNull(bridgeTokens.revokedAt)))
+		.orderBy(desc(bridgeTokens.lastSeenAt))
+		.limit(1);
+	// Two distinct failure modes:
+	//   - no row at all → extension never paired (one-time setup needed)
+	//   - row exists but pe_logged_in=false → paired but session expired
+	// Each gets a different next_action so the agent gives the right nudge.
+	if (rows.length === 0) throw new ExtensionNotPairedError();
+	if (!rows[0]?.peLoggedIn) throw new ForwarderSignedOutError(provider);
+}
+
 export async function getForwarderJob(
 	provider: ForwarderProvider,
 	jobId: string,
@@ -161,6 +250,15 @@ function pickDispatchTask(provider: ForwarderProvider): string {
 	}
 }
 
+function pickAddressTask(provider: ForwarderProvider): string {
+	switch (provider) {
+		case "planetexpress":
+			return BRIDGE_TASKS.PLANETEXPRESS_GET_ADDRESS;
+		default:
+			throw new Error(`No address-fetch task wired for forwarder provider: ${provider satisfies never}`);
+	}
+}
+
 function toForwarderJob(provider: ForwarderProvider, order: BridgeJob): ForwarderJobResponse {
 	const meta = (order.metadata as Record<string, unknown> | null) ?? null;
 	const kind = typeof meta?.kind === "string" ? (meta.kind as string) : "forwarder.refresh";
@@ -187,8 +285,59 @@ function toForwarderJob(provider: ForwarderProvider, order: BridgeJob): Forwarde
 	} else if (kind === "forwarder.dispatch") {
 		const shipment = extractShipment(result);
 		if (shipment) job.shipment = shipment;
+	} else if (kind === "forwarder.address") {
+		const addresses = extractAddresses(result);
+		if (addresses && addresses.length > 0) job.addresses = addresses;
 	}
 	return job;
+}
+
+function extractAddresses(result: Record<string, unknown> | null): ForwarderAddress[] | null {
+	if (!result) return null;
+	// Accept both shapes from the bridge: `addresses: [...]` (modern,
+	// multi-warehouse) and `address: { ... }` (legacy single). Coerce
+	// to a single array path so callers don't branch.
+	const raw = Array.isArray(result.addresses)
+		? (result.addresses as Record<string, unknown>[])
+		: result.address
+			? [result.address as Record<string, unknown>]
+			: null;
+	if (!raw) return null;
+	const out: ForwarderAddress[] = [];
+	for (const a of raw) {
+		const addr = coerceAddress(a);
+		if (addr) out.push(addr);
+	}
+	if (out.length === 0) return null;
+	// If no entry self-marked primary (legacy clients), promote the first.
+	if (!out.some((a) => a.isPrimary)) out[0]!.isPrimary = true;
+	return out;
+}
+
+function coerceAddress(a: Record<string, unknown>): ForwarderAddress | null {
+	const str = (k: string): string | undefined => (typeof a[k] === "string" ? (a[k] as string) : undefined);
+	const bool = (k: string): boolean => a[k] === true;
+	const line1 = str("line1");
+	const city = str("city");
+	const postalCode = str("postalCode") ?? str("zip");
+	const country = str("country");
+	if (!line1 || !city || !postalCode || !country) return null;
+	const addr: ForwarderAddress = {
+		label: str("label") ?? `${city}, ${str("region") ?? str("state") ?? country}`,
+		isPrimary: bool("isPrimary"),
+		name: str("name") ?? "",
+		line1,
+		city,
+		postalCode,
+		country,
+	};
+	const region = str("region") ?? str("state");
+	if (region) addr.region = region;
+	const line2 = str("line2") ?? str("suite");
+	if (line2) addr.line2 = line2;
+	const phone = str("phone");
+	if (phone) addr.phone = phone;
+	return addr;
 }
 
 function mapInternalStatus(s: BridgeJob["status"]): ForwarderJobStatus {

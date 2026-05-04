@@ -34,11 +34,15 @@ import type { ForwarderInventory } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import {
 	dispatchPackage,
+	ExtensionNotPairedError,
+	ForwarderSignedOutError,
+	getForwarderAddress,
 	getForwarderJob,
 	getPackagePhotos,
 	refreshForwarder,
 } from "../../services/forwarder/inbox.js";
 import { findByPackageId, linkSku, listInventory } from "../../services/forwarder/inventory.js";
+import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
 export const forwarderRoute = new Hono();
@@ -77,6 +81,59 @@ forwarderRoute.post(
 	},
 );
 
+forwarderRoute.post(
+	"/:provider/address",
+	describeRoute({
+		tags: ["Forwarder"],
+		summary: "Queue a job to read the user's assigned suite + warehouse address",
+		description:
+			"Bridge-driven onboarding step: the extension navigates the forwarder's account / address page (logged-in session required) and reports back the assigned suite + warehouse address. Use the result to seed an eBay merchant location (POST /v1/locations) so listings have a valid US ship-from. Returns immediately with `jobId`; poll `GET /v1/forwarder/{provider}/jobs/{jobId}` until terminal, then read `address` off the response.",
+		parameters: paramsFor("path", ProviderParam),
+		responses: {
+			200: jsonResponse("Job queued.", ForwarderRefreshResponse),
+			401: errorResponse("Missing or invalid API key."),
+			404: errorResponse("Unknown provider."),
+			412: errorResponse("Forwarder session not active — sign in first."),
+		},
+	}),
+	requireApiKey,
+	tbCoerce("param", ProviderParam),
+	async (c) => {
+		const { provider } = c.req.valid("param");
+		try {
+			const job = await getForwarderAddress({
+				provider,
+				apiKeyId: c.var.apiKey.id,
+				userId: c.var.apiKey.userId ?? null,
+			});
+			return c.json({ jobId: job.jobId, status: job.status, expiresAt: job.expiresAt });
+		} catch (err) {
+			if (err instanceof ExtensionNotPairedError) {
+				return c.json(
+					{
+						error: "extension_not_paired",
+						message:
+							"The flipagent Chrome extension isn't installed or paired for this api key. Forwarder ops drive the user's browser session, so the extension must be set up first.",
+						next_action: nextAction(c, "extension_install"),
+					},
+					412,
+				);
+			}
+			if (err instanceof ForwarderSignedOutError) {
+				return c.json(
+					{
+						error: "forwarder_signed_out",
+						message: `Sign in to ${err.provider} first — last seen as signed out.`,
+						next_action: nextAction(c, "forwarder_signin"),
+					},
+					412,
+				);
+			}
+			throw err;
+		}
+	},
+);
+
 forwarderRoute.get(
 	"/:provider/jobs/:jobId",
 	describeRoute({
@@ -97,6 +154,12 @@ forwarderRoute.get(
 		const { provider, jobId } = c.req.valid("param");
 		const job = await getForwarderJob(provider, jobId, c.var.apiKey.id);
 		if (!job) return c.json({ error: "not_found", message: `No ${provider} job ${jobId}.` }, 404);
+		// Attach a structured remediation hint when the bridge reported the
+		// forwarder session as expired — MCP / agents render `instructions`
+		// verbatim instead of guessing the recovery URL.
+		if (job.status === "failed" && job.failureReason === "planetexpress_signed_out") {
+			return c.json({ ...job, next_action: nextAction(c, "forwarder_signin") });
+		}
 		return c.json(job);
 	},
 );
@@ -180,7 +243,7 @@ forwarderRoute.post(
 		tags: ["Forwarder"],
 		summary: "Link a forwarder package to a marketplace sku + offer",
 		description:
-			"Called after `flipagent_listings_relist` succeeds. Stores `sku` (and optional `ebayOfferId`) on the inventory row so the sold-event handler can find the package without the agent threading the mapping by hand. Idempotent — re-linking the same sku is a no-op; re-linking a different sku overwrites.",
+			"Called after `flipagent_relist_listing` succeeds. Stores `sku` (and optional `ebayOfferId`) on the inventory row so the sold-event handler can find the package without the agent threading the mapping by hand. Idempotent — re-linking the same sku is a no-op; re-linking a different sku overwrites.",
 		parameters: paramsFor("path", ProviderPackageParam),
 		responses: {
 			200: jsonResponse("Linked.", ForwarderInventoryRow),

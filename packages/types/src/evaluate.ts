@@ -66,6 +66,130 @@ export const MarketStats = Type.Object(
 );
 export type MarketStats = Static<typeof MarketStats>;
 
+/* ---------------------------- digest shapes ---------------------------- */
+
+/**
+ * One bin of a price histogram. `[minCents, maxCents)` (max exclusive
+ * except the final bin). Returned as a 10-bin array spanning
+ * `priceCents.min` → `priceCents.max` so callers can render the same
+ * shape the playground draws — bimodality, long-tail, tight clusters
+ * pop out of the bin counts even without a charting library.
+ */
+export const PriceHistogramBin = Type.Object(
+	{
+		minCents: Type.Integer(),
+		maxCents: Type.Integer(),
+		count: Type.Integer(),
+	},
+	{ $id: "PriceHistogramBin" },
+);
+export type PriceHistogramBin = Static<typeof PriceHistogramBin>;
+
+/**
+ * Full 5-percentile distribution + min/max for a price pool. p10/p90
+ * pinpoint the spread; p25/p75 give the IQR; p50 is the median.
+ */
+export const PriceDistribution = Type.Object(
+	{
+		minCents: Type.Integer(),
+		p10Cents: Type.Integer(),
+		p25Cents: Type.Integer(),
+		p50Cents: Type.Integer(),
+		p75Cents: Type.Integer(),
+		p90Cents: Type.Integer(),
+		maxCents: Type.Integer(),
+	},
+	{ $id: "PriceDistribution" },
+);
+export type PriceDistribution = Static<typeof PriceDistribution>;
+
+/**
+ * Trend signal — last 14 days vs the prior 14 days (median price).
+ * `null` when the comp set lacks at least 4 sales in either window.
+ */
+export const RecentTrend = Type.Object(
+	{
+		direction: Type.Union([Type.Literal("up"), Type.Literal("flat"), Type.Literal("down")]),
+		change14dPct: Type.Number(),
+	},
+	{ $id: "RecentTrend" },
+);
+export type RecentTrend = Static<typeof RecentTrend>;
+
+/**
+ * Condition slug → fraction in [0, 1]. e.g. `{ used_very_good: 0.38,
+ * used: 0.47, new: 0.15 }`. Fractions sum to 1.
+ */
+export const ConditionMix = Type.Record(Type.String(), Type.Number(), { $id: "ConditionMix" });
+export type ConditionMix = Static<typeof ConditionMix>;
+
+/**
+ * Sold-side digest — distribution + cadence + recent activity. Replaces
+ * raw `soldPool` for typical agent flows; the LLM speaks in pattern-level
+ * language using these stats. For specific listings, drill into
+ * `EvaluatePoolResponse` via `GET /v1/evaluate/{itemId}/pool`.
+ */
+export const SoldDigest = Type.Object(
+	{
+		count: Type.Integer(),
+		windowDays: Type.Integer(),
+		salesPerDay: Type.Number(),
+		meanDaysToSell: Type.Union([Type.Number(), Type.Null()]),
+		priceCents: PriceDistribution,
+		priceHistogram: Type.Array(PriceHistogramBin),
+		conditionMix: ConditionMix,
+		recentTrend: Type.Union([RecentTrend, Type.Null()]),
+		lastSaleAt: Type.Union([Type.String(), Type.Null()]),
+		lastSalePriceCents: Type.Union([Type.Integer(), Type.Null()]),
+	},
+	{ $id: "SoldDigest" },
+);
+export type SoldDigest = Static<typeof SoldDigest>;
+
+/**
+ * Active-side digest — what's currently up for sale, distilled. The
+ * `bestPriceCents` field is the floor (cheapest active matching the
+ * same-product filter) — the immediate competition. `sellerConcentration`
+ * flags markets where 1–2 sellers dominate (suggests price control, less
+ * reliable as a comp).
+ */
+export const ActiveDigest = Type.Object(
+	{
+		count: Type.Integer(),
+		priceCents: PriceDistribution,
+		priceHistogram: Type.Array(PriceHistogramBin),
+		conditionMix: ConditionMix,
+		bestPriceCents: Type.Union([Type.Integer(), Type.Null()]),
+		sellerConcentration: Type.Union([Type.Literal("diverse"), Type.Literal("few_sellers")]),
+	},
+	{ $id: "ActiveDigest" },
+);
+export type ActiveDigest = Static<typeof ActiveDigest>;
+
+/**
+ * Same-product filter outcome. `rejectionsByCategory` is a server-side
+ * categorization of the LLM filter's per-item rejection reasons:
+ *
+ *   - `wrong_product`   different model / mount / version / brand
+ *   - `bundle_or_lot`   bundle of multiple items, kit, set
+ *   - `off_condition`   broken / for parts / damaged
+ *   - `other`           anything the heuristic didn't bucket
+ *
+ * Counts only — the per-item reason strings live on
+ * `EvaluatePoolResponse.{sold,active}.rejected[].rejectionReason`.
+ */
+export const FilterSummary = Type.Object(
+	{
+		soldKept: Type.Integer(),
+		soldRejected: Type.Integer(),
+		activeKept: Type.Integer(),
+		activeRejected: Type.Integer(),
+		rejectionsByCategory: Type.Record(Type.String(), Type.Integer()),
+	},
+	{ $id: "FilterSummary" },
+);
+export type FilterSummary = Static<typeof FilterSummary>;
+
 /* ------------------------------- options ------------------------------- */
 
 /**
@@ -266,26 +390,15 @@ export const EvaluateResponse = Type.Object(
 	{
 		/** The fetched item detail — surfaced so UIs can render thumbnail/title/price without a second fetch. */
 		item: ItemDetail,
-		/** Same-product sold listings the evaluation was scored against. */
-		soldPool: Type.Array(ItemSummary),
-		/** Same-product active listings (asks). */
-		activePool: Type.Array(ItemSummary),
-		/** Sold listings the same-product filter rejected (different product). Empty when the LLM didn't run. UIs can render side-by-side with the matched pool to expose the filter's judgement. */
-		rejectedSoldPool: Type.Array(ItemSummary),
-		/** Active listings the same-product filter rejected. Same purpose as `rejectedSoldPool` but on the asks side. */
-		rejectedActivePool: Type.Array(ItemSummary),
-		/**
-		 * Per-itemId LLM reason string for every rejected listing — keyed
-		 * by `ItemSummary.itemId` of items in `rejectedSoldPool` ∪
-		 * `rejectedActivePool`. Empty object when the LLM filter didn't
-		 * run (no provider configured) or when nothing was rejected. UIs
-		 * surface these as audit text under each rejected row so the
-		 * matcher's judgement is legible.
-		 */
-		rejectionReasons: Type.Record(Type.String(), Type.String()),
+		evaluation: Evaluation,
 		/** Distribution stats over `soldPool` (median, IQR, salesPerDay, meanDaysToSell, …). */
 		market: MarketStats,
-		evaluation: Evaluation,
+		/** Sold-side digest: distribution + histogram + cadence + recent trend + condition mix + last-sale anchor. */
+		sold: SoldDigest,
+		/** Active-side digest: distribution + histogram + condition mix + best price + seller concentration. */
+		active: ActiveDigest,
+		/** Filter summary: kept/rejected counts + categorized rejection reasons. */
+		filter: FilterSummary,
 		/**
 		 * flipagent-derived returns policy summary, parsed from the upstream
 		 * `returnTerms` block. `null` when the chosen transport didn't expose
@@ -294,10 +407,103 @@ export const EvaluateResponse = Type.Object(
 		 */
 		returns: Type.Union([Returns, Type.Null()]),
 		meta: EvaluateMeta,
+		/**
+		 * Same-product sold listings the evaluation was scored against.
+		 * Heavy — kept for back-compat (playground dashboard renders them).
+		 * MCP / SDK callers should prefer the `sold` digest above and
+		 * call `client.evaluate.pool(itemId)` for drill-down.
+		 *
+		 * @deprecated Use `sold` digest + `client.evaluate.pool()`.
+		 */
+		soldPool: Type.Array(ItemSummary),
+		/** @deprecated Use `active` digest + `client.evaluate.pool()`. */
+		activePool: Type.Array(ItemSummary),
+		/** @deprecated Use `filter.rejectionsByCategory` + `client.evaluate.pool()`. */
+		rejectedSoldPool: Type.Array(ItemSummary),
+		/** @deprecated Use `filter.rejectionsByCategory` + `client.evaluate.pool()`. */
+		rejectedActivePool: Type.Array(ItemSummary),
+		/** @deprecated Per-item reasons live on `EvaluatePoolResponse.{sold,active}.rejected[].rejectionReason` now. */
+		rejectionReasons: Type.Record(Type.String(), Type.String()),
+		/**
+		 * Per-itemId LLM-emitted rejection bucket — same key set as
+		 * `rejectionReasons`, value in
+		 * `wrong_product | bundle_or_lot | off_condition | other`.
+		 * Read by the drill-down route to populate
+		 * `EvaluatePoolResponse.{sold,active}.rejected[].rejectionCategory`.
+		 */
+		rejectionCategories: Type.Optional(Type.Record(Type.String(), Type.String())),
 	},
 	{ $id: "EvaluateResponse" },
 );
 export type EvaluateResponse = Static<typeof EvaluateResponse>;
+
+/* ---------------------- GET /v1/evaluate/{itemId}/pool --------------------- */
+
+/**
+ * One row in `EvaluatePoolResponse.{sold,active}.kept`. Shape matches
+ * `ItemSummary` but trimmed to fields useful for "show me a comparable
+ * listing" — title, price, condition, seller, when. Drill-down only;
+ * default `EvaluateResponse.sold/active` digests are enough for almost
+ * every "should I buy this?" decision.
+ */
+export const EvaluationPoolItem = Type.Object(
+	{
+		itemId: Type.String(),
+		title: Type.String(),
+		priceCents: Type.Integer(),
+		currency: Type.String(),
+		condition: Type.Optional(Type.String()),
+		sellerLogin: Type.Optional(Type.String()),
+		itemWebUrl: Type.String({ format: "uri" }),
+		soldAt: Type.Optional(Type.String()),
+		listedAt: Type.Optional(Type.String()),
+	},
+	{ $id: "EvaluationPoolItem" },
+);
+export type EvaluationPoolItem = Static<typeof EvaluationPoolItem>;
+
+export const EvaluationRejectedItem = Type.Object(
+	{
+		itemId: Type.String(),
+		title: Type.String(),
+		priceCents: Type.Integer(),
+		currency: Type.String(),
+		condition: Type.Optional(Type.String()),
+		sellerLogin: Type.Optional(Type.String()),
+		itemWebUrl: Type.String({ format: "uri" }),
+		/** LLM same-product filter's per-item reason. */
+		rejectionReason: Type.String(),
+		/** Categorized bucket — same enum as `FilterSummary.rejectionsByCategory` keys. */
+		rejectionCategory: Type.String(),
+	},
+	{ $id: "EvaluationRejectedItem" },
+);
+export type EvaluationRejectedItem = Static<typeof EvaluationRejectedItem>;
+
+/**
+ * Drill-down companion to `EvaluateResponse`. Returned by
+ * `GET /v1/evaluate/{itemId}/pool` (cache-only — call evaluate first
+ * within the cache TTL).
+ *
+ * Mirrors what the playground reveals when the user clicks "View" on
+ * each section: kept + rejected together, rejection reason inline.
+ */
+export const EvaluatePoolResponse = Type.Object(
+	{
+		itemId: Type.String(),
+		evaluatedAt: Type.String({ format: "date-time" }),
+		sold: Type.Object({
+			kept: Type.Array(EvaluationPoolItem),
+			rejected: Type.Array(EvaluationRejectedItem),
+		}),
+		active: Type.Object({
+			kept: Type.Array(EvaluationPoolItem),
+			rejected: Type.Array(EvaluationRejectedItem),
+		}),
+	},
+	{ $id: "EvaluatePoolResponse" },
+);
+export type EvaluatePoolResponse = Static<typeof EvaluatePoolResponse>;
 
 /* ---------------------- compute-job shape (async mode) ---------------------- */
 

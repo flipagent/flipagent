@@ -14,7 +14,9 @@ import { type Media, MediaUploadRequest } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
+import { withTradingAuth } from "../../middleware/with-trading-auth.js";
 import { BlobNotConfiguredError, createMediaUpload, getMedia } from "../../services/media.js";
+import { uploadSiteHostedPicture } from "../../services/ebay/trading/pictures.js";
 import { errorResponse, tbBody } from "../../utils/openapi.js";
 
 export const mediaRoute = new Hono();
@@ -48,6 +50,55 @@ mediaRoute.post(
 			throw err;
 		}
 	},
+);
+
+mediaRoute.post(
+	"/ebay-pictures",
+	describeRoute({
+		tags: ["Media"],
+		summary: "Upload an image directly to eBay's Picture Hosting (Trading API)",
+		description:
+			"One-shot eBay-direct upload. Caller supplies a public `sourceUrl`; flipagent fetches it, wraps in multipart, forwards to eBay's `UploadSiteHostedPictures`, returns the stable `https://i.ebayimg.com/...` URL. Use when you want eBay to host the image (eBay-only listing, no third-party storage in the flow). For multi-marketplace / permanent catalog use, prefer `POST /v1/media/uploads` (flipagent-hosted blob).",
+		responses: {
+			201: { description: "Picture uploaded; URL ready to use in `imageUrls[]`." },
+			401: errorResponse("API key missing or eBay account not connected (POST /v1/connect/ebay)."),
+			502: errorResponse("Upstream eBay request failed."),
+			503: errorResponse("EBAY_CLIENT_ID/SECRET/RU_NAME unset on this api instance."),
+		},
+	}),
+	requireApiKey,
+	withTradingAuth(async (c, accessToken) => {
+		const json = await c.req.json();
+		const parsed = json as { sourceUrl?: string; pictureName?: string; extensionInDays?: 1 | 5 | 7 | 30 | 60 };
+		if (!parsed.sourceUrl || typeof parsed.sourceUrl !== "string") {
+			return c.json({ error: "missing_source_url", message: "Body must include `sourceUrl` (HTTPS image URL)." }, 400);
+		}
+		// Fetch the binary. Cap at 10MB — eBay's own per-image cap is
+		// 12MB but we leave a small margin for the multipart envelope.
+		const fetched = await fetch(parsed.sourceUrl, { redirect: "follow" });
+		if (!fetched.ok) {
+			return c.json(
+				{ error: "source_unreachable", message: `Couldn't fetch sourceUrl (HTTP ${fetched.status})` },
+				400,
+			);
+		}
+		const contentType = fetched.headers.get("content-type") ?? "image/jpeg";
+		const arr = await fetched.arrayBuffer();
+		if (arr.byteLength > 10 * 1024 * 1024) {
+			return c.json(
+				{ error: "image_too_large", message: `Image is ${arr.byteLength} bytes; cap is 10485760 (10 MB).` },
+				413,
+			);
+		}
+		const result = await uploadSiteHostedPicture({
+			accessToken,
+			body: new Uint8Array(arr),
+			contentType,
+			pictureName: parsed.pictureName,
+			extensionInDays: parsed.extensionInDays,
+		});
+		return c.json(result, 201);
+	}),
 );
 
 mediaRoute.get(

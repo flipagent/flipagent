@@ -4,14 +4,19 @@
  * from the seller's existing eBay account state. Cached 24h per
  * apiKey to avoid hitting `/sell/account/*_policy` on every create.
  *
- * **Auto-create on miss** — first-time sellers have zero policies on
- * their eBay account. Rather than throwing and forcing the user to
- * the eBay seller hub, we POST sane defaults (`flipagent default`
- * named) and return the new ids. The defaults are deliberately
- * conservative: 30-day buyer-paid returns, managed payments, USPS
- * Ground Advantage flat-rate domestic shipping, 1-day handling. Any
- * caller that wants different terms creates their own via
- * `/v1/policies` and passes explicit ids.
+ * **No more hidden auto-create with flipagent defaults.** Earlier
+ * versions invented sane-looking defaults (free shipping, 30-day
+ * buyer-pays returns, 1-day handling) on the seller's behalf. That
+ * silently lost real money — free shipping on a $799 phone ate
+ * $10-15/listing — and broke per-account: `USPSGroundAdvantage`
+ * worked for some sellers and got LSAS-rejected for others.
+ *
+ * Now: return + fulfillment must be supplied by the seller. When
+ * missing, we throw `MissingSellerPoliciesError` and the route
+ * returns 412 + `next_action: setup_seller_policies` so the agent
+ * gathers the few decisions from the user once and POSTs them via
+ * `/v1/policies/setup`. Payment policy stays auto — eBay's managed
+ * payments program is uniform across sellers, nothing to ask.
  *
  * Location is NOT auto-created — it needs a real address and is a
  * one-time set-up the seller has to do (via `/v1/locations`).
@@ -59,28 +64,13 @@ interface LocationList {
 	locations?: Array<{ merchantLocationKey: string }>;
 }
 
-async function ensureReturnPolicy(apiKeyId: string, marketplace: string): Promise<string> {
+async function findReturnPolicyId(apiKeyId: string, marketplace: string): Promise<string | null> {
 	const list = await sellRequest<ReturnPolicyList>({
 		apiKeyId,
 		method: "GET",
 		path: `/sell/account/v1/return_policy?marketplace_id=${encodeURIComponent(marketplace)}`,
 	});
-	const existing = list?.returnPolicies?.[0]?.returnPolicyId;
-	if (existing) return existing;
-	const created = await createPolicy(
-		{
-			type: "return",
-			name: "flipagent default — 30-day returns",
-			marketplace: "ebay",
-			categoryType: "ALL_EXCLUDING_MOTORS_VEHICLES",
-			returnsAccepted: true,
-			returnPeriodDays: 30,
-			refundMethod: "MONEY_BACK",
-			returnShippingCostPayer: "BUYER",
-		},
-		{ apiKeyId, marketplace },
-	);
-	return created.id;
+	return list?.returnPolicies?.[0]?.returnPolicyId ?? null;
 }
 
 async function ensurePaymentPolicy(apiKeyId: string, marketplace: string): Promise<string> {
@@ -104,54 +94,36 @@ async function ensurePaymentPolicy(apiKeyId: string, marketplace: string): Promi
 	return created.id;
 }
 
-async function ensureFulfillmentPolicy(apiKeyId: string, marketplace: string): Promise<string> {
+async function findFulfillmentPolicyId(apiKeyId: string, marketplace: string): Promise<string | null> {
 	const list = await sellRequest<FulfillmentPolicyList>({
 		apiKeyId,
 		method: "GET",
 		path: `/sell/account/v1/fulfillment_policy?marketplace_id=${encodeURIComponent(marketplace)}`,
 	});
-	const existing = list?.fulfillmentPolicies?.[0]?.fulfillmentPolicyId;
-	if (existing) return existing;
-	// Free domestic shipping with USPS Ground Advantage. Buyers expect flat
-	// or free shipping on most resale categories; "free" lets the seller
-	// price-in shipping instead of surfacing it as a line item.
-	const created = await createPolicy(
-		{
-			type: "fulfillment",
-			name: "flipagent default — USPS Ground (free)",
-			marketplace: "ebay",
-			categoryType: "ALL_EXCLUDING_MOTORS_VEHICLES",
-			handlingTimeDays: 1,
-			shippingOptions: [
-				{
-					optionType: "DOMESTIC",
-					costType: "FLAT_RATE",
-					shippingServices: [
-						{
-							shippingServiceCode: "USPSGroundAdvantage",
-							freeShipping: true,
-						},
-					],
-				},
-			],
-		},
-		{ apiKeyId, marketplace },
-	);
-	return created.id;
+	return list?.fulfillmentPolicies?.[0]?.fulfillmentPolicyId ?? null;
 }
 
 async function fetchDefaults(apiKeyId: string, marketplace: string): Promise<ResolvedDefaults> {
-	// Policies auto-create on miss; location does not (needs a real address).
+	// Read-only for return + fulfillment (user must supply via /v1/policies/setup).
+	// Payment auto-creates because eBay's managed payments are uniform across sellers.
+	// Location is read-only — needs a real address.
 	const [ret, pay, ful, locationRes] = await Promise.all([
-		ensureReturnPolicy(apiKeyId, marketplace),
+		findReturnPolicyId(apiKeyId, marketplace),
 		ensurePaymentPolicy(apiKeyId, marketplace),
-		ensureFulfillmentPolicy(apiKeyId, marketplace),
+		findFulfillmentPolicyId(apiKeyId, marketplace),
 		sellRequest<LocationList>({
 			apiKeyId,
 			method: "GET",
 			path: `/sell/inventory/v1/location`,
 		}),
 	]);
+
+	const missing: Array<"return" | "fulfillment"> = [];
+	if (!ret) missing.push("return");
+	if (!ful) missing.push("fulfillment");
+	if (missing.length > 0) {
+		throw new MissingSellerPoliciesError(missing);
+	}
 
 	const loc = locationRes?.locations?.[0]?.merchantLocationKey;
 	if (!loc) {
@@ -162,12 +134,29 @@ async function fetchDefaults(apiKeyId: string, marketplace: string): Promise<Res
 	}
 	return {
 		policies: {
-			returnPolicyId: ret,
+			returnPolicyId: ret!,
 			paymentPolicyId: pay,
-			fulfillmentPolicyId: ful,
+			fulfillmentPolicyId: ful!,
 		},
 		merchantLocationKey: loc,
 	};
+}
+
+/**
+ * Thrown when the seller's eBay account is missing a return and/or
+ * fulfillment policy. Route maps to 412 + a structured next_action so
+ * the agent gathers the few values from the user (returns yes/no,
+ * handling time, shipping mode/service) and POSTs them via
+ * `/v1/policies/setup`.
+ */
+export class MissingSellerPoliciesError extends Error {
+	readonly status = 412;
+	readonly missing: ReadonlyArray<"return" | "fulfillment">;
+	constructor(missing: Array<"return" | "fulfillment">) {
+		super(`Seller account is missing required policies: ${missing.join(", ")}`);
+		this.name = "MissingSellerPoliciesError";
+		this.missing = missing;
+	}
 }
 
 export async function resolveListingDefaults(apiKeyId: string, marketplace = "EBAY_US"): Promise<ResolvedDefaults> {

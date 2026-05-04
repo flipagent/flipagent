@@ -95,3 +95,25 @@ export async function summarizeViolations(ctx: ViolationsContext): Promise<{ sum
 	}));
 	return { summaries };
 }
+
+/**
+ * Suppress a false-positive listing violation. Wraps
+ * `/sell/compliance/v1/suppress_listing_violation`. eBay's body shape:
+ * `{ listingId, complianceType?, listingViolationSuppressionReason? }`.
+ */
+export async function suppressListingViolation(
+	input: { listingId: string; complianceType?: string; reason?: string },
+	ctx: ViolationsContext,
+): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: "/sell/compliance/v1/suppress_listing_violation",
+		body: {
+			listingId: input.listingId,
+			...(input.complianceType ? { complianceType: input.complianceType } : {}),
+			...(input.reason ? { listingViolationSuppressionReason: input.reason } : {}),
+		},
+		marketplace: ctx.marketplace,
+	});
+}

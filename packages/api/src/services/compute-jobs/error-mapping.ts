@@ -5,7 +5,7 @@
  * verbatim on the job row; only sync mode needs to compress that down
  * to a status code.
  */
-export function httpStatusForPipelineError(code: string): 400 | 404 | 422 | 500 | 502 | 503 {
+export function httpStatusForPipelineError(code: string): 400 | 404 | 422 | 500 | 502 | 503 | 504 {
 	switch (code) {
 		case "validation_failed":
 		case "invalid_item_id":
@@ -16,6 +16,7 @@ export function httpStatusForPipelineError(code: string): 400 | 404 | 422 | 500 
 		case "no_title":
 		case "not_enough_sold":
 		case "no_candidates":
+		case "variation_required":
 			return 422;
 		case "search_failed":
 		case "upstream_failed":
@@ -27,6 +28,8 @@ export function httpStatusForPipelineError(code: string): 400 | 404 | 422 | 500 
 		case "not_configured":
 		case "bridge_not_paired":
 			return 503;
+		case "upstream_timeout":
+			return 504;
 		default:
 			return 500;
 	}

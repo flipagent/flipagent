@@ -277,3 +277,20 @@ export const ItemDetailQuery = Type.Object(
 	{ $id: "ItemDetailQuery" },
 );
 export type ItemDetailQuery = Static<typeof ItemDetailQuery>;
+
+/**
+ * `POST /v1/items/search-by-image` — image-based item search (Buy Browse
+ * `search_by_image`). Body carries a base64-encoded image; response is
+ * the same `ItemSearchResponse` as the keyword search.
+ */
+export const ItemSearchByImageRequest = Type.Object(
+	{
+		image: Type.String({ description: "Base64-encoded image bytes (no data: prefix)." }),
+		marketplace: Type.Optional(Marketplace),
+		country: Type.Optional(Type.String({ minLength: 2, maxLength: 2 })),
+		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+		offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+	},
+	{ $id: "ItemSearchByImageRequest" },
+);
+export type ItemSearchByImageRequest = Static<typeof ItemSearchByImageRequest>;

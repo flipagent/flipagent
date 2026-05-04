@@ -132,9 +132,11 @@ export type TransfersListResponse = Static<typeof TransfersListResponse>;
 export const PayoutSummary = Type.Object(
 	{
 		totalAmount: Money,
-		feeAmount: Type.Optional(Money),
-		netAmount: Type.Optional(Money),
+		// Count of payouts in the period (Stripe-style "payouts.count").
 		count: Type.Integer({ minimum: 0 }),
+		// Count of monetary transactions (order payments + buyer refunds +
+		// seller credits) ROLLED INTO those payouts. Always returned.
+		transactionCount: Type.Integer({ minimum: 0 }),
 		from: Type.String(),
 		to: Type.String(),
 		source: Type.Optional(ResponseSource),

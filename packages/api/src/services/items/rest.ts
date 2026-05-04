@@ -7,11 +7,14 @@
  * service layer above.
  */
 
+import type { EbayVariation } from "@flipagent/ebay-scraper";
 import type { BrowseSearchQuery, BrowseSearchResponse, ItemDetail, SoldSearchQuery } from "@flipagent/types/ebay/buy";
 import { config } from "../../config.js";
 import { getAppAccessToken } from "../../services/ebay/oauth.js";
+import { reconcileBuyingOptions } from "../../services/ebay/scrape/normalize.js";
 import { fetchRetry } from "../../utils/fetch-retry.js";
-import { ListingsError } from "./errors.js";
+import { toCents } from "../shared/money.js";
+import { ListingsError, MultiVariationParentError } from "./errors.js";
 
 export interface RestRequestOptions {
 	/** Override marketplace for this request. Default `EBAY_US`. */
@@ -116,8 +119,83 @@ export async function fetchItemDetailRest(
 	const params = new URLSearchParams({ legacy_item_id: legacyId });
 	// `legacy_variation_id` selects one SKU from a multi-variation listing
 	// (sneakers / clothes / bags). Without it eBay's get_item_by_legacy_id
-	// 11001s on parents OR returns a server-picked default variation —
-	// neither matches the variation the caller actually asked about.
+	// returns errorId 11006 ("legacy Id is invalid") and points at
+	// `get_items_by_item_group` via an `itemGroupHref` parameter. We catch
+	// that below and re-throw as `MultiVariationParentError` carrying the
+	// enumerated variations so the caller can pick one and retry.
 	if (opts.variationId) params.set("legacy_variation_id", opts.variationId);
-	return (await callBrowseRest("/buy/browse/v1/item/get_item_by_legacy_id", params, opts)) as ItemDetail;
+	try {
+		const detail = (await callBrowseRest("/buy/browse/v1/item/get_item_by_legacy_id", params, opts)) as ItemDetail;
+		// eBay Browse REST drops the AUCTION enum on hybrid Auction-with-BIN
+		// listings once bidding has pushed past the BIN floor — the response
+		// reads `buyingOptions: ["FIXED_PRICE"]` even though `bidCount` is
+		// non-zero and the auction is still counting down. Reconciler
+		// promotes those back to ["AUCTION"]. See `reconcileBuyingOptions`.
+		return reconcileBuyingOptions(detail);
+	} catch (err) {
+		if (err instanceof ListingsError && isMultiVariationParent(err)) {
+			const variations = await fetchItemGroupVariationsRest(legacyId, opts);
+			throw new MultiVariationParentError(legacyId, variations);
+		}
+		throw err;
+	}
+}
+
+interface EbayErrorEnvelope {
+	errors?: Array<{ errorId?: number }>;
+}
+
+function isMultiVariationParent(err: ListingsError): boolean {
+	const env = err.body as EbayErrorEnvelope | null | undefined;
+	return env?.errors?.some((e) => e.errorId === 11006) === true;
+}
+
+interface ItemGroupResponse {
+	items?: Array<{
+		itemId?: string;
+		price?: { value?: string; currency?: string };
+		localizedAspects?: Array<{ name?: string; value?: string }>;
+	}>;
+}
+
+/**
+ * Enumerate every SKU in a multi-variation parent group. Mirrors the
+ * `EbayVariation[]` shape that scrape produces from the page MSKU model
+ * so callers see the same structure regardless of which transport
+ * surfaced the parent.
+ *
+ * The variation legacy id sits in the third segment of the
+ * `v1|<parent>|<variationId>` itemId — that's the same id eBay accepts
+ * back as `legacy_variation_id` on a follow-up `get_item_by_legacy_id`
+ * call, and the same id the web URL uses as `?var=`.
+ */
+async function fetchItemGroupVariationsRest(legacyId: string, opts: RestRequestOptions): Promise<EbayVariation[]> {
+	const params = new URLSearchParams({ item_group_id: legacyId });
+	const body = (await callBrowseRest(
+		"/buy/browse/v1/item/get_items_by_item_group",
+		params,
+		opts,
+	)) as ItemGroupResponse;
+	const items = body.items ?? [];
+	const out: EbayVariation[] = [];
+	for (const it of items) {
+		const variationId = parseVariationIdFromItemId(it.itemId);
+		if (!variationId) continue;
+		const aspects = (it.localizedAspects ?? [])
+			.map((a) => ({ name: a.name ?? "", value: a.value ?? "" }))
+			.filter((a) => a.name && a.value);
+		out.push({
+			variationId,
+			priceCents: it.price?.value ? toCents(it.price.value) : null,
+			currency: it.price?.currency ?? "USD",
+			aspects,
+		});
+	}
+	return out;
+}
+
+function parseVariationIdFromItemId(itemId: string | undefined): string | null {
+	if (!itemId) return null;
+	const m = /^v1\|\d+\|(\d+)$/.exec(itemId);
+	return m && m[1] !== "0" ? m[1]! : null;
 }

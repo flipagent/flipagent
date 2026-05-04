@@ -8,10 +8,13 @@
  */
 
 import type {
+	ConversationsBulkUpdateRequest,
 	ConversationsListQuery,
 	ConversationsListResponse,
 	ConversationThreadQuery,
 	ConversationThreadResponse,
+	ConversationUpdateRequest,
+	ConversationUpdateResponse,
 	MessageSendRequest,
 	MessageSendResponse,
 } from "@flipagent/types";
@@ -21,6 +24,8 @@ export interface MessagesClient {
 	list(params?: ConversationsListQuery): Promise<ConversationsListResponse>;
 	thread(conversationId: string, query: ConversationThreadQuery): Promise<ConversationThreadResponse>;
 	send(body: MessageSendRequest): Promise<MessageSendResponse>;
+	updateConversation(id: string, body: ConversationUpdateRequest): Promise<ConversationUpdateResponse>;
+	bulkUpdateConversations(body: ConversationsBulkUpdateRequest): Promise<ConversationUpdateResponse>;
 }
 
 export function createMessagesClient(http: FlipagentHttp): MessagesClient {
@@ -32,5 +37,7 @@ export function createMessagesClient(http: FlipagentHttp): MessagesClient {
 				query as unknown as Record<string, string | number | undefined>,
 			),
 		send: (body) => http.post("/v1/messages", body),
+		updateConversation: (id, body) => http.patch(`/v1/messages/conversations/${encodeURIComponent(id)}`, body),
+		bulkUpdateConversations: (body) => http.patch("/v1/messages/conversations/bulk", body),
 	};
 }

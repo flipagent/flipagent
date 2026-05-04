@@ -369,6 +369,53 @@ export interface EbayItemDetail {
 	 * Different field name on each side; same boolean.
 	 */
 	guestCheckout: boolean | null;
+	/**
+	 * eBay catalog product id — same identifier across every listing of the
+	 * same SKU. Browse REST `getItem.epid`. Null when the listing isn't
+	 * catalog-linked.
+	 */
+	epid: string | null;
+	/**
+	 * Manufacturer Part Number — Browse REST `getItem.mpn`. Pulled from the
+	 * "MPN" / "Manufacturer Part Number" Item Specifics row. Useful as a
+	 * variant disambiguator when the title is silent.
+	 */
+	mpn: string | null;
+	/**
+	 * Number of physical units in the listing — Browse REST `getItem.lotSize`.
+	 * Null on single-unit listings.
+	 */
+	lotSize: number | null;
+	/**
+	 * Long-form seller condition note — Browse REST
+	 * `getItem.conditionDescription`. Distinguishes fulfilment notes
+	 * ("BOX SOLD SEPARATELY") from actual defects.
+	 */
+	conditionDescription: string | null;
+	/**
+	 * Structured grade/cert rows — Browse REST `getItem.conditionDescriptors`.
+	 * Pulled from schema.org JSON-LD; emitted in REST shape so a single
+	 * normalize layer handles both transports.
+	 */
+	conditionDescriptors: Array<{ name: string; values: Array<{ content: string }> }> | null;
+	/**
+	 * Strikethrough / list price + discount — Browse REST
+	 * `getItem.marketingPrice`. Strong fake-listing signal.
+	 */
+	marketingPrice: {
+		originalPrice: { value: string; currency: string };
+		discountPercentage?: string;
+	} | null;
+	/**
+	 * Multi-variation parent metadata — Browse REST `getItem.primaryItemGroup`.
+	 * Distinct from `variations` (which is populated when THIS listing is the
+	 * parent). Null when the listing isn't part of a variation group.
+	 */
+	primaryItemGroup: {
+		itemGroupId: string;
+		itemGroupTitle?: string;
+		itemGroupHref?: string;
+	} | null;
 }
 
 export type { EbayReturnTerms, EbayVariation } from "./ebay-extract.js";
@@ -426,5 +473,12 @@ export function parseEbayDetailHtml(
 		shipToLocations: raw.shipToLocations,
 		immediatePay: raw.immediatePay,
 		guestCheckout: raw.guestCheckout,
+		epid: raw.epid,
+		mpn: raw.mpn,
+		lotSize: raw.lotSize,
+		conditionDescription: raw.conditionDescription,
+		conditionDescriptors: raw.conditionDescriptors,
+		marketingPrice: raw.marketingPrice,
+		primaryItemGroup: raw.primaryItemGroup,
 	};
 }

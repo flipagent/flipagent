@@ -9,7 +9,7 @@ import type {
 	PromotionsListResponse,
 	PromotionType,
 } from "@flipagent/types";
-import { sellRequest, swallowEbay404 } from "../ebay/rest/user-client.js";
+import { sellRequest, sellRequestWithLocation, swallowEbay404 } from "../ebay/rest/user-client.js";
 import { toCents, toDollarString } from "../shared/money.js";
 
 export interface MarketingContext {
@@ -110,10 +110,25 @@ export async function listPromotions(
 export async function createPromotion(input: PromotionCreate, ctx: MarketingContext): Promise<Promotion> {
 	const body: Record<string, unknown> = {
 		name: input.name,
+		// `marketplaceId` is REQUIRED on the Promotion body — verified live
+		// 2026-05-03 ("A valid entry is required for 'marketplaceId'").
+		// The `marketplace` arg in the sellRequest opts only sets the
+		// `X-EBAY-C-MARKETPLACE-ID` header; the body field is separate.
+		marketplaceId: ctx.marketplace ?? "EBAY_US",
 		promotionType: PROMO_TYPE_TO[input.type],
+		// SCHEDULED is the only status acceptable for create per spec
+		// (DRAFT for editing-in-progress only).
+		promotionStatus: "SCHEDULED",
 		startDate: input.startsAt,
 		endDate: input.endsAt,
-		...(input.description ? { description: input.description } : {}),
+		// `description` is REQUIRED for MARKDOWN_SALE / CODED_COUPON / etc.
+		// — the seller-defined "tag line" buyers see (max 50 chars).
+		// Default to the name when caller doesn't supply one.
+		description: input.description ?? input.name.slice(0, 50),
+		// `promotionImageUrl` REQUIRED for MARKDOWN_SALE / CODED_COUPON
+		// / ORDER_DISCOUNT (verified live 2026-05-03). URL to JPEG/PNG
+		// ≥500×500px. Caller supplies a public URL.
+		...(input.promotionImageUrl ? { promotionImageUrl: input.promotionImageUrl } : {}),
 		...(input.discountPercent !== undefined ? { discountPercent: input.discountPercent } : {}),
 		...(input.discountAmount
 			? {
@@ -145,7 +160,9 @@ export async function createPromotion(input: PromotionCreate, ctx: MarketingCont
 			: {}),
 		...(input.couponCode ? { couponCode: input.couponCode } : {}),
 	};
-	const res = await sellRequest<{ promotionId?: string }>({
+	// item_promotion returns 201 with empty body + `Location` header
+	// containing the new promotionId. Same pattern as custom_policy.
+	const { body: res, locationId } = await sellRequestWithLocation<{ promotionId?: string }>({
 		apiKeyId: ctx.apiKeyId,
 		method: "POST",
 		path: "/sell/marketing/v1/item_promotion",
@@ -154,7 +171,7 @@ export async function createPromotion(input: PromotionCreate, ctx: MarketingCont
 		contentLanguage: "en-US",
 	});
 	return {
-		id: res?.promotionId ?? "",
+		id: res?.promotionId ?? locationId ?? "",
 		marketplace: input.marketplace ?? "ebay",
 		type: input.type,
 		status: "scheduled",
@@ -166,6 +183,98 @@ export async function createPromotion(input: PromotionCreate, ctx: MarketingCont
 		endsAt: input.endsAt,
 		...(input.couponCode ? { couponCode: input.couponCode } : {}),
 	};
+}
+
+/* ---------- promotion lifecycle ---------- */
+
+export async function getPromotion(id: string, ctx: MarketingContext): Promise<Promotion | null> {
+	const res = await sellRequest<EbayPromotion>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/sell/marketing/v1/item_promotion/${encodeURIComponent(id)}`,
+		marketplace: ctx.marketplace,
+	}).catch(swallowEbay404);
+	return res ? ebayPromotionToFlipagent(res) : null;
+}
+
+export async function updatePromotion(
+	id: string,
+	input: PromotionCreate,
+	ctx: MarketingContext,
+): Promise<{ id: string }> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "PUT",
+		path: `/sell/marketing/v1/item_promotion/${encodeURIComponent(id)}`,
+		body: {
+			name: input.name,
+			marketplaceId: ctx.marketplace ?? "EBAY_US",
+			promotionType: PROMO_TYPE_TO[input.type],
+			promotionStatus: "SCHEDULED",
+			startDate: input.startsAt,
+			endDate: input.endsAt,
+			description: input.description ?? input.name.slice(0, 50),
+			...(input.promotionImageUrl ? { promotionImageUrl: input.promotionImageUrl } : {}),
+			// `discountPercent` flipagent input maps to nested
+			// `discountSpec.percentageOffItem` per spec — eBay's
+			// `Promotion` schema doesn't carry a flat `discountPercent`
+			// at the top level. For PUT we leave this out unless the
+			// caller passes nested-style criteria.
+			...(input.appliesToSkus
+				? { inventoryCriterion: { inventoryCriterionType: "INVENTORY_BY_VALUE", listingIds: input.appliesToSkus } }
+				: {}),
+		},
+		marketplace: ctx.marketplace,
+		contentLanguage: "en-US",
+	});
+	return { id };
+}
+
+export async function deletePromotion(id: string, ctx: MarketingContext): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "DELETE",
+		path: `/sell/marketing/v1/item_promotion/${encodeURIComponent(id)}`,
+		marketplace: ctx.marketplace,
+	});
+}
+
+/**
+ * Pause / resume work on the GENERIC `/promotion/{id}` resource (covers
+ * both item_promotion and item_price_markdown — the generic pause/resume
+ * works for either subtype).
+ */
+export async function pausePromotion(id: string, ctx: MarketingContext): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/promotion/${encodeURIComponent(id)}/pause`,
+		body: {},
+		marketplace: ctx.marketplace,
+	});
+}
+
+export async function resumePromotion(id: string, ctx: MarketingContext): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/marketing/v1/promotion/${encodeURIComponent(id)}/resume`,
+		body: {},
+		marketplace: ctx.marketplace,
+	});
+}
+
+export async function getPromotionListingSet(
+	id: string,
+	ctx: MarketingContext,
+): Promise<{ listingIds: string[]; total: number }> {
+	const res = await sellRequest<{ listingIds?: string[]; total?: number }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/sell/marketing/v1/promotion/${encodeURIComponent(id)}/get_listing_set`,
+		marketplace: ctx.marketplace,
+	}).catch(swallowEbay404);
+	return { listingIds: res?.listingIds ?? [], total: res?.total ?? 0 };
 }
 
 /** Dummy export to keep PromotionsListResponse type imported (used by route). */

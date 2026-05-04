@@ -13,11 +13,56 @@ import type {
 	CapabilityStatus,
 	ForwarderCapabilities,
 	MarketplaceCapabilities,
+	SetupChecklist,
+	SetupHints,
+	SetupStep,
+	SetupStepId,
 } from "@flipagent/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { config, isEbayOAuthConfigured, isInsightsApproved, isScraperApiConfigured } from "../config.js";
 import { db } from "../db/client.js";
 import { bridgeTokens, userEbayOauth } from "../db/schema.js";
+
+/**
+ * Setup hints — what install path the agent should hand the user. Hosted
+ * mode points at the Chrome Web Store + flipagent.dev dashboard;
+ * self-hosted mode prints the unpacked-build commands + the operator's
+ * own dashboard origin so the agent can guide a local-dev or
+ * self-host operator without asking.
+ *
+ * "Hosted" is detected by `BETTER_AUTH_URL` matching the canonical
+ * production host. Anything else (localhost, custom domain, dev
+ * environment) is treated as self-hosted.
+ */
+function computeSetupHints(): SetupHints {
+	const apiBase = config.BETTER_AUTH_URL.replace(/\/+$/, "");
+	const dashboard = config.APP_URL.replace(/\/+$/, "");
+	const hosted = apiBase === "https://api.flipagent.dev";
+	if (hosted) {
+		return {
+			mode: "hosted",
+			apiBase,
+			dashboardUrl: dashboard,
+			extensionInstall: {
+				from: "chrome-web-store",
+				url: "https://chrome.google.com/webstore/detail/flipagent",
+			},
+		};
+	}
+	return {
+		mode: "self-hosted",
+		apiBase,
+		dashboardUrl: dashboard,
+		extensionInstall: {
+			from: "unpacked-dev-build",
+			devBuildSteps: [
+				`FLIPAGENT_API_BASE=${apiBase} FLIPAGENT_DASHBOARD_BASE=${dashboard} npm run build:dev --workspace @flipagent/extension`,
+				"Open chrome://extensions/ → enable Developer mode → Load unpacked → select packages/extension/dist",
+				"Click the flipagent extension icon → enter your flipagent API key to pair (or open the dashboard above and pair from there)",
+			],
+		},
+	};
+}
 
 export async function computeCapabilities(apiKeyId: string): Promise<CapabilitiesResponse> {
 	const [bridgeRows, oauthRows] = await Promise.all([
@@ -44,6 +89,12 @@ export async function computeCapabilities(apiKeyId: string): Promise<Capabilitie
 	});
 	const planetexpress = planetExpressCapabilities({ extensionPaired: !!bridge });
 
+	const checklist = computeSetupChecklist({
+		extensionPaired: !!bridge,
+		ebayLoggedIn: !!bridge?.ebayLoggedIn,
+		sellerConnected,
+	});
+
 	return {
 		client: {
 			extensionPaired: !!bridge,
@@ -52,7 +103,64 @@ export async function computeCapabilities(apiKeyId: string): Promise<Capabilitie
 		},
 		marketplaces: { ebay },
 		forwarders: { planetexpress },
+		setup: computeSetupHints(),
+		checklist,
 		generatedAt: new Date().toISOString(),
+	};
+}
+
+/**
+ * Build the onboarding checklist from the same primitive signals the
+ * capability matrix derives from. One server-side derivation, consumed
+ * identically by popup, dashboard, and MCP — agents and humans see the
+ * same step labels in the same order.
+ *
+ * Forwarder login (Planet Express) deliberately NOT in the checklist:
+ * it's a session-bound state that expires within ~30 min of idle and
+ * lives in the user's browser localStorage (PE doesn't ship cookies),
+ * so framing it as "setup" misleads. The ship-time path nudges the
+ * user to re-sign-in on demand instead — see content.ts handler that
+ * emits `planetexpress_signed_out` when a job lands on the sign-in page.
+ */
+function computeSetupChecklist(input: {
+	extensionPaired: boolean;
+	ebayLoggedIn: boolean;
+	sellerConnected: boolean;
+}): SetupChecklist {
+	const pair: SetupStep = {
+		id: "pair_extension",
+		status: input.extensionPaired ? "done" : "active",
+		required: true,
+		title: "Pair this Chrome",
+		description:
+			"Paste a flipagent API key in the extension popup, or sign in via the dashboard. Required for buying via bridge and any browser-driven workflow.",
+		unlocks: ["buy", "bridge", "forwarder"],
+	};
+	const ebaySignin: SetupStep = {
+		id: "ebay_signin",
+		status: !input.extensionPaired ? "locked" : input.ebayLoggedIn ? "done" : "active",
+		required: true,
+		title: "Sign in to eBay",
+		description:
+			"Sign in to ebay.com in this Chrome. flipagent reads the existing session — no password ever leaves your browser.",
+		unlocks: ["buy"],
+	};
+	const sellerOauth: SetupStep = {
+		id: "seller_oauth",
+		status: input.sellerConnected ? "done" : "active",
+		required: true,
+		title: "Connect seller account",
+		description:
+			"OAuth handshake on the dashboard. Required to list, ship, manage offers, payouts, disputes — all sell-side REST.",
+		unlocks: ["sell"],
+	};
+	const steps = [pair, ebaySignin, sellerOauth];
+	const nextActive = steps.find((s) => s.status === "active") ?? null;
+	const allRequiredDone = steps.filter((s) => s.required).every((s) => s.status === "done");
+	return {
+		steps,
+		nextStep: (nextActive?.id ?? null) as SetupStepId | null,
+		allRequiredDone,
 	};
 }
 

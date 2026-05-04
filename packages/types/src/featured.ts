@@ -33,3 +33,50 @@ export const FeaturedListResponse = Type.Composite(
 	{ $id: "FeaturedListResponse" },
 );
 export type FeaturedListResponse = Static<typeof FeaturedListResponse>;
+
+/* ---------------- Buy Marketing — merchandised + also_bought / also_viewed (LR) ---------------- */
+
+export const MerchandisedProduct = Type.Object(
+	{
+		epid: Type.Optional(Type.String()),
+		title: Type.String(),
+		image: Type.Optional(Type.String()),
+		averagePrice: Type.Optional(Type.String({ description: "eBay-shape dollar string (kept verbatim)." })),
+		ratingAggregate: Type.Optional(Type.Number()),
+		reviewCount: Type.Optional(Type.Integer()),
+	},
+	{ $id: "MerchandisedProduct" },
+);
+export type MerchandisedProduct = Static<typeof MerchandisedProduct>;
+
+export const MerchandisedProductsQuery = Type.Object(
+	{
+		categoryId: Type.String(),
+		metricName: Type.Optional(Type.String({ description: "BEST_SELLING (default).", default: "BEST_SELLING" })),
+		aspectFilter: Type.Optional(Type.String()),
+		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, default: 25 })),
+	},
+	{ $id: "MerchandisedProductsQuery" },
+);
+export type MerchandisedProductsQuery = Static<typeof MerchandisedProductsQuery>;
+
+export const MerchandisedProductsResponse = Type.Object(
+	{ products: Type.Array(MerchandisedProduct), source: Type.Optional(ResponseSource) },
+	{ $id: "MerchandisedProductsResponse" },
+);
+export type MerchandisedProductsResponse = Static<typeof MerchandisedProductsResponse>;
+
+export const RelatedByProductQuery = Type.Object(
+	{
+		epid: Type.Optional(Type.String()),
+		gtin: Type.Optional(Type.String()),
+	},
+	{ $id: "RelatedByProductQuery" },
+);
+export type RelatedByProductQuery = Static<typeof RelatedByProductQuery>;
+
+export const RelatedByProductResponse = Type.Object(
+	{ products: Type.Array(MerchandisedProduct), source: Type.Optional(ResponseSource) },
+	{ $id: "RelatedByProductResponse" },
+);
+export type RelatedByProductResponse = Static<typeof RelatedByProductResponse>;

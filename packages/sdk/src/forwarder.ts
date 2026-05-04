@@ -34,6 +34,7 @@ import type { FlipagentHttp } from "./http.js";
 
 export interface ForwarderClient {
 	refresh(args: { provider: ForwarderProvider }): Promise<ForwarderRefreshResponse>;
+	getAddress(args: { provider: ForwarderProvider }): Promise<ForwarderRefreshResponse>;
 	packages: {
 		photos(args: { provider: ForwarderProvider; packageId: string }): Promise<ForwarderRefreshResponse>;
 		dispatch(args: {
@@ -60,6 +61,8 @@ export function createForwarderClient(http: FlipagentHttp): ForwarderClient {
 	return {
 		refresh: ({ provider }) =>
 			http.post<ForwarderRefreshResponse>(`/v1/forwarder/${encodeURIComponent(provider)}/refresh`, {}),
+		getAddress: ({ provider }) =>
+			http.post<ForwarderRefreshResponse>(`/v1/forwarder/${encodeURIComponent(provider)}/address`, {}),
 		packages: {
 			photos: ({ provider, packageId }) =>
 				http.post<ForwarderRefreshResponse>(

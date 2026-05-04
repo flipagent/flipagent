@@ -22,7 +22,8 @@ vi.mock("../../../src/utils/fetch-retry.js", () => ({
 	fetchRetry: (...args: unknown[]) => fetchRetryMock(...args),
 }));
 
-import { fetchActiveSearchRest, fetchSoldSearchRest } from "../../../src/services/items/rest.js";
+import { MultiVariationParentError } from "../../../src/services/items/errors.js";
+import { fetchActiveSearchRest, fetchItemDetailRest, fetchSoldSearchRest } from "../../../src/services/items/rest.js";
 
 beforeEach(() => {
 	fetchRetryMock.mockReset();
@@ -114,5 +115,117 @@ describe("fetchSoldSearchRest URL composition", () => {
 		await fetchSoldSearchRest({ q: "test", offset: 0 });
 		const url = lastCallUrl();
 		expect(url.searchParams.has("offset")).toBe(false);
+	});
+});
+
+describe("fetchItemDetailRest variation handling", () => {
+	const LEGACY_ID = "357966166544";
+	const VAR_A = "626382683495";
+	const VAR_B = "626578342371";
+
+	function ebayError(errorId: number, message: string): Response {
+		return new Response(
+			JSON.stringify({ errors: [{ errorId, message, domain: "API_BROWSE", category: "REQUEST" }] }),
+			{
+				status: 400,
+				headers: { "Content-Type": "application/json" },
+			},
+		);
+	}
+
+	function groupResponse(): Response {
+		return new Response(
+			JSON.stringify({
+				items: [
+					{
+						itemId: `v1|${LEGACY_ID}|${VAR_A}`,
+						price: { value: "359.90", currency: "USD" },
+						localizedAspects: [
+							{ name: "Size", value: "US M8 / W9.5", type: "STRING" },
+							{ name: "Color", value: "Black", type: "STRING" },
+						],
+					},
+					{
+						itemId: `v1|${LEGACY_ID}|${VAR_B}`,
+						price: { value: "135.00", currency: "USD" },
+						localizedAspects: [
+							{ name: "Size", value: "PS 3Y / W4.5", type: "STRING" },
+							{ name: "Color", value: "Black", type: "STRING" },
+						],
+					},
+				],
+			}),
+			{ status: 200, headers: { "Content-Type": "application/json" } },
+		);
+	}
+
+	it("11006 on a multi-SKU parent → MultiVariationParentError with variations enumerated from the item-group endpoint", async () => {
+		// First call (get_item_by_legacy_id) returns 11006; second call
+		// (get_items_by_item_group) returns the SKU list. The fetcher
+		// chains them so callers see one structured throw.
+		fetchRetryMock.mockReset();
+		fetchRetryMock.mockResolvedValueOnce(ebayError(11006, "The legacy Id is invalid."));
+		fetchRetryMock.mockResolvedValueOnce(groupResponse());
+
+		await expect(fetchItemDetailRest(LEGACY_ID)).rejects.toMatchObject({
+			name: "MultiVariationParentError",
+			legacyId: LEGACY_ID,
+		});
+
+		// Re-run to capture the throw + assert the variation payload.
+		fetchRetryMock.mockReset();
+		fetchRetryMock.mockResolvedValueOnce(ebayError(11006, "The legacy Id is invalid."));
+		fetchRetryMock.mockResolvedValueOnce(groupResponse());
+		let caught: unknown;
+		try {
+			await fetchItemDetailRest(LEGACY_ID);
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(MultiVariationParentError);
+		const e = caught as MultiVariationParentError;
+		expect(e.variations).toHaveLength(2);
+		expect(e.variations[0]).toMatchObject({
+			variationId: VAR_A,
+			priceCents: 35990,
+			currency: "USD",
+		});
+		expect(e.variations[0]?.aspects).toEqual([
+			{ name: "Size", value: "US M8 / W9.5" },
+			{ name: "Color", value: "Black" },
+		]);
+		expect(e.variations[1]).toMatchObject({ variationId: VAR_B, priceCents: 13500 });
+
+		// And the second outbound call must hit the group endpoint with the
+		// parent legacyId — no other side-trips, no `legacy_variation_id`.
+		const groupUrl = new URL(String(fetchRetryMock.mock.calls.at(-1)?.[0]));
+		expect(groupUrl.pathname).toBe("/buy/browse/v1/item/get_items_by_item_group");
+		expect(groupUrl.searchParams.get("item_group_id")).toBe(LEGACY_ID);
+	});
+
+	it("forwards legacy_variation_id verbatim when supplied; no group call", async () => {
+		fetchRetryMock.mockReset();
+		fetchRetryMock.mockResolvedValueOnce(
+			new Response(JSON.stringify({ itemId: `v1|${LEGACY_ID}|${VAR_B}`, title: "child item" }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		const out = await fetchItemDetailRest(LEGACY_ID, { variationId: VAR_B });
+		expect(out).toMatchObject({ itemId: `v1|${LEGACY_ID}|${VAR_B}` });
+		// Single outbound — no fallback group lookup.
+		expect(fetchRetryMock).toHaveBeenCalledTimes(1);
+		const url = new URL(String(fetchRetryMock.mock.calls[0]?.[0]));
+		expect(url.pathname).toBe("/buy/browse/v1/item/get_item_by_legacy_id");
+		expect(url.searchParams.get("legacy_item_id")).toBe(LEGACY_ID);
+		expect(url.searchParams.get("legacy_variation_id")).toBe(VAR_B);
+	});
+
+	it("non-11006 errors propagate as ListingsError (no group fallback)", async () => {
+		fetchRetryMock.mockReset();
+		fetchRetryMock.mockResolvedValueOnce(ebayError(11001, "Item not found"));
+		await expect(fetchItemDetailRest(LEGACY_ID)).rejects.toMatchObject({ name: "ListingsError" });
+		// Only the original call — never the group endpoint.
+		expect(fetchRetryMock).toHaveBeenCalledTimes(1);
 	});
 });

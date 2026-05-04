@@ -6,6 +6,10 @@
  */
 
 import {
+	PayoutPercentageUpdateRequest,
+	PayoutSettings,
+	RateTableShippingCostUpdate,
+	RateTableV2Response,
 	SalesTaxResponse,
 	SellerAdvertisingEligibility,
 	SellerKyc,
@@ -17,14 +21,20 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import {
+	deleteSalesTax,
+	getPayoutSettings,
+	getRateTableV2,
 	getSalesTax,
 	getSellerAdvertisingEligibility,
 	getSellerKyc,
 	getSellerPaymentsProgram,
 	getSellerPrivilege,
 	getSellerSubscription,
+	updatePayoutPercentage,
+	updateRateTableShippingCost,
+	upsertSalesTax,
 } from "../../services/seller-account.js";
-import { errorResponse, jsonResponse } from "../../utils/openapi.js";
+import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const sellerRoute = new Hono();
 
@@ -118,4 +128,105 @@ sellerRoute.get(
 			...(await getSalesTax(c.req.param("country"), { apiKeyId: c.var.apiKey.id })),
 			source: "rest" as const,
 		}),
+);
+
+sellerRoute.put(
+	"/sales-tax/:country/:jurisdiction",
+	describeRoute({
+		tags: ["Seller"],
+		summary: "Set sales-tax rate for one jurisdiction",
+		description:
+			"Wraps `PUT /sell/account/v1/sales_tax/{country}/{jurisdictionId}`. Body: `{ salesTaxPercentage: number, shippingAndHandlingTaxed?: boolean }`. Replaces any existing rate for that jurisdiction.",
+		responses: { 200: { description: "Saved." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const body = (await c.req.json()) as { salesTaxPercentage: number; shippingAndHandlingTaxed?: boolean };
+		await upsertSalesTax(c.req.param("country"), c.req.param("jurisdiction"), body, { apiKeyId: c.var.apiKey.id });
+		return c.json({ ok: true, source: "rest" as const });
+	},
+);
+
+sellerRoute.delete(
+	"/sales-tax/:country/:jurisdiction",
+	describeRoute({
+		tags: ["Seller"],
+		summary: "Delete a sales-tax rate",
+		responses: { 200: { description: "Deleted." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await deleteSalesTax(c.req.param("country"), c.req.param("jurisdiction"), { apiKeyId: c.var.apiKey.id });
+		return c.json({ ok: true, source: "rest" as const });
+	},
+);
+
+/* --------- Sell Account v2 payout settings --------- */
+
+sellerRoute.get(
+	"/payout-settings",
+	describeRoute({
+		tags: ["Seller"],
+		summary: "Read payout settings (v2)",
+		description:
+			"Wraps `GET /sell/account/v2/payout_settings`. Schedule + linked banks + percentage split. Pass-through under `raw` because eBay's shape is rich and rarely-used.",
+		responses: { 200: jsonResponse("Payout settings.", PayoutSettings), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => c.json({ ...(await getPayoutSettings({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+);
+
+sellerRoute.post(
+	"/payout-settings/update-percentage",
+	describeRoute({
+		tags: ["Seller"],
+		summary: "Update payout-percentage split (v2)",
+		description:
+			"Wraps `POST /sell/account/v2/payout_settings/update_percentage`. Body shape: pass through eBay's request via `{ raw: ... }`.",
+		responses: { 200: jsonResponse("Updated.", PayoutSettings), ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(PayoutPercentageUpdateRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const r = await updatePayoutPercentage((body.raw as Record<string, unknown>) ?? {}, {
+			apiKeyId: c.var.apiKey.id,
+		});
+		return c.json({ raw: r.raw, source: "rest" as const });
+	},
+);
+
+/* --------- Sell Account v2 rate-table read + cost patch --------- */
+
+sellerRoute.get(
+	"/rate-tables/:id",
+	describeRoute({
+		tags: ["Seller"],
+		summary: "Read a rate-table's full contents (v2)",
+		description: "Wraps `GET /sell/account/v2/rate_table/{id}`. Returns regions + costs verbatim under `raw`.",
+		responses: { 200: jsonResponse("Rate table.", RateTableV2Response), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) =>
+		c.json({ ...(await getRateTableV2(c.req.param("id"), { apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+);
+
+sellerRoute.post(
+	"/rate-tables/:id/update-shipping-cost",
+	describeRoute({
+		tags: ["Seller"],
+		summary: "Patch a rate-table's shipping cost for one region",
+		description:
+			"Wraps `POST /sell/account/v2/rate_table/{id}/update_shipping_cost`. Body: pass eBay's request through `{ raw: ... }`.",
+		responses: { 200: jsonResponse("Updated.", RateTableV2Response), ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(RateTableShippingCostUpdate),
+	async (c) => {
+		const body = c.req.valid("json");
+		const r = await updateRateTableShippingCost(c.req.param("id"), (body.raw as Record<string, unknown>) ?? {}, {
+			apiKeyId: c.var.apiKey.id,
+		});
+		return c.json({ id: c.req.param("id"), raw: r.raw, source: "rest" as const });
+	},
 );

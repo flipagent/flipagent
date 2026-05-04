@@ -25,6 +25,7 @@ import { config, isEbayOAuthConfigured } from "../../config.js";
 import { db } from "../../db/client.js";
 import { type UserEbayOauth, userEbayOauth } from "../../db/schema.js";
 import { fetchRetry } from "../../utils/fetch-retry.js";
+import { ebayHostFor } from "./host.js";
 
 interface CachedAppToken {
 	token: string;
@@ -87,10 +88,17 @@ interface RefreshResponse {
 async function refreshUserAccess(refreshToken: string): Promise<RefreshResponse> {
 	if (!isEbayOAuthConfigured()) throw new Error("eBay OAuth not configured");
 	const auth = Buffer.from(`${config.EBAY_CLIENT_ID}:${config.EBAY_CLIENT_SECRET}`).toString("base64");
+	// `scope` is OPTIONAL on refresh per eBay's OAuth docs. When supplied,
+	// it MUST be a strict subset of what the user originally consented to —
+	// passing the current `EBAY_SCOPES` superset breaks every existing
+	// binding the moment we add a new scope (verified live 2026-05-02:
+	// refresh returned `invalid_scope` after `sell.logistics` was added
+	// to the default). Omit it: eBay returns a token with whatever scopes
+	// the binding was granted at consent time. Newly-added scopes only
+	// activate once the user re-consents through `/v1/connect/ebay/start`.
 	const body = new URLSearchParams({
 		grant_type: "refresh_token",
 		refresh_token: refreshToken,
-		scope: config.EBAY_SCOPES,
 	}).toString();
 	const res = await fetchRetry(`${config.EBAY_BASE_URL}/identity/v1/oauth2/token`, {
 		method: "POST",
@@ -248,9 +256,10 @@ export async function getAppAccessToken(): Promise<string> {
 export async function fetchEbayUserSummary(accessToken: string): Promise<{ userId: string; username: string } | null> {
 	// Identity API lives on apiz.ebay.com (note the 'z'), not api.ebay.com,
 	// the path requires a trailing slash, and X-EBAY-C-MARKETPLACE-ID is
-	// mandatory. Any one of those missing → 404 with empty body.
-	const identityBase = config.EBAY_BASE_URL.replace(/^https?:\/\/api\./, "https://apiz.");
-	const res = await fetchRetry(`${identityBase}/commerce/identity/v1/user/`, {
+	// mandatory. Any one of those missing → 404 with empty body. Routing
+	// is centralized in `rest/user-client.ts:ebayHostFor`.
+	const path = "/commerce/identity/v1/user/";
+	const res = await fetchRetry(`${ebayHostFor(path)}${path}`, {
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
 			"X-EBAY-C-MARKETPLACE-ID": "EBAY_US",

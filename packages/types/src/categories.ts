@@ -86,3 +86,23 @@ export const CategoryAspectsResponse = Type.Object(
 	{ $id: "CategoryAspectsResponse" },
 );
 export type CategoryAspectsResponse = Static<typeof CategoryAspectsResponse>;
+
+/**
+ * `fetch_item_aspects` — bulk download of every aspect for every category
+ * in a tree. Heavyweight (multi-MB JSON for full eBay US tree); use
+ * `getCategoryAspects` for one category in real-time UIs.
+ */
+export const CategoryFetchItemAspectsResponse = Type.Object(
+	{
+		treeId: Type.String(),
+		entries: Type.Array(
+			Type.Object({
+				categoryId: Type.String(),
+				aspects: Type.Array(CategoryAspect),
+			}),
+		),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "CategoryFetchItemAspectsResponse" },
+);
+export type CategoryFetchItemAspectsResponse = Static<typeof CategoryFetchItemAspectsResponse>;

@@ -59,6 +59,9 @@ export const PromotionCreate = Type.Object(
 		type: PromotionType,
 		name: Type.String(),
 		description: Type.Optional(Type.String()),
+		// Required by eBay for MARKDOWN_SALE / CODED_COUPON / ORDER_DISCOUNT
+		// — URL to JPEG/PNG ≥500×500px. Caller supplies a public URL.
+		promotionImageUrl: Type.Optional(Type.String({ format: "uri" })),
 		discountPercent: Type.Optional(Type.Number()),
 		discountAmount: Type.Optional(Money),
 		startsAt: Type.String(),
@@ -247,6 +250,15 @@ export const PriceMarkdownCreate = Type.Object(
 		startsAt: Type.String(),
 		endsAt: Type.String(),
 		marketplace: Type.Optional(Marketplace),
+		// Required by eBay for MARKDOWN_SALE — the seller-defined "tag line"
+		// (max 50 chars) shown on the seller's All Offers page. Defaults to
+		// `name` truncated when caller omits it.
+		description: Type.Optional(Type.String({ maxLength: 50 })),
+		// Required by eBay for MARKDOWN_SALE — URL to a JPEG/PNG ≥500×500px
+		// shown on the All Offers page. eBay doesn't host images, so the
+		// caller must supply a public URL (typically one of the seller's
+		// existing listing images).
+		promotionImageUrl: Type.Optional(Type.String({ format: "uri" })),
 	},
 	{ $id: "PriceMarkdownCreate" },
 );
@@ -265,8 +277,14 @@ export const AdGroup = Type.Object(
 		id: Type.String(),
 		campaignId: Type.String(),
 		name: Type.String(),
-		status: Type.Union([Type.Literal("active"), Type.Literal("paused"), Type.Literal("ended")]),
-		defaultBidPercentage: Type.Optional(Type.String()),
+		status: Type.Union([Type.Literal("active"), Type.Literal("paused"), Type.Literal("archived")]),
+		// `defaultBid` is the per-keyword cost-per-click bid (Amount, not
+		// percentage) — eBay's CPC funding model. Verified against
+		// `references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json`
+		// (AdGroup schema). Replaces the previous `defaultBidPercentage`
+		// field which doesn't exist in eBay's spec at all (was always
+		// undefined on read, silently dropped on write).
+		defaultBid: Type.Optional(Money),
 	},
 	{ $id: "AdGroup" },
 );
@@ -275,7 +293,7 @@ export type AdGroup = Static<typeof AdGroup>;
 export const AdGroupCreate = Type.Object(
 	{
 		name: Type.String(),
-		defaultBidPercentage: Type.Optional(Type.String()),
+		defaultBid: Type.Optional(Money),
 	},
 	{ $id: "AdGroupCreate" },
 );

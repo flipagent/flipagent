@@ -20,10 +20,13 @@
 import type { EvaluateMeta, EvaluateResponse, MarketStats, TransportSource } from "@flipagent/types";
 import type { ApiKey } from "../../db/schema.js";
 import { parseItemId } from "../../utils/item-id.js";
+import { tierConditionIdsFor } from "../items/condition-tier.js";
 import { getItemDetail } from "../items/detail.js";
+import { MultiVariationParentError } from "../items/errors.js";
 import { searchActiveListings } from "../items/search.js";
 import { searchSoldListings } from "../items/sold.js";
 import { marketFromSold } from "./adapter.js";
+import { buildActiveDigest, buildFilterSummary, buildSoldDigest } from "./digest.js";
 import { evaluateWithContext } from "./evaluate-with-context.js";
 import { buildPath, EvaluateError, runMatchFilter, type StepListener, withStep } from "./pipeline.js";
 import { extractReturns } from "./returns.js";
@@ -85,10 +88,45 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 			cancelCheck,
 		},
 		async () => {
-			const detailResult = await getItemDetail(legacyId, { apiKey, variationId });
+			let detailResult: Awaited<ReturnType<typeof getItemDetail>>;
+			try {
+				detailResult = await getItemDetail(legacyId, { apiKey, variationId });
+			} catch (err) {
+				// REST raises this when the caller asked about a multi-SKU
+				// parent without `legacy_variation_id` (errorId 11006). We
+				// converged the wire shape with scrape/bridge below — both
+				// surface as `variation_required` 422 carrying the enumerated
+				// variations so the caller picks one and retries.
+				if (err instanceof MultiVariationParentError) {
+					throw new EvaluateError(
+						"variation_required",
+						422,
+						`Listing ${err.legacyId} is a multi-SKU parent with ${err.variations.length} variations; retry with a specific variationId.`,
+						{ legacyId: err.legacyId, variations: err.variations },
+					);
+				}
+				throw err;
+			}
 			if (!detailResult) throw new EvaluateError("item_not_found", 404, `No detail found for "${itemId}".`);
 			if (!detailResult.body.title?.trim()) {
 				throw new EvaluateError("no_title", 422, `Item "${itemId}" has no title.`);
+			}
+			// Scrape / bridge transports happily return a parent listing with
+			// `variations[]` populated and the page-default-rendered SKU's
+			// price at the top level — silently picking the wrong size for
+			// the caller. Reject the same way REST does (above): demand the
+			// caller picks a SKU, and surface the variation list so they can.
+			// REST never reaches here for parents (it threw above), so the
+			// guard is exclusively the scrape/bridge convergence path.
+			const detailBody = detailResult.body as { variations?: ReadonlyArray<unknown> };
+			if (!variationId && detailBody.variations && detailBody.variations.length > 0) {
+				const variations = detailBody.variations;
+				throw new EvaluateError(
+					"variation_required",
+					422,
+					`Listing ${legacyId} is a multi-SKU parent with ${variations.length} variations; retry with a specific variationId.`,
+					{ legacyId, variations },
+				);
 			}
 			return {
 				value: detailResult,
@@ -107,6 +145,16 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 	const sinceMs = Math.floor(Date.now() / DAY_MS) * DAY_MS - lookbackDays * DAY_MS;
 	const since = new Date(sinceMs).toISOString();
 	const lookbackFilter = `lastSoldDate:[${since}..]`;
+
+	// Pre-filter by condition tier — eBay prices New / Refurbished / Used
+	// / For Parts as separate distributions, so a Brand-New seed should
+	// only be compared against same-tier sales. Doing this at the search
+	// layer (vs in the LLM matcher) cuts pool size 30-50%, halves verify
+	// work, and removes a whole class of LLM error.
+	const candidateConditionIds = tierConditionIdsFor(detail.body.conditionId);
+	const conditionFilter = candidateConditionIds ? `conditionIds:{${candidateConditionIds.join("|")}}` : null;
+	const soldFilter = conditionFilter ? `${lookbackFilter},${conditionFilter}` : lookbackFilter;
+	const activeFilter = conditionFilter ?? undefined;
 
 	if (cancelCheck) await cancelCheck();
 	// `search.sold` + `search.active` are two parallel calls — group them
@@ -127,14 +175,14 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 					path: buildPath("/v1/items/search?status=sold", {
 						q,
 						limit: soldLimit,
-						filter: lookbackFilter,
+						filter: soldFilter,
 					}),
 				},
 				onStep,
 				cancelCheck,
 			},
 			async () => {
-				const r = await searchSoldListings({ q, limit: soldLimit, filter: lookbackFilter }, { apiKey });
+				const r = await searchSoldListings({ q, limit: soldLimit, filter: soldFilter }, { apiKey });
 				const items = r.body.itemSales ?? r.body.itemSummaries ?? [];
 				return {
 					value: { items, source: r.source as TransportSource },
@@ -150,13 +198,13 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 				parent: "search",
 				request: {
 					method: "GET",
-					path: buildPath("/v1/items/search", { q, limit: 50 }),
+					path: buildPath("/v1/items/search", { q, limit: 50, filter: activeFilter }),
 				},
 				onStep,
 				cancelCheck,
 			},
 			async () => {
-				const r = await searchActiveListings({ q, limit: 50 }, { apiKey });
+				const r = await searchActiveListings({ q, limit: 50, filter: activeFilter }, { apiKey });
 				const items = r.body.itemSummaries ?? [];
 				return {
 					value: { items, source: r.source as TransportSource },
@@ -265,16 +313,41 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 		activeRejected: filtered.rejectedActive.length,
 	};
 
+	const sold = buildSoldDigest(
+		filtered.matchedSold,
+		market.windowDays,
+		market.salesPerDay,
+		market.meanDaysToSell ?? null,
+	);
+	const active = buildActiveDigest(filtered.matchedActive);
+	const filter = buildFilterSummary(
+		filtered.matchedSold.length,
+		filtered.rejectedSold.length,
+		filtered.matchedActive.length,
+		filtered.rejectedActive.length,
+		filtered.rejectionReasons,
+		filtered.rejectionCategories,
+	);
+
 	return {
 		item: detail.body,
+		evaluation,
+		market,
+		sold,
+		active,
+		filter,
+		returns: extractReturns(detail.body),
+		meta,
+		// Back-compat: heavy pools still here for the playground dashboard.
+		// MCP / SDK consumers should prefer `sold` + `active` digests and
+		// `client.evaluate.pool(itemId)` for drill-down.
 		soldPool: filtered.matchedSold,
 		activePool: filtered.matchedActive,
 		rejectedSoldPool: filtered.rejectedSold,
 		rejectedActivePool: filtered.rejectedActive,
 		rejectionReasons: filtered.rejectionReasons,
-		market,
-		evaluation,
-		returns: extractReturns(detail.body),
-		meta,
+		// Carries the LLM-emitted per-item rejection bucket so the
+		// drill-down route can echo it without a regex fallback.
+		rejectionCategories: filtered.rejectionCategories,
 	};
 }

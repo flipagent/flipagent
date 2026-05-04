@@ -160,7 +160,15 @@ function createAuth() {
 		// so Better-Auth needs the trusted-origin treatment for cross-site cookies.
 		trustedOrigins: [config.APP_URL],
 		advanced: {
-			defaultCookieAttributes: { sameSite: "lax", secure: config.NODE_ENV === "production" },
+			// `secure` is keyed off the actual scheme of BETTER_AUTH_URL, not
+			// NODE_ENV — dev tunnels (api-dev.flipagent.dev) serve over HTTPS
+			// even with NODE_ENV=development, and a Lax cookie without the
+			// Secure flag in an HTTPS cross-subdomain redirect chain gets
+			// dropped by the browser → state_mismatch on the OAuth callback.
+			defaultCookieAttributes: {
+				sameSite: "lax",
+				secure: config.BETTER_AUTH_URL.startsWith("https://"),
+			},
 		},
 	});
 }

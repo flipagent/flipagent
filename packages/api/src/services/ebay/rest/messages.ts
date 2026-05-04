@@ -202,6 +202,48 @@ interface UpstreamSendResponse extends UpstreamMessageDetail {
 	conversationId?: string;
 }
 
+/**
+ * Mark/archive a conversation. Wraps `update_conversation` (single) and
+ * `bulk_update_conversation` (many at once). flipagent's action enum is
+ * lower-snake; eBay's enum is upper-snake — we map below.
+ */
+const CONVERSATION_ACTION_MAP = {
+	mark_read: "MARK_READ",
+	mark_unread: "MARK_UNREAD",
+	archive: "ARCHIVE",
+	unarchive: "UNARCHIVE",
+} as const;
+
+export type ConversationActionLower = keyof typeof CONVERSATION_ACTION_MAP;
+
+export async function updateConversation(
+	conversationId: string,
+	action: ConversationActionLower,
+	apiKeyId: string,
+): Promise<void> {
+	await sellRequest({
+		apiKeyId,
+		method: "POST",
+		path: "/commerce/message/v1/update_conversation",
+		body: { conversationId, action: CONVERSATION_ACTION_MAP[action] },
+		marketplace: "EBAY_US",
+	});
+}
+
+export async function bulkUpdateConversations(
+	conversationIds: string[],
+	action: ConversationActionLower,
+	apiKeyId: string,
+): Promise<void> {
+	await sellRequest({
+		apiKeyId,
+		method: "POST",
+		path: "/commerce/message/v1/bulk_update_conversation",
+		body: { conversationIds, action: CONVERSATION_ACTION_MAP[action] },
+		marketplace: "EBAY_US",
+	});
+}
+
 export async function sendMessage(args: SendMessageArgs): Promise<SendMessageResult> {
 	const body: Record<string, unknown> = { messageText: args.messageText };
 	if (args.conversationId) body.conversationId = args.conversationId;

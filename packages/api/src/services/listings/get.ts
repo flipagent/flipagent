@@ -24,10 +24,17 @@ interface OffersListResponse {
 }
 
 interface InventoryItemsListResponse {
+	// Per OAS3 spec `InventoryItems`: response uses `size` (count of pages
+	// remaining) NOT `offset`. The `offset` field doesn't exist; pagination
+	// is by `next`/`prev` URLs (cursor-style). We compute caller-facing
+	// offset from the request param.
 	inventoryItems?: Array<InventoryItem & { sku: string; locale?: string }>;
 	total?: number;
 	limit?: number;
-	offset?: number;
+	size?: number;
+	href?: string;
+	next?: string;
+	prev?: string;
 }
 
 export interface GetListingContext {

@@ -3,14 +3,16 @@
  * Wraps `/v1/items/*` with normalized cents-int Money + `Item` shape.
  *
  *   client.items.search({q, status, ...})
+ *   client.items.searchByImage({image, ...})
  *   client.items.get(id)
  */
 
-import type { Item, ItemSearchQuery, ItemSearchResponse } from "@flipagent/types";
+import type { Item, ItemSearchByImageRequest, ItemSearchQuery, ItemSearchResponse } from "@flipagent/types";
 import type { FlipagentHttp } from "./http.js";
 
 export interface ItemsClient {
 	search(params: ItemSearchQuery): Promise<ItemSearchResponse>;
+	searchByImage(body: ItemSearchByImageRequest): Promise<ItemSearchResponse>;
 	get(id: string, opts?: { status?: "active" | "sold"; marketplace?: string }): Promise<Item & { source?: string }>;
 }
 
@@ -26,6 +28,7 @@ export function createItemsClient(http: FlipagentHttp): ItemsClient {
 			}
 			return http.get("/v1/items/search", query);
 		},
+		searchByImage: (body) => http.post("/v1/items/search-by-image", body),
 		get: (id, opts) =>
 			http.get(`/v1/items/${encodeURIComponent(id)}`, {
 				...(opts?.status ? { status: opts.status } : {}),

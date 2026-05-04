@@ -120,6 +120,47 @@ export const RateTablesListResponse = Type.Object(
 );
 export type RateTablesListResponse = Static<typeof RateTablesListResponse>;
 
+/**
+ * v2 rate-table read — returns the full table (regions + costs). The v1
+ * list endpoint above only returns the name + id.
+ */
+export const RateTableV2Response = Type.Object(
+	{
+		id: Type.String(),
+		raw: Type.Unknown({ description: "eBay's full RateTable shape; flipagent doesn't reshape." }),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "RateTableV2Response" },
+);
+export type RateTableV2Response = Static<typeof RateTableV2Response>;
+
+export const RateTableShippingCostUpdate = Type.Object(
+	{
+		raw: Type.Unknown({ description: "Pass-through to eBay's update_shipping_cost body shape." }),
+	},
+	{ $id: "RateTableShippingCostUpdate" },
+);
+export type RateTableShippingCostUpdate = Static<typeof RateTableShippingCostUpdate>;
+
+/* --------- Sell Account v2 payout settings ---------------------------- */
+
+export const PayoutSettings = Type.Object(
+	{
+		raw: Type.Unknown({ description: "eBay's full payout-settings shape; flipagent doesn't reshape." }),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "PayoutSettings" },
+);
+export type PayoutSettings = Static<typeof PayoutSettings>;
+
+export const PayoutPercentageUpdateRequest = Type.Object(
+	{
+		raw: Type.Unknown({ description: "Pass-through to eBay's update_percentage body shape." }),
+	},
+	{ $id: "PayoutPercentageUpdateRequest" },
+);
+export type PayoutPercentageUpdateRequest = Static<typeof PayoutPercentageUpdateRequest>;
+
 /* --------- Custom policy (sell/account/v1/custom_policy) ------------- */
 
 export const CustomPolicy = Type.Object(

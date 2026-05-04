@@ -178,6 +178,28 @@ interface UpstreamPaymentDisputeActivityHistory {
 }
 
 /**
+ * Close a post-purchase inquiry. eBay has 7 actions on inquiries:
+ *   close | escalate | confirm_refund | issue_refund | provide_refund_info |
+ *   provide_seller_response | provide_shipment_info
+ * `close` ends the inquiry without further action; this is the most
+ * common buyer flow ("never mind, I figured it out") and we wrap it
+ * separately so callers don't need to know the action enum. Other
+ * actions go through `respondToDispute` with the appropriate body.
+ *
+ * Returns the refreshed Dispute (now `closed`) or null if the id
+ * doesn't resolve.
+ */
+export async function closeInquiry(id: string, ctx: DisputesContext): Promise<Dispute | null> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/post-order/v2/inquiry/${encodeURIComponent(id)}/close`,
+		marketplace: ctx.marketplace,
+	});
+	return getDispute(id, "inquiry", ctx);
+}
+
+/**
  * Payment-dispute activity history. Returns null when the dispute id
  * resolves to a non-payment type (no eBay equivalent endpoint for
  * returns / cases / cancellations / inquiries).

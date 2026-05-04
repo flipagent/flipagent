@@ -90,9 +90,15 @@ export const ListingGroup = Type.Object(
 		variantSkus: Type.Array(Type.String()),
 		variesBy: Type.Optional(
 			Type.Object({
-				specifications: Type.Array(Type.String(), {
-					description: "Aspect names that differ across variants (e.g. ['Size','Color']).",
-				}),
+				// Per eBay `Specification` spec each entry is `{name, values}`.
+				// Verified live 2026-05-03 — passing bare strings was rejected
+				// with "The request has errors" (silent shape mismatch).
+				specifications: Type.Array(
+					Type.Object({
+						name: Type.String({ description: "Aspect name (e.g. 'Size', 'Color')." }),
+						values: Type.Array(Type.String(), { description: "All variation values for this aspect." }),
+					}),
+				),
 				aspectsImageVariesBy: Type.Optional(Type.Array(Type.String())),
 				images: Type.Optional(
 					Type.Array(
@@ -106,9 +112,15 @@ export const ListingGroup = Type.Object(
 			}),
 		),
 		aspects: Type.Optional(ListingAspects),
-		brand: Type.Optional(Type.String()),
-		mpn: Type.Optional(Type.String()),
-		gtin: Type.Optional(Type.String()),
+		// `brand`, `mpn`, `gtin` belong to per-SKU `inventory_item` records,
+		// NOT to the parent `inventory_item_group`. eBay's
+		// `InventoryItemGroup` schema (verified 2026-05-03 via field-diff)
+		// only carries: aspects, description, imageUrls, inventoryItemGroupKey,
+		// subtitle, title, variantSKUs, variesBy, videoIds. Reading per-SKU
+		// brand/mpn/gtin from the group endpoint would always be undefined.
+		// Read them from the linked SKU's inventory_item instead.
+		subtitle: Type.Optional(Type.String()),
+		videoIds: Type.Optional(Type.Array(Type.String())),
 		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ListingGroup" },
@@ -137,9 +149,10 @@ export const ListingGroupUpsert = Type.Object(
 			}),
 		),
 		aspects: Type.Optional(ListingAspects),
-		brand: Type.Optional(Type.String()),
-		mpn: Type.Optional(Type.String()),
-		gtin: Type.Optional(Type.String()),
+		// See ListingGroup above — group has no brand/mpn/gtin in eBay's
+		// schema. Adding them to the upsert body would silently get dropped.
+		subtitle: Type.Optional(Type.String()),
+		videoIds: Type.Optional(Type.Array(Type.String())),
 	},
 	{ $id: "ListingGroupUpsert" },
 );

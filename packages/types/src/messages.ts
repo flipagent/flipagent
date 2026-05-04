@@ -154,3 +154,35 @@ export const MessageSendResponse = Type.Object(
 	{ $id: "MessageSendResponse" },
 );
 export type MessageSendResponse = Static<typeof MessageSendResponse>;
+
+/**
+ * `PATCH /v1/messages/{id}` and `PATCH /v1/messages/bulk` — mark a
+ * conversation as read/unread or archive/unarchive. Wraps eBay's
+ * `update_conversation` + `bulk_update_conversation`.
+ */
+export const ConversationAction = Type.Union(
+	[Type.Literal("mark_read"), Type.Literal("mark_unread"), Type.Literal("archive"), Type.Literal("unarchive")],
+	{ $id: "ConversationAction" },
+);
+export type ConversationAction = Static<typeof ConversationAction>;
+
+export const ConversationUpdateRequest = Type.Object(
+	{ action: ConversationAction },
+	{ $id: "ConversationUpdateRequest" },
+);
+export type ConversationUpdateRequest = Static<typeof ConversationUpdateRequest>;
+
+export const ConversationsBulkUpdateRequest = Type.Object(
+	{
+		conversationIds: Type.Array(Type.String(), { minItems: 1 }),
+		action: ConversationAction,
+	},
+	{ $id: "ConversationsBulkUpdateRequest" },
+);
+export type ConversationsBulkUpdateRequest = Static<typeof ConversationsBulkUpdateRequest>;
+
+export const ConversationUpdateResponse = Type.Object(
+	{ ok: Type.Boolean(), source: Type.Optional(ResponseSource) },
+	{ $id: "ConversationUpdateResponse" },
+);
+export type ConversationUpdateResponse = Static<typeof ConversationUpdateResponse>;

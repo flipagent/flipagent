@@ -44,10 +44,13 @@ function terminalPayloadFromRow(row: ComputeJob): { event: string; data: string 
 		return { event: "cancelled", data: JSON.stringify({}) };
 	}
 	if (row.status === "failed") {
-		return {
-			event: "error",
-			data: JSON.stringify({ error: row.errorCode, message: row.errorMessage }),
-		};
+		const payload: Record<string, unknown> = { error: row.errorCode, message: row.errorMessage };
+		// Mirror the sync POST: typed errors that ship a structured
+		// `details` payload (e.g. `variation_required` with the enumerated
+		// variations) must reach SSE subscribers too — they're the sole
+		// signal an async client has to recover the failure.
+		if (row.errorDetails != null) payload.details = row.errorDetails;
+		return { event: "error", data: JSON.stringify(payload) };
 	}
 	return null;
 }

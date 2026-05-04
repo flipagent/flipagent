@@ -85,6 +85,85 @@ export const ForwarderCapabilities = Type.Object(
 );
 export type ForwarderCapabilities = Static<typeof ForwarderCapabilities>;
 
+/**
+ * Setup hints — env-aware install instructions for the bridge extension
+ * + dashboard. Surfaced when capabilities flag the extension as
+ * unpaired so the agent can hand the user the right install path
+ * without asking. `mode = "hosted"` when the api is running on
+ * api.flipagent.dev, `"self-hosted"` for any other base.
+ */
+export const SetupHints = Type.Object(
+	{
+		mode: Type.Union([Type.Literal("hosted"), Type.Literal("self-hosted")]),
+		apiBase: Type.String(),
+		extensionInstall: Type.Object({
+			from: Type.Union([Type.Literal("chrome-web-store"), Type.Literal("unpacked-dev-build")]),
+			url: Type.Optional(Type.String({ description: "Web Store URL when mode=hosted." })),
+			devBuildSteps: Type.Optional(Type.Array(Type.String({ description: "Shell commands when mode=self-hosted." }))),
+		}),
+		dashboardUrl: Type.String({ description: "Where the user manages keys / OAuth / billing." }),
+	},
+	{ $id: "SetupHints" },
+);
+export type SetupHints = Static<typeof SetupHints>;
+
+/**
+ * Setup checklist — server-derived, single source of truth for the
+ * onboarding flow shown by every flipagent surface (popup, dashboard,
+ * MCP / agent prompts). Each step has the same shape so consumers can
+ * render uniformly without per-surface logic.
+ *
+ * Rules:
+ *   - `done` → step satisfied. Render dimmed.
+ *   - `active` → step is the user's current actionable item. Render
+ *     prominent with the CTA.
+ *   - `locked` → prerequisite step (e.g. pair_extension) blocks this
+ *     one. Render dim + disabled.
+ *   - `nextStep` is the id of the highest-priority `active` step
+ *     (the one the surface should highlight first). Null when every
+ *     required step is `done`.
+ *   - `required: true` steps belong to the canonical resell loop
+ *     (sell + buy via bridge). Optional steps (e.g. forwarder) only
+ *     gate specific workflows and should be tagged that way in UI.
+ */
+export const SetupStepId = Type.Union(
+	[Type.Literal("pair_extension"), Type.Literal("ebay_signin"), Type.Literal("seller_oauth")],
+	{ $id: "SetupStepId" },
+);
+export type SetupStepId = Static<typeof SetupStepId>;
+
+export const SetupStepStatus = Type.Union(
+	[Type.Literal("done"), Type.Literal("active"), Type.Literal("locked")],
+	{ $id: "SetupStepStatus" },
+);
+export type SetupStepStatus = Static<typeof SetupStepStatus>;
+
+export const SetupStep = Type.Object(
+	{
+		id: SetupStepId,
+		status: SetupStepStatus,
+		/** True for steps in the canonical resell loop (sell + buy via bridge). False for optional steps that only gate specific workflows. */
+		required: Type.Boolean(),
+		title: Type.String(),
+		description: Type.String(),
+		/** Capability surfaces this step gates — e.g. ['buy'] for ebay_signin, ['sell'] for seller_oauth, ['forwarder'] for planetexpress. */
+		unlocks: Type.Array(Type.String()),
+	},
+	{ $id: "SetupStep" },
+);
+export type SetupStep = Static<typeof SetupStep>;
+
+export const SetupChecklist = Type.Object(
+	{
+		steps: Type.Array(SetupStep),
+		/** Highest-priority `active` step id, or null when every required step is `done`. */
+		nextStep: Type.Union([SetupStepId, Type.Null()]),
+		allRequiredDone: Type.Boolean(),
+	},
+	{ $id: "SetupChecklist" },
+);
+export type SetupChecklist = Static<typeof SetupChecklist>;
+
 export const CapabilitiesResponse = Type.Object(
 	{
 		client: Type.Object({
@@ -98,6 +177,8 @@ export const CapabilitiesResponse = Type.Object(
 		forwarders: Type.Object({
 			planetexpress: ForwarderCapabilities,
 		}),
+		setup: SetupHints,
+		checklist: SetupChecklist,
 		generatedAt: Type.String({ format: "date-time" }),
 	},
 	{ $id: "CapabilitiesResponse" },

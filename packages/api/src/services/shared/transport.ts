@@ -106,12 +106,13 @@ export const RESOURCE_TRANSPORTS = {
 	"markets.policies": { rest: { needsAuth: "user" } },
 	"markets.taxonomy": { rest: { needsAuth: "app" } },
 	"markets.metadata": { rest: { needsAuth: "user" } },
-	// Commerce Catalog REST is a Limited Release surface — most app keys
-	// (including ours, today) get `Insufficient permissions` from
-	// `/commerce/catalog/v1_beta/...` even with valid credentials. When
-	// EBAY_CATALOG_APPROVED is unset we fall through to scrape, which
-	// reproduces the documented `Product` shape via /p/{epid} JSON-LD +
-	// item-specifics from a representative listing under that EPID.
+	// Commerce Catalog REST: app-credential is LR-gated, but USER OAuth
+	// works without eBay tenant approval (verified live 2026-05-03). The
+	// service at `services/products.ts` tries user OAuth first when an
+	// api-key is connected, then app-credential REST when
+	// EBAY_CATALOG_APPROVED=1, then scrapes /p/{epid} JSON-LD as the
+	// final fallback. This capability matrix entry only describes the
+	// app-credential REST path; user OAuth is decided at call time.
 	"markets.catalog": { rest: { needsAuth: "app", envFlag: "EBAY_CATALOG_APPROVED" }, scrape: true },
 	"markets.translation": { rest: { needsAuth: "app" } },
 	// Commerce identity
@@ -138,6 +139,21 @@ export const RESOURCE_TRANSPORTS = {
 	"inbox.offers": { bridge: { taskName: BRIDGE_TASKS.EBAY_INBOX_OFFERS } },
 	"inbox.cases": { bridge: { taskName: BRIDGE_TASKS.EBAY_INBOX_CASES } },
 	"inbox.savedSearches": { bridge: { taskName: BRIDGE_TASKS.EBAY_INBOX_SAVED_SEARCHES } },
+	// Buy Browse persistent shopping cart — REST only (user OAuth).
+	"cart.read": { rest: { needsAuth: "user" } },
+	"cart.write": { rest: { needsAuth: "user" } },
+	// Image-based item search — Buy Browse `search_by_image`, app credential.
+	"items.searchByImage": { rest: { needsAuth: "app" } },
+	// Buy Marketing — merchandised products + also-bought / also-viewed (LR).
+	"markets.merchandised": { rest: { needsAuth: "app" } },
+	// Listing draft — Sell Listing v1_beta `item_draft` (user OAuth).
+	"listings.draft": { rest: { needsAuth: "user" } },
+	// eDelivery International Shipping — niche cross-border surface.
+	"edelivery.packages": { rest: { needsAuth: "user" } },
+	"edelivery.bundles": { rest: { needsAuth: "user" } },
+	"edelivery.read": { rest: { needsAuth: "user" } },
+	// Developer self-registration — app credential.
+	"developer.register": { rest: { needsAuth: "app" } },
 } as const satisfies Record<string, ResourceTransports>;
 
 export type ResourceKey = keyof typeof RESOURCE_TRANSPORTS;

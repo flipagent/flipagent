@@ -21,12 +21,15 @@
 import {
 	BridgeLoginStatusRequest,
 	BridgeLoginStatusResponse,
+	BridgePeLoginStatusRequest,
 	BridgePollJob,
 	BridgeResultRequest,
 	BridgeResultResponse,
 	IssueBridgeTokenRequest,
 	IssueBridgeTokenResponse,
 } from "@flipagent/types";
+import { Type } from "@sinclair/typebox";
+import { CaptureRateLimitError, captureDetail } from "../../services/bridge-capture.js";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
@@ -234,5 +237,94 @@ bridgeRoute.post(
 			})
 			.where(eq(bridgeTokens.id, c.var.bridgeToken.id));
 		return c.json({ ok: true as const });
+	},
+);
+
+bridgeRoute.post(
+	"/pe-login-status",
+	describeRoute({
+		tags: ["Bridge"],
+		summary: "Bridge client reports Planet Express login state",
+		description:
+			"Auth: bridge token. Sent by the extension's content script after URL-probing app.planetexpress.com. Surfaced back via `/v1/capabilities.checklist` (planetexpress step status) so dashboard + MCP see the same 'done' state the popup does. Mirrors `/v1/bridge/login-status` but for the forwarder — distinct upstream + cookies, no overlap.",
+		responses: {
+			200: jsonResponse("Acknowledged.", BridgeLoginStatusResponse),
+			401: errorResponse("Missing or invalid bridge token."),
+		},
+	}),
+	requireBridgeToken,
+	tbBody(BridgePeLoginStatusRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		await db
+			.update(bridgeTokens)
+			.set({ peLoggedIn: body.loggedIn, peVerifiedAt: new Date() })
+			.where(eq(bridgeTokens.id, c.var.bridgeToken.id));
+		return c.json({ ok: true as const });
+	},
+);
+
+/**
+ * `POST /v1/bridge/capture` — passive capture intake.
+ *
+ * The Chrome extension's content script parses every public eBay PDP /
+ * search page the user visits (when they've opted in) via the same
+ * `parseEbayDetailHtml` we use for scrape, then pushes the parsed payload
+ * here. We normalise + cache it so the next `/v1/items/*` call for that
+ * itemId hits the captured copy instead of issuing a fresh scrape —
+ * users with the toggle on naturally seed the catalog as they browse.
+ *
+ * Privacy: the `url` is verified against an allow / deny list inside
+ * `captureDetail` before any storage happens. Personal pages (My eBay,
+ * checkout, sign-in, seller hub) are rejected with `private_url` and
+ * never persisted.
+ */
+const BridgeCaptureRequest = Type.Object(
+	{
+		url: Type.String({ description: "The eBay URL the page was captured from. Must be /itm/, /p/, or /sch/." }),
+		rawDetail: Type.Any({
+			description:
+				"`EbayItemDetail` shape returned by `parseEbayDetailHtml` from `@flipagent/ebay-scraper`. Loose-typed here because the schema is owned by the scraper package.",
+		}),
+	},
+	{ $id: "BridgeCaptureRequest" },
+);
+const BridgeCaptureResponse = Type.Object(
+	{
+		stored: Type.Boolean(),
+		itemId: Type.Optional(Type.String()),
+		reason: Type.Optional(Type.String()),
+		cachedFor: Type.Optional(Type.Integer({ description: "TTL seconds the cached entry remains valid." })),
+	},
+	{ $id: "BridgeCaptureResponse" },
+);
+
+bridgeRoute.post(
+	"/capture",
+	describeRoute({
+		tags: ["Bridge"],
+		summary: "Push a parsed eBay PDP into the response cache",
+		description:
+			"Auth: bridge token. Validates the source URL, normalises the parsed `EbayItemDetail` payload through the same `ebayDetailToBrowse()` the scrape transport uses, and writes the resulting `ItemDetail` to the response cache. Subsequent `/v1/items/{itemId}` lookups hit the cached copy without scraping. Personal-page URLs and rate-limited callers receive a 200 with `stored: false`.",
+		responses: {
+			200: jsonResponse("Capture processed (stored or rejected with reason).", BridgeCaptureResponse),
+			401: errorResponse("Missing or invalid bridge token."),
+			429: errorResponse("Rate limit exceeded — 60 captures per 60 seconds per api key."),
+		},
+	}),
+	requireBridgeToken,
+	tbBody(BridgeCaptureRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const apiKeyId = c.var.bridgeApiKey.id;
+		try {
+			const r = await captureDetail({ apiKeyId, url: body.url, rawDetail: body.rawDetail });
+			return c.json(r);
+		} catch (err) {
+			if (err instanceof CaptureRateLimitError) {
+				return c.json({ error: "rate_limited", message: "60 captures per 60 seconds per api key." }, 429);
+			}
+			throw err;
+		}
 	},
 );

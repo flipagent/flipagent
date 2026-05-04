@@ -10,6 +10,7 @@ import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { EbayApiError } from "../../services/ebay/rest/user-client.js";
 import { getSale, listSales, refundSale, shipSale } from "../../services/sales/operations.js";
+import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
 export const salesRoute = new Hono();
@@ -22,7 +23,11 @@ const COMMON = {
 
 function mapErr(c: Context, err: unknown) {
 	if (err instanceof EbayApiError) {
-		return c.json({ error: err.code, message: err.message }, err.status as 401 | 404 | 502 | 503);
+		const next_action = err.nextActionKind ? nextAction(c, err.nextActionKind) : undefined;
+		return c.json(
+			{ error: err.code, message: err.message, ...(next_action ? { next_action } : {}) },
+			err.status as 401 | 404 | 502 | 503,
+		);
 	}
 	return null;
 }

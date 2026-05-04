@@ -1,13 +1,30 @@
 /**
- * `/v1/featured` — eBay's curated daily/event deals.
+ * `/v1/featured` — eBay-curated buy-side surfaces:
+ *   - daily / event deals (Buy Deal)
+ *   - merchandised products (Buy Marketing — best-selling per category)
+ *   - also-bought / also-viewed (Buy Marketing — related products)
+ *
+ * All read-mostly buyer-facing. The seller-facing `/v1/recommendations`
+ * is the inverse: listing-optimization tips for the caller's listings.
  */
 
-import { FeaturedListResponse } from "@flipagent/types";
+import {
+	FeaturedListResponse,
+	MerchandisedProductsQuery,
+	MerchandisedProductsResponse,
+	RelatedByProductQuery,
+	RelatedByProductResponse,
+} from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { listFeatured } from "../../services/featured.js";
-import { errorResponse, jsonResponse } from "../../utils/openapi.js";
+import {
+	listAlsoBoughtByProduct,
+	listAlsoViewedByProduct,
+	listFeatured,
+	listMerchandisedProducts,
+} from "../../services/featured.js";
+import { errorResponse, jsonResponse, paramsFor, tbCoerce } from "../../utils/openapi.js";
 
 export const featuredRoute = new Hono();
 
@@ -29,5 +46,56 @@ featuredRoute.get(
 			categoryIds: c.req.query("categoryIds"),
 		});
 		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+featuredRoute.get(
+	"/merchandised",
+	describeRoute({
+		tags: ["Featured"],
+		summary: "Best-selling products in a category (Buy Marketing, LR)",
+		parameters: paramsFor("query", MerchandisedProductsQuery),
+		responses: { 200: jsonResponse("Products.", MerchandisedProductsResponse), ...COMMON },
+	}),
+	requireApiKey,
+	tbCoerce("query", MerchandisedProductsQuery),
+	async (c) => {
+		const q = c.req.valid("query");
+		const r = await listMerchandisedProducts(q, c.req.header("X-EBAY-C-MARKETPLACE-ID"));
+		return c.json({ ...r, source: "rest" as const } satisfies MerchandisedProductsResponse);
+	},
+);
+
+featuredRoute.get(
+	"/also-bought",
+	describeRoute({
+		tags: ["Featured"],
+		summary: "Products often bought together with this EPID/GTIN (LR)",
+		parameters: paramsFor("query", RelatedByProductQuery),
+		responses: { 200: jsonResponse("Products.", RelatedByProductResponse), ...COMMON },
+	}),
+	requireApiKey,
+	tbCoerce("query", RelatedByProductQuery),
+	async (c) => {
+		const q = c.req.valid("query");
+		const r = await listAlsoBoughtByProduct(q, c.req.header("X-EBAY-C-MARKETPLACE-ID"));
+		return c.json({ ...r, source: "rest" as const } satisfies RelatedByProductResponse);
+	},
+);
+
+featuredRoute.get(
+	"/also-viewed",
+	describeRoute({
+		tags: ["Featured"],
+		summary: "Products often viewed alongside this EPID/GTIN (LR)",
+		parameters: paramsFor("query", RelatedByProductQuery),
+		responses: { 200: jsonResponse("Products.", RelatedByProductResponse), ...COMMON },
+	}),
+	requireApiKey,
+	tbCoerce("query", RelatedByProductQuery),
+	async (c) => {
+		const q = c.req.valid("query");
+		const r = await listAlsoViewedByProduct(q, c.req.header("X-EBAY-C-MARKETPLACE-ID"));
+		return c.json({ ...r, source: "rest" as const } satisfies RelatedByProductResponse);
 	},
 );

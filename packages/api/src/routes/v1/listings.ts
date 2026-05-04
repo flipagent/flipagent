@@ -18,6 +18,8 @@ import {
 	ItemGroupActionRequest,
 	ItemGroupPublishResponse,
 	ListingCreate,
+	ListingDraftRequest,
+	ListingDraftResponse,
 	ListingPreviewFeesRequest,
 	ListingPreviewFeesResponse,
 	ListingResponse,
@@ -43,6 +45,8 @@ import {
 	setProductCompatibility,
 } from "../../services/listings/compatibility.js";
 import { createListing, MissingPrereqError, PublishFailedError } from "../../services/listings/create.js";
+import { MissingSellerPoliciesError } from "../../services/listings/defaults.js";
+import { createListingDraft } from "../../services/listings/draft.js";
 import { getListing, listListings } from "../../services/listings/get.js";
 import { publishByInventoryItemGroup, withdrawByInventoryItemGroup } from "../../services/listings/groups.js";
 import { endListing, relistListing, updateListing } from "../../services/listings/lifecycle.js";
@@ -62,11 +66,26 @@ const COMMON_RESPONSES = {
 };
 
 function mapEbayError(c: Context, err: unknown) {
+	if (err instanceof MissingSellerPoliciesError) {
+		return c.json(
+			{
+				error: "missing_seller_policies",
+				message: err.message,
+				missing: err.missing,
+				next_action: nextAction(c, "setup_seller_policies"),
+			},
+			412,
+		);
+	}
 	if (err instanceof MissingPrereqError) {
 		return c.json({ error: err.code, message: err.message }, 412);
 	}
 	if (err instanceof PublishFailedError) {
-		return c.json({ error: "publish_failed", message: err.message, partial: err.partial }, 502);
+		// Surface the upstream eBay error (errorId, longMessage, parameters)
+		// so the agent can act on it. Without this the publish step looks
+		// like a black box and the agent has nothing to surface to the user.
+		const upstream = err.upstreamCause instanceof EbayApiError ? err.upstreamCause.upstream : undefined;
+		return c.json({ error: "publish_failed", message: err.message, partial: err.partial, upstream }, 502);
 	}
 	if (err instanceof EbayApiError) {
 		const next_action = err.nextActionKind ? nextAction(c, err.nextActionKind) : undefined;
@@ -100,6 +119,31 @@ listingsRoute.post(
 		const body = (await c.req.json()) as ListingVerifyRequest;
 		return c.json({ ...(await verifyListing(accessToken, body)), source: "trading" as const });
 	}),
+);
+
+listingsRoute.post(
+	"/draft",
+	describeRoute({
+		tags: ["Listings"],
+		summary: "Create a listing draft on eBay (seller finishes via redirect)",
+		description:
+			"Wraps Sell Listing v1_beta `item_draft`. Returns `itemDraftId` + `listingRedirectUrl` so the seller can review + publish on ebay.com. Useful for `give me a one-click pre-filled listing` agent flows.",
+		responses: {
+			200: jsonResponse("Draft.", ListingDraftResponse),
+			401: errorResponse("Auth missing."),
+			502: errorResponse("Upstream eBay failed."),
+		},
+	}),
+	requireApiKey,
+	tbBody(ListingDraftRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const r = await createListingDraft(body, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const } satisfies ListingDraftResponse);
+	},
 );
 
 listingsRoute.post(

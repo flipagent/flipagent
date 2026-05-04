@@ -28,22 +28,60 @@
 import {
 	ComputeJobAck,
 	EvaluateJob,
+	EvaluatePoolResponse,
 	EvaluateRequest,
 	EvaluateResponse,
 	FeaturedEvaluationsResponse,
 } from "@flipagent/types";
+import type { ItemSummary } from "@flipagent/types/ebay/buy";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { describeRoute } from "hono-openapi";
-import type { ComputeJob } from "../../db/schema.js";
+import { db } from "../../db/client.js";
+import { type ComputeJob, computeJobs } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { httpStatusForPipelineError } from "../../services/compute-jobs/error-mapping.js";
-import { awaitTerminal, cancelJob, createJob, getJob } from "../../services/compute-jobs/queue.js";
+import {
+	awaitTerminal,
+	cancelJob,
+	createJob,
+	findInProgressEvaluateJob,
+	getJob,
+} from "../../services/compute-jobs/queue.js";
 import { streamComputeJobEvents } from "../../services/compute-jobs/sse-stream.js";
+import { buildPoolResponse } from "../../services/evaluate/digest.js";
 import { listFeaturedEvaluations } from "../../services/evaluate/featured.js";
+import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const evaluateRoute = new Hono();
+
+/**
+ * Resolve the compute job for an evaluate request. If an in-progress
+ * job already exists for `(apiKey, itemId)` we return it instead of
+ * creating a new row — the second client (e.g. the Chrome extension
+ * after the dashboard playground) attaches to the same job's stream
+ * and sees the same trace, instead of paying for a duplicate run.
+ *
+ * Race window: two simultaneous POSTs that both miss the lookup will
+ * each insert. Worst case is one extra run; the result cache dedups
+ * the user-visible outcome on subsequent reads.
+ */
+async function startOrAttachEvaluateJob(
+	apiKey: { id: string; userId: string | null },
+	params: { itemId: string } & Record<string, unknown>,
+): Promise<{ job: import("../../db/schema.js").ComputeJob; reused: boolean }> {
+	const existing = await findInProgressEvaluateJob(apiKey.id, params.itemId);
+	if (existing) return { job: existing, reused: true };
+	const job = await createJob({
+		apiKeyId: apiKey.id,
+		userId: apiKey.userId,
+		kind: "evaluate",
+		params,
+	});
+	return { job, reused: false };
+}
 
 /** Hard deadline for sync evaluate. Container Apps default ingress
  * idle timeout is ~240s; staying under that surfaces a clean
@@ -76,12 +114,10 @@ evaluateRoute.post(
 	async (c) => {
 		const params = c.req.valid("json");
 		const apiKey = c.var.apiKey;
-		const job = await createJob({
-			apiKeyId: apiKey.id,
-			userId: apiKey.userId,
-			kind: "evaluate",
-			params: params as unknown as Record<string, unknown>,
-		});
+		const { job } = await startOrAttachEvaluateJob(
+			apiKey,
+			params as unknown as { itemId: string } & Record<string, unknown>,
+		);
 		// Worker container claims and runs the pipeline; this route waits
 		// for the row to reach terminal status. Abort signal stops the
 		// poll loop early when the client disconnects (no point holding
@@ -107,7 +143,100 @@ evaluateRoute.post(
 		// failed
 		const code = final.errorCode ?? "internal";
 		const message = final.errorMessage ?? "evaluation failed";
-		return c.json({ error: code, message }, httpStatusForPipelineError(code));
+		const errorBody: Record<string, unknown> = { error: code, message };
+		// `variation_required` (and any future typed error that adopts
+		// `EvaluateError.details`) ships a structured payload alongside the
+		// human-readable code+message. Surface it so an agent can read
+		// `details.variations[]` and retry with a specific variationId.
+		if (final.errorDetails != null) errorBody.details = final.errorDetails;
+		return c.json(errorBody, httpStatusForPipelineError(code));
+	},
+);
+
+/* ------------------------------- drill-down ------------------------------- */
+
+/**
+ * Companion to the digest returned by `POST /v1/evaluate`. Looks up
+ * the most recent completed evaluate job for this api key + itemId and
+ * returns the same-product pools (kept + rejected, with per-item
+ * rejection reason inline). This is the playground-equivalent "View"
+ * expansion.
+ *
+ * Cache-only — no compute. Returns 412 with `next_action` when no
+ * recent evaluation is on file, instructing the caller to run
+ * `POST /v1/evaluate` first. Cheap (single indexed DB read), so we
+ * do **not** charge a usage event here.
+ */
+evaluateRoute.get(
+	"/:itemId/pool",
+	describeRoute({
+		tags: ["Evaluate"],
+		summary: "Drill into the same-product pools used to score one listing",
+		description:
+			"Returns the kept + rejected sold/active listings the LLM filter selected, with per-item rejection reason inline. Mirrors the playground's per-section 'View' expansion. Cache-only — call POST /v1/evaluate first within the cache TTL; on cache miss returns 412 with a next_action pointer.",
+		responses: {
+			200: jsonResponse("Same-product pools.", EvaluatePoolResponse),
+			401: errorResponse("Missing or invalid API key."),
+			412: errorResponse("No recent evaluation cached. Run POST /v1/evaluate first."),
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const itemId = c.req.param("itemId");
+		const apiKey = c.var.apiKey;
+		// Most recent completed evaluate job for this api key + itemId,
+		// from the last 24h. Indexed on (apiKeyId, createdAt desc).
+		const [row] = await db
+			.select()
+			.from(computeJobs)
+			.where(
+				and(
+					eq(computeJobs.apiKeyId, apiKey.id),
+					eq(computeJobs.kind, "evaluate"),
+					eq(computeJobs.status, "completed"),
+					sql`${computeJobs.params}->>'itemId' = ${itemId}`,
+				),
+			)
+			.orderBy(desc(computeJobs.completedAt))
+			.limit(1);
+		if (!row || !row.result) {
+			return c.json(
+				{
+					error: "no_cached_evaluation",
+					message: `No completed evaluation found for itemId=${itemId}. Run POST /v1/evaluate first.`,
+					next_action: {
+						kind: "run_evaluate_first",
+						url: `${new URL(c.req.url).origin}/v1/evaluate`,
+						instructions:
+							"Call POST /v1/evaluate with this itemId first; once complete, re-call this endpoint within ~24h to drill into the same-product pools.",
+					},
+				},
+				412,
+			);
+		}
+		const result = row.result as {
+			soldPool?: ItemSummary[];
+			activePool?: ItemSummary[];
+			rejectedSoldPool?: ItemSummary[];
+			rejectedActivePool?: ItemSummary[];
+			rejectionReasons?: Record<string, string>;
+			rejectionCategories?: Record<string, string>;
+		};
+		const body = buildPoolResponse({
+			itemId,
+			evaluatedAt: row.completedAt?.toISOString() ?? new Date().toISOString(),
+			soldKept: result.soldPool ?? [],
+			soldRejected: result.rejectedSoldPool ?? [],
+			activeKept: result.activePool ?? [],
+			activeRejected: result.rejectedActivePool ?? [],
+			rejectionReasons: result.rejectionReasons ?? {},
+			rejectionCategories: result.rejectionCategories ?? {},
+		});
+		// Suppress the unused-helper warning for `nextAction` — it's already
+		// imported by sibling routes; keep the import grouped here for the
+		// 503 path if billing/eBay env is missing in the future.
+		void nextAction;
+		return c.json(body);
 	},
 );
 
@@ -154,15 +283,14 @@ evaluateRoute.post(
 	async (c) => {
 		const params = c.req.valid("json");
 		const apiKey = c.var.apiKey;
-		const job = await createJob({
-			apiKeyId: apiKey.id,
-			userId: apiKey.userId,
-			kind: "evaluate",
-			params: params as unknown as Record<string, unknown>,
-		});
+		const { job } = await startOrAttachEvaluateJob(
+			apiKey,
+			params as unknown as { itemId: string } & Record<string, unknown>,
+		);
 		// The worker container picks the row up via `claimNextJob`. A
 		// /stream subscriber (or /jobs/{id} poll) sees the same progress
-		// regardless of when it connects.
+		// regardless of when it connects. Idempotent — if another client
+		// already kicked off this itemId, both surfaces converge here.
 		return c.json({ id: job.id, status: job.status }, 202);
 	},
 );
@@ -190,6 +318,39 @@ evaluateRoute.get(
 			return c.json({ error: "not_found", message: `No evaluate job ${id} for this api key.` }, 404);
 		}
 		return c.json(toEvaluateJobShape(job));
+	},
+);
+
+/* ----------------------------- discover active ----------------------------- */
+
+/**
+ * Cross-surface live-state probe. Returns the in-progress evaluate
+ * job for `(apiKey, itemId)` if one exists — the playground started
+ * a run, the extension chip mounts on `/itm/X`, this lets the chip
+ * attach to the same job and stream the same trace instead of
+ * showing a disconnected "idle" state.
+ *
+ * Returns 200 with `{ id, status }` when found, 200 with `null` when
+ * not. Cheap enough for the chip to call on every mount.
+ */
+evaluateRoute.get(
+	"/active",
+	describeRoute({
+		tags: ["Evaluate"],
+		summary: "Find the in-progress evaluate job for an itemId, if any",
+		description:
+			"Returns the active (queued or running) evaluate job for `(apiKey, itemId)`. Used by clients to attach to a job started by another surface (e.g. the extension chip auto-syncs with a playground run). Returns `null` when no active job exists.",
+		responses: {
+			200: { description: "Active job or null." },
+			401: errorResponse("Missing or invalid API key."),
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const itemId = c.req.query("itemId");
+		if (!itemId) return c.json({ error: "itemId_required" }, 400);
+		const job = await findInProgressEvaluateJob(c.var.apiKey.id, itemId);
+		return c.json(job ? { id: job.id, status: job.status } : null);
 	},
 );
 
@@ -256,6 +417,7 @@ function toEvaluateJobShape(job: ComputeJob): EvaluateJob {
 		result: (job.result as EvaluateJob["result"]) ?? null,
 		errorCode: job.errorCode ?? null,
 		errorMessage: job.errorMessage ?? null,
+		errorDetails: job.errorDetails ?? null,
 		cancelRequested: job.cancelRequested,
 		createdAt: job.createdAt.toISOString(),
 		startedAt: job.startedAt?.toISOString() ?? null,

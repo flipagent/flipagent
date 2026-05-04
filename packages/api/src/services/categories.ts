@@ -171,3 +171,35 @@ export async function getCategoryAspects(categoryId: string, marketplace?: strin
 		...(a.aspectValues?.length ? { values: a.aspectValues.map((v) => v.localizedValue) } : {}),
 	}));
 }
+
+interface FetchItemAspectsResponse {
+	aspects?: Array<{
+		categoryId: string;
+		aspects?: AspectsResponse["aspects"];
+	}>;
+}
+
+/**
+ * Bulk fetch — every aspect for every category in a tree. Heavy
+ * (multi-MB JSON for full eBay US tree); use `getCategoryAspects` for
+ * single-category real-time UI calls.
+ */
+export async function fetchItemAspects(
+	marketplace?: string,
+): Promise<{ treeId: string; entries: Array<{ categoryId: string; aspects: CategoryAspect[] }> }> {
+	const treeId = await getCategoryTreeId(marketplace);
+	const res = await appRequest<FetchItemAspectsResponse>({
+		path: `/commerce/taxonomy/v1/category_tree/${treeId}/fetch_item_aspects`,
+	});
+	const entries = (res.aspects ?? []).map((row) => ({
+		categoryId: row.categoryId,
+		aspects: (row.aspects ?? []).map((a) => ({
+			name: a.localizedAspectName,
+			required: !!a.aspectConstraint?.aspectRequired,
+			multiValued: a.aspectConstraint?.itemToAspectCardinality === "MULTI",
+			...(a.aspectConstraint?.aspectDataType ? { dataType: a.aspectConstraint.aspectDataType } : {}),
+			...(a.aspectValues?.length ? { values: a.aspectValues.map((v) => v.localizedValue) } : {}),
+		})),
+	}));
+	return { treeId, entries };
+}

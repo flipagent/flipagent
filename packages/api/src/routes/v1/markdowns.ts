@@ -6,7 +6,13 @@ import { PriceMarkdownCreate, PriceMarkdownsListResponse } from "@flipagent/type
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { createMarkdown, listMarkdowns } from "../../services/marketing/markdowns.js";
+import {
+	createMarkdown,
+	deleteMarkdown,
+	getMarkdown,
+	listMarkdowns,
+	updateMarkdown,
+} from "../../services/marketing/markdowns.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const markdownsRoute = new Hono();
@@ -51,4 +57,57 @@ markdownsRoute.post(
 			}),
 			201,
 		),
+);
+
+markdownsRoute.get(
+	"/:id",
+	describeRoute({
+		tags: ["Markdowns"],
+		summary: "Get a markdown by id",
+		responses: { 200: { description: "Markdown." }, 404: errorResponse("Not found."), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const r = await getMarkdown(c.req.param("id"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		if (!r) return c.json({ error: "markdown_not_found" }, 404);
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+markdownsRoute.put(
+	"/:id",
+	describeRoute({
+		tags: ["Markdowns"],
+		summary: "Update a markdown",
+		responses: { 200: { description: "Updated." }, ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(PriceMarkdownCreate),
+	async (c) => {
+		const r = await updateMarkdown(c.req.param("id"), c.req.valid("json"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+markdownsRoute.delete(
+	"/:id",
+	describeRoute({
+		tags: ["Markdowns"],
+		summary: "Delete a markdown",
+		responses: { 200: { description: "Deleted." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		await deleteMarkdown(c.req.param("id"), {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ok: true, source: "rest" as const });
+	},
 );

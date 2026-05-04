@@ -83,6 +83,27 @@ export function timeoutMsForSource(source: "rest" | "scrape" | "bridge"): number
 	}
 }
 
+/**
+ * Per-process in-flight fetch dedup. When two callers race the same
+ * uncached resource (same path + queryHash), only ONE actually runs the
+ * fetcher; the rest await the same promise and share its result. Cuts
+ * duplicate Oxylabs calls during request bursts (popular itemId hit by
+ * multiple evaluate runs in the same second) and prevents thundering-
+ * herd cache misses on cold-restart.
+ *
+ * Map is keyed on `${path}:${queryHash}` — same key the cache uses, so
+ * an in-flight entry resolves to the same value the cache would have
+ * stored. Cleared in `finally` so a failed fetch doesn't poison
+ * subsequent callers.
+ *
+ * Per-process (not cross-replica): in a multi-replica deploy each
+ * instance has its own map. That's acceptable — same-replica bursts are
+ * the dominant pattern (a single user's evaluate fans out, retries on
+ * the same replica via the same connection), and cross-replica dedup
+ * would need a distributed lock that costs more than the savings.
+ */
+const inflightFetches = new Map<string, Promise<{ body: unknown; source: SourceKind }>>();
+
 export async function withCache<T>(
 	args: WithCacheArgs,
 	fetcher: () => Promise<{ body: T; source: SourceKind }>,
@@ -96,16 +117,40 @@ export async function withCache<T>(
 			cachedAt: cached.createdAt,
 		};
 	}
-	const fresh = await withTimeout(fetcher(), args.timeoutMs ?? DEFAULT_TIMEOUT_MS, args.scope);
-	await setCached(args.path, args.queryHash, fresh.body, fresh.source, args.ttlSec).catch((err) =>
-		console.error(`[withCache:${args.scope}] cache set failed:`, err),
-	);
-	return { body: fresh.body, source: fresh.source, fromCache: false };
+
+	const key = `${args.path}:${args.queryHash}`;
+	const existing = inflightFetches.get(key) as Promise<{ body: T; source: SourceKind }> | undefined;
+	if (existing) {
+		// Another caller is already fetching this exact resource. Wait
+		// for their result instead of issuing a duplicate upstream call.
+		// We don't write the cache here — the originating caller does.
+		const shared = await existing;
+		return { body: shared.body, source: shared.source, fromCache: false };
+	}
+
+	const promise = withTimeout(fetcher(), args.timeoutMs ?? DEFAULT_TIMEOUT_MS, args.scope);
+	inflightFetches.set(key, promise as Promise<{ body: unknown; source: SourceKind }>);
+	try {
+		const fresh = await promise;
+		await setCached(args.path, args.queryHash, fresh.body, fresh.source, args.ttlSec).catch((err) =>
+			console.error(`[withCache:${args.scope}] cache set failed:`, err),
+		);
+		return { body: fresh.body, source: fresh.source, fromCache: false };
+	} finally {
+		inflightFetches.delete(key);
+	}
 }
 
 export class UpstreamTimeoutError extends Error {
 	readonly scope: string;
 	readonly timeoutMs: number;
+	/**
+	 * Carried so the compute-jobs error mapper picks `upstream_timeout`
+	 * instead of bucketing this into the generic `internal` 500 code.
+	 * Callers (MCP, SDK) get an actionable code + can decide to retry or
+	 * relax `minConfidence` / `lookbackDays` per the description.
+	 */
+	readonly code = "upstream_timeout" as const;
 	constructor(scope: string, timeoutMs: number) {
 		super(`upstream timeout in ${scope} after ${timeoutMs}ms`);
 		this.name = "UpstreamTimeoutError";

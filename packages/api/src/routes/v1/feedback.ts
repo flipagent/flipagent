@@ -14,7 +14,7 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { awaitingFeedback, leaveFeedback, listFeedback } from "../../services/ebay/rest/feedback.js";
+import { awaitingFeedback, leaveFeedback, listFeedback, respondToFeedback } from "../../services/ebay/rest/feedback.js";
 import { scrubMessageBody } from "../../services/ebay/trading/message-hygiene.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
@@ -110,5 +110,54 @@ feedbackRoute.post(
 			comment: hygiene.cleanBody,
 		});
 		return c.json({ id: result.id, redactions: hygiene.redactions, source: "rest" as const });
+	},
+);
+
+feedbackRoute.post(
+	"/:id/respond",
+	describeRoute({
+		tags: ["Feedback"],
+		summary: "Respond to feedback the order partner left",
+		description:
+			"REST `commerce/feedback/v1/respond_to_feedback`. The connected user must be the recipient of the original feedback. Same off-eBay-contact hygiene as `/v1/feedback` POST.",
+		responses: {
+			200: { description: "Acknowledged." },
+			400: errorResponse("Validation failed."),
+			422: errorResponse("Off-eBay contact info detected."),
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const apiKeyId = c.var.apiKey.id;
+		const feedbackId = c.req.param("id");
+		const body = (await c.req.json()) as {
+			recipientUserId: string;
+			responseText: string;
+			responseType?: "REPLY" | "FOLLOW_UP";
+		};
+		const hygiene = scrubMessageBody(body.responseText);
+		const forceSend = c.req.query("force_send") === "1";
+		if (hygiene.redactions.length > 0 && !forceSend) {
+			return c.json(
+				{
+					error: "off_ebay_contact_info" as const,
+					message:
+						"Feedback response contains contact info eBay's User Agreement prohibits: " +
+						hygiene.redactions.map((r) => `${r.kind} (${r.original})`).join(", ") +
+						". Edit and retry, or pass `?force_send=1` to ship the redacted version.",
+					redactions: hygiene.redactions,
+					redactedResponseText: hygiene.cleanBody,
+				},
+				422,
+			);
+		}
+		await respondToFeedback({
+			apiKeyId,
+			feedbackId,
+			recipientUserId: body.recipientUserId,
+			responseText: hygiene.cleanBody,
+			...(body.responseType ? { responseType: body.responseType } : {}),
+		});
+		return c.json({ ok: true, redactions: hygiene.redactions, source: "rest" as const });
 	},
 );

@@ -15,6 +15,7 @@ import type { Purchase, PurchaseCreate } from "@flipagent/types";
 import type { LineItem } from "@flipagent/types/ebay/buy";
 import { config } from "../../config.js";
 import { cancelJob } from "../bridge-jobs.js";
+import type { NextActionKind } from "../shared/next-action.js";
 import type { FlipagentResult, SourceKind } from "../shared/result.js";
 import { selectTransport, TransportUnavailableError } from "../shared/transport.js";
 import { BridgeCheckoutError, getPurchaseOrder, initiateCheckoutSession, placeOrder } from "./bridge-session.js";
@@ -23,11 +24,13 @@ import { ebayToPurchase } from "./transform.js";
 export class PurchaseError extends Error {
 	readonly status: number;
 	readonly code: string;
-	constructor(code: string, status: number, message: string) {
+	readonly nextActionKind: NextActionKind | undefined;
+	constructor(code: string, status: number, message: string, nextActionKind?: NextActionKind) {
 		super(message);
 		this.name = "PurchaseError";
 		this.code = code;
 		this.status = status;
+		this.nextActionKind = nextActionKind;
 	}
 }
 
@@ -248,6 +251,7 @@ function pickTransport(input: PurchaseCreate, ctx: PurchaseContext): "rest" | "b
 				"transport_unavailable",
 				412,
 				`No available transport: ${err.message}. Set EBAY_ORDER_API_APPROVED=1 for REST, or pair the Chrome extension for bridge.`,
+				"rest_or_extension",
 			);
 		}
 		throw err;

@@ -10,11 +10,14 @@
 
 import {
 	type Conversation,
+	ConversationsBulkUpdateRequest,
 	ConversationsListQuery,
 	ConversationsListResponse,
 	ConversationThreadQuery,
 	ConversationThreadResponse,
 	type ConversationType,
+	ConversationUpdateRequest,
+	ConversationUpdateResponse,
 	MessageSendRequest,
 	MessageSendResponse,
 	type ThreadMessage,
@@ -22,7 +25,13 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { getConversationThread, listConversations, sendMessage } from "../../services/ebay/rest/messages.js";
+import {
+	bulkUpdateConversations,
+	getConversationThread,
+	listConversations,
+	sendMessage,
+	updateConversation,
+} from "../../services/ebay/rest/messages.js";
 import { scrubMessageBody } from "../../services/ebay/trading/message-hygiene.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
@@ -163,5 +172,47 @@ messagesRoute.post(
 			source: "rest" as const,
 			...(hygiene.redactions.length > 0 ? { redactions: hygiene.redactions } : {}),
 		});
+	},
+);
+
+messagesRoute.patch(
+	"/conversations/bulk",
+	describeRoute({
+		tags: ["Messages"],
+		summary: "Mark / archive many conversations at once",
+		description:
+			"Wraps eBay `commerce/message/v1/bulk_update_conversation`. Action: `mark_read` | `mark_unread` | `archive` | `unarchive`.",
+		responses: {
+			200: jsonResponse("Updated.", ConversationUpdateResponse),
+			401: errorResponse("Auth missing."),
+		},
+	}),
+	requireApiKey,
+	tbBody(ConversationsBulkUpdateRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		await bulkUpdateConversations(body.conversationIds, body.action, c.var.apiKey.id);
+		return c.json({ ok: true, source: "rest" as const } satisfies ConversationUpdateResponse);
+	},
+);
+
+messagesRoute.patch(
+	"/conversations/:id",
+	describeRoute({
+		tags: ["Messages"],
+		summary: "Mark / archive one conversation",
+		description:
+			"Wraps eBay `commerce/message/v1/update_conversation`. Action: `mark_read` | `mark_unread` | `archive` | `unarchive`.",
+		responses: {
+			200: jsonResponse("Updated.", ConversationUpdateResponse),
+			401: errorResponse("Auth missing."),
+		},
+	}),
+	requireApiKey,
+	tbBody(ConversationUpdateRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		await updateConversation(c.req.param("id"), body.action, c.var.apiKey.id);
+		return c.json({ ok: true, source: "rest" as const } satisfies ConversationUpdateResponse);
 	},
 );

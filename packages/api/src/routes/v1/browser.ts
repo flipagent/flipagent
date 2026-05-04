@@ -10,11 +10,12 @@
  * shipping new content-script code per iteration.
  */
 
-import { BrowserQueryRequest, BrowserQueryResponse } from "@flipagent/types";
+import { BrowserCookiesRequest, BrowserCookiesResponse, BrowserQueryRequest, BrowserQueryResponse } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { createBridgeJob, waitForTerminal } from "../../services/bridge-jobs.js";
+import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const browserRoute = new Hono();
@@ -61,6 +62,50 @@ browserRoute.post(
 				{
 					error: "browser_op_timeout",
 					message: `Bridge client did not respond. status=${final?.status ?? "?"} reason=${final?.failureReason ?? "?"}`,
+					next_action: nextAction(c, "extension_install"),
+				},
+				504,
+			);
+		}
+		return c.json(final.result);
+	},
+);
+
+browserRoute.post(
+	"/cookies",
+	describeRoute({
+		tags: ["Browser"],
+		summary: "Inventory cookies for a domain via the bridge client",
+		description:
+			"Synchronous: queues a `browser_op` with op=cookies, waits for the extension's background to call `chrome.cookies.getAll({ domain })`, returns metadata only (name, expiry, httpOnly, secure, sameSite). Cookie *values* are never returned. Use this to measure real session expiry — HttpOnly auth cookies (eBay's `ds2`/`npii`, PE's session) aren't visible to `document.cookie`, so DOM probing can't see when the session actually breaks. Caller can compute time-to-expiry from `earliestExpiresAt`.",
+		responses: {
+			200: jsonResponse("Cookies inventoried.", BrowserCookiesResponse),
+			401: errorResponse("Missing or invalid API key."),
+			504: errorResponse("Bridge client did not respond in time."),
+		},
+	}),
+	requireApiKey,
+	tbBody(BrowserCookiesRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const key = c.var.apiKey;
+		const job = await createBridgeJob({
+			apiKeyId: key.id,
+			userId: key.userId,
+			source: "browser",
+			itemId: "browser_op",
+			quantity: 1,
+			maxPriceCents: null,
+			idempotencyKey: null,
+			metadata: { op: "cookies", domain: body.domain },
+		});
+		const final = await waitForTerminal(job.id, key.id, 25_000);
+		if (!final || final.status !== "completed" || !final.result) {
+			return c.json(
+				{
+					error: "browser_op_timeout",
+					message: `Bridge client did not respond. status=${final?.status ?? "?"} reason=${final?.failureReason ?? "?"}`,
+					next_action: nextAction(c, "extension_install"),
 				},
 				504,
 			);

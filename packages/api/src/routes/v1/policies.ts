@@ -10,6 +10,9 @@ import {
 	CustomPoliciesListResponse,
 	CustomPolicyCreate,
 	PoliciesListResponse,
+	PoliciesSetupRequest,
+	PoliciesSetupResponse,
+	PolicyCreate,
 	PolicyTransferRequest,
 	type PolicyType,
 	RateTablesListResponse,
@@ -18,6 +21,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { getPolicyByName, listPolicies } from "../../services/policies.js";
+import { createPolicy, deletePolicy, setupSellerPolicies, updatePolicy } from "../../services/policies-write.js";
 import {
 	createCustomPolicy,
 	listCustomPolicies,
@@ -152,6 +156,96 @@ policiesRoute.post(
 			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
 		});
 		return c.json(r);
+	},
+);
+
+policiesRoute.post(
+	"/",
+	describeRoute({
+		tags: ["Policies"],
+		summary: "Create a return / payment / fulfillment policy",
+		description:
+			"Body discriminator `type` picks the right `/sell/account/v1/{type}_policy` POST. Each policy type uses different required fields (return needs `returnsAccepted`; fulfillment needs `handlingTimeDays` + at least one `shippingOptions[]`; payment needs `immediatePay`). Account must be opted into `SELLING_POLICY_MANAGEMENT` first (see `POST /v1/me/programs/opt-in`).",
+		responses: { 201: jsonResponse("Created.", PolicyCreate), ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(PolicyCreate),
+	async (c) => {
+		const body = c.req.valid("json");
+		const r = await createPolicy(body, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ...r, source: "rest" as const }, 201);
+	},
+);
+
+policiesRoute.post(
+	"/setup",
+	describeRoute({
+		tags: ["Policies"],
+		summary: "Atomically ensure return + payment + fulfillment policies exist",
+		description:
+			"One-shot setup tied to the user's actual preferences (returns yes/no + period + payer; handling time + shipping mode/service). Idempotent: re-uses existing policies on the seller account when present, only creates the missing ones. Returns the three ids ready to pass to `POST /v1/listings`. **Replaces hidden auto-create.** Earlier `/v1/listings` invented sane-looking defaults (free shipping, 30-day buyer-pays returns) on the seller's behalf — that silently lost real money. Now agents gather the few decisions from the user via MCP and POST them here once.",
+		responses: { 200: jsonResponse("Policies ready.", PoliciesSetupResponse), ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(PoliciesSetupRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const r = await setupSellerPolicies(body, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json(r, 200);
+	},
+);
+
+policiesRoute.put(
+	"/:type/:id",
+	describeRoute({
+		tags: ["Policies"],
+		summary: "Replace one return / payment / fulfillment policy",
+		responses: { 200: jsonResponse("Updated.", PolicyCreate), ...COMMON },
+	}),
+	requireApiKey,
+	tbBody(PolicyCreate),
+	async (c) => {
+		const type = c.req.param("type");
+		if (!POLICY_TYPES.has(type)) {
+			return c.json({ error: "invalid_policy_type", message: "Use 'return', 'payment', or 'fulfillment'." }, 400);
+		}
+		const body = c.req.valid("json");
+		const r = await updatePolicy(
+			c.req.param("id"),
+			{ ...body, type: type as PolicyType },
+			{
+				apiKeyId: c.var.apiKey.id,
+				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			},
+		);
+		return c.json({ ...r, source: "rest" as const });
+	},
+);
+
+policiesRoute.delete(
+	"/:type/:id",
+	describeRoute({
+		tags: ["Policies"],
+		summary: "Delete a return / payment / fulfillment policy",
+		responses: { 200: { description: "Deleted." }, ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const type = c.req.param("type");
+		if (!POLICY_TYPES.has(type)) {
+			return c.json({ error: "invalid_policy_type", message: "Use 'return', 'payment', or 'fulfillment'." }, 400);
+		}
+		await deletePolicy(c.req.param("id"), type as PolicyType, {
+			apiKeyId: c.var.apiKey.id,
+			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+		});
+		return c.json({ ok: true, source: "rest" as const });
 	},
 );
 

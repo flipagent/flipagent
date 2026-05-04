@@ -165,6 +165,19 @@ export type BridgeLoginStatusRequest = Static<typeof BridgeLoginStatusRequest>;
 export const BridgeLoginStatusResponse = Type.Object({ ok: Type.Literal(true) }, { $id: "BridgeLoginStatusResponse" });
 export type BridgeLoginStatusResponse = Static<typeof BridgeLoginStatusResponse>;
 
+/**
+ * Planet Express (forwarder) login state, reported by the bridge client
+ * after URL-probing app.planetexpress.com. Surfaced via
+ * `/v1/capabilities.checklist` so dashboard + MCP see the same "done"
+ * status the popup does. Distinct from `BridgeLoginStatusRequest`
+ * (eBay) — different upstream, different cookies.
+ */
+export const BridgePeLoginStatusRequest = Type.Object(
+	{ loggedIn: Type.Boolean() },
+	{ $id: "BridgePeLoginStatusRequest" },
+);
+export type BridgePeLoginStatusRequest = Static<typeof BridgePeLoginStatusRequest>;
+
 /* ------------------- connect-status sections (mechanism-based) ------------------- */
 
 /**

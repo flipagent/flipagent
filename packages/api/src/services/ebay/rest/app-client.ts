@@ -11,8 +11,9 @@
  * the route boundary maps both client paths uniformly.
  */
 
-import { config, isEbayAppConfigured } from "../../../config.js";
+import { isEbayAppConfigured } from "../../../config.js";
 import { fetchRetry } from "../../../utils/fetch-retry.js";
+import { ebayHostFor } from "../host.js";
 import { getAppAccessToken } from "../oauth.js";
 import { EbayApiError } from "./user-client.js";
 
@@ -46,7 +47,7 @@ export async function appRequest<T = unknown>(opts: AppRequestOpts): Promise<T> 
 	if (opts.acceptLanguage) headers["Accept-Language"] = opts.acceptLanguage;
 	if (opts.body !== undefined) headers["Content-Type"] = "application/json";
 
-	const url = `${config.EBAY_BASE_URL}${opts.path}`;
+	const url = `${ebayHostFor(opts.path)}${opts.path}`;
 	const res = await fetchRetry(url, {
 		method: opts.method ?? "GET",
 		headers,

@@ -15,9 +15,10 @@
  * boundary; everything else just rethrows.
  */
 
-import { config, isEbayOAuthConfigured } from "../../../config.js";
+import { isEbayOAuthConfigured } from "../../../config.js";
 import type { NextActionKind } from "../../../services/shared/next-action.js";
 import { fetchRetry } from "../../../utils/fetch-retry.js";
+import { ebayHostFor } from "../host.js";
 import { getUserAccessToken } from "../oauth.js";
 
 export class EbayApiError extends Error {
@@ -99,7 +100,7 @@ export async function sellRequest<T = unknown>(opts: SellRequestOpts): Promise<T
 	if (opts.marketplace) headers["X-EBAY-C-MARKETPLACE-ID"] = opts.marketplace;
 	if (opts.contentLanguage) headers["Content-Language"] = opts.contentLanguage;
 
-	const url = `${config.EBAY_BASE_URL}${opts.path}`;
+	const url = `${ebayHostFor(opts.path)}${opts.path}`;
 	const res = await fetchRetry(url, {
 		method: opts.method,
 		headers,
@@ -116,6 +117,78 @@ export async function sellRequest<T = unknown>(opts: SellRequestOpts): Promise<T
 		throw new EbayApiError(res.status, code, message, parsed ?? text);
 	}
 	return (parsed as T) ?? (undefined as T);
+}
+
+/**
+ * Variant of `sellRequest` that also returns the new resource id eBay
+ * stamps into the `Location` response header on POST creates. Many
+ * Sell APIs return `201 Created` with an EMPTY body — the only place
+ * the new id appears is `Location: http://api.ebay.com/sell/{id}` (or
+ * similar URL with the id as last path segment).
+ *
+ * Verified live 2026-05-03 against `POST /sell/account/v1/custom_policy`:
+ * status 201, no body, `Location: http://api.ebay.com/sell/460147982337`.
+ * Wrappers reading `customPolicyId` from the body got undefined every
+ * time. Same pattern applies to: `POST /{fulfillment,payment,return}_policy`,
+ * `POST /item_promotion`, `POST /item_price_markdown`, `POST /ad_campaign`,
+ * `POST /ad_campaign/{cid}/ad`, `POST /ad_campaign/{cid}/ad_group`.
+ *
+ * Returns `null` `locationId` when the Location header is missing or
+ * doesn't have a parseable last-segment id (e.g. eBay returns id in
+ * the body for that specific endpoint — fall back to `body.<idField>`).
+ */
+export async function sellRequestWithLocation<T = unknown>(
+	opts: SellRequestOpts,
+): Promise<{ body: T | undefined; locationId: string | null }> {
+	if (!isEbayOAuthConfigured()) {
+		throw new EbayApiError(
+			503,
+			"ebay_not_configured",
+			"eBay OAuth credentials are not set on this api instance.",
+			undefined,
+			"configure_ebay",
+		);
+	}
+	let token: string;
+	try {
+		token = await getUserAccessToken(opts.apiKeyId);
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		if (msg === "not_connected") {
+			throw new EbayApiError(
+				401,
+				"ebay_account_not_connected",
+				"Connect an eBay seller account first.",
+				undefined,
+				"ebay_oauth",
+			);
+		}
+		throw new EbayApiError(502, "ebay_token_refresh_failed", `eBay token refresh failed: ${msg}`);
+	}
+	const isPostOrder = opts.path.startsWith("/post-order/");
+	const headers: Record<string, string> = {
+		Authorization: isPostOrder ? `IAF ${token}` : `Bearer ${token}`,
+		Accept: "application/json",
+		"Accept-Language": "en-US",
+	};
+	if (opts.body !== undefined) headers["Content-Type"] = "application/json";
+	if (opts.marketplace) headers["X-EBAY-C-MARKETPLACE-ID"] = opts.marketplace;
+	if (opts.contentLanguage) headers["Content-Language"] = opts.contentLanguage;
+	const url = `${ebayHostFor(opts.path)}${opts.path}`;
+	const res = await fetchRetry(url, {
+		method: opts.method,
+		headers,
+		body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+	});
+	const text = res.status === 204 ? "" : await res.text();
+	const parsed = text ? safeJson(text) : undefined;
+	if (!res.ok) {
+		const message = extractEbayMessage(parsed) ?? `eBay returned ${res.status}`;
+		throw new EbayApiError(res.status, `ebay_${res.status}`, message, parsed ?? text);
+	}
+	const location = res.headers.get("location") ?? res.headers.get("Location");
+	const locationId = location ? (location.split(/[/?#]/).filter(Boolean).pop() ?? null) : null;
+	return { body: parsed as T | undefined, locationId };
 }
 
 /**

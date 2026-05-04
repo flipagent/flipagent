@@ -19,7 +19,7 @@ import type {
 	SellerPrivilege,
 	SellerSubscription,
 } from "@flipagent/types";
-import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
+import { sellRequest, sellRequestWithLocation, swallowEbay404 } from "./ebay/rest/user-client.js";
 import { toCents } from "./shared/money.js";
 
 interface EbayPrivilege {
@@ -108,6 +108,93 @@ export async function getSellerAdvertisingEligibility(
 	};
 }
 
+/**
+ * Set or replace a sales-tax rate for one tax jurisdiction. Body shape
+ * per OAS3 `SalesTaxBase`: `{ salesTaxPercentage, shippingAndHandlingTaxed }`.
+ * `salesTaxPercentage` is a STRING (e.g. `"7.75"`) per eBay's wire format
+ * — we accept a number on the flipagent surface and stringify here.
+ */
+export async function upsertSalesTax(
+	country: string,
+	jurisdictionId: string,
+	input: { salesTaxPercentage: number; shippingAndHandlingTaxed?: boolean },
+	ctx: SellerAccountContext,
+): Promise<{ success: boolean }> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "PUT",
+		path: `/sell/account/v1/sales_tax/${encodeURIComponent(country.toUpperCase())}/${encodeURIComponent(jurisdictionId)}`,
+		body: {
+			salesTaxPercentage: input.salesTaxPercentage.toString(),
+			shippingAndHandlingTaxed: input.shippingAndHandlingTaxed ?? false,
+		},
+	});
+	return { success: true };
+}
+
+/**
+ * Replace many sales-tax rates in one call. Bulk variant of
+ * `upsertSalesTax`; eBay caps at ~25 entries per call.
+ */
+export async function bulkUpsertSalesTax(
+	entries: Array<{
+		country: string;
+		jurisdictionId: string;
+		salesTaxPercentage: number;
+		shippingAndHandlingTaxed?: boolean;
+	}>,
+	ctx: SellerAccountContext,
+): Promise<{
+	responses: Array<{ country: string; jurisdictionId: string; status: number; errors?: Array<{ message?: string }> }>;
+}> {
+	// Body shape per OAS3 `BulkSalesTaxInput`: top-level
+	// `salesTaxInputList: [SalesTaxInput]` (NOT `requests`), and each
+	// SalesTaxInput is FLAT (not wrapped in a `salesTax` sub-object) —
+	// `{ countryCode, salesTaxJurisdictionId, salesTaxPercentage,
+	//    shippingAndHandlingTaxed }`. Verified live 2026-05-03.
+	const res = await sellRequest<{
+		responses?: Array<{
+			countryCode: string;
+			salesTaxJurisdictionId: string;
+			statusCode: number;
+			errors?: Array<{ message?: string }>;
+		}>;
+	}>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: "/sell/account/v1/bulk_create_or_replace_sales_tax",
+		body: {
+			salesTaxInputList: entries.map((e) => ({
+				countryCode: e.country.toUpperCase(),
+				salesTaxJurisdictionId: e.jurisdictionId,
+				salesTaxPercentage: e.salesTaxPercentage.toString(),
+				shippingAndHandlingTaxed: e.shippingAndHandlingTaxed ?? false,
+			})),
+		},
+	});
+	return {
+		responses: (res?.responses ?? []).map((r) => ({
+			country: r.countryCode,
+			jurisdictionId: r.salesTaxJurisdictionId,
+			status: r.statusCode,
+			...(r.errors ? { errors: r.errors } : {}),
+		})),
+	};
+}
+
+export async function deleteSalesTax(
+	country: string,
+	jurisdictionId: string,
+	ctx: SellerAccountContext,
+): Promise<{ success: boolean }> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "DELETE",
+		path: `/sell/account/v1/sales_tax/${encodeURIComponent(country.toUpperCase())}/${encodeURIComponent(jurisdictionId)}`,
+	});
+	return { success: true };
+}
+
 export async function getSalesTax(country: string, ctx: SellerAccountContext): Promise<SalesTaxResponse> {
 	const res = await sellRequest<{
 		salesTaxes?: Array<{
@@ -186,7 +273,10 @@ export async function listCustomPolicies(
 }
 
 export async function createCustomPolicy(input: CustomPolicyCreate, ctx: SellerAccountContext): Promise<CustomPolicy> {
-	const res = await sellRequest<{ customPolicyId: string }>({
+	// Returns 201 with empty body + `Location: http://api.ebay.com/sell/{id}`.
+	// Verified live 2026-05-03 — extracting `customPolicyId` from body
+	// always returned undefined.
+	const { body, locationId } = await sellRequestWithLocation<{ customPolicyId?: string }>({
 		apiKeyId: ctx.apiKeyId,
 		method: "POST",
 		path: "/sell/account/v1/custom_policy",
@@ -199,7 +289,7 @@ export async function createCustomPolicy(input: CustomPolicyCreate, ctx: SellerA
 		marketplace: ctx.marketplace,
 	});
 	return {
-		id: res?.customPolicyId ?? "",
+		id: body?.customPolicyId ?? locationId ?? "",
 		name: input.name,
 		policyType: input.policyType,
 		marketplace: input.marketplace ?? "ebay",
@@ -231,4 +321,68 @@ export async function transferFulfillmentPolicy(
 		marketplace: ctx.marketplace,
 	});
 	return { success: true };
+}
+
+/* --------- Sell Account v2: payout settings + rate-table read --------- */
+
+/**
+ * `GET /sell/account/v2/payout_settings` — payout schedule + percentage
+ * + linked bank info. eBay's response shape is rich and rarely-used;
+ * pass through verbatim under `raw`.
+ */
+export async function getPayoutSettings(ctx: SellerAccountContext): Promise<{ raw: unknown }> {
+	const res = await sellRequest<unknown>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: "/sell/account/v2/payout_settings",
+	});
+	return { raw: res };
+}
+
+/**
+ * `POST /sell/account/v2/payout_settings/update_percentage` — change the
+ * % of payout split between linked banks (multi-bank sellers).
+ */
+export async function updatePayoutPercentage(
+	body: Record<string, unknown>,
+	ctx: SellerAccountContext,
+): Promise<{ raw: unknown }> {
+	const res = await sellRequest<unknown>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: "/sell/account/v2/payout_settings/update_percentage",
+		body,
+	});
+	return { raw: res ?? null };
+}
+
+/**
+ * `GET /sell/account/v2/rate_table/{id}` — full rate-table contents
+ * (regions + costs). The v1 `listRateTables` only returns name + id.
+ */
+export async function getRateTableV2(id: string, ctx: SellerAccountContext): Promise<{ id: string; raw: unknown }> {
+	const res = await sellRequest<unknown>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/sell/account/v2/rate_table/${encodeURIComponent(id)}`,
+	});
+	return { id, raw: res };
+}
+
+/**
+ * `POST /sell/account/v2/rate_table/{id}/update_shipping_cost` — patch
+ * a region's shipping cost without rewriting the whole table.
+ */
+export async function updateRateTableShippingCost(
+	id: string,
+	body: Record<string, unknown>,
+	ctx: SellerAccountContext,
+): Promise<{ raw: unknown }> {
+	const res = await sellRequest<unknown>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/account/v2/rate_table/${encodeURIComponent(id)}/update_shipping_cost`,
+		body,
+	});
+	return { raw: res ?? null };
 }

@@ -93,7 +93,9 @@ export async function createLocation(
 					country: input.address.country,
 				},
 			},
-			...(input.locationTypes ? { locationTypes: input.locationTypes } : {}),
+			// eBay accepts only the uppercase enum (`WAREHOUSE`, `STORE`).
+			// Normalize at this boundary so callers can be case-insensitive.
+			...(input.locationTypes ? { locationTypes: input.locationTypes.map((t) => t.toUpperCase()) } : {}),
 			...(input.instructions ? { locationInstructions: input.instructions } : {}),
 			merchantLocationStatus: "ENABLED",
 		},
@@ -116,6 +118,64 @@ export async function setLocationStatus(id: string, enabled: boolean, ctx: Locat
 		apiKeyId: ctx.apiKeyId,
 		method: "POST",
 		path: `/sell/inventory/v1/location/${encodeURIComponent(id)}/${action}`,
+	});
+	return getLocation(id, ctx);
+}
+
+/**
+ * Patch one or more fields of an existing inventory location WITHOUT
+ * fully replacing it (the way `createLocation` PUT does). eBay's
+ * `update_location_details` accepts a partial `InventoryLocation`
+ * shape — only the supplied fields change. Useful for e.g. moving a
+ * warehouse without re-entering operating hours.
+ *
+ * Body shape per OAS3 `InventoryLocation` (only top-level fields we
+ * map; the wrapper passes through all eBay knows about):
+ *   { name?, phone?, location?: { address?, geoCoordinates? },
+ *     locationTypes?, locationInstructions?, locationAdditionalInformation?,
+ *     locationWebUrl?, operatingHours?, specialHours?, timeZoneId?,
+ *     fulfillmentCenterSpecifications? }
+ */
+export async function updateLocationDetails(
+	id: string,
+	patch: Partial<LocationCreate> & {
+		instructions?: string;
+		additionalInformation?: string;
+		webUrl?: string;
+		timeZoneId?: string;
+		hours?: Array<{ dayOfWeekEnum: string; intervals: Array<{ open: string; close: string }> }>;
+		specialHours?: Array<{ date: string; intervals: Array<{ open: string; close: string }> }>;
+	},
+	ctx: LocationsContext,
+): Promise<Location | null> {
+	const body: Record<string, unknown> = {};
+	if (patch.name) body.name = patch.name;
+	if (patch.phone) body.phone = patch.phone;
+	if (patch.address) {
+		body.location = {
+			address: {
+				addressLine1: patch.address.line1,
+				...(patch.address.line2 ? { addressLine2: patch.address.line2 } : {}),
+				city: patch.address.city,
+				...(patch.address.region ? { stateOrProvince: patch.address.region } : {}),
+				postalCode: patch.address.postalCode,
+				country: patch.address.country,
+			},
+		};
+	}
+	if (patch.locationTypes) body.locationTypes = patch.locationTypes;
+	if (patch.instructions) body.locationInstructions = patch.instructions;
+	if (patch.additionalInformation) body.locationAdditionalInformation = patch.additionalInformation;
+	if (patch.webUrl) body.locationWebUrl = patch.webUrl;
+	if (patch.timeZoneId) body.timeZoneId = patch.timeZoneId;
+	if (patch.hours) body.operatingHours = patch.hours;
+	if (patch.specialHours) body.specialHours = patch.specialHours;
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: `/sell/inventory/v1/location/${encodeURIComponent(id)}/update_location_details`,
+		body,
+		contentLanguage: "en-US",
 	});
 	return getLocation(id, ctx);
 }

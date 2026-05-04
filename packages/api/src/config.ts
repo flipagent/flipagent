@@ -51,6 +51,14 @@ const Schema = Type.Object({
 			"https://api.ebay.com/oauth/api_scope/sell.marketing",
 			"https://api.ebay.com/oauth/api_scope/sell.marketing.readonly",
 			"https://api.ebay.com/oauth/api_scope/sell.analytics.readonly",
+			"https://api.ebay.com/oauth/api_scope/sell.payment.dispute",
+			"https://api.ebay.com/oauth/api_scope/sell.reputation",
+			// `sell.logistics` deliberately omitted — verified live 2026-05-02
+			// the scope name does not exist in eBay's published prod or
+			// sandbox scope catalogs. The Sell Logistics v1_beta surface
+			// is itself Limited Release; access requires eBay app approval
+			// on top of any scope, and `/sell/logistics/v1_beta/shipment/*`
+			// returns 403 errorId 1100 even with our broadest scope set.
 			// `sell.stores.readonly` deliberately omitted — verified live
 			// 2026-05-02 that eBay silently drops it from consent for
 			// non-approved apps (every /sell/stores/v1/* path 403s
@@ -68,11 +76,15 @@ const Schema = Type.Object({
 	// this flag, `/v1/items/search?status=sold` hits Marketplace Insights
 	// REST; without it the route falls back to scraping.
 	EBAY_INSIGHTS_APPROVED: Type.Boolean({ default: false }),
-	// Commerce Catalog API program approval (canonical product master by
-	// EPID). With this flag, `/v1/products/{epid}` hits Catalog REST;
-	// without it (the default — eBay denies most apps) it falls back to
+	// Commerce Catalog API APP-CREDENTIAL approval. Verified live
+	// 2026-05-03 that USER OAuth works without this flag, so any
+	// connected eBay account hits Catalog REST automatically — this flag
+	// only controls the app-credential fallback path used when an
+	// `/v1/products/*` call comes without a connected api-key (rare;
+	// every flipagent api-key path requires an api-key). When unset and
+	// no user OAuth is available, `/v1/products/{epid}` falls back to
 	// scraping `/p/{epid}` + a representative listing and emits the same
-	// `Product` shape.
+	// `Product` shape; `/v1/products/search` 503s.
 	EBAY_CATALOG_APPROVED: Type.Boolean({ default: false }),
 	// Better-Auth + GitHub OAuth. All three required to enable session auth
 	// (the /api/auth/* handler + /v1/me/* routes return 503 if not set).
@@ -147,6 +159,20 @@ const Schema = Type.Object({
 	// provider tier's safe concurrency. Default 8 (covers most paid
 	// tiers without provoking rate-limit errors).
 	LLM_MAX_CONCURRENT: Type.Optional(Type.Integer({ minimum: 1, maximum: 64 })),
+	// Agent (preview) — `/v1/agent/chat` runs OpenAI's Responses API
+	// statefully (server-held thread via `previous_response_id`). Kept
+	// separate from `OPENAI_MODEL` (which the same-product matcher
+	// uses): the matcher wants a cheap fast model, the agent wants a
+	// smarter one. When `OPENAI_API_KEY` is unset, /v1/agent/* return
+	// 503 not_configured.
+	AGENT_OPENAI_MODEL: Type.String({ default: "gpt-5.5" }),
+	// Public URL where this api's `/mcp` endpoint is reachable from
+	// OpenAI's infrastructure (so the model can call flipagent tools
+	// natively via the Responses API's MCP integration). For local dev:
+	// the cloudflared tunnel URL — `https://api-dev.flipagent.dev/mcp`.
+	// For prod: `https://api.flipagent.dev/mcp`. When unset the agent
+	// still chats; it just can't reach tools.
+	MCP_PUBLIC_URL: Type.Optional(Type.String()),
 	// Per-listing observation archive — hosted-only feature. Each search
 	// / detail response writes one row to `listing_observations` for
 	// long-tail historical sold-listing depth, matcher fingerprinting, and
@@ -208,6 +234,8 @@ const raw = {
 	GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
 	GOOGLE_MODEL: process.env.GOOGLE_MODEL,
 	LLM_MAX_CONCURRENT: process.env.LLM_MAX_CONCURRENT ? Number.parseInt(process.env.LLM_MAX_CONCURRENT, 10) : undefined,
+	AGENT_OPENAI_MODEL: process.env.AGENT_OPENAI_MODEL ?? "gpt-5.5",
+	MCP_PUBLIC_URL: process.env.MCP_PUBLIC_URL,
 	OBSERVATION_ENABLED: process.env.OBSERVATION_ENABLED === "1",
 	ADMIN_EMAILS: process.env.ADMIN_EMAILS ?? "",
 };
@@ -264,6 +292,8 @@ export const config = decoded as {
 	GOOGLE_API_KEY?: string;
 	GOOGLE_MODEL?: string;
 	LLM_MAX_CONCURRENT?: number;
+	AGENT_OPENAI_MODEL: string;
+	MCP_PUBLIC_URL?: string;
 	OBSERVATION_ENABLED: boolean;
 	ADMIN_EMAILS: string;
 };
@@ -344,4 +374,15 @@ export function isStripeConfigured(): boolean {
 /** True when at least one LLM provider key is set. Gates the same-product matcher. */
 export function isLlmConfigured(): boolean {
 	return Boolean(config.ANTHROPIC_API_KEY || config.OPENAI_API_KEY || config.GOOGLE_API_KEY);
+}
+
+/**
+ * True when the agent surface (`/v1/agent/*`) has what it needs:
+ * an OpenAI key. Model has a sane default (`gpt-5.5`) so it isn't
+ * gated on `AGENT_OPENAI_MODEL`. The agent specifically wants OpenAI's
+ * Responses API for stateful threads, so we don't fall back to other
+ * providers here.
+ */
+export function isAgentConfigured(): boolean {
+	return Boolean(config.OPENAI_API_KEY);
 }

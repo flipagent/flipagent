@@ -3,7 +3,7 @@
  */
 
 import type { Ad, AdCampaign, AdCampaignCreate, AdGroup, AdGroupCreate, AdsListResponse } from "@flipagent/types";
-import { sellRequest, swallow404, swallowEbay404 } from "../ebay/rest/user-client.js";
+import { sellRequest, sellRequestWithLocation, swallow404, swallowEbay404 } from "../ebay/rest/user-client.js";
 import { toCents, toDollarString } from "../shared/money.js";
 import type { MarketingContext } from "./promotions.js";
 
@@ -63,6 +63,11 @@ export async function listAdCampaigns(
 export async function createAdCampaign(input: AdCampaignCreate, ctx: MarketingContext): Promise<AdCampaign> {
 	const body: Record<string, unknown> = {
 		campaignName: input.name,
+		// `marketplaceId` is REQUIRED on the ad_campaign body — verified
+		// live 2026-05-03 ("The 'marketplaceId' is required."). Same trap
+		// as createPromotion / createMarkdown — the marketplace HEADER
+		// alone is not enough; the field must be in the JSON body too.
+		marketplaceId: ctx.marketplace ?? "EBAY_US",
 		fundingStrategy: { fundingModel: input.fundingModel.toUpperCase() },
 		...(input.startsAt ? { startDate: input.startsAt } : {}),
 		...(input.endsAt ? { endDate: input.endsAt } : {}),
@@ -70,7 +75,9 @@ export async function createAdCampaign(input: AdCampaignCreate, ctx: MarketingCo
 			? { budget: { amount: { value: toDollarString(input.budget.value), currency: input.budget.currency } } }
 			: {}),
 	};
-	const res = await sellRequest<{ campaignId?: string }>({
+	// `POST /ad_campaign` returns 201 with empty body + Location header
+	// containing campaignId. Same pattern as custom_policy / promotions.
+	const { body: res, locationId } = await sellRequestWithLocation<{ campaignId?: string }>({
 		apiKeyId: ctx.apiKeyId,
 		method: "POST",
 		path: "/sell/marketing/v1/ad_campaign",
@@ -79,7 +86,7 @@ export async function createAdCampaign(input: AdCampaignCreate, ctx: MarketingCo
 		contentLanguage: "en-US",
 	});
 	return {
-		id: res?.campaignId ?? "",
+		id: res?.campaignId ?? locationId ?? "",
 		marketplace: input.marketplace ?? "ebay",
 		name: input.name,
 		status: "draft",
@@ -112,7 +119,7 @@ interface EbayAdGroup {
 	adGroupId: string;
 	name: string;
 	adGroupStatus?: string;
-	defaultBidPercentage?: string;
+	defaultBid?: { value: string; currency: string };
 }
 
 function adGroupFrom(g: EbayAdGroup, campaignId: string): AdGroup {
@@ -121,8 +128,10 @@ function adGroupFrom(g: EbayAdGroup, campaignId: string): AdGroup {
 		id: g.adGroupId,
 		campaignId,
 		name: g.name,
-		status: s === "active" || s === "paused" || s === "ended" ? (s as AdGroup["status"]) : "active",
-		...(g.defaultBidPercentage ? { defaultBidPercentage: g.defaultBidPercentage } : {}),
+		// eBay's AdGroup status enum: ACTIVE | PAUSED | ARCHIVED. Previous
+		// wrapper used "ended" instead of "archived" — never a real value.
+		status: s === "active" || s === "paused" || s === "archived" ? (s as AdGroup["status"]) : "active",
+		...(g.defaultBid ? { defaultBid: { value: toCents(g.defaultBid.value), currency: g.defaultBid.currency } } : {}),
 	};
 }
 
@@ -163,13 +172,15 @@ async function campaignAction(campaignId: string, action: string, ctx: Marketing
 export const pauseAdCampaign = (id: string, ctx: MarketingContext) => campaignAction(id, "pause", ctx);
 export const resumeAdCampaign = (id: string, ctx: MarketingContext) => campaignAction(id, "resume", ctx);
 export const endAdCampaign = (id: string, ctx: MarketingContext) => campaignAction(id, "end", ctx);
+export const launchAdCampaign = (id: string, ctx: MarketingContext) => campaignAction(id, "launch", ctx);
 
 export async function cloneAdCampaign(
 	campaignId: string,
 	newName: string,
 	ctx: MarketingContext,
 ): Promise<{ campaignId: string | null }> {
-	const res = await sellRequest<{ campaignId?: string }>({
+	// `clone` also returns 201 with Location header carrying the new id.
+	const { body: res, locationId } = await sellRequestWithLocation<{ campaignId?: string }>({
 		apiKeyId: ctx.apiKeyId,
 		method: "POST",
 		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/clone`,
@@ -177,7 +188,7 @@ export async function cloneAdCampaign(
 		marketplace: ctx.marketplace,
 		contentLanguage: "en-US",
 	});
-	return { campaignId: res?.campaignId ?? null };
+	return { campaignId: res?.campaignId ?? locationId ?? null };
 }
 
 /* ─── per-ad bid update + bulk ad ops by listingId ─── */
@@ -415,22 +426,29 @@ export async function bulkUpdateAdsStatus(
 }
 
 export async function createAdGroup(campaignId: string, input: AdGroupCreate, ctx: MarketingContext): Promise<AdGroup> {
-	const res = await sellRequest<{ adGroupId?: string }>({
+	// `CreateAdGroupRequest` per OAS3 spec
+	// (`references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json`):
+	// only `{ name, defaultBid: Amount }`. Previous wrapper sent
+	// `defaultBidPercentage: string` — silently dropped by eBay.
+	// `defaultBid` is the per-keyword cost-per-click in CPC campaigns.
+	const { body: res, locationId } = await sellRequestWithLocation<{ adGroupId?: string }>({
 		apiKeyId: ctx.apiKeyId,
 		method: "POST",
 		path: `/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/ad_group`,
 		body: {
 			name: input.name,
-			...(input.defaultBidPercentage ? { defaultBidPercentage: input.defaultBidPercentage } : {}),
+			...(input.defaultBid
+				? { defaultBid: { value: toDollarString(input.defaultBid.value), currency: input.defaultBid.currency } }
+				: {}),
 		},
 		marketplace: ctx.marketplace,
 		contentLanguage: "en-US",
 	});
 	return {
-		id: res?.adGroupId ?? "",
+		id: res?.adGroupId ?? locationId ?? "",
 		campaignId,
 		name: input.name,
 		status: "active",
-		...(input.defaultBidPercentage ? { defaultBidPercentage: input.defaultBidPercentage } : {}),
+		...(input.defaultBid ? { defaultBid: input.defaultBid } : {}),
 	};
 }

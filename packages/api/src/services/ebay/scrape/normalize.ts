@@ -5,7 +5,7 @@
  * wire shape is identical regardless of transport).
  */
 
-import { type EbayItemDetail, resolveConditionId } from "@flipagent/ebay-scraper";
+import { canonicaliseConditionText, type EbayItemDetail, resolveConditionId } from "@flipagent/ebay-scraper";
 import type { ItemDetail, ItemLocation, LocalizedAspect, PaymentMethod } from "@flipagent/types/ebay/buy";
 
 // Browse REST publishes a top-level `gtin` whenever the listing carries
@@ -13,6 +13,36 @@ import type { ItemDetail, ItemLocation, LocalizedAspect, PaymentMethod } from "@
 // (US-default) then EAN, then ISBN — so a single field always points at
 // the most specific identifier eBay surfaced.
 const GTIN_ASPECT_NAMES = ["UPC", "EAN", "ISBN"] as const;
+
+// Item Specifics rows that Browse REST treats as `conditionDescriptors[]`,
+// not `localizedAspects[]`. eBay's PDP renders them as plain Item Specifics,
+// but REST lifts them into the structured condition block. We match REST
+// here so a graded-card listing reads identically across both transports
+// (matcher/aspect-confirmation logic finds the grade in the same place
+// regardless of source).
+const GRADING_ASPECT_NAMES: ReadonlySet<string> = new Set([
+	"Professional Grader",
+	"Grade",
+	"Certification Number",
+	"Card Condition",
+	"Year Manufactured",
+	"Year",
+]);
+
+// JSON-LD `additionalProperty` uses condensed names ("Grading Service: PSA",
+// "Grade: PSA 10"). Item Specifics — and Browse REST — use the canonical
+// long form ("Professional Grader: Professional Sports Authenticator (PSA)",
+// "Grade: 10"). When grading info comes only from JSON-LD (Item Specifics
+// missed it), we expand to the REST shape so downstream callers see the
+// canonical names.
+const GRADING_SERVICE_LONG_FORM: ReadonlyMap<string, string> = new Map([
+	["PSA", "Professional Sports Authenticator (PSA)"],
+	["BGS", "Beckett Grading Services (BGS)"],
+	["CGC", "Certified Guaranty Company (CGC)"],
+	["SGC", "Sportscard Guaranty (SGC)"],
+	["HGA", "Hybrid Grading Approach (HGA)"],
+	["TAG", "Technical Authentication and Grading (TAG)"],
+]);
 
 function findAspect(aspects: ReadonlyArray<{ name: string; value: string }>, name: string): string | undefined {
 	const hit = aspects.find((a) => a.name === name);
@@ -25,6 +55,60 @@ function findGtin(aspects: ReadonlyArray<{ name: string; value: string }>): stri
 		if (v) return v;
 	}
 	return undefined;
+}
+
+/**
+ * Split Item Specifics rows into product aspects vs grading rows. Browse
+ * REST puts grading data under `conditionDescriptors[]`, not
+ * `localizedAspects[]`; we mirror that so a graded-card listing reads
+ * identically through both transports. Returns the rows in REST's wire
+ * shape (`{name, values: [{content}]}`) so callers can splice directly.
+ */
+function partitionGradingAspects(aspects: ReadonlyArray<{ name: string; value: string }>): {
+	productAspects: Array<{ name: string; value: string }>;
+	gradingDescriptors: Array<{ name: string; values: Array<{ content: string }> }>;
+} {
+	const product: Array<{ name: string; value: string }> = [];
+	const grading: Array<{ name: string; values: Array<{ content: string }> }> = [];
+	for (const a of aspects) {
+		if (GRADING_ASPECT_NAMES.has(a.name)) {
+			grading.push({ name: a.name, values: [{ content: a.value }] });
+		} else {
+			product.push(a);
+		}
+	}
+	return { productAspects: product, gradingDescriptors: grading };
+}
+
+/**
+ * Reshape JSON-LD `additionalProperty` rows into REST's canonical names.
+ * JSON-LD uses condensed forms ("Grading Service: PSA", "Grade: PSA 10");
+ * Browse REST emits the long form ("Professional Grader: Professional
+ * Sports Authenticator (PSA)", "Grade: 10"). When the JSON-LD path is the
+ * only source of grading data, this lifts it into REST's wire shape.
+ */
+function normaliseJsonLdConditionDescriptors(
+	descriptors: ReadonlyArray<{ name: string; values: ReadonlyArray<{ content: string }> }>,
+): Array<{ name: string; values: Array<{ content: string }> }> {
+	const out: Array<{ name: string; values: Array<{ content: string }> }> = [];
+	for (const d of descriptors) {
+		let name = d.name;
+		const values = d.values.map((v) => {
+			let content = v.content;
+			if (name === "Grading Service") {
+				name = "Professional Grader";
+				const long = GRADING_SERVICE_LONG_FORM.get(content.trim().toUpperCase());
+				if (long) content = long;
+			} else if (name === "Grade") {
+				// "PSA 10" / "BGS 9.5" / "CGC 9" → strip the prefix to match REST.
+				const m = content.match(/^(?:PSA|BGS|CGC|SGC|HGA|TAG)\s+(.+)$/i);
+				if (m?.[1]) content = m[1];
+			}
+			return { content };
+		});
+		out.push({ name, values });
+	}
+	return out;
 }
 
 // Browse REST groups payment brands into three buckets:
@@ -63,7 +147,14 @@ function bucketPaymentBrands(brands: readonly string[]): PaymentMethod[] {
 
 export function ebayDetailToBrowse(raw: EbayItemDetail, variationId?: string): ItemDetail | null {
 	if (!raw.itemId) return null;
-	const conditionId = resolveConditionId(raw.condition);
+	// Normalize the long-form PDP condition text ("Graded - PSA 10:
+	// Professionally graded ...") down to the canonical eBay label
+	// ("Graded") so scrape matches Browse REST's `condition` field exactly.
+	// Without this, graded listings emitted the full PDP text and then failed
+	// resolveConditionId() because the substring scan didn't find a clean
+	// canonical prefix.
+	const condition = canonicaliseConditionText(raw.condition);
+	const conditionId = resolveConditionId(condition);
 	const baseAspects = raw.aspects ?? [];
 
 	// Multi-SKU listings carry per-variation aspects (Size, Color, …) inside
@@ -76,12 +167,28 @@ export function ebayDetailToBrowse(raw: EbayItemDetail, variationId?: string): I
 	// the same parent listing.
 	const matchedVariation =
 		variationId && raw.variations ? raw.variations.find((v) => v.variationId === variationId) : null;
-	const aspects =
+	const mergedAspects =
 		matchedVariation && matchedVariation.aspects.length > 0
 			? mergeAspects(baseAspects, matchedVariation.aspects)
 			: baseAspects;
+	// Lift grading rows ("Professional Grader", "Grade", "Certification
+	// Number") out of localizedAspects into conditionDescriptors so the
+	// REST-shape parity holds. When the page's Item Specifics already carry
+	// those rows, prefer them over the JSON-LD additionalProperty path —
+	// Item Specifics use REST's canonical naming, JSON-LD uses condensed
+	// names that require expansion.
+	const { productAspects: aspects, gradingDescriptors } = partitionGradingAspects(mergedAspects);
 	const localizedAspects: LocalizedAspect[] | undefined =
 		aspects.length > 0 ? aspects.map(({ name, value }) => ({ name, value, type: "STRING" })) : undefined;
+	// Prefer Item Specifics grading rows (REST's source); fall back to the
+	// JSON-LD additionalProperty rows (normalised to REST shape) when Item
+	// Specifics didn't surface any.
+	const conditionDescriptors =
+		gradingDescriptors.length > 0
+			? gradingDescriptors
+			: raw.conditionDescriptors
+				? normaliseJsonLdConditionDescriptors(raw.conditionDescriptors)
+				: undefined;
 	// When the caller specified a variation, encode it in the v1 itemId
 	// (`v1|<legacy>|<variationId>` is eBay's native shape) so downstream
 	// services that re-parse the id naturally carry the variation. The
@@ -99,7 +206,7 @@ export function ebayDetailToBrowse(raw: EbayItemDetail, variationId?: string): I
 		legacyItemId: raw.itemId,
 		title: raw.title,
 		itemWebUrl: raw.url,
-		condition: raw.condition ?? undefined,
+		condition: condition ?? undefined,
 		conditionId: conditionId ?? undefined,
 		price: priceCents != null ? { value: (priceCents / 100).toFixed(2), currency } : undefined,
 		shippingOptions:
@@ -139,8 +246,23 @@ export function ebayDetailToBrowse(raw: EbayItemDetail, variationId?: string): I
 		pattern: findAspect(aspects, "Pattern"),
 		material: findAspect(aspects, "Material"),
 		sizeType: findAspect(aspects, "Size Type"),
-		mpn: findAspect(aspects, "MPN"),
+		mpn: raw.mpn ?? findAspect(aspects, "MPN"),
 		gtin: findGtin(aspects),
+		epid: raw.epid ?? undefined,
+		// Browse REST emits `lotSize: 0` for normal (non-lot) listings; only
+		// emits a positive integer for actual lots. Match that wire shape so
+		// callers can use a consistent "lotSize > 0 = lot" check across both
+		// transports.
+		lotSize: raw.lotSize ?? 0,
+		conditionDescription: raw.conditionDescription ?? undefined,
+		conditionDescriptors,
+		marketingPrice: raw.marketingPrice
+			? {
+					originalPrice: raw.marketingPrice.originalPrice,
+					discountPercentage: raw.marketingPrice.discountPercentage,
+					priceTreatment: "STRIKETHROUGH",
+				}
+			: undefined,
 		// REST always emits `topRatedBuyingExperience` as an explicit
 		// boolean — emit the same wire shape from scrape so consumers
 		// can do `.topRatedBuyingExperience === false` without a
@@ -165,12 +287,20 @@ export function ebayDetailToBrowse(raw: EbayItemDetail, variationId?: string): I
 		// ebay-extract.ts, so consumers read both transports identically.
 		returnTerms: raw.returnTerms ?? undefined,
 		// `primaryItemGroup` is what Browse REST attaches when the listing
-		// is a SKU of a multi-variation parent. Scrape only sees the group
-		// id + the parent title (everything else lives behind a separate
-		// `getItemsByItemGroup` call we'd rather not chain) — fill what
-		// we have so the field shape stays compatible.
-		primaryItemGroup:
-			raw.variations && raw.variations.length > 0
+		// is a SKU of a multi-variation parent. Prefer the parser's extracted
+		// value (group id from the embedded React payload) when available;
+		// fall back to a self-derived block when this listing's own MSKU
+		// model exposed variations (i.e. it IS the parent). Either way the
+		// field shape stays compatible with REST consumers.
+		primaryItemGroup: raw.primaryItemGroup
+			? {
+					itemGroupId: raw.primaryItemGroup.itemGroupId,
+					itemGroupHref: raw.primaryItemGroup.itemGroupHref,
+					itemGroupTitle: raw.primaryItemGroup.itemGroupTitle ?? (raw.title || undefined),
+					itemGroupType: "SELLER_DEFINED_VARIATIONS",
+					itemGroupImage: raw.imageUrls[0] ? { imageUrl: raw.imageUrls[0] } : undefined,
+				}
+			: raw.variations && raw.variations.length > 0
 				? {
 						itemGroupId: raw.itemId,
 						itemGroupType: "SELLER_DEFINED_VARIATIONS",
@@ -212,10 +342,21 @@ function mergeAspects(
  * Derive `buyingOptions` from the scraped detail signals. eBay's REST
  * surfaces this directly; from HTML we assemble it:
  *
- *   - listing has time-left counter            → AUCTION
- *   - otherwise (priced page rendered)         → FIXED_PRICE
- *   - "or Best Offer" textspan present         → also BEST_OFFER
- *   - listing ENDED/COMPLETED                  → omit (no live options)
+ *   - bidCount field is non-null                → AUCTION
+ *   - listing has time-left counter             → AUCTION
+ *   - otherwise (priced page rendered)          → FIXED_PRICE
+ *   - "or Best Offer" textspan present          → also BEST_OFFER
+ *   - listing ENDED/COMPLETED                   → omit (no live options)
+ *
+ * `bidCount !== null` is the load-bearing signal: the scraper's
+ * `.x-bid-count` / `#qtySubTxt` selectors only match the auction PDP's
+ * "X bids" widget, which BIN listings don't render at all — so an
+ * explicit numeric `bidCount` (including 0 for a freshly-listed
+ * zero-bid auction) means the page is auction-format. `timeLeftText`
+ * is a redundant signal for the same case but kept as belt-and-
+ * suspenders. `itemEndDate` is *not* an auction signal: BIN listings
+ * carry one too (7/30-day fixed-price durations, GTC), so using it
+ * as a fallback caused 30-day BINs to mis-tag as auctions.
  *
  * Returned `undefined` (not empty array) when the listing is no longer
  * live — the field is `Type.Optional` in the mirror, so omitting reads
@@ -225,10 +366,43 @@ function deriveBuyingOptions(raw: EbayItemDetail): ItemDetail["buyingOptions"] {
 	const status = raw.listingStatus?.toUpperCase();
 	if (status === "ENDED" || status === "COMPLETED") return undefined;
 	const opts: Array<"AUCTION" | "FIXED_PRICE" | "BEST_OFFER"> = [];
-	if (raw.timeLeftText) opts.push("AUCTION");
+	if (isLiveAuctionSignal(raw)) opts.push("AUCTION");
 	else opts.push("FIXED_PRICE");
 	if (raw.bestOfferEnabled) opts.push("BEST_OFFER");
 	return opts;
+}
+
+function isLiveAuctionSignal(raw: {
+	bidCount?: number | null;
+	timeLeftText?: string | null;
+}): boolean {
+	if (raw.bidCount != null) return true;
+	if (raw.timeLeftText) return true;
+	return false;
+}
+
+/**
+ * Reconcile `buyingOptions` against bid signals on a Browse-shape
+ * `ItemDetail`. eBay's Browse REST sometimes reports `["FIXED_PRICE"]`
+ * on a live auction once bidding has pushed past the BIN floor (the
+ * AUCTION enum gets dropped from the response even though `bidCount`
+ * and `itemEndDate` are still set). The PDP scraper has the symmetric
+ * blind spot when its time-left selector misses.
+ *
+ * When `bidCount > 0` we know the listing is auction-format
+ * (Best Offer + BIN both vanish on first bid), so any non-AUCTION
+ * options on the upstream record are stale. Replace with `["AUCTION"]`.
+ *
+ * No-op when the detail already lists AUCTION, when there are no bids,
+ * or when the listing is no longer in stock (ENDED listings keep
+ * whatever options the upstream returned — useful for sold-comp lookups).
+ */
+export function reconcileBuyingOptions(detail: ItemDetail): ItemDetail {
+	const status = detail.estimatedAvailabilities?.[0]?.estimatedAvailabilityStatus;
+	if (status === "OUT_OF_STOCK") return detail;
+	if ((detail.bidCount ?? 0) <= 0) return detail;
+	if (detail.buyingOptions?.includes("AUCTION")) return detail;
+	return { ...detail, buyingOptions: ["AUCTION"] };
 }
 
 function parseItemLocation(text: string | null | undefined): ItemLocation | undefined {

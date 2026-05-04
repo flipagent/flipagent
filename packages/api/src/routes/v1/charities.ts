@@ -23,7 +23,11 @@ charitiesRoute.get(
 	}),
 	requireApiKey,
 	tbCoerce("query", CharitiesListQuery),
-	async (c) => c.json({ ...(await listCharities(c.req.valid("query"))), source: "rest" as const }),
+	async (c) =>
+		c.json({
+			...(await listCharities(c.req.valid("query"), { apiKeyId: c.var.apiKey.id })),
+			source: "rest" as const,
+		}),
 );
 
 charitiesRoute.get(
@@ -35,7 +39,7 @@ charitiesRoute.get(
 	}),
 	requireApiKey,
 	async (c) => {
-		const r = await getCharity(c.req.param("id"));
+		const r = await getCharity(c.req.param("id"), { apiKeyId: c.var.apiKey.id });
 		if (!r) return c.json({ error: "charity_not_found" }, 404);
 		return c.json(r);
 	},

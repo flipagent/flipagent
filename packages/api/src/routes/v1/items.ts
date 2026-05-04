@@ -15,6 +15,7 @@ import {
 	CompatibilityCheckResponse,
 	ItemDetailQuery,
 	ItemDetailResponse,
+	ItemSearchByImageRequest,
 	ItemSearchQuery,
 	ItemSearchResponse,
 } from "@flipagent/types";
@@ -25,6 +26,7 @@ import { checkCompatibility } from "../../services/compatibility.js";
 import { getItemDetail } from "../../services/items/detail.js";
 import { ListingsError } from "../../services/items/errors.js";
 import { ebayMarketplaceForCountry, mapItemSearchQuery } from "../../services/items/query.js";
+import { searchItemsByImage } from "../../services/items/search-by-image.js";
 import { ebayItemToFlipagent } from "../../services/items/transform.js";
 import { search } from "../../services/search.js";
 import { renderResultHeaders } from "../../services/shared/headers.js";
@@ -47,6 +49,24 @@ itemsRoute.post(
 	requireApiKey,
 	tbBody(CompatibilityCheckRequest),
 	async (c) => c.json({ ...(await checkCompatibility(c.req.valid("json"))), source: "rest" as const }),
+);
+
+itemsRoute.post(
+	"/search-by-image",
+	describeRoute({
+		tags: ["Items"],
+		summary: "Image-based item search",
+		description:
+			"Wraps Buy Browse `search_by_image`. Body carries a base64-encoded image; response is the same `ItemSearchResponse` as keyword `/search`.",
+		responses: {
+			200: jsonResponse("Items.", ItemSearchResponse),
+			401: errorResponse("Auth missing."),
+			502: errorResponse("Upstream eBay failed."),
+		},
+	}),
+	requireApiKey,
+	tbBody(ItemSearchByImageRequest),
+	async (c) => c.json(await searchItemsByImage(c.req.valid("json"))),
 );
 
 itemsRoute.get(

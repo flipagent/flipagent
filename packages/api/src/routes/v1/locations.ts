@@ -12,6 +12,7 @@ import {
 	getLocation,
 	listLocations,
 	setLocationStatus,
+	updateLocationDetails,
 } from "../../services/locations.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
@@ -98,6 +99,23 @@ locationsRoute.post(
 	requireApiKey,
 	async (c) => {
 		const r = await setLocationStatus(c.req.param("id"), false, { apiKeyId: c.var.apiKey.id });
+		return r ? c.json(r) : c.json({ error: "location_not_found" }, 404);
+	},
+);
+
+locationsRoute.patch(
+	"/:id",
+	describeRoute({
+		tags: ["Locations"],
+		summary: "Patch one or more fields on a location",
+		description:
+			"Wraps `POST /sell/inventory/v1/location/{id}/update_location_details`. Unlike `PUT /v1/locations/{id}` (which fully replaces), this only updates the supplied fields. Useful for moving a warehouse without re-entering operating hours.",
+		responses: { 200: jsonResponse("Updated.", Location), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const body = (await c.req.json()) as Parameters<typeof updateLocationDetails>[1];
+		const r = await updateLocationDetails(c.req.param("id"), body, { apiKeyId: c.var.apiKey.id });
 		return r ? c.json(r) : c.json({ error: "location_not_found" }, 404);
 	},
 );

@@ -1,11 +1,17 @@
 /**
  * commerce/charity — search + get charity organizations.
+ *
+ * Verified live 2026-05-02: this API is user-OAuth only at the app
+ * level — the same call with an app-credential token returns errorId
+ * 165001 ("Invalid, missing or unsupported marketplace"), which is
+ * eBay's standard 4xx for "this app credential isn't approved for the
+ * Commerce Charity API". Switching to the user OAuth pipe (any user
+ * with our default scopes) returns 200. Routes therefore take an
+ * `apiKeyId` so we can resolve their user token.
  */
 
 import type { CharitiesListQuery, Charity } from "@flipagent/types";
-import { config, isEbayAppConfigured } from "../config.js";
-import { fetchRetry } from "../utils/fetch-retry.js";
-import { getAppAccessToken } from "./ebay/oauth.js";
+import { sellRequest, swallow404 } from "./ebay/rest/user-client.js";
 
 interface EbayCharity {
 	charityOrgId: string;
@@ -29,26 +35,31 @@ function toFlipagent(c: EbayCharity): Charity {
 	};
 }
 
-async function appRequest<T>(path: string): Promise<T | null> {
-	if (!isEbayAppConfigured()) return null;
-	const token = await getAppAccessToken();
-	const res = await fetchRetry(`${config.EBAY_BASE_URL}${path}`, {
-		headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "X-EBAY-C-MARKETPLACE-ID": "EBAY_US" },
-	});
-	if (!res.ok) return null;
-	return (await res.json()) as T;
+export interface CharityContext {
+	apiKeyId: string;
+	marketplace?: string;
 }
 
 export async function listCharities(
 	q: CharitiesListQuery,
+	ctx: CharityContext,
 ): Promise<{ charities: Charity[]; limit: number; offset: number; total?: number }> {
 	const limit = q.limit ?? 50;
 	const offset = q.offset ?? 0;
 	const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
 	if (q.q) params.set("q", q.q);
-	if (q.ein) params.set("ein", q.ein);
-	const res = await appRequest<{ charityOrgs?: EbayCharity[]; total?: number }>(
-		`/commerce/charity/v1/charity_org?${params.toString()}`,
+	// eBay's Charity API uses `registration_ids` (comma-separated) for
+	// EIN-style lookups, not `ein` — the `ein` query param does not
+	// exist. flipagent's surface keeps `ein` for ergonomics; the
+	// translation happens here.
+	if (q.ein) params.set("registration_ids", q.ein);
+	const res = await swallow404(
+		sellRequest<{ charityOrgs?: EbayCharity[]; total?: number }>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path: `/commerce/charity/v1/charity_org?${params.toString()}`,
+			marketplace: ctx.marketplace ?? "EBAY_US",
+		}),
 	);
 	return {
 		charities: (res?.charityOrgs ?? []).map(toFlipagent),
@@ -58,7 +69,21 @@ export async function listCharities(
 	};
 }
 
-export async function getCharity(idOrEin: string): Promise<Charity | null> {
-	const res = await appRequest<EbayCharity>(`/commerce/charity/v1/charity_org/${encodeURIComponent(idOrEin)}`);
+export async function getCharity(idOrLegacyId: string, ctx: CharityContext): Promise<Charity | null> {
+	// eBay distinguishes `charity_org_id` (its own opaque id) from
+	// `legacy_charity_org_id` (the v3-era integer). Numeric input → try
+	// the legacy lookup first, otherwise the canonical id route.
+	const isLegacy = /^\d+$/.test(idOrLegacyId);
+	const path = isLegacy
+		? `/commerce/charity/v1/charity_org/get_by_legacy_id?legacy_charity_org_id=${encodeURIComponent(idOrLegacyId)}`
+		: `/commerce/charity/v1/charity_org/${encodeURIComponent(idOrLegacyId)}`;
+	const res = await swallow404(
+		sellRequest<EbayCharity>({
+			apiKeyId: ctx.apiKeyId,
+			method: "GET",
+			path,
+			marketplace: ctx.marketplace ?? "EBAY_US",
+		}),
+	);
 	return res ? toFlipagent(res) : null;
 }

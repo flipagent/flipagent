@@ -67,3 +67,24 @@ export const ViolationsSummaryResponse = Type.Object(
 	{ $id: "ViolationsSummaryResponse" },
 );
 export type ViolationsSummaryResponse = Static<typeof ViolationsSummaryResponse>;
+
+/**
+ * `POST /v1/violations/{id}/suppress` — suppress a false-positive
+ * compliance flag. eBay accepts the listing-violation id + reason.
+ * Wraps `/sell/compliance/v1/suppress_listing_violation`.
+ */
+export const ViolationSuppressRequest = Type.Object(
+	{
+		listingId: Type.String({ description: "The listing whose violation should be suppressed." }),
+		complianceType: Type.Optional(Type.String({ description: "Limits the suppression to one compliance type." })),
+		reason: Type.Optional(Type.String()),
+	},
+	{ $id: "ViolationSuppressRequest" },
+);
+export type ViolationSuppressRequest = Static<typeof ViolationSuppressRequest>;
+
+export const ViolationSuppressResponse = Type.Object(
+	{ ok: Type.Boolean(), source: Type.Optional(ResponseSource) },
+	{ $id: "ViolationSuppressResponse" },
+);
+export type ViolationSuppressResponse = Static<typeof ViolationSuppressResponse>;

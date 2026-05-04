@@ -5,17 +5,29 @@
  * evaluation plus a `meta` block describing what was fetched. Math runs
  * server-side so all language SDKs return identical evaluations.
  *
- * Two surfaces:
+ * Three surfaces:
  *   .listing(req)        — sync. Awaits the full pipeline and returns
- *                          `EvaluateResponse`. Right call for one-shot
- *                          agents and notebooks.
+ *                          `EvaluateResponse` (digest + back-compat
+ *                          pools). Right call for one-shot agents and
+ *                          notebooks.
+ *   .pool(itemId)        — drill-down companion. Returns
+ *                          `EvaluatePoolResponse` (kept + rejected
+ *                          listings with per-item reason). Cache-only;
+ *                          requires a recent `.listing()` call within
+ *                          the cache TTL or it 412s.
  *   .jobs.create/get/cancel — async. Job lives 7d, survives client
  *                          disconnect, supports cooperative cancel.
  *                          Right call when you want a UI that streams
  *                          progress or a backgrounded task.
  */
 
-import type { ComputeJobAck, EvaluateJob, EvaluateRequest, EvaluateResponse } from "@flipagent/types";
+import type {
+	ComputeJobAck,
+	EvaluateJob,
+	EvaluatePoolResponse,
+	EvaluateRequest,
+	EvaluateResponse,
+} from "@flipagent/types";
 import type { FlipagentHttp } from "./http.js";
 
 export interface EvaluateJobsClient {
@@ -26,12 +38,14 @@ export interface EvaluateJobsClient {
 
 export interface EvaluateClient {
 	listing(req: EvaluateRequest): Promise<EvaluateResponse>;
+	pool(itemId: string): Promise<EvaluatePoolResponse>;
 	jobs: EvaluateJobsClient;
 }
 
 export function createEvaluateClient(http: FlipagentHttp): EvaluateClient {
 	return {
 		listing: (req) => http.post("/v1/evaluate", req),
+		pool: (itemId) => http.get(`/v1/evaluate/${encodeURIComponent(itemId)}/pool`),
 		jobs: {
 			create: (req) => http.post("/v1/evaluate/jobs", req),
 			get: (id) => http.get(`/v1/evaluate/jobs/${encodeURIComponent(id)}`),

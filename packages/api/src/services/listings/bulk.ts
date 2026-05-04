@@ -66,6 +66,14 @@ export async function bulkUpdatePriceQuantity(
 export async function bulkUpsertInventory(input: ListingBulkUpsert, ctx: BulkContext): Promise<ListingBulkResult> {
 	const requests = input.items.map((it) => ({
 		sku: it.sku,
+		// `locale` is a REQUIRED field on `InventoryItemWithSkuLocale` per
+		// the OAS3 spec — verified live 2026-05-03 ("Valid SKU and locale
+		// information are required for all the InventoryItems in the
+		// request"). Single-item PUT `/inventory_item/{sku}` infers locale
+		// from the Content-Language header (en-US default), but the bulk
+		// variant requires it inside the request body. Default to en_US
+		// (underscore — eBay's `LocaleEnum`) to match the en-US header.
+		locale: "en_US",
 		product: { title: it.title, description: it.description, imageUrls: it.images, aspects: it.aspects },
 		condition: it.condition.toUpperCase(),
 		availability: { shipToLocationAvailability: { quantity: it.quantity } },
@@ -117,6 +125,12 @@ export async function bulkPublishOffer(input: ListingBulkPublish, ctx: BulkConte
 /* ----- inventory_item_group (multi-variation parent) ----------------- */
 
 export async function getListingGroup(id: string, ctx: BulkContext): Promise<ListingGroup | null> {
+	// Spec: `references/ebay-mcp/docs/_mirror/sell_inventory_v1_oas3.json`
+	// `InventoryItemGroup` schema. Verified 2026-05-03 via field-diff:
+	// only aspects, description, imageUrls, inventoryItemGroupKey,
+	// subtitle, title, variantSKUs, variesBy, videoIds exist. Previous
+	// wrapper destructured `brand`, `mpn`, `gtin` — those belong to
+	// per-SKU `inventory_item`, not the group. They were always undefined.
 	const res = await sellRequest<{
 		title: string;
 		description?: string;
@@ -124,9 +138,8 @@ export async function getListingGroup(id: string, ctx: BulkContext): Promise<Lis
 		variantSKUs?: string[];
 		variesBy?: ListingGroup["variesBy"];
 		aspects?: Record<string, string[]>;
-		brand?: string;
-		mpn?: string;
-		gtin?: string;
+		subtitle?: string;
+		videoIds?: string[];
 	}>({
 		apiKeyId: ctx.apiKeyId,
 		method: "GET",
@@ -142,9 +155,8 @@ export async function getListingGroup(id: string, ctx: BulkContext): Promise<Lis
 		...(res.description ? { description: res.description } : {}),
 		...(res.variesBy ? { variesBy: res.variesBy } : {}),
 		...(res.aspects ? { aspects: res.aspects } : {}),
-		...(res.brand ? { brand: res.brand } : {}),
-		...(res.mpn ? { mpn: res.mpn } : {}),
-		...(res.gtin ? { gtin: res.gtin } : {}),
+		...(res.subtitle ? { subtitle: res.subtitle } : {}),
+		...(res.videoIds ? { videoIds: res.videoIds } : {}),
 	};
 }
 
@@ -164,9 +176,8 @@ export async function upsertListingGroup(
 			variantSKUs: input.variantSkus,
 			variesBy: input.variesBy,
 			aspects: input.aspects,
-			brand: input.brand,
-			mpn: input.mpn,
-			gtin: input.gtin,
+			...(input.subtitle ? { subtitle: input.subtitle } : {}),
+			...(input.videoIds ? { videoIds: input.videoIds } : {}),
 		},
 		marketplace: ctx.marketplace,
 		contentLanguage: "en-US",
@@ -230,12 +241,27 @@ export async function bulkGetOffer(
 	input: BulkOfferGet,
 	ctx: BulkContext,
 ): Promise<{ offers: Array<Record<string, unknown>> }> {
-	const res = await sellRequest<{ responses?: Array<Record<string, unknown>> }>({
-		apiKeyId: ctx.apiKeyId,
-		method: "POST",
-		path: "/sell/inventory/v1/bulk_get_offer",
-		body: { requests: input.offerIds.map((offerId) => ({ offerId })) },
-		marketplace: ctx.marketplace,
+	// eBay's Sell Inventory API has no `bulk_get_offer` endpoint — verified
+	// against `references/ebay-mcp/docs/sell-apps/listing-management/sell_inventory_v1_oas3.json`
+	// and live-probed (returns 404 errorId 2002). The published bulk
+	// surface is `bulk_create_offer`, `bulk_publish_offer`,
+	// `bulk_get_inventory_item` only. For offers we fan out single
+	// `GET /offer/{offerId}` calls in parallel; the public route shape
+	// (`/v1/listings/bulk/get-offers`) is preserved.
+	const settled = await Promise.allSettled(
+		input.offerIds.map((offerId) =>
+			sellRequest<Record<string, unknown>>({
+				apiKeyId: ctx.apiKeyId,
+				method: "GET",
+				path: `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}`,
+				marketplace: ctx.marketplace,
+			}),
+		),
+	);
+	const offers = settled.map((r, i): Record<string, unknown> => {
+		if (r.status === "fulfilled") return r.value;
+		const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
+		return { offerId: input.offerIds[i], errors: [{ message: reason }] };
 	});
-	return { offers: res?.responses ?? [] };
+	return { offers };
 }

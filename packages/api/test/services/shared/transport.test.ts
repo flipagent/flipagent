@@ -64,14 +64,17 @@ describe("selectTransport", () => {
 		});
 
 		it("requires oauthBound for trading", () => {
-			expect(() => selectTransport("messages.list", { explicit: "trading", oauthBound: false })).toThrow(
+			// `best-offer.respond` is still Trading-only — REST has no equivalent
+			// for inbound seller offers. messages / feedback moved to REST
+			// `commerce/*` in 2026-05; see notes/ebay-coverage.md G.1, G.2.
+			expect(() => selectTransport("best-offer.respond", { explicit: "trading", oauthBound: false })).toThrow(
 				TransportUnavailableError,
 			);
-			expect(selectTransport("messages.list", { explicit: "trading", oauthBound: true })).toBe("trading");
+			expect(selectTransport("best-offer.respond", { explicit: "trading", oauthBound: true })).toBe("trading");
 		});
 
 		it("rejects transports the resource doesn't support", () => {
-			expect(() => selectTransport("messages.list", { explicit: "rest" })).toThrow(TransportUnavailableError);
+			expect(() => selectTransport("best-offer.respond", { explicit: "rest" })).toThrow(TransportUnavailableError);
 			expect(() => selectTransport("inventory.crud", { explicit: "scrape" })).toThrow(TransportUnavailableError);
 		});
 	});
@@ -131,9 +134,22 @@ describe("selectTransport", () => {
 		});
 
 		it("falls back to trading for trading-only resources when oauth bound", () => {
-			expect(selectTransport("messages.list", { oauthBound: true })).toBe("trading");
+			// Best Offer (inbound) is the last surface still Trading-only —
+			// REST has no equivalent for reading/responding to inbound seller
+			// offers. messages / feedback both migrated to REST commerce/* in
+			// 2026-05.
+			expect(selectTransport("best-offer.list", { oauthBound: true })).toBe("trading");
 			expect(selectTransport("best-offer.respond", { oauthBound: true })).toBe("trading");
-			expect(selectTransport("feedback.leave", { oauthBound: true })).toBe("trading");
+		});
+
+		it("picks user-rest for messages / feedback (post-Trading migration)", () => {
+			// Sanity check that the migration off Trading actually shows up in
+			// the selector — these used to fall through to trading; now REST
+			// commerce/* serves them.
+			expect(selectTransport("messages.list", { oauthBound: true })).toBe("rest");
+			expect(selectTransport("messages.send", { oauthBound: true })).toBe("rest");
+			expect(selectTransport("feedback.list", { oauthBound: true })).toBe("rest");
+			expect(selectTransport("feedback.leave", { oauthBound: true })).toBe("rest");
 		});
 
 		it("uses bridge for bridge-only resources when paired", () => {

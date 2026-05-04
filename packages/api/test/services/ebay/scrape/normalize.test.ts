@@ -1,6 +1,7 @@
 import type { EbayItemDetail } from "@flipagent/ebay-scraper";
+import type { ItemDetail } from "@flipagent/types/ebay/buy";
 import { describe, expect, it } from "vitest";
-import { ebayDetailToBrowse } from "../../../../src/services/ebay/scrape/normalize.js";
+import { ebayDetailToBrowse, reconcileBuyingOptions } from "../../../../src/services/ebay/scrape/normalize.js";
 
 const baseRaw: EbayItemDetail = {
 	itemId: "406338886641",
@@ -36,6 +37,13 @@ const baseRaw: EbayItemDetail = {
 	shipToLocations: null,
 	immediatePay: null,
 	guestCheckout: null,
+	epid: null,
+	mpn: null,
+	lotSize: null,
+	conditionDescription: null,
+	conditionDescriptors: null,
+	marketingPrice: null,
+	primaryItemGroup: null,
 };
 
 describe("ebayDetailToBrowse — image mapping", () => {
@@ -327,5 +335,101 @@ describe("ebayDetailToBrowse — Authenticity Guarantee", () => {
 		const out = ebayDetailToBrowse(baseRaw);
 		expect(out?.qualifiedPrograms).toBeUndefined();
 		expect(out?.authenticityGuarantee).toBeUndefined();
+	});
+});
+
+describe("ebayDetailToBrowse — buyingOptions auction signal", () => {
+	it("emits FIXED_PRICE on a quiet BIN listing (no bids, no countdown)", () => {
+		const out = ebayDetailToBrowse(baseRaw);
+		expect(out?.buyingOptions).toEqual(["FIXED_PRICE"]);
+	});
+
+	it("upgrades to AUCTION when bidCount > 0 even if timeLeftText is missing", () => {
+		// Real-world failure mode: PDP rendered without the time-left
+		// counter (vendor lazy-render or page variant) but bidcount line
+		// shows "22 bids". Pre-fix this fell through to FIXED_PRICE.
+		const out = ebayDetailToBrowse({ ...baseRaw, bidCount: 22, timeLeftText: null });
+		expect(out?.buyingOptions).toEqual(["AUCTION"]);
+	});
+
+	it("emits AUCTION when bidCount is explicitly 0 (scraper parsed '0 bids' on auction PDP)", () => {
+		// `.x-bid-count` only renders on auction PDPs, so an explicit numeric
+		// 0 means scraper found the auction's bidcount widget reading "0
+		// bids" — this is a freshly-listed zero-bid auction, not a BIN.
+		// Distinguish from `bidCount: null` (selector missed entirely).
+		const out = ebayDetailToBrowse({ ...baseRaw, bidCount: 0, timeLeftText: null });
+		expect(out?.buyingOptions).toEqual(["AUCTION"]);
+	});
+
+	it("emits AUCTION when timeLeftText is present (zero-bid auction just listed)", () => {
+		const out = ebayDetailToBrowse({ ...baseRaw, bidCount: 0, timeLeftText: "6d 14h" });
+		expect(out?.buyingOptions).toEqual(["AUCTION"]);
+	});
+
+	it("does NOT treat a future itemEndDate as an auction signal — BIN listings carry one too", () => {
+		// Real-world failure mode: a 30-day BIN with Best Offer (e.g. a
+		// vintage-watch parts-only listing or Authenticity-Guarantee sneaker
+		// drop) was getting mis-tagged as ["AUCTION","BEST_OFFER"] when the
+		// fix earlier tried `itemEndDate in future` as an auction fallback.
+		// itemEndDate isn't auction-specific (BIN durations 7/30 days, GTC).
+		const future = new Date(Date.now() + 30 * 86_400_000).toISOString();
+		const out = ebayDetailToBrowse({ ...baseRaw, itemEndDate: future, bidCount: null });
+		expect(out?.buyingOptions).toEqual(["FIXED_PRICE"]);
+	});
+
+	it("BIN with Best Offer + future itemEndDate stays FIXED_PRICE + BEST_OFFER (regression: 30-day BIN)", () => {
+		const future = new Date(Date.now() + 30 * 86_400_000).toISOString();
+		const out = ebayDetailToBrowse({
+			...baseRaw,
+			itemEndDate: future,
+			bidCount: null,
+			bestOfferEnabled: true,
+		});
+		expect(out?.buyingOptions).toEqual(["FIXED_PRICE", "BEST_OFFER"]);
+	});
+
+	it("stacks BEST_OFFER on top of FIXED_PRICE when bestOfferEnabled and no auction signal", () => {
+		const out = ebayDetailToBrowse({ ...baseRaw, bestOfferEnabled: true });
+		expect(out?.buyingOptions).toEqual(["FIXED_PRICE", "BEST_OFFER"]);
+	});
+
+	it("returns undefined when the listing is ENDED (sold-comp lookup)", () => {
+		const out = ebayDetailToBrowse({ ...baseRaw, listingStatus: "ENDED", bidCount: 22 });
+		expect(out?.buyingOptions).toBeUndefined();
+	});
+});
+
+describe("reconcileBuyingOptions — REST passthrough fix", () => {
+	const liveBidDetail: ItemDetail = {
+		itemId: "v1|298265848524|0",
+		legacyItemId: "298265848524",
+		title: "iPhone 16e (live auction)",
+		itemWebUrl: "https://www.ebay.com/itm/298265848524",
+		bidCount: 22,
+		buyingOptions: ["FIXED_PRICE"],
+		estimatedAvailabilities: [{ estimatedAvailabilityStatus: "IN_STOCK" }],
+	};
+
+	it("promotes [FIXED_PRICE] to [AUCTION] when bidCount > 0 on a live listing", () => {
+		const out = reconcileBuyingOptions(liveBidDetail);
+		expect(out.buyingOptions).toEqual(["AUCTION"]);
+	});
+
+	it("is a no-op when AUCTION is already in buyingOptions", () => {
+		const detail: ItemDetail = { ...liveBidDetail, buyingOptions: ["AUCTION"] };
+		expect(reconcileBuyingOptions(detail)).toBe(detail);
+	});
+
+	it("is a no-op when there are no bids", () => {
+		const detail: ItemDetail = { ...liveBidDetail, bidCount: 0 };
+		expect(reconcileBuyingOptions(detail)).toBe(detail);
+	});
+
+	it("preserves upstream buyingOptions on ENDED listings even if bidCount > 0 (sold comps)", () => {
+		const detail: ItemDetail = {
+			...liveBidDetail,
+			estimatedAvailabilities: [{ estimatedAvailabilityStatus: "OUT_OF_STOCK" }],
+		};
+		expect(reconcileBuyingOptions(detail).buyingOptions).toEqual(["FIXED_PRICE"]);
 	});
 });

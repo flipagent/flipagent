@@ -6,7 +6,7 @@ import { BidCreate, BidsListResponse } from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { listBids, placeBid } from "../../services/bids.js";
+import { getBidStatus, listBids, placeBid } from "../../services/bids.js";
 import { findEligibleAuctionItems } from "../../services/compatibility.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
@@ -41,9 +41,34 @@ bidsRoute.get(
 	"/eligible-listings",
 	describeRoute({
 		tags: ["Bids"],
-		summary: "List items eligible for proxy bidding",
-		responses: { 200: { description: "Items." }, ...COMMON },
+		summary: "List items eligible for proxy bidding (no eBay endpoint)",
+		description:
+			"eBay does not expose a 'find eligible auctions' REST endpoint. " +
+			"Use `/v1/items?status=auction` to search live auctions, or " +
+			"`/v1/me/buying` for auctions you've already bid on.",
+		responses: { 501: errorResponse("Endpoint does not exist."), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await findEligibleAuctionItems()), source: "rest" as const }),
+	// Always throws — surfaces 501 with the alternative pointers above.
+	async (c) => {
+		await findEligibleAuctionItems();
+		return c.json({ items: [] });
+	},
+);
+
+// `:listingId` comes after literal sub-routes so `/eligible-listings`
+// matches the static handler instead of being captured as a param.
+bidsRoute.get(
+	"/:listingId",
+	describeRoute({
+		tags: ["Bids"],
+		summary: "Current bid status for one auction listing",
+		responses: { 200: { description: "Bid." }, 404: errorResponse("Not found."), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const r = await getBidStatus(c.req.param("listingId"), { apiKeyId: c.var.apiKey.id });
+		if (!r) return c.json({ error: "no_bid" }, 404);
+		return c.json(r);
+	},
 );

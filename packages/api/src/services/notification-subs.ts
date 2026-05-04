@@ -8,7 +8,7 @@ import type {
 	NotificationSubscriptionCreate,
 	NotificationTopic,
 } from "@flipagent/types";
-import { sellRequest, swallow404, swallowEbay404 } from "./ebay/rest/user-client.js";
+import { sellRequest, sellRequestWithLocation, swallow404, swallowEbay404 } from "./ebay/rest/user-client.js";
 
 interface EbaySubscription {
 	subscriptionId: string;
@@ -54,14 +54,43 @@ export async function createSubscription(
 	input: NotificationSubscriptionCreate,
 	ctx: NotifContext,
 ): Promise<NotificationSubscription> {
-	const res = await sellRequest<{ subscriptionId?: string }>({
+	// Subscription request requires `payload: { format, schemaVersion,
+	// deliveryProtocol }` per `SubscriptionPayloadDetail` spec — verified
+	// live 2026-05-03 ("Invalid or missing schema version. Please refer
+	// to /topic/{topic_id} for supported schema versions."). Look up the
+	// topic to get its schemaVersion; default format=JSON, protocol=HTTPS
+	// (eBay's only supported values today).
+	// Verified live 2026-05-03: spec says `format` is a scalar string but
+	// eBay's `topic/{topicId}` response returns `format: string[]` (array).
+	// Pick the first when looking up the supported payload.
+	const topicRes = await sellRequest<{
+		supportedPayloads?: Array<{ schemaVersion?: string; format?: string | string[]; deliveryProtocol?: string }>;
+	}>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/commerce/notification/v1/topic/${encodeURIComponent(input.topicId)}`,
+	}).catch(() => null);
+	const supported = topicRes?.supportedPayloads?.[0];
+	const format = Array.isArray(supported?.format) ? supported.format[0] : supported?.format;
+	const body = {
+		topicId: input.topicId,
+		destinationId: input.destinationId,
+		status: "ENABLED",
+		payload: {
+			format: format ?? "JSON",
+			schemaVersion: supported?.schemaVersion ?? "1.0",
+			deliveryProtocol: supported?.deliveryProtocol ?? "HTTPS",
+		},
+		...(input.filterExpression ? { filter: { criteriaExpression: input.filterExpression } } : {}),
+	};
+	const { body: res, locationId } = await sellRequestWithLocation<{ subscriptionId?: string }>({
 		apiKeyId: ctx.apiKeyId,
 		method: "POST",
 		path: "/commerce/notification/v1/subscription",
-		body: input,
+		body,
 	});
 	return {
-		id: res?.subscriptionId ?? "",
+		id: res?.subscriptionId ?? locationId ?? "",
 		topicId: input.topicId,
 		destinationId: input.destinationId,
 		status: "enabled",
@@ -77,12 +106,86 @@ export async function deleteSubscription(id: string, ctx: NotifContext): Promise
 	});
 }
 
+export async function getDestination(id: string, ctx: NotifContext): Promise<NotificationDestination | null> {
+	const res = await sellRequest<{
+		destinationId: string;
+		status?: string;
+		deliveryConfig?: { endpoint: string; verificationToken?: string };
+	}>({
+		apiKeyId: ctx.apiKeyId,
+		method: "GET",
+		path: `/commerce/notification/v1/destination/${encodeURIComponent(id)}`,
+	}).catch(swallowEbay404);
+	if (!res) return null;
+	return {
+		id: res.destinationId,
+		name: res.destinationId,
+		endpoint: res.deliveryConfig?.endpoint ?? "",
+		...(res.deliveryConfig?.verificationToken
+			? { credentials: { verificationToken: res.deliveryConfig.verificationToken } }
+			: {}),
+	};
+}
+
+export async function createDestination(
+	input: { name: string; endpoint: string; verificationToken: string },
+	ctx: NotifContext,
+): Promise<{ id: string }> {
+	const { body, locationId } = await sellRequestWithLocation<{ destinationId?: string }>({
+		apiKeyId: ctx.apiKeyId,
+		method: "POST",
+		path: "/commerce/notification/v1/destination",
+		body: {
+			name: input.name,
+			status: "ENABLED",
+			deliveryConfig: { endpoint: input.endpoint, verificationToken: input.verificationToken },
+		},
+	});
+	return { id: body?.destinationId ?? locationId ?? "" };
+}
+
+export async function updateDestination(
+	id: string,
+	input: {
+		name: string;
+		endpoint: string;
+		verificationToken: string;
+		status?: "ENABLED" | "DISABLED" | "MARKED_DOWN";
+	},
+	ctx: NotifContext,
+): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "PUT",
+		path: `/commerce/notification/v1/destination/${encodeURIComponent(id)}`,
+		body: {
+			name: input.name,
+			status: input.status ?? "ENABLED",
+			deliveryConfig: { endpoint: input.endpoint, verificationToken: input.verificationToken },
+		},
+	});
+}
+
+export async function deleteDestination(id: string, ctx: NotifContext): Promise<void> {
+	await sellRequest({
+		apiKeyId: ctx.apiKeyId,
+		method: "DELETE",
+		path: `/commerce/notification/v1/destination/${encodeURIComponent(id)}`,
+	});
+}
+
 export async function listDestinations(ctx: NotifContext): Promise<{ destinations: NotificationDestination[] }> {
+	// Real eBay response shape (verified live 2026-05-03):
+	// `{ destinationId, status, deliveryConfig: { endpoint, verificationToken } }`
+	// — NOT `endpoint: { endpoint, ... }` as the previous interface assumed.
+	// Previous wrapper crashed with "Cannot read properties of undefined
+	// (reading 'endpoint')" the moment any destination existed. `name` is
+	// also not returned by eBay; only the destinationId + status + endpoint.
 	const res = await sellRequest<{
 		destinations?: Array<{
 			destinationId: string;
-			name: string;
-			endpoint: { endpoint: string; verificationToken?: string };
+			status?: string;
+			deliveryConfig?: { endpoint: string; verificationToken?: string };
 		}>;
 	}>({
 		apiKeyId: ctx.apiKeyId,
@@ -92,9 +195,11 @@ export async function listDestinations(ctx: NotifContext): Promise<{ destination
 	return {
 		destinations: (res?.destinations ?? []).map((d) => ({
 			id: d.destinationId,
-			name: d.name,
-			endpoint: d.endpoint.endpoint,
-			...(d.endpoint.verificationToken ? { credentials: { verificationToken: d.endpoint.verificationToken } } : {}),
+			name: d.destinationId,
+			endpoint: d.deliveryConfig?.endpoint ?? "",
+			...(d.deliveryConfig?.verificationToken
+				? { credentials: { verificationToken: d.deliveryConfig.verificationToken } }
+				: {}),
 		})),
 	};
 }

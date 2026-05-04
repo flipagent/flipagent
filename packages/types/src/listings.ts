@@ -426,3 +426,30 @@ export const ListingPreviewFeesResponse = Type.Object(
 	{ $id: "ListingPreviewFeesResponse" },
 );
 export type ListingPreviewFeesResponse = Static<typeof ListingPreviewFeesResponse>;
+
+/**
+ * `POST /v1/listings/draft` — create an eBay listing draft from a URL,
+ * EPID, or raw aspects payload. Wraps `/sell/listing/v1_beta/item_draft`.
+ * The seller finishes the draft on ebay.com (we return the redirect
+ * URL); useful for "give me a one-click pre-filled listing" agent flows.
+ */
+export const ListingDraftRequest = Type.Object(
+	{
+		raw: Type.Unknown({
+			description: "Pass-through to eBay's ItemDraft body shape. See sell/listing OAS for fields.",
+		}),
+		marketplace: Type.Optional(Marketplace),
+	},
+	{ $id: "ListingDraftRequest" },
+);
+export type ListingDraftRequest = Static<typeof ListingDraftRequest>;
+
+export const ListingDraftResponse = Type.Object(
+	{
+		itemDraftId: Type.String(),
+		listingRedirectUrl: Type.Optional(Type.String()),
+		source: Type.Optional(ResponseSource),
+	},
+	{ $id: "ListingDraftResponse" },
+);
+export type ListingDraftResponse = Static<typeof ListingDraftResponse>;

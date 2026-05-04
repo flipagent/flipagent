@@ -21,6 +21,7 @@
 import type { Context, Env, Input, Next } from "hono";
 import { getUserAccessToken } from "../services/ebay/oauth.js";
 import { TradingApiError } from "../services/ebay/trading/client.js";
+import { nextAction } from "../services/shared/next-action.js";
 
 /**
  * Generic over Hono's request schema (`I`) so a route's
@@ -41,7 +42,14 @@ export function withTradingAuth<E extends Env = Env, P extends string = string, 
 			token = await getUserAccessToken(c.var.apiKey.id);
 		} catch (err) {
 			if (err instanceof Error && err.message === "not_connected") {
-				return c.json({ error: "ebay_account_not_connected", message: "Connect via /v1/connect/ebay first." }, 401);
+				return c.json(
+					{
+						error: "ebay_account_not_connected",
+						message: "Connect an eBay seller account first.",
+						next_action: nextAction(c, "ebay_oauth"),
+					},
+					401,
+				);
 			}
 			const msg = err instanceof Error ? err.message : String(err);
 			return c.json({ error: "ebay_token_refresh_failed", message: msg }, 502);

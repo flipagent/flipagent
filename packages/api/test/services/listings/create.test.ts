@@ -137,41 +137,25 @@ describe("createListing — 3-step orchestrator", () => {
 		expect(result.listing.merchantLocationKey).toBe("wh-default");
 	});
 
-	it("412s when auto-discovery cannot find a merchant location (policies auto-create)", async () => {
+	it("412s with missing_seller_policies when seller has no return / fulfillment policies", async () => {
 		const noPrereqs: ListingCreate = {
 			...baseInput,
 			policies: undefined,
 			merchantLocationKey: undefined,
 		};
-		// Empty policy lists trigger auto-create; the create POSTs succeed
-		// (return id via Location header). Location list comes back empty —
-		// we still throw because we can't auto-create a real address.
+		// Empty return + fulfillment lists → MissingSellerPoliciesError (no
+		// hidden auto-create — agent must collect prefs from user and POST
+		// /v1/policies/setup). Payment auto-creates because eBay's managed
+		// payments are uniform across sellers.
 		fetchRetryMock
 			.mockResolvedValueOnce(ok({ returnPolicies: [] }))
-			.mockResolvedValueOnce(ok({ paymentPolicies: [] }))
+			.mockResolvedValueOnce(ok({ paymentPolicies: [{ paymentPolicyId: "PP_AUTO" }] }))
 			.mockResolvedValueOnce(ok({ fulfillmentPolicies: [] }))
-			.mockResolvedValueOnce(ok({ locations: [] }))
-			.mockResolvedValueOnce(
-				new Response(null, {
-					status: 201,
-					headers: { Location: "/sell/account/v1/return_policy/RP_AUTO" },
-				}),
-			)
-			.mockResolvedValueOnce(
-				new Response(null, {
-					status: 201,
-					headers: { Location: "/sell/account/v1/payment_policy/PP_AUTO" },
-				}),
-			)
-			.mockResolvedValueOnce(
-				new Response(null, {
-					status: 201,
-					headers: { Location: "/sell/account/v1/fulfillment_policy/FP_AUTO" },
-				}),
-			);
+			.mockResolvedValueOnce(ok({ locations: [{ merchantLocationKey: "LOC_1" }] }));
 
 		await expect(createListing(noPrereqs, { apiKeyId: "ak_empty" })).rejects.toMatchObject({
-			code: "missing_listing_prereqs",
+			name: "MissingSellerPoliciesError",
+			missing: ["return", "fulfillment"],
 			status: 412,
 		});
 	});

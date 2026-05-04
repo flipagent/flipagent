@@ -6,6 +6,7 @@ import {
 	CategoriesListQuery,
 	CategoriesListResponse,
 	CategoryAspectsResponse,
+	CategoryFetchItemAspectsResponse,
 	CategorySuggestQuery,
 	CategorySuggestResponse,
 	CompatibilityPropertiesResponse,
@@ -13,7 +14,12 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { getCategoryAspects, getCategoryChildren, suggestCategory } from "../../services/categories.js";
+import {
+	fetchItemAspects,
+	getCategoryAspects,
+	getCategoryChildren,
+	suggestCategory,
+} from "../../services/categories.js";
 import { getCompatibilityProperties } from "../../services/compatibility.js";
 import { errorResponse, jsonResponse, paramsFor, tbCoerce } from "../../utils/openapi.js";
 
@@ -52,6 +58,22 @@ categoriesRoute.get(
 			...(await getCompatibilityProperties(c.req.param("id"), treeId)),
 			source: "rest" as const,
 		});
+	},
+);
+
+categoriesRoute.get(
+	"/item-aspects",
+	describeRoute({
+		tags: ["Categories"],
+		summary: "Bulk download every aspect for every category in the tree",
+		description:
+			"Wraps `commerce/taxonomy/v1/category_tree/{treeId}/fetch_item_aspects`. Heavyweight (multi-MB JSON for full eBay US tree). For one category in real-time UIs, use `/v1/categories/{id}/aspects`.",
+		responses: { 200: jsonResponse("Aspects.", CategoryFetchItemAspectsResponse), ...COMMON },
+	}),
+	requireApiKey,
+	async (c) => {
+		const r = await fetchItemAspects(c.req.query("marketplace"));
+		return c.json({ ...r, source: "rest" as const } satisfies CategoryFetchItemAspectsResponse);
 	},
 );
 

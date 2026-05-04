@@ -11,7 +11,7 @@ import { KeyInfo, KeyRevokeResponse, PermissionsResponse } from "@flipagent/type
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { revokeKey, type Tier } from "../../auth/keys.js";
-import { snapshotUsage, usageToWire } from "../../auth/limits.js";
+import { effectiveTierForUser, snapshotUsage, usageToWire } from "../../auth/limits.js";
 import { computePermissionsForApiKey } from "../../auth/permissions.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { errorResponse, jsonResponse } from "../../utils/openapi.js";
@@ -31,7 +31,12 @@ keysRoute.get(
 	requireApiKey,
 	async (c) => {
 		const key = c.var.apiKey;
-		const usage = await snapshotUsage({ apiKeyId: key.id, userId: key.userId }, key.tier as Tier);
+		// Mirror the dashboard / api enforcement view — past-due grace
+		// expiry downgrades the rate-limit tier without rewriting
+		// key.tier, so SDK pre-flight code sees the same numbers the
+		// middleware enforces a request later.
+		const enforced = await effectiveTierForUser(key.userId, key.tier as Tier);
+		const usage = await snapshotUsage({ apiKeyId: key.id, userId: key.userId }, enforced);
 		return c.json({
 			id: key.id,
 			tier: key.tier,

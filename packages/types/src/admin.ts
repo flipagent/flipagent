@@ -21,6 +21,17 @@ export const AdminUserListQuery = Type.Object(
 );
 export type AdminUserListQuery = Static<typeof AdminUserListQuery>;
 
+export const AdminAutoRechargeView = Type.Object(
+	{
+		enabled: Type.Boolean(),
+		thresholdCredits: Type.Union([Type.Integer(), Type.Null()]),
+		topUpCredits: Type.Union([Type.Integer(), Type.Null()]),
+		lastRechargedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+	},
+	{ $id: "AdminAutoRechargeView" },
+);
+export type AdminAutoRechargeView = Static<typeof AdminAutoRechargeView>;
+
 export const AdminUserSummary = Type.Object(
 	{
 		id: Type.String(),
@@ -28,8 +39,19 @@ export const AdminUserSummary = Type.Object(
 		name: Type.String(),
 		image: Type.Union([Type.String(), Type.Null()]),
 		tier: Tier,
+		// Tier the api enforces against — equal to `tier` 99% of the time;
+		// drops to `free` when the user's subscription has been past_due
+		// past the grace window. Only ever appears on the detail view (not
+		// on the list) because the list query doesn't compute it per-row.
+		effectiveTier: Type.Optional(Tier),
 		role: Role,
 		emailVerified: Type.Boolean(),
+		// Stripe subscription state. Surfaces on the detail view so admins
+		// can disambiguate "tier=standard, effective=free" without a raw
+		// DB query.
+		subscriptionStatus: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+		pastDueSince: Type.Optional(Type.Union([Type.String({ format: "date-time" }), Type.Null()])),
+		autoRecharge: Type.Optional(AdminAutoRechargeView),
 		// Active key count (revokedAt IS NULL).
 		activeKeyCount: Type.Integer(),
 		// Sum of active credit grants (positive + negative). 0 when none.
