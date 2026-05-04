@@ -7,6 +7,8 @@ on:
       - "packages/api/**"
       - "packages/ebay-scraper/**"
       - "packages/types/**"
+      - "packages/sdk/**"
+      - "packages/mcp/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/deploy-api.yml"

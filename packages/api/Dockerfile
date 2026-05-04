@@ -8,15 +8,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY package.json package-lock.json tsconfig.base.json tsconfig.json biome.json ./
 COPY packages/types/package.json ./packages/types/package.json
 COPY packages/ebay-scraper/package.json ./packages/ebay-scraper/package.json
+COPY packages/sdk/package.json ./packages/sdk/package.json
+COPY packages/mcp/package.json ./packages/mcp/package.json
 COPY packages/api/package.json ./packages/api/package.json
+# api now depends on `flipagent-mcp/http` (the Streamable HTTP MCP route),
+# which transitively pulls @flipagent/sdk + @flipagent/types. Build chain
+# therefore is: types → ebay-scraper → sdk → mcp → api.
 RUN npm install --no-audit --no-fund --ignore-scripts \
-	-w @flipagent/types -w @flipagent/ebay-scraper -w @flipagent/api \
+	-w @flipagent/types -w @flipagent/ebay-scraper \
+	-w @flipagent/sdk -w flipagent-mcp -w @flipagent/api \
 	--include-workspace-root
 COPY packages/types ./packages/types
 COPY packages/ebay-scraper ./packages/ebay-scraper
+COPY packages/sdk ./packages/sdk
+COPY packages/mcp ./packages/mcp
 COPY packages/api ./packages/api
 RUN cd packages/types && npm run build \
 	&& cd ../ebay-scraper && npm run build \
+	&& cd ../sdk && npm run build \
+	&& cd ../mcp && npm run build \
 	&& cd ../api && npm run build
 
 FROM node:20-bookworm-slim AS runtime
@@ -27,6 +37,8 @@ ENV NODE_ENV=production
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/types ./packages/types
 COPY --from=builder /app/packages/ebay-scraper ./packages/ebay-scraper
+COPY --from=builder /app/packages/sdk ./packages/sdk
+COPY --from=builder /app/packages/mcp ./packages/mcp
 COPY --from=builder /app/packages/api ./packages/api
 COPY --from=builder /app/package.json ./package.json
 EXPOSE 4000
