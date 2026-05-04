@@ -1,6 +1,16 @@
 ---
+/**
+ * eBay coverage map. Rendered from `src/data/coverage.ts` — the data is
+ * the source of truth, this file is just the table view. Re-run
+ * `node apps/docs/scripts/extract-coverage.mjs` to refresh data from a
+ * legacy hand-edited copy; otherwise edit `coverage.ts` directly.
+ *
+ * The Setup / Tier / Phase 1 intro tables stay inline because they're
+ * editorial context, not data, and never grow row-by-row.
+ */
 import Layout from "../../layouts/Layout.astro";
 import DocsSidebar from "../../components/DocsSidebar.astro";
+import { COVERAGE_SECTIONS, NATIVE_ROWS, TRADING_ROWS } from "../../data/coverage.ts";
 ---
 <Layout title="eBay coverage · flipagent docs">
 	<div class="cmw cmw-bordered">
@@ -89,7 +99,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr>
 							<td><code>GET /v1/connect/ebay/status</code></td>
 							<td>flipagent API key</td>
-							<td>Whether the calling key is bound to an eBay account; granted scopes; access-token expiry; bridge pairing state.</td>
+							<td>Whether the calling key is bound to an eBay account; granted scopes; access-token expiry; extension pairing state.</td>
 						</tr>
 						<tr>
 							<td><code>GET /v1/me/seller/privilege</code></td>
@@ -99,646 +109,38 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 					</tbody>
 				</table>
 
-				<h2 id="buy-browse">Buy Browse</h2>
-				<p>Public search + item detail. No eBay OAuth needed. Scrape is the primary path.</p>
-				<table class="api">
-					<thead>
-						<tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr>
-					</thead>
-					<tbody>
-						<tr>
-							<td><code>GET /buy/browse/v1/item_summary/search</code></td>
-							<td><code>GET /v1/items/search</code></td>
-							<td>flipagent API key</td>
-							<td>T1</td>
-						</tr>
-						<tr>
-							<td><code>POST /buy/browse/v1/item_summary/search_by_image</code></td>
-							<td>—</td>
-							<td>flipagent API key</td>
-							<td>T4</td>
-						</tr>
-						<tr>
-							<td><code>GET /buy/browse/v1/item/&#123;id&#125;</code></td>
-							<td><code>GET /v1/items/&#123;id&#125;</code></td>
-							<td>flipagent API key</td>
-							<td>T1</td>
-						</tr>
-						<tr>
-							<td><code>GET /buy/browse/v1/item/get_item_by_legacy_id</code></td>
-							<td><code>GET /v1/items/&#123;id&#125;</code></td>
-							<td>flipagent API key</td>
-							<td>T1</td>
-						</tr>
-						<tr>
-							<td><code>GET /buy/browse/v1/item/get_items_by_item_group</code></td>
-							<td><code>GET /v1/items/&#123;id&#125;</code></td>
-							<td>flipagent API key</td>
-							<td>T1</td>
-						</tr>
-						<tr>
-							<td><code>POST /buy/browse/v1/item/&#123;id&#125;/check_compatibility</code></td>
-							<td><code>POST /v1/items/check-compatibility</code></td>
-							<td>flipagent API key</td>
-							<td>T1</td>
-						</tr>
-						<tr>
-							<td><code>GET /buy/browse/v1/shopping_cart</code></td>
-							<td>—</td>
-							<td>eBay OAuth</td>
-							<td>T4</td>
-						</tr>
-						<tr>
-							<td><code>POST /buy/browse/v1/shopping_cart/add_item</code></td>
-							<td>—</td>
-							<td>eBay OAuth</td>
-							<td>T4</td>
-						</tr>
-						<tr>
-							<td><code>POST /buy/browse/v1/shopping_cart/remove_item</code></td>
-							<td>—</td>
-							<td>eBay OAuth</td>
-							<td>T4</td>
-						</tr>
-						<tr>
-							<td><code>POST /buy/browse/v1/shopping_cart/update_quantity</code></td>
-							<td>—</td>
-							<td>eBay OAuth</td>
-							<td>T4</td>
-						</tr>
-					</tbody>
-				</table>
-
-				<h2 id="buy-marketplace-insights">Buy Marketplace Insights</h2>
-				<p>Sold-comps via scrape. No setup.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /buy/marketplace_insights/v1_beta/item_sales/search</code></td><td><code>GET /v1/items/sold</code></td><td>flipagent API key</td><td>T1</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="buy-offer">Buy Offer</h2>
-				<p>Auction proxy bidding. Requires eBay OAuth (the caller's eBay account).</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /buy/offer/v1_beta/bidding/&#123;id&#125;</code></td><td><code>GET /v1/bids/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /buy/offer/v1_beta/bidding/&#123;id&#125;/place_proxy_bid</code></td><td><code>POST /v1/bids</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="buy-order">Buy Order</h2>
-				<p>Checkout session lifecycle. <code>/v1/purchases</code> drives this through the bridge running in your Chrome session, or through eBay's REST Order API where available. Same flipagent <code>Purchase</code> shape from either path.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>POST /buy/order/v1/checkout_session/initiate</code></td><td><code>POST /v1/purchases</code></td><td>eBay OAuth or flipagent extension</td><td>T1</td></tr>
-						<tr><td><code>GET /buy/order/v1/checkout_session/&#123;id&#125;</code></td><td><code>GET /v1/purchases/&#123;id&#125;</code></td><td>eBay OAuth or flipagent extension</td><td>T1</td></tr>
-						<tr><td><code>POST /buy/order/v1/checkout_session/&#123;id&#125;/place_order</code></td><td><code>POST /v1/purchases/&#123;id&#125;/place</code></td><td>eBay OAuth or flipagent extension</td><td>T1</td></tr>
-						<tr><td><code>POST /buy/order/v1/checkout_session/&#123;id&#125;/shipping_address</code></td><td><code>PATCH /v1/purchases/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /buy/order/v1/checkout_session/&#123;id&#125;/update_shipping_address</code></td><td><code>PATCH /v1/purchases/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /buy/order/v1/checkout_session/&#123;id&#125;/payment_instrument</code></td><td><code>PATCH /v1/purchases/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /buy/order/v1/checkout_session/&#123;id&#125;/update_payment_info</code></td><td><code>PATCH /v1/purchases/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /buy/order/v1/checkout_session/&#123;id&#125;/update_quantity</code></td><td><code>PATCH /v1/purchases/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /buy/order/v1/checkout_session/&#123;id&#125;/update_shipping_option</code></td><td><code>PATCH /v1/purchases/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /buy/order/v1/checkout_session/&#123;id&#125;/coupon</code></td><td><code>POST /v1/purchases/&#123;id&#125;/coupon</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /buy/order/v1/checkout_session/&#123;id&#125;/apply_coupon</code></td><td><code>POST /v1/purchases/&#123;id&#125;/coupon</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /buy/order/v1/checkout_session/&#123;id&#125;/remove_coupon</code></td><td><code>DELETE /v1/purchases/&#123;id&#125;/coupon</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /buy/order/v1/checkout_session/&#123;id&#125;/coupon</code></td><td><code>DELETE /v1/purchases/&#123;id&#125;/coupon</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /buy/order/v1/purchase_order/&#123;id&#125;</code></td><td><code>GET /v1/purchases/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td>Guest checkout (10 endpoints)</td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td>Proxy guest checkout (9 endpoints)</td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="buy-feed">Buy Feed</h2>
-				<p>Bulk item snapshot feeds. Wrappers in place; not exposed today.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /buy/feed/v1_beta/item</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /buy/feed/v1_beta/item_group</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /buy/feed/v1_beta/item_priority</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /buy/feed/v1_beta/item_snapshot</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /buy/feed/v1_beta/product</code></td><td>—</td><td>—</td><td>—</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="buy-deal">Buy Deal</h2>
-				<p>Daily deals + events. Wrappers in place; not exposed today.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /buy/deal/v1/deal_item</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /buy/deal/v1/deal/&#123;id&#125;</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /buy/deal/v1/event</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /buy/deal/v1/event_item</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /buy/deal/v1/event/&#123;id&#125;</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="buy-marketing">Buy Marketing</h2>
-				<p>Merchandised products + also-bought / also-viewed. Wrappers in place; not exposed today.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /buy/marketing/v1_beta/merchandised_product</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /buy/marketing/v1_beta/merchandised_product/get_also_bought_products</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /buy/marketing/v1_beta/merchandised_product/get_also_viewed_products</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="commerce-taxonomy">Commerce Taxonomy</h2>
-				<p>Category tree, suggestions, item aspects, compatibility properties. No eBay OAuth needed.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /commerce/taxonomy/v1/get_default_category_tree_id</code></td><td><code>GET /v1/categories</code></td><td>flipagent API key</td><td>T1</td></tr>
-						<tr><td><code>GET /commerce/taxonomy/v1/category_tree/&#123;id&#125;</code></td><td><code>GET /v1/categories</code></td><td>flipagent API key</td><td>T1</td></tr>
-						<tr><td><code>GET /commerce/taxonomy/v1/category_tree/&#123;id&#125;/get_category_subtree</code></td><td><code>GET /v1/categories</code></td><td>flipagent API key</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/taxonomy/v1/category_tree/&#123;id&#125;/get_category_suggestions</code></td><td><code>GET /v1/categories/suggest</code></td><td>flipagent API key</td><td>T1</td></tr>
-						<tr><td><code>GET /commerce/taxonomy/v1/category_tree/&#123;id&#125;/get_item_aspects_for_category</code></td><td><code>GET /v1/categories/&#123;id&#125;/aspects</code></td><td>flipagent API key</td><td>T1</td></tr>
-						<tr><td><code>GET /commerce/taxonomy/v1/category_tree/&#123;id&#125;/fetch_item_aspects</code></td><td><code>GET /v1/categories/&#123;id&#125;/aspects</code></td><td>flipagent API key</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/taxonomy/v1/category_tree/&#123;id&#125;/get_compatibility_properties</code></td><td><code>GET /v1/categories/&#123;id&#125;/compatibility</code></td><td>flipagent API key</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/taxonomy/v1/category_tree/&#123;id&#125;/get_compatibility_property_values</code></td><td><code>GET /v1/categories/&#123;id&#125;/compatibility</code></td><td>flipagent API key</td><td>T3</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="commerce-catalog">Commerce Catalog</h2>
-				<p>EPID product lookup + change requests.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /commerce/catalog/v1_beta/product/&#123;epid&#125;</code></td><td><code>GET /v1/products/&#123;epid&#125;</code></td><td>REST · scrape</td><td>T1</td></tr>
-						<tr><td><code>GET /commerce/catalog/v1_beta/product_summary/search</code></td><td><code>GET /v1/products</code></td><td>flipagent API key</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/catalog/v1_beta/get_product_metadata</code></td><td><code>GET /v1/products/metadata</code></td><td>flipagent API key</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/catalog/v1_beta/get_product_metadata_for_categories</code></td><td><code>GET /v1/products/metadata</code></td><td>flipagent API key</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/catalog/v1_beta/change_request</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>POST /commerce/catalog/v1_beta/change_request</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td><code>GET /commerce/catalog/v1_beta/change_request/&#123;id&#125;</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="commerce-charity">Commerce Charity</h2>
-				<p>Charity org lookup for charity-listings.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /commerce/charity/v1/charity_org</code></td><td><code>GET /v1/charities</code></td><td>flipagent API key</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/charity/v1/charity_org/&#123;id&#125;</code></td><td><code>GET /v1/charities/&#123;id&#125;</code></td><td>flipagent API key</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/charity/v1/charity_org/get_charity_org_by_legacy_id</code></td><td><code>GET /v1/charities/&#123;id&#125;</code></td><td>flipagent API key</td><td>T3</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="commerce-identity">Commerce Identity</h2>
-				<p>Authenticated user info.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /commerce/identity/v1/user</code></td><td><code>GET /v1/me</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="commerce-media">Commerce Media</h2>
-				<p>Video upload + retrieval (for video-enabled listings).</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>POST /commerce/media/v1_beta/video</code></td><td><code>POST /v1/media</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/media/v1_beta/video/&#123;id&#125;</code></td><td><code>GET /v1/media/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /commerce/media/v1_beta/video/&#123;id&#125;/upload</code></td><td><code>POST /v1/media/&#123;id&#125;/upload</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/media/v1_beta/&#123;type&#125;/&#123;id&#125;</code></td><td><code>GET /v1/media/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="commerce-notification">Commerce Notification</h2>
-				<p>Webhook subscriptions for marketplace events.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /commerce/notification/v1/topic</code></td><td><code>GET /v1/notifications/topics</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/notification/v1/topic/&#123;id&#125;</code></td><td><code>GET /v1/notifications/topics/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/notification/v1/destination</code></td><td><code>GET /v1/notifications/destinations</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /commerce/notification/v1/destination</code></td><td><code>POST /v1/notifications/destinations</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/notification/v1/destination/&#123;id&#125;</code></td><td><code>GET /v1/notifications/destinations/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /commerce/notification/v1/destination/&#123;id&#125;</code></td><td><code>PUT /v1/notifications/destinations/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /commerce/notification/v1/destination/&#123;id&#125;</code></td><td><code>DELETE /v1/notifications/destinations/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/notification/v1/subscription</code></td><td><code>GET /v1/notifications/subscriptions</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /commerce/notification/v1/subscription</code></td><td><code>POST /v1/notifications/subscriptions</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/notification/v1/subscription/&#123;id&#125;</code></td><td><code>GET /v1/notifications/subscriptions/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /commerce/notification/v1/subscription/&#123;id&#125;</code></td><td><code>PUT /v1/notifications/subscriptions/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /commerce/notification/v1/subscription/&#123;id&#125;</code></td><td><code>DELETE /v1/notifications/subscriptions/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /commerce/notification/v1/subscription/&#123;id&#125;/enable</code></td><td><code>POST /v1/notifications/subscriptions/&#123;id&#125;/enable</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /commerce/notification/v1/subscription/&#123;id&#125;/disable</code></td><td><code>POST /v1/notifications/subscriptions/&#123;id&#125;/disable</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /commerce/notification/v1/subscription/&#123;id&#125;/test</code></td><td><code>POST /v1/notifications/subscriptions/&#123;id&#125;/test</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /commerce/notification/v1/subscription/&#123;id&#125;/filter</code></td><td><code>POST /v1/notifications/subscriptions/&#123;id&#125;/filter</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/notification/v1/subscription/&#123;id&#125;/filter/&#123;fid&#125;</code></td><td><code>GET /v1/notifications/subscriptions/&#123;id&#125;/filter/&#123;fid&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>DELETE /commerce/notification/v1/subscription/&#123;id&#125;/filter/&#123;fid&#125;</code></td><td><code>DELETE /v1/notifications/subscriptions/&#123;id&#125;/filter/&#123;fid&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/notification/v1/config</code></td><td><code>GET /v1/notifications/config</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>PUT /commerce/notification/v1/config</code></td><td><code>PUT /v1/notifications/config</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/notification/v1/public_key/&#123;id&#125;</code></td><td><code>GET /v1/notifications/public-key/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="commerce-translation">Commerce Translation</h2>
-				<p>String translation for cross-border listings.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>POST /commerce/translation/v1_beta/translate</code></td><td><code>POST /v1/translate</code></td><td>flipagent API key</td><td>T3</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="commerce-feedback">Commerce Feedback</h2>
-				<p>Buyer / seller feedback read + respond.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /commerce/feedback/v1/feedback</code></td><td><code>GET /v1/feedback</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /commerce/feedback/v1/feedback</code></td><td><code>POST /v1/feedback</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/feedback/v1/awaiting_feedback</code></td><td><code>GET /v1/feedback/awaiting</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /commerce/feedback/v1/respond_to_feedback</code></td><td><code>POST /v1/feedback/respond</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /commerce/feedback/v1/feedback_rating_summary</code></td><td><code>GET /v1/feedback/summary</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="commerce-message">Commerce Message</h2>
-				<p>Buyer-seller messaging.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /commerce/message/v1/conversation</code></td><td><code>GET /v1/messages</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /commerce/message/v1/conversation/&#123;id&#125;</code></td><td><code>GET /v1/messages/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /commerce/message/v1/send_message</code></td><td><code>POST /v1/messages</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /commerce/message/v1/update_conversation</code></td><td><code>PATCH /v1/messages/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /commerce/message/v1/bulk_update_conversation</code></td><td><code>PATCH /v1/messages</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="commerce-vero">Commerce VeRO</h2>
-				<p>Verified Rights Owner takedown reports. Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /commerce/vero/v1/vero_reason_code</code></td><td><code>GET /v1/takedown/reason-codes</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/vero/v1/vero_reason_code/&#123;id&#125;</code></td><td><code>GET /v1/takedown/reason-codes/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>POST /commerce/vero/v1/vero_report</code></td><td><code>POST /v1/takedown</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/vero/v1/vero_report_items</code></td><td><code>GET /v1/takedown</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /commerce/vero/v1/vero_report/&#123;id&#125;</code></td><td><code>GET /v1/takedown/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-inventory">Sell Inventory</h2>
-				<p>Listing CRUD on the caller's account. Inventory items, offers, locations, and bulk variants. Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /sell/inventory/v1/inventory_item</code></td><td><code>GET /v1/listings</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/inventory/v1/inventory_item/&#123;sku&#125;</code></td><td><code>GET /v1/listings/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>PUT /sell/inventory/v1/inventory_item/&#123;sku&#125;</code></td><td><code>POST /v1/listings</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>DELETE /sell/inventory/v1/inventory_item/&#123;sku&#125;</code></td><td><code>DELETE /v1/listings/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/bulk_create_or_replace_inventory_item</code></td><td><code>POST /v1/listings/bulk</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/bulk_get_inventory_item</code></td><td><code>POST /v1/listings/bulk</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/bulk_update_price_quantity</code></td><td><code>POST /v1/listings/bulk</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/bulk_migrate_listing</code></td><td><code>POST /v1/listings/bulk</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/inventory/v1/offer</code></td><td><code>GET /v1/listings</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/offer</code></td><td><code>POST /v1/listings</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/inventory/v1/offer/&#123;id&#125;</code></td><td><code>GET /v1/listings/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>PUT /sell/inventory/v1/offer/&#123;id&#125;</code></td><td><code>PATCH /v1/listings/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>DELETE /sell/inventory/v1/offer/&#123;id&#125;</code></td><td><code>DELETE /v1/listings/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/offer/&#123;id&#125;/publish</code></td><td><code>POST /v1/listings/&#123;id&#125;/publish</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/offer/&#123;id&#125;/withdraw</code></td><td><code>POST /v1/listings/&#123;id&#125;/withdraw</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/offer/get_listing_fees</code></td><td><code>POST /v1/listings/fees</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/offer/publish_by_inventory_item_group</code></td><td><code>POST /v1/listing-groups/&#123;id&#125;/publish</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/offer/withdraw_by_inventory_item_group</code></td><td><code>POST /v1/listing-groups/&#123;id&#125;/withdraw</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/bulk_create_offer</code></td><td><code>POST /v1/listings/bulk</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/bulk_publish_offer</code></td><td><code>POST /v1/listings/bulk</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/inventory/v1/inventory_item_group/&#123;id&#125;</code></td><td><code>GET /v1/listing-groups/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /sell/inventory/v1/inventory_item_group/&#123;id&#125;</code></td><td><code>POST /v1/listing-groups</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/inventory/v1/inventory_item_group/&#123;id&#125;</code></td><td><code>DELETE /v1/listing-groups/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/inventory/v1/inventory_item/&#123;sku&#125;/product_compatibility</code></td><td><code>GET /v1/listings/&#123;id&#125;/compatibility</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /sell/inventory/v1/inventory_item/&#123;sku&#125;/product_compatibility</code></td><td><code>PUT /v1/listings/&#123;id&#125;/compatibility</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/inventory/v1/inventory_item/&#123;sku&#125;/product_compatibility</code></td><td><code>DELETE /v1/listings/&#123;id&#125;/compatibility</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/inventory/v1/listing/&#123;id&#125;/sku/&#123;sku&#125;/locations</code></td><td><code>GET /v1/listings/&#123;id&#125;/locations</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /sell/inventory/v1/listing/&#123;id&#125;/sku/&#123;sku&#125;/locations</code></td><td><code>PUT /v1/listings/&#123;id&#125;/locations</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/inventory/v1/listing/&#123;id&#125;/sku/&#123;sku&#125;/locations</code></td><td><code>DELETE /v1/listings/&#123;id&#125;/locations</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/inventory/v1/location</code></td><td><code>GET /v1/locations</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/location/&#123;id&#125;</code></td><td><code>POST /v1/locations</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/inventory/v1/location/&#123;id&#125;</code></td><td><code>GET /v1/locations/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/location/&#123;id&#125;/update_location_details</code></td><td><code>PATCH /v1/locations/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>DELETE /sell/inventory/v1/location/&#123;id&#125;</code></td><td><code>DELETE /v1/locations/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/location/&#123;id&#125;/enable</code></td><td><code>POST /v1/locations/&#123;id&#125;/enable</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/inventory/v1/location/&#123;id&#125;/disable</code></td><td><code>POST /v1/locations/&#123;id&#125;/disable</code></td><td>eBay OAuth</td><td>T1</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-account">Sell Account</h2>
-				<p>Account-level ops: business policies, custom policies, programs, sales tax, KYC, payouts. Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /sell/account/v1/return_policy</code></td><td><code>GET /v1/policies?type=return</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/account/v1/return_policy</code></td><td><code>POST /v1/policies</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/account/v1/return_policy/&#123;id&#125;</code></td><td><code>GET /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /sell/account/v1/return_policy/&#123;id&#125;</code></td><td><code>PUT /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/account/v1/return_policy/&#123;id&#125;</code></td><td><code>DELETE /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/account/v1/return_policy/get_by_policy_name</code></td><td><code>GET /v1/policies?name=...</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/account/v1/payment_policy</code></td><td><code>GET /v1/policies?type=payment</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/account/v1/payment_policy</code></td><td><code>POST /v1/policies</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/account/v1/payment_policy/&#123;id&#125;</code></td><td><code>GET /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /sell/account/v1/payment_policy/&#123;id&#125;</code></td><td><code>PUT /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/account/v1/payment_policy/&#123;id&#125;</code></td><td><code>DELETE /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/account/v1/payment_policy/get_by_policy_name</code></td><td><code>GET /v1/policies?name=...</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/account/v1/fulfillment_policy</code></td><td><code>GET /v1/policies?type=fulfillment</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/account/v1/fulfillment_policy</code></td><td><code>POST /v1/policies</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/account/v1/fulfillment_policy/&#123;id&#125;</code></td><td><code>GET /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /sell/account/v1/fulfillment_policy/&#123;id&#125;</code></td><td><code>PUT /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/account/v1/fulfillment_policy/&#123;id&#125;</code></td><td><code>DELETE /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/account/v1/fulfillment_policy/get_by_policy_name</code></td><td><code>GET /v1/policies?name=...</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/account/v1/fulfillment_policy/&#123;id&#125;/transfer</code></td><td><code>POST /v1/policies/&#123;id&#125;/transfer</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/custom_policy</code></td><td><code>GET /v1/policies?type=custom</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>POST /sell/account/v1/custom_policy</code></td><td><code>POST /v1/policies</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/custom_policy/&#123;id&#125;</code></td><td><code>GET /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>PUT /sell/account/v1/custom_policy/&#123;id&#125;</code></td><td><code>PUT /v1/policies/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/privilege</code></td><td><code>GET /v1/seller</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/account/v1/kyc</code></td><td><code>GET /v1/seller/kyc</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/subscription</code></td><td><code>GET /v1/seller/subscription</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/advertising_eligibility</code></td><td><code>GET /v1/seller/advertising-eligibility</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/program/get_opted_in_programs</code></td><td><code>GET /v1/seller/programs</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/account/v1/program/opt_in</code></td><td><code>POST /v1/seller/programs/opt-in</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/account/v1/program/opt_out</code></td><td><code>POST /v1/seller/programs/opt-out</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/account/v1/sales_tax</code></td><td><code>GET /v1/seller/sales-tax</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/sales_tax/&#123;c&#125;/&#123;j&#125;</code></td><td><code>GET /v1/seller/sales-tax/&#123;c&#125;/&#123;j&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>PUT /sell/account/v1/sales_tax/&#123;c&#125;/&#123;j&#125;</code></td><td><code>PUT /v1/seller/sales-tax/&#123;c&#125;/&#123;j&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>DELETE /sell/account/v1/sales_tax/&#123;c&#125;/&#123;j&#125;</code></td><td><code>DELETE /v1/seller/sales-tax/&#123;c&#125;/&#123;j&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>POST /sell/account/v1/bulk_create_or_replace_sales_tax</code></td><td><code>POST /v1/seller/sales-tax/bulk</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/country/&#123;c&#125;/sales_tax_jurisdiction</code></td><td><code>GET /v1/seller/sales-tax-jurisdictions/&#123;c&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/rate_table</code></td><td><code>GET /v1/seller/rate-tables</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/payments_program/&#123;m&#125;/&#123;p&#125;</code></td><td><code>GET /v1/seller/payments-program/&#123;m&#125;/&#123;p&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/payments_program/&#123;m&#125;/&#123;p&#125;/onboarding</code></td><td><code>GET /v1/seller/payments-program/&#123;m&#125;/&#123;p&#125;/onboarding</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v1/payments_program/&#123;m&#125;/EBAY_PAYMENTS</code></td><td><code>GET /v1/seller/payments-program/&#123;m&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td>Account v1 location (mirrors Inventory location, 7 endpoints)</td><td><code>/v1/locations</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/account/v2/payout_settings</code></td><td><code>GET /v1/seller/payout-settings</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>POST /sell/account/v2/payout_settings/update_percentage</code></td><td><code>PATCH /v1/seller/payout-settings</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/account/v2/rate_table/&#123;id&#125;</code></td><td><code>GET /v1/seller/rate-tables/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>POST /sell/account/v2/rate_table/&#123;id&#125;/update_shipping_cost</code></td><td><code>PATCH /v1/seller/rate-tables/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-marketing">Sell Marketing</h2>
-				<p>Promotions, markdowns, Promoted Listings ads, PLA keywords, email campaigns. Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /sell/marketing/v1/promotion</code></td><td><code>GET /v1/promotions</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/item_promotion</code></td><td><code>POST /v1/promotions</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/item_promotion/&#123;id&#125;</code></td><td><code>GET /v1/promotions/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /sell/marketing/v1/item_promotion/&#123;id&#125;</code></td><td><code>PUT /v1/promotions/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/marketing/v1/item_promotion/&#123;id&#125;</code></td><td><code>DELETE /v1/promotions/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/promotion/&#123;id&#125;/pause</code></td><td><code>POST /v1/promotions/&#123;id&#125;/pause</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/promotion/&#123;id&#125;/resume</code></td><td><code>POST /v1/promotions/&#123;id&#125;/resume</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/promotion/&#123;id&#125;/get_listing_set</code></td><td><code>GET /v1/promotions/&#123;id&#125;/listings</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/promotion_summary_report</code></td><td><code>GET /v1/promotions/report</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/promotion_report</code></td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/item_price_markdown</code></td><td><code>POST /v1/markdowns</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/item_price_markdown/&#123;id&#125;</code></td><td><code>GET /v1/markdowns/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /sell/marketing/v1/item_price_markdown/&#123;id&#125;</code></td><td><code>PUT /v1/markdowns/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/marketing/v1/item_price_markdown/&#123;id&#125;</code></td><td><code>DELETE /v1/markdowns/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_campaign</code></td><td><code>GET /v1/ads/campaigns</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign</code></td><td><code>POST /v1/ads/campaigns</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_campaign/&#123;id&#125;</code></td><td><code>GET /v1/ads/campaigns/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/marketing/v1/ad_campaign/&#123;id&#125;</code></td><td><code>DELETE /v1/ads/campaigns/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/launch</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/launch</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/pause</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/pause</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/resume</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/resume</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/end</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/end</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/clone</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/clone</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_campaign/&#123;id&#125;/ad</code></td><td><code>GET /v1/ads/campaigns/&#123;id&#125;/ads</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/ad</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/ads</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_campaign/&#123;id&#125;/ad/&#123;ad&#125;</code></td><td><code>GET /v1/ads/&#123;ad&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/marketing/v1/ad_campaign/&#123;id&#125;/ad/&#123;ad&#125;</code></td><td><code>DELETE /v1/ads/&#123;ad&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/ad/&#123;ad&#125;/update_bid</code></td><td><code>PATCH /v1/ads/&#123;ad&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_campaign/&#123;id&#125;/ad_group</code></td><td><code>GET /v1/ads/campaigns/&#123;id&#125;/groups</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/ad_group</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/groups</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_campaign/&#123;id&#125;/ad_group/&#123;g&#125;</code></td><td><code>GET /v1/ads/groups/&#123;g&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>PUT /sell/marketing/v1/ad_campaign/&#123;id&#125;/ad_group/&#123;g&#125;</code></td><td><code>PUT /v1/ads/groups/&#123;g&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/bulk_create_ads_by_listing_id</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/ads:bulk-create</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/bulk_delete_ads_by_listing_id</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/ads:bulk-delete</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/bulk_update_ads_bid_by_listing_id</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/ads:bulk-update-bid</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_campaign/&#123;id&#125;/bulk_update_ads_status_by_listing_id</code></td><td><code>POST /v1/ads/campaigns/&#123;id&#125;/ads:bulk-update-status</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_campaign/get_campaign_by_name</code></td><td><code>GET /v1/ads/campaigns?name=...</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_report_metadata</code></td><td><code>GET /v1/ads/report-metadata</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_report_metadata/&#123;t&#125;</code></td><td><code>GET /v1/ads/report-metadata/&#123;t&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_report_task</code></td><td><code>GET /v1/ads/report-tasks</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/marketing/v1/ad_report_task</code></td><td><code>POST /v1/ads/report-tasks</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/marketing/v1/ad_report_task/&#123;t&#125;</code></td><td><code>GET /v1/ads/report-tasks/&#123;t&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>DELETE /sell/marketing/v1/ad_report_task/&#123;t&#125;</code></td><td><code>DELETE /v1/ads/report-tasks/&#123;t&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td>Bulk inventory-reference variants (5 endpoints)</td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-						<tr><td>Bidding / suggestion endpoints (suggest_bids, suggest_keywords, suggest_items, suggest_max_cpc, suggest_budget, find_campaign_by_ad_reference, setup_quick_campaign, ad_rate_strategy, bidding_strategy, campaign_budget, campaign_identification — 11 endpoints)</td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-						<tr><td>PLA keywords / negative keywords (10 endpoints)</td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-						<tr><td>Email campaign (8 endpoints)</td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-fulfillment">Sell Fulfillment</h2>
-				<p>Order management + payment disputes. Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /sell/fulfillment/v1/order</code></td><td><code>GET /v1/sales</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/fulfillment/v1/order/&#123;id&#125;</code></td><td><code>GET /v1/sales/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/fulfillment/v1/order/&#123;id&#125;/issue_refund</code></td><td><code>POST /v1/sales/&#123;id&#125;/refund</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/fulfillment/v1/order/&#123;id&#125;/shipping_fulfillment</code></td><td><code>GET /v1/sales/&#123;id&#125;/shipments</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/fulfillment/v1/order/&#123;id&#125;/shipping_fulfillment</code></td><td><code>POST /v1/sales/&#123;id&#125;/ship</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/fulfillment/v1/order/&#123;id&#125;/shipping_fulfillment/&#123;f&#125;</code></td><td><code>GET /v1/sales/&#123;id&#125;/shipments/&#123;f&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/fulfillment/v1/payment_dispute_summary</code></td><td><code>GET /v1/disputes?type=payment</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/fulfillment/v1/payment_dispute/&#123;id&#125;</code></td><td><code>GET /v1/disputes/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/fulfillment/v1/payment_dispute/&#123;id&#125;/accept</code></td><td><code>POST /v1/disputes/&#123;id&#125;/accept</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/fulfillment/v1/payment_dispute/&#123;id&#125;/contest</code></td><td><code>POST /v1/disputes/&#123;id&#125;/contest</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/fulfillment/v1/payment_dispute/&#123;id&#125;/activity</code></td><td><code>GET /v1/disputes/&#123;id&#125;/activity</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/fulfillment/v1/payment_dispute/&#123;id&#125;/add_evidence</code></td><td><code>POST /v1/disputes/&#123;id&#125;/evidence</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/fulfillment/v1/payment_dispute/&#123;id&#125;/update_evidence</code></td><td><code>PATCH /v1/disputes/&#123;id&#125;/evidence</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/fulfillment/v1/payment_dispute/&#123;id&#125;/upload_evidence_file</code></td><td><code>POST /v1/disputes/&#123;id&#125;/evidence/file</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/fulfillment/v1/payment_dispute/&#123;id&#125;/fetch_evidence_content</code></td><td><code>GET /v1/disputes/&#123;id&#125;/evidence/file</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-finances">Sell Finances</h2>
-				<p>Payouts, transactions, transfers. Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /sell/finances/v1/payout</code></td><td><code>GET /v1/payouts</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/finances/v1/payout/&#123;id&#125;</code></td><td><code>GET /v1/payouts/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/finances/v1/payout_summary</code></td><td><code>GET /v1/payouts/summary</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/finances/v1/transaction</code></td><td><code>GET /v1/transactions</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/finances/v1/transaction_summary</code></td><td><code>GET /v1/transactions/summary</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/finances/v1/transfer</code></td><td><code>GET /v1/transfers</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/finances/v1/transfer/&#123;id&#125;</code></td><td><code>GET /v1/transfers/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/finances/v1/seller_funds_summary</code></td><td><code>GET /v1/seller/funds-summary</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-logistics">Sell Logistics</h2>
-				<p>Shipping labels + quotes for the seller's own outgoing shipments. Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>POST /sell/logistics/v1_beta/shipping_quote</code></td><td><code>POST /v1/labels/quote</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/logistics/v1_beta/shipping_quote/&#123;id&#125;</code></td><td><code>GET /v1/labels/quote/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/logistics/v1_beta/shipment/create_from_shipping_quote</code></td><td><code>POST /v1/labels</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/logistics/v1_beta/shipment/&#123;id&#125;</code></td><td><code>GET /v1/labels/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>POST /sell/logistics/v1_beta/shipment/&#123;id&#125;/cancel</code></td><td><code>POST /v1/labels/&#123;id&#125;/cancel</code></td><td>eBay OAuth</td><td>T1</td></tr>
-						<tr><td><code>GET /sell/logistics/v1_beta/shipment/&#123;id&#125;/download_label_file</code></td><td><code>GET /v1/labels/&#123;id&#125;/download</code></td><td>eBay OAuth</td><td>T1</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-stores">Sell Stores</h2>
-				<p>eBay Store category management. Requires eBay OAuth + Store subscription.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /sell/stores/v2/store-categories</code></td><td><code>GET /v1/store/categories</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>POST /sell/stores/v2/store-categories</code></td><td><code>POST /v1/store/categories</code></td><td>eBay OAuth</td><td>T3</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-recommendation">Sell Recommendation</h2>
-				<p>eBay's listing-improvement recommendations. Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>POST /sell/recommendation/v1/find</code></td><td><code>POST /v1/recommendations</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-compliance">Sell Compliance</h2>
-				<p>Listing-violation read + suppress. Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /sell/compliance/v1/listing_violation</code></td><td><code>GET /v1/violations</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /sell/compliance/v1/listing_violation_summary</code></td><td><code>GET /v1/violations/summary</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/compliance/v1/suppress_listing_violation</code></td><td><code>POST /v1/violations/suppress</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-analytics">Sell Analytics</h2>
-				<p>Seller standards + traffic + customer-service metric reports. Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /sell/analytics/v1/traffic_report</code></td><td><code>GET /v1/analytics/traffic</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/analytics/v1/seller_standards_profile</code></td><td><code>GET /v1/analytics/standards</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/analytics/v1/seller_standards_profile/&#123;p&#125;/&#123;c&#125;</code></td><td><code>GET /v1/analytics/standards/&#123;p&#125;/&#123;c&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/analytics/v1/customer_service_metric/&#123;t&#125;/&#123;p&#125;</code></td><td><code>GET /v1/analytics/customer-service/&#123;t&#125;/&#123;p&#125;</code></td><td>eBay OAuth</td><td>T3</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-feed">Sell Feed</h2>
-				<p>Bulk seller-side file uploads (LMS reports, order task, customer-service-metric task). Wrappers in place; not exposed today.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td>inventory_task / order_task / customer_service_metric_task lifecycle (9 endpoints)</td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-						<tr><td>generic task / schedule / file ops (15 endpoints)</td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-edelivery">Sell eDelivery International Shipping</h2>
-				<p>International package management for cross-border sellers. Niche; wrappers in place but not surfaced.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td>Packages CRUD + bulk (10 endpoints)</td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-						<tr><td>Bundles CRUD (5 endpoints)</td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-						<tr><td>Labels / tracking / handover_sheet (5 endpoints)</td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-						<tr><td>Preferences, agents, dropoff sites, services, complaints, batteries (10 endpoints)</td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-metadata">Sell Metadata</h2>
-				<p>Marketplace policies (categories, currencies, listing types, shipping, regulatory, etc.). Public read.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /sell/metadata/v1/marketplace/&#123;m&#125;/get_*_policies</code> (16 variants)</td><td><code>GET /v1/marketplaces/&#123;m&#125;/policies/&#123;kind&#125;</code></td><td>flipagent API key</td><td>T3</td></tr>
-						<tr><td><code>POST /sell/metadata/v1/compatibilities/get_*</code> (5 endpoints)</td><td><code>POST /v1/marketplaces/compatibility/&#123;kind&#125;</code></td><td>flipagent API key</td><td>T3</td></tr>
-						<tr><td><code>GET /sell/metadata/v1/country/&#123;c&#125;/sales_tax_jurisdiction</code></td><td><code>GET /v1/marketplaces/&#123;c&#125;/sales-tax-jurisdiction</code></td><td>flipagent API key</td><td>T3</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-negotiation">Sell Negotiation</h2>
-				<p>Send offers to interested buyers (Best Offer flow). Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /sell/negotiation/v1/find_eligible_items</code></td><td><code>GET /v1/offers/eligible</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /sell/negotiation/v1/send_offer_to_interested_buyers</code></td><td><code>POST /v1/offers</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="sell-listing">Sell Listing (draft)</h2>
-				<p>Legacy parallel listing surface; flipagent has standardized on Sell Inventory.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>POST /sell/listing/v1_beta/item_draft</code></td><td>—</td><td>eBay OAuth</td><td>T4</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="post-order">Post-order (Returns / Cancellations / Cases / Inquiries)</h2>
-				<p>Buyer-side post-purchase flows, unified under <code>/v1/disputes</code> with a <code>type</code> discriminator (return, cancellation, case, inquiry, payment). Requires eBay OAuth.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>GET /post-order/v2/return/search</code></td><td><code>GET /v1/disputes?type=return</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /post-order/v2/return</code></td><td><code>POST /v1/disputes</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /post-order/v2/return/&#123;id&#125;</code></td><td><code>GET /v1/disputes/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /post-order/v2/return/check_eligibility</code></td><td><code>POST /v1/disputes/check-eligibility</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /post-order/v2/return/estimate</code></td><td><code>POST /v1/disputes/estimate</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td>Return action endpoints (decide, escalate, cancel, mark_as_*, issue_refund, send_message, label ops — 16 endpoints)</td><td><code>POST /v1/disputes/&#123;id&#125;/&#123;action&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td>Return draft (5 endpoints — get/put draft + file upload/submit/delete)</td><td><code>/v1/disputes/draft</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td>Return preference (get/post)</td><td><code>/v1/disputes/preference</code></td><td>eBay OAuth</td><td>T3</td></tr>
-						<tr><td><code>GET /post-order/v2/cancellation/search</code></td><td><code>GET /v1/disputes?type=cancellation</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /post-order/v2/cancellation</code></td><td><code>POST /v1/disputes</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /post-order/v2/cancellation/&#123;id&#125;</code></td><td><code>GET /v1/disputes/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td>Cancellation actions (approve, reject, confirm, check_eligibility — 4 endpoints)</td><td><code>POST /v1/disputes/&#123;id&#125;/&#123;action&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /post-order/v2/casemanagement/search</code></td><td><code>GET /v1/disputes?type=case</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /post-order/v2/casemanagement/&#123;id&#125;</code></td><td><code>GET /v1/disputes/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td>Case actions (appeal, close, issue_refund, provide_return_address, provide_shipment_info — 5 endpoints)</td><td><code>POST /v1/disputes/&#123;id&#125;/&#123;action&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /post-order/v2/inquiry/search</code></td><td><code>GET /v1/disputes?type=inquiry</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>POST /post-order/v2/inquiry</code></td><td><code>POST /v1/disputes</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td><code>GET /post-order/v2/inquiry/&#123;id&#125;</code></td><td><code>GET /v1/disputes/&#123;id&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-						<tr><td>Inquiry actions (close, escalate, issue_refund, confirm_refund, send_message, provide_shipment_info, provide_refund_info, check_eligibility — 8 endpoints)</td><td><code>POST /v1/disputes/&#123;id&#125;/&#123;action&#125;</code></td><td>eBay OAuth</td><td>T2</td></tr>
-					</tbody>
-				</table>
-
-				<h2 id="developer">Developer</h2>
-				<p>App registration, signing keys, internal rate-limit analytics. Mostly internal; not surfaced.</p>
-				<table class="api">
-					<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
-					<tbody>
-						<tr><td><code>POST /developer/registration/v1/application</code></td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td>Signing keys CRUD (3 endpoints)</td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-						<tr><td>Analytics rate-limit reads (2 endpoints)</td><td>—</td><td>flipagent API key</td><td>T4</td></tr>
-					</tbody>
-				</table>
+				{COVERAGE_SECTIONS.map((s) => (
+					<>
+						<h2 id={s.id}>{s.title}</h2>
+						<p>{s.description}</p>
+						<table class="api">
+							<thead><tr><th>eBay endpoint</th><th>flipagent</th><th>Setup</th><th>Tier</th></tr></thead>
+							<tbody>
+								{s.rows.map((r) => (
+									<tr>
+										<td><code>{r.ebay}</code></td>
+										<td>{r.flipagent === null ? "—" : <code>{r.flipagent}</code>}</td>
+										<td>{r.setup ?? s.defaultSetup}</td>
+										<td>{r.tier ?? s.defaultTier}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</>
+				))}
 
 				<h2 id="trading-xml">Trading (XML/SOAP)</h2>
 				<p>eBay's legacy SOAP API. flipagent uses it for listing CRUD on sandbox and for My eBay aggregations not exposed via REST. Requires eBay OAuth.</p>
 				<table class="api">
 					<thead><tr><th>Trading call</th><th>flipagent</th><th>Tier</th></tr></thead>
 					<tbody>
-						<tr><td><code>AddFixedPriceItem</code></td><td><code>POST /v1/listings</code> (sandbox + cat 88433 path)</td><td>T1</td></tr>
-						<tr><td><code>ReviseFixedPriceItem</code></td><td><code>PATCH /v1/listings/&#123;id&#125;</code></td><td>T1</td></tr>
-						<tr><td><code>EndFixedPriceItem</code></td><td><code>DELETE /v1/listings/&#123;id&#125;</code></td><td>T1</td></tr>
-						<tr><td><code>GetMyeBaySelling</code></td><td><code>GET /v1/me/selling</code></td><td>T1</td></tr>
-						<tr><td><code>GetMyeBayBuying</code></td><td><code>GET /v1/me/buying</code></td><td>T1</td></tr>
-						<tr><td><code>GetItem</code> / <code>GetSellerList</code> / <code>GetSellerEvents</code></td><td><code>GET /v1/listings</code> (Trading-side path)</td><td>T2</td></tr>
-						<tr><td><code>GetMessages</code> / <code>AddMemberMessage</code> / <code>RespondToFeedback</code></td><td><code>/v1/messages</code>, <code>/v1/feedback</code></td><td>T2</td></tr>
-						<tr><td>~25 additional Trading helpers (auctions, watching, saved searches, store ops, second-chance offers, etc.)</td><td>various <code>/v1/*</code></td><td>T2 / T3</td></tr>
+						{TRADING_ROWS.map((r) => (
+							<tr>
+								<td><code>{r.trading}</code></td>
+								<td><code>{r.flipagent}</code></td>
+								<td>{r.tier}</td>
+							</tr>
+						))}
 					</tbody>
 				</table>
 
@@ -747,19 +149,15 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<table class="api">
 					<thead><tr><th>flipagent</th><th>What it composes</th><th>Tier</th></tr></thead>
 					<tbody>
-						<tr><td><code>POST /v1/evaluate</code></td><td>Browse search + Marketplace Insights + Browse detail + LLM same-product matching + margin scoring.</td><td>T1</td></tr>
-						<tr><td><code>GET /v1/items/search</code></td><td>Browse search via scrape (primary) or REST, with multi-source dispatch.</td><td>T1</td></tr>
-						<tr><td><code>GET /v1/items/sold</code></td><td>Sold-comps via scrape (primary) or Marketplace Insights when available.</td><td>T1</td></tr>
-						<tr><td><code>GET /v1/items/&#123;id&#125;</code></td><td>Browse detail + scrape backfill for fields REST omits.</td><td>T1</td></tr>
-						<tr><td><code>POST /v1/purchases</code></td><td>Drives the buy flow through the bridge in your Chrome session, or through eBay's REST Order API where available. Same flipagent <code>Purchase</code> shape from either path.</td><td>T1</td></tr>
-						<tr><td><code>POST /v1/ship/quote</code></td><td>Server-side zone calculation + packaging optimization on top of Sell Logistics.</td><td>T1</td></tr>
-						<tr><td><code>POST /v1/forwarder/&#123;provider&#125;/*</code></td><td>Package-forwarding ops (Planet Express today) via bridge transport.</td><td>T1</td></tr>
-						<tr><td><code>POST /v1/browser/op</code></td><td>Synchronous DOM primitives via the Chrome extension.</td><td>T2</td></tr>
-						<tr><td><code>POST /v1/expenses</code></td><td>flipagent's own ledger; not an eBay surface.</td><td>T1</td></tr>
-						<tr><td><code>POST /v1/translate</code></td><td>Commerce Translation pass-through with caching.</td><td>T3</td></tr>
+						{NATIVE_ROWS.map((r) => (
+							<tr>
+								<td><code>{r.flipagent}</code></td>
+								<td>{r.composes}</td>
+								<td>{r.tier}</td>
+							</tr>
+						))}
 					</tbody>
 				</table>
-
 			</article>
 		</div>
 	</div>

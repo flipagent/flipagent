@@ -5,7 +5,9 @@
  * is the last 4 — together they let dashboards render `prefix···suffix`
  * for at-a-glance recognition without exposing the secret middle.
  *
- * Format: `fa_<tier>_<24-byte-base64url>` (~38 chars).
+ * Format: `fa_<tier>_<24-byte-base64url>` (40-44 chars total — base64url
+ * of 24 bytes is 32 chars, plus `fa_` (3) plus the tier name (4-8) plus
+ * the separator (1)).
  */
 
 import { createHash, randomBytes } from "node:crypto";

@@ -432,7 +432,7 @@ resource "azurerm_container_app" "api" {
         value = var.ebay_scopes
       }
       env {
-        name  = "EBAY_ORDER_API_APPROVED"
+        name  = "EBAY_ORDER_APPROVED"
         value = var.ebay_order_api_approved ? "1" : "0"
       }
       env {

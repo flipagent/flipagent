@@ -6,17 +6,17 @@
  *     POST /v1/billing/portal                — Stripe Customer Portal (manage card / cancel)
  *
  *   Auto-recharge (off-session against the saved card — no manual fire,
- *   no separate "buy credits now" surface; threshold-driven only):
+ *   no separate "buy credits now" surface; target-balance-driven):
  *     GET  /v1/billing/quote                 — per-amount prices at caller's tier
  *     GET  /v1/billing/auto-recharge         — current auto-recharge config
- *     PUT  /v1/billing/auto-recharge         — enable/disable + set threshold + amount
+ *     PUT  /v1/billing/auto-recharge         — enable/disable + set target balance
  *
  *   Stripe → us:
  *     POST /v1/billing/webhook               — signature-verified webhook receiver
  *
  * The actual charge fires from `requireApiKey` middleware
  * (`maybeFireAutoRecharge`) when `creditsRemaining` drops below the
- * user's threshold; routes here only manage configuration.
+ * user's target balance; routes here only manage configuration.
  */
 
 import {
@@ -33,7 +33,7 @@ import { type Context, Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import type Stripe from "stripe";
 import type { Tier } from "../../auth/keys.js";
-import { defaultTopUpForTier, PACK_DENOMINATIONS, pricePerCreditUsd, topUpPriceCents } from "../../auth/limits.js";
+import { PACK_DENOMINATIONS, pricePerCreditUsd, targetRangeForTier, topUpPriceCents } from "../../auth/limits.js";
 import { createCheckoutSession, createPortalSession } from "../../billing/checkout.js";
 import { listBillingHistory } from "../../billing/history.js";
 import { readStripeConfig } from "../../billing/stripe.js";
@@ -221,8 +221,7 @@ billingRoute.get(
 	async (c) => {
 		const u = c.var.user as typeof c.var.user & {
 			autoRechargeEnabled?: boolean | null;
-			autoRechargeThreshold?: number | null;
-			autoRechargeTopup?: number | null;
+			autoRechargeTarget?: number | null;
 			lastAutoRechargeAt?: Date | string | null;
 		};
 		const lastAt = u.lastAutoRechargeAt
@@ -232,8 +231,7 @@ billingRoute.get(
 			: null;
 		return c.json({
 			enabled: Boolean(u.autoRechargeEnabled),
-			thresholdCredits: u.autoRechargeThreshold ?? null,
-			topUpCredits: (u.autoRechargeTopup ?? null) as 5_000 | 25_000 | 100_000 | null,
+			targetCredits: u.autoRechargeTarget ?? null,
 			lastRechargedAt: lastAt,
 		});
 	},
@@ -245,10 +243,10 @@ billingRoute.put(
 		tags: ["Billing"],
 		summary: "Enable/disable + configure auto-recharge",
 		description:
-			"Threshold range: 100–50,000 credits. Top-up amount: one of 5k/25k/100k. Free-tier callers and users with no Stripe customer (no card on file) get 403 — auto-recharge requires a saved card from a prior subscription checkout.",
+			"Set a target balance — when credits drop below the target, the saved card is charged for the gap (Stripe-min-bounded). Target range is tier-specific: Hobby 500–10k, Standard 500–50k, Growth 500–200k. Free-tier callers and users with no Stripe customer (no card on file) get 403 — auto-recharge requires a saved card from a prior subscription checkout.",
 		responses: {
 			200: jsonResponse("Updated.", BillingAutoRechargeConfig),
-			400: errorResponse("Validation failed."),
+			400: errorResponse("Target out of range for this tier."),
 			401: errorResponse("Not signed in."),
 			403: errorResponse("Free tier or no card on file — subscribe first."),
 		},
@@ -260,48 +258,46 @@ billingRoute.put(
 		const user = c.var.user;
 
 		if (body.enabled) {
-			// `tbBody(BillingAutoRechargeUpdateRequest)` already enforces
-			// thresholdCredits ∈ [100, 50_000]. `topUpCredits` isn't
-			// client-supplied — the server picks the tier default
-			// (`defaultTopUpForTier`) so the dashboard stays at a single
-			// threshold input. Operators can override by writing
-			// `auto_recharge_topup` directly.
 			const gate = requirePaidWithCard(c, user);
 			if (gate instanceof Response) return gate;
-			const topUp = defaultTopUpForTier(gate.tier);
+			const range = targetRangeForTier(gate.tier);
+			if (body.targetCredits < range.min || body.targetCredits > range.max) {
+				return c.json(
+					{
+						error: "validation_failed",
+						message: `targetCredits must be between ${range.min} and ${range.max} for tier '${gate.tier}'.`,
+					},
+					400,
+				);
+			}
 			await db
 				.update(userTable)
 				.set({
 					autoRechargeEnabled: true,
-					autoRechargeThreshold: body.thresholdCredits,
-					autoRechargeTopup: topUp,
+					autoRechargeTarget: body.targetCredits,
 					updatedAt: new Date(),
 				})
 				.where(eq(userTable.id, user.id));
 			return c.json({
 				enabled: true,
-				thresholdCredits: body.thresholdCredits,
-				topUpCredits: topUp as 5_000 | 25_000 | 100_000,
+				targetCredits: body.targetCredits,
 				lastRechargedAt: null,
 			});
 		}
 
-		// Disable path. Keep the threshold + topup columns null so the
-		// next enable starts from a fresh, explicit choice rather than
-		// a stale prior config.
+		// Disable path. Keep `autoRechargeTarget` null so the next enable
+		// starts from a fresh, explicit choice rather than a stale value.
 		await db
 			.update(userTable)
 			.set({
 				autoRechargeEnabled: false,
-				autoRechargeThreshold: null,
-				autoRechargeTopup: null,
+				autoRechargeTarget: null,
 				updatedAt: new Date(),
 			})
 			.where(eq(userTable.id, user.id));
 		return c.json({
 			enabled: false,
-			thresholdCredits: null,
-			topUpCredits: null,
+			targetCredits: null,
 			lastRechargedAt: null,
 		});
 	},

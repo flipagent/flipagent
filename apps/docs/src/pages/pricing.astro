@@ -3,6 +3,7 @@ import Layout from "../layouts/Layout.astro";
 import PricingTiers from "../components/PricingTiers.astro";
 import Faq from "../components/Faq.tsx";
 import Reveal from "../components/Reveal.tsx";
+import AgentChatPriceRow from "../components/AgentChatPriceRow.tsx";
 import "../components/PricingRow.css";
 ---
 <Layout title="Pricing · flipagent">
@@ -21,115 +22,64 @@ import "../components/PricingRow.css";
 
 			<div class="section-spacer" aria-hidden="true"></div>
 
-			<Reveal client:visible>
-				<div class="pricing-row" id="api-credits">
-					<div class="pricing-row-head">
-						<h2>API <span class="accent">credits</span></h2>
-						<p>Three call types cost credits: keyword search, category browsing, and scoring a listing. Anything that runs on your own connected eBay account is free.</p>
+			<!--
+				No <Reveal> wrapper here: <AgentChatPriceRow client:load /> needs
+				to be its own island, but Astro doesn't hydrate islands nested
+				inside another React island (Reveal is `motion.div` from
+				motion/react, which becomes a React island on `client:visible`).
+				The select trigger would render but its onClick wouldn't fire.
+			-->
+			<div class="pricing-row" id="api-credits">
+				<div class="pricing-row-head">
+					<h2>API <span class="accent">credits</span></h2>
+					<p>Marketplace data, listing evaluations, and AI agent chat cost credits. Anything that runs on your own connected eBay account is free.</p>
+				</div>
+				<div class="pricing-row-body">
+					<div class="pricing-row-item">
+						<div class="pricing-row-item-text">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<circle cx="10.5" cy="10.5" r="6.5"></circle>
+								<path d="m20 20-4.5-4.5"></path>
+							</svg>
+							<div>
+								<span>Search &amp; sourcing</span>
+								<span>Keyword search, category browse, item lookup.</span>
+							</div>
+						</div>
+						<div class="pricing-row-item-value"><span class="num">1</span><span class="unit">/ call</span></div>
 					</div>
-					<div class="pricing-row-body">
-						<div class="pricing-row-item">
-							<div class="pricing-row-item-text">
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<circle cx="10.5" cy="10.5" r="6.5"></circle>
-									<path d="m20 20-4.5-4.5"></path>
-								</svg>
-								<div>
-									<span>Search</span>
-									<span>Type a keyword. Find what's listed and what's selling.</span>
-								</div>
+					<div class="pricing-row-item">
+						<div class="pricing-row-item-text">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<path d="M4 14a8 8 0 0 1 16 0"></path>
+								<path d="M12 14l3-4"></path>
+								<circle cx="12" cy="14" r="0.9" fill="currentColor"></circle>
+							</svg>
+							<div>
+								<span>Evaluate</span>
+								<span>Score a listing for profit, sell-through, and risk. One call, full verdict.</span>
 							</div>
-							<div class="pricing-row-item-value"><span class="num">1</span><span class="unit">/ call</span></div>
 						</div>
-						<div class="pricing-row-item">
-							<div class="pricing-row-item-text">
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<circle cx="5" cy="5" r="1.5"></circle>
-									<path d="M5 6.5v11"></path>
-									<path d="M5 12h7"></path>
-									<path d="M5 18h7"></path>
-									<circle cx="14" cy="12" r="1.5"></circle>
-									<circle cx="14" cy="18" r="1.5"></circle>
-								</svg>
-								<div>
-									<span>Sourcing</span>
-									<span>Browse by category to see what's selling. Each step counts as one call.</span>
-								</div>
+						<div class="pricing-row-item-value"><span class="num">80</span><span class="unit">/ call</span></div>
+					</div>
+					<AgentChatPriceRow client:load />
+					<div class="pricing-row-item">
+						<div class="pricing-row-item-text">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<rect x="3" y="4" width="18" height="16" rx="2"></rect>
+								<path d="M3 9h18"></path>
+								<circle cx="6.5" cy="6.5" r="0.4" fill="currentColor"></circle>
+								<circle cx="9" cy="6.5" r="0.4" fill="currentColor"></circle>
+							</svg>
+							<div>
+								<span>Account ops</span>
+								<span>Sell, fulfill, message, ship, and buy on your own account.</span>
 							</div>
-							<div class="pricing-row-item-value"><span class="num">1</span><span class="unit">/ call</span></div>
 						</div>
-						<div class="pricing-row-item">
-							<div class="pricing-row-item-text">
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<path d="M4 14a8 8 0 0 1 16 0"></path>
-									<path d="M12 14l3-4"></path>
-									<circle cx="12" cy="14" r="0.9" fill="currentColor"></circle>
-								</svg>
-								<div>
-									<span>Evaluate</span>
-									<span>Score a listing for profit, sell-through, and risk.</span>
-								</div>
-							</div>
-							<div class="pricing-row-item-value"><span class="num">50</span><span class="unit">/ call</span></div>
-						</div>
-						<div class="pricing-row-item">
-							<div class="pricing-row-item-text">
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<rect x="3" y="4" width="18" height="16" rx="2"></rect>
-									<path d="M3 9h18"></path>
-									<circle cx="6.5" cy="6.5" r="0.4" fill="currentColor"></circle>
-									<circle cx="9" cy="6.5" r="0.4" fill="currentColor"></circle>
-								</svg>
-								<div>
-									<span>Account ops</span>
-									<span>Sell, fulfill, message, ship, and buy on your own account.</span>
-								</div>
-							</div>
-							<div class="pricing-row-item-value"><span class="num">Free</span></div>
-						</div>
+						<div class="pricing-row-item-value"><span class="num">Free</span></div>
 					</div>
 				</div>
-			</Reveal>
-
-			<div class="section-spacer" aria-hidden="true"></div>
-
-			<Reveal client:visible>
-				<div class="pricing-row" id="auto-recharge">
-					<div class="pricing-row-head">
-						<h2>Auto <span class="accent">recharge</span></h2>
-						<p>Set a trigger. We top up the saved card automatically when you're about to run out — no surprise 429s mid-job.</p>
-					</div>
-					<div class="pricing-row-body">
-						<div class="pricing-row-item">
-							<div class="pricing-row-item-text">
-								<div>
-									<span>Hobby</span>
-									<span>$0.0030 per credit on top-ups. 5,000 / 25,000 / 100,000 packs.</span>
-								</div>
-							</div>
-							<div class="pricing-row-item-value"><span class="num">$15</span><span class="unit">/ 5k pack</span></div>
-						</div>
-						<div class="pricing-row-item">
-							<div class="pricing-row-item-text">
-								<div>
-									<span>Standard</span>
-									<span>$0.0020 per credit on top-ups. Same packs, lower unit rate.</span>
-								</div>
-							</div>
-							<div class="pricing-row-item-value"><span class="num">$10</span><span class="unit">/ 5k pack</span></div>
-						</div>
-						<div class="pricing-row-item">
-							<div class="pricing-row-item-text">
-								<div>
-									<span>Growth</span>
-									<span>$0.0015 per credit on top-ups. Best rate for steady high-volume.</span>
-								</div>
-							</div>
-							<div class="pricing-row-item-value"><span class="num">$7.50</span><span class="unit">/ 5k pack</span></div>
-						</div>
-					</div>
-				</div>
-			</Reveal>
+			</div>
 
 			<div class="section-spacer" aria-hidden="true"></div>
 

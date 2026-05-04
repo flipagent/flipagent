@@ -20,10 +20,10 @@ const GROUPS: Group[] = [
 				q: "What is flipagent?",
 				a: (
 					<>
-						flipagent is an eBay reseller API for AI agents and apps. One unified surface covers
-						the full flipping cycle: sourcing deals, evaluating margins against sold listings,
-						drafting listings, tracking orders, and routing fulfillment through a US package
-						forwarder. Today it ships eBay coverage. Amazon, Mercari, and Poshmark are next.
+						flipagent is an eBay reseller API for AI agents and apps. One key covers the full
+						flip cycle: finding deals, checking if they're actually profitable, drafting and
+						managing listings, fulfilling sales, and routing buys through a US package
+						forwarder.
 					</>
 				),
 			},
@@ -31,11 +31,11 @@ const GROUPS: Group[] = [
 				q: "Does flipagent work with Claude Code?",
 				a: (
 					<>
-						Yes — that's the primary host. The <code>flipagent-mcp</code> server exposes every
-						endpoint as an MCP tool, so any MCP-compatible host (Claude Code first) can search
-						eBay, evaluate deals, and manage orders directly. Run{" "}
+						Yes, that's the primary host. The <code>flipagent-mcp</code> server exposes every
+						endpoint as an MCP tool, so any MCP-compatible host (Claude Code, Cursor, Cline)
+						can search eBay, evaluate deals, and manage orders. Run{" "}
 						<code>npx -y flipagent-cli init --mcp</code> and the CLI writes the config for you.
-						See <a href="/docs/mcp/">/docs/mcp</a> for setup.
+						See <a href="/docs/mcp/">/docs/mcp</a>.
 					</>
 				),
 			},
@@ -43,13 +43,21 @@ const GROUPS: Group[] = [
 				q: "Do I need an eBay developer account?",
 				a: (
 					<>
-						For the sourcing side, no. <code>/v1/items</code>, <code>/v1/categories</code>,{" "}
-						<code>/v1/products</code>, and <code>/v1/evaluate</code> all work with just your
-						flipagent key. For the selling side, you connect your own eBay account once via
-						OAuth at <code>/v1/connect/ebay</code> and flipagent backs{" "}
-						<code>/v1/listings</code>, <code>/v1/sales</code>, <code>/v1/payouts</code>,{" "}
-						<code>/v1/transactions</code>, <code>/v1/policies</code>, etc. with your token.
-						We never hold eBay developer credentials on your behalf.
+						No. flipagent runs the eBay app for you. For selling and buying on your own
+						account, authorize once via OAuth at <code>/v1/connect/ebay</code> with your
+						normal eBay account. Self-hosting is the only case where you register your own
+						eBay app; see <a href="/docs/self-host/">/docs/self-host</a>.
+					</>
+				),
+			},
+			{
+				q: "Do I need a Chrome extension?",
+				a: (
+					<>
+						Only for buying. Search, evaluate, and selling-side endpoints work without it.{" "}
+						<code>/v1/purchases</code> and <code>/v1/forwarder/*</code> run inside your active
+						eBay session, so they need flipagent's Chrome extension paired to your browser.
+						See <a href="/docs/extension/">/docs/extension</a>.
 					</>
 				),
 			},
@@ -67,7 +75,7 @@ const GROUPS: Group[] = [
 				),
 			},
 			{
-				q: "I'm an eBay seller and don't want my listings indexed. How do I opt out?",
+				q: "I'm an eBay seller and want to opt out. How?",
 				a: (
 					<>
 						Submit your itemId at <a href="/legal/takedown/">/legal/takedown</a>. Approved
@@ -86,10 +94,11 @@ const GROUPS: Group[] = [
 				q: "Is the free tier really free?",
 				a: (
 					<>
-						Yes. 500 credits as a one-time grant. Credits cover the work we run on our
-						infrastructure: scraping, comp pulls, and AI scoring. No credit card, no
-						trial timer. Upgrade to a paid plan for monthly credits. See{" "}
-						<a href="/pricing/">/pricing</a> for the full breakdown.
+						Yes. 1,000 credits as a one-time grant, no card, no trial timer. Enough for ~12
+						full evaluations on your real inventory. Credits cover the heavy work flipagent
+						runs on its own servers: pulling fresh marketplace data, scoring whether a deal is
+						worth buying, and AI agent chat. Upgrade to a paid plan for monthly credits. See{" "}
+						<a href="/pricing/">/pricing</a>.
 					</>
 				),
 			},
@@ -97,14 +106,17 @@ const GROUPS: Group[] = [
 				q: "How are credits charged?",
 				a: (
 					<>
-						We charge for what runs on our infrastructure. Sourcing reads against
-						eBay's catalog (<code>/v1/items</code>, <code>/v1/categories</code>,{" "}
-						<code>/v1/products</code>, <code>/v1/trends</code>) cost 1 credit each;{" "}
-						<code>/v1/evaluate</code> is 50 (scrape + AI scoring). Everything that runs
-						on your own connected accounts — listing, fulfilling, messaging, buying
-						through your browser, taxonomy lookups, shipping math — is free.
-						Burst rate-limits still apply. See{" "}
-						<a href="/pricing/#api-credits">the pricing table</a> for the full breakdown.
+						Sourcing reads against eBay's catalog (<code>/v1/items</code>,{" "}
+						<code>/v1/categories</code>, <code>/v1/products</code>) cost 1 credit per call.{" "}
+						<code>/v1/evaluate</code> costs 80 because one call answers "should I flip this?".
+						It pulls the actual recent sales of the same product and works out the profit,
+						demand, and risk for you. Agent chat (<code>/v1/agent/chat</code>) costs per turn
+						by model: <code>gemini-2.5-flash</code> 3, <code>gpt-5.4-mini</code> 5 (default),{" "}
+						<code>claude-sonnet-4-7</code> 15, <code>gpt-5.5</code> 25. Free tier reaches the
+						two cheapest (mini + Flash); paid tiers unlock all four. Anything that runs on your
+						own connected accounts (listing, fulfilling, messaging, buying through your browser,
+						taxonomy lookups, shipping math) is free of credits. Burst rate-limits still apply.
+						Full table at <a href="/pricing/#api-credits">/pricing#api-credits</a>.
 					</>
 				),
 			},
@@ -114,11 +126,11 @@ const GROUPS: Group[] = [
 					<>
 						You get <code>429 Too Many Requests</code> with{" "}
 						<code>error: "credits_exceeded"</code> and your usage in the body. Paid plans
-						refill on the 1st of each month (UTC) — the response carries{" "}
-						<code>resetAt</code>. The Free tier is a one-time 500-credit grant and doesn't
-						refill, so a maxed-out Free key has to upgrade to keep going. Upgrades from the
-						dashboard kick in immediately. We surface the next-plan-up math in your
-						dashboard at 80% utilization.
+						refill on the 1st of each month UTC; the response carries <code>resetAt</code>.
+						The Free tier is a one-time grant and doesn't refill, so a maxed-out Free key has
+						to upgrade to keep going. Auto-recharge keeps your balance at or above your
+						target — set a target floor on the dashboard and we top up the saved card when it
+						dips below. Upgrades from the dashboard kick in immediately.
 					</>
 				),
 			},
@@ -126,10 +138,10 @@ const GROUPS: Group[] = [
 				q: "Are there per-minute or per-hour rate limits too?",
 				a: (
 					<>
-						Yes. Burst caps sit alongside the monthly credit budget so a runaway script
-						can't drain your plan in seconds. Free 10/min, Hobby 30/min, Standard 120/min, Growth 600/min. Normal automation
-						never trips them. If you spike too fast you'll get a <code>429</code> with{" "}
-						<code>error: "burst_rate_limited"</code>; slow down or upgrade for a higher cap.
+						Yes. Burst caps sit alongside the monthly credit budget so a runaway loop can't
+						drain your plan in seconds. Free + Hobby 30/min, Standard 120/min, Growth 600/min.
+						Hourly caps (200 / 1,200 / 6,000 / 25,000) separate the tiers further. Normal automation never trips them. If you spike too fast you'll get a{" "}
+						<code>429</code> with <code>error: "burst_rate_limited"</code>.
 					</>
 				),
 			},
@@ -147,8 +159,8 @@ const GROUPS: Group[] = [
 				q: "Do you offer refunds?",
 				a: (
 					<>
-						We don't auto-refund unused calls in a billing period. For edge cases like
-						duplicate charges, accidental upgrades, or anything broken on our end, email{" "}
+						We don't auto-refund unused credits in a billing period. For duplicate charges,
+						accidental upgrades, or anything broken on our end, email{" "}
 						<a href="mailto:hello@flipagent.dev">hello@flipagent.dev</a> and we'll sort it.
 					</>
 				),
@@ -162,15 +174,14 @@ const GROUPS: Group[] = [
 				q: "Which endpoints does flipagent cover?",
 				a: (
 					<>
-						The full reseller cycle under <code>/v1/*</code>. The sourcing side runs without an
-						eBay account: <code>/v1/items/search</code> for active or sold listings,{" "}
-						<code>/v1/categories</code> for taxonomy + suggestions, and <code>/v1/evaluate</code>{" "}
-						for server-side scoring (composite — the server searches sold + active and ranks).
-						The selling side runs against your eBay account once you connect via OAuth:{" "}
-						<code>/v1/listings</code>, <code>/v1/sales</code>, <code>/v1/payouts</code>,{" "}
-						<code>/v1/transactions</code>, <code>/v1/policies</code>. Shipping intelligence
-						sits at <code>/v1/ship/providers</code> (forwarder catalog) and{" "}
-						<code>/v1/ship/quote</code> (rate quotes). Full reference at{" "}
+						The full reseller cycle under <code>/v1/*</code>. Sourcing without an eBay account:{" "}
+						<code>/v1/items/search</code> for active or sold listings, <code>/v1/categories</code>
+						{" "}for taxonomy, <code>/v1/evaluate</code> for a one-call buy/hold/skip verdict on a
+						listing. Selling on your eBay account after OAuth: <code>/v1/listings</code>,{" "}
+						<code>/v1/sales</code>, <code>/v1/payouts</code>, <code>/v1/transactions</code>,{" "}
+						<code>/v1/policies</code>. Buying and fulfillment through the Chrome extension:{" "}
+						<code>/v1/purchases</code>, <code>/v1/forwarder/*</code>. Shipping math at{" "}
+						<code>/v1/ship/providers</code> and <code>/v1/ship/quote</code>. Full reference at{" "}
 						<a href="/docs/api/">/docs/api</a>.
 					</>
 				),
@@ -180,34 +191,35 @@ const GROUPS: Group[] = [
 				a: (
 					<>
 						60 minutes for active listings, 12 hours for sold and completed listings, 4 hours
-						for item detail. The cache exists to absorb concurrent requests for the same
-						question; it is not long-term storage. A takedown approval flushes the relevant
-						cache entries within seconds.
+						for item detail. The cache absorbs concurrent requests for the same question; it
+						is not long-term storage. A takedown approval flushes the relevant entries within
+						seconds.
 					</>
 				),
 			},
 			{
-				q: "Can I use my existing eBay SDK?",
+				q: "Do I need to use the TypeScript SDK?",
 				a: (
 					<>
-						Yes. Any SDK that lets you override the base URL works. Point it at{" "}
-						<code>api.flipagent.dev</code> and pass your flipagent key as{" "}
-						<code>Authorization: Bearer fa_...</code> or <code>X-API-Key: fa_...</code>. For
-						TypeScript we ship a typed <code>@flipagent/sdk</code> that wraps the unified
-						surface in marketplace passthrough namespaces (<code>listings</code>,{" "}
-						<code>sold</code>, <code>orders</code>, <code>inventory</code>) and intelligence
-						namespaces (<code>evaluate</code>, <code>ship</code>,{" "}
-						<code>market</code>).
+						No. flipagent is plain HTTPS at <code>api.flipagent.dev</code>. Authenticate with{" "}
+						<code>Authorization: Bearer fa_...</code> or <code>X-API-Key: fa_...</code> and
+						call any endpoint from any language. The TypeScript SDK (<code>@flipagent/sdk</code>)
+						{" "}is sugar on top, with namespaces matching the routes: <code>client.items</code>,{" "}
+						<code>client.listings</code>, <code>client.purchases</code>,{" "}
+						<code>client.sales</code>, <code>client.payouts</code>, <code>client.evaluate</code>,{" "}
+						<code>client.ship</code>, and so on.
 					</>
 				),
 			},
 			{
-				q: "What if eBay changes their response shape?",
+				q: "What does the response shape look like?",
 				a: (
 					<>
-						flipagent mirrors eBay's response shape verbatim, so additive changes pass through
-						transparently. Breaking changes get a parser update. If you hit one in the wild,
-						file an issue on GitHub and the patch usually lands the same day.
+						flipagent has its own JSON shape, not eBay's wire format. Money is integer cents,
+						timestamps are ISO 8601, status enums are lowercase, and every record carries a{" "}
+						<code>marketplace</code> field. When eBay adds fields upstream, our parsers ignore
+						the new bits and existing code keeps working. Breaking upstream changes get a
+						parser update.
 					</>
 				),
 			},
@@ -215,11 +227,11 @@ const GROUPS: Group[] = [
 				q: "Can I self-host flipagent?",
 				a: (
 					<>
-						Yes. The whole API server is open source under FSL-1.1-ALv2 (which converts to
-						Apache 2.0 two years after each release), and the OSS packages (
+						Yes. The whole API server is open source under FSL-1.1-ALv2, which converts to
+						Apache 2.0 two years after each release. The OSS packages (
 						<code>@flipagent/types</code>, <code>@flipagent/sdk</code>,{" "}
 						<code>@flipagent/ebay-scraper</code>, <code>flipagent-mcp</code>) ship as MIT.
-						Bring your own Postgres and your own scraper proxy credentials. See{" "}
+						Bring your own Postgres and your own scraper-vendor credentials. See{" "}
 						<a href="/docs/self-host/">/docs/self-host</a> for the runbook.
 					</>
 				),
@@ -228,10 +240,10 @@ const GROUPS: Group[] = [
 				q: "What does flipagent collect?",
 				a: (
 					<>
-						No host-LLM prompts, no opaque telemetry. We log the API call (path,
-						status, latency, SHA-256 prefix of your API key for rate-limit accounting)
-						and the marketplace data we cache for the takedown channel. Nothing else.
-						See <a href="/legal/privacy/">/legal/privacy</a>.
+						No agent prompts, no opaque telemetry. We log the API call (path, status,
+						latency, SHA-256 prefix of your API key for rate-limit accounting) and the
+						marketplace data we cache for the takedown channel. Nothing else. See{" "}
+						<a href="/legal/privacy/">/legal/privacy</a>.
 					</>
 				),
 			},

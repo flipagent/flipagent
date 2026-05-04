@@ -118,14 +118,23 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 			// caller picks a SKU, and surface the variation list so they can.
 			// REST never reaches here for parents (it threw above), so the
 			// guard is exclusively the scrape/bridge convergence path.
-			const detailBody = detailResult.body as { variations?: ReadonlyArray<unknown> };
+			const detailBody = detailResult.body as {
+				variations?: ReadonlyArray<unknown>;
+				image?: { imageUrl?: string };
+				title?: string;
+			};
 			if (!variationId && detailBody.variations && detailBody.variations.length > 0) {
 				const variations = detailBody.variations;
 				throw new EvaluateError(
 					"variation_required",
 					422,
 					`Listing ${legacyId} is a multi-SKU parent with ${variations.length} variations; retry with a specific variationId.`,
-					{ legacyId, variations },
+					{
+						legacyId,
+						variations,
+						...(detailBody.image?.imageUrl ? { parentImageUrl: detailBody.image.imageUrl } : {}),
+						...(detailBody.title ? { parentTitle: detailBody.title } : {}),
+					},
 				);
 			}
 			return {

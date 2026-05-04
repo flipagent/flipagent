@@ -16,7 +16,7 @@ import type { Config } from "../config.js";
 export const flipagentConnectStatusInput = Type.Object({});
 
 export const flipagentConnectStatusDescription =
-	'Check whether the configured api key has an eBay seller account connected. Calls GET /v1/connect/ebay/status. **When to use** — narrow alternative to `flipagent_get_capabilities` when you only need to know "is eBay OAuth done?" — e.g. before a sell-side action. Most agents should prefer `flipagent_get_capabilities` (richer per-marketplace state). **Inputs** — none. **Output** — `{ connected: boolean, ebayUserId?, scopes?: string[], expiresAt?: ISO }`. When `connected: false`, ask the user to visit `/v1/connect/ebay/start` (any sell-side tool\'s `next_action.url` will carry the absolute URL on 401). **Prereqs** — `FLIPAGENT_API_KEY`. **Example** — call with `{}` before queueing `flipagent_create_listing`.';
+	'Check whether the configured api key has an eBay seller account connected. Calls GET /v1/connect/ebay/status. **When to use** — narrow alternative to `flipagent_get_capabilities` when you only need to know "is eBay OAuth done?" — e.g. before a sell-side action. Most agents should prefer `flipagent_get_capabilities` (richer per-marketplace state). **Inputs** — none. **Output** — `{ connected: boolean, ebayUserId?, scopes?: string[], expiresAt?: ISO }`. When `connected: false`, ask the user to visit `/v1/connect/ebay` (any sell-side tool\'s `next_action.url` will carry the absolute URL on 401). **Prereqs** — `FLIPAGENT_API_KEY`. **Example** — call with `{}` before queueing `flipagent_create_listing`.';
 
 export async function flipagentConnectStatusExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	if (!config.authToken) {

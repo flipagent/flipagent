@@ -31,7 +31,7 @@ import {
 	fetchCapabilities,
 	loadConfig,
 } from "./shared.js";
-import { readBuyerState, RUNNING_MIRROR_TTL_MS, type RunningEvalEntry, STORAGE_KEYS } from "./storage.js";
+import { RUNNING_MIRROR_TTL_MS, type RunningEvalEntry, readBuyerState, STORAGE_KEYS } from "./storage.js";
 import { DASHBOARD_PATHS, dashboardUrl } from "./urls.js";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -58,7 +58,7 @@ function adornStep(
 	step: SetupStep,
 	overlay: { ebayUserName: string | null; deviceName: string | null; dashboardBase: string },
 ): StepRow {
-	let status: StepStatus = step.status;
+	const status: StepStatus = step.status;
 	let title = shortTitle(step);
 	let cta: { label: string; onClick: () => void } | null = null;
 

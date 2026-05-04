@@ -14,7 +14,7 @@ field the public docs did not confirm is marked _unverified_.
 - **Trading XML calls used: 13** (covers 6 capabilities REST does not expose at all + 1 sandbox workaround).
 - **Bridge tasks: 8** (4 are pure "no eBay API exists" gaps; 1 is a Limited-Release fallback; 3 are Planet Express forwarder ops, no eBay equivalent).
 - **Hard "no eBay API at all" gaps** filled by bridge: Watching list read, Saved Searches read, logged-in Cases inbox, logged-in Offers inbox.
-- **Approval-gated REST routed around** with scrape: Marketplace Insights (sold), Commerce Catalog. Routed around with bridge: Buy Order API (also has REST first-class behind `EBAY_ORDER_API_APPROVED`).
+- **Approval-gated REST routed around** with scrape: Marketplace Insights (sold), Commerce Catalog. Routed around with bridge: Buy Order API (also has REST first-class behind `EBAY_ORDER_APPROVED`).
 
 ---
 
@@ -109,7 +109,7 @@ Subtotals (approx, ignoring _unverified_ entries): ~150 paths offered, ~73 used,
 | eBay API | Gate | Our fallback | File |
 |---|---|---|---|
 | Buy / Marketplace Insights (sold-comps search) | `EBAY_INSIGHTS_APPROVED` env flag (LR) | scrape (primary path) | `services/items/sold.ts`, matrix `listings.sold` (`transport.ts:73`) |
-| Buy / Order | `EBAY_ORDER_API_APPROVED` env flag (LR) | bridge task `EBAY_BUY_ITEM` (first-class equal sibling, not "fallback") | `services/purchases/orchestrate.ts`, matrix `orders.checkout` (`transport.ts:84`) |
+| Buy / Order | `EBAY_ORDER_APPROVED` env flag (LR) | bridge task `EBAY_BUY_ITEM` (first-class equal sibling, not "fallback") | `services/purchases/orchestrate.ts`, matrix `orders.checkout` (`transport.ts:84`) |
 | Commerce / Catalog (`product_summary/search`, `product/{epid}`) | `EBAY_CATALOG_APPROVED` env flag (LR) | scrape (`/p/{epid}` JSON-LD + item-specifics) | `services/ebay/scrape/catalog.ts`, matrix `markets.catalog` (`transport.ts:104`) |
 
 `selectTransport` (`services/shared/transport.ts:175-235`) handles the gate-flag lookup uniformly — when the flag is unset, REST is filtered out of the candidate set and the next available transport (scrape or bridge) is selected automatically.
@@ -207,7 +207,7 @@ The following are **probable** but not directly probed yet:
 
 REST `commerce/message/v1` + `commerce/feedback/v1` are now the primary path. Trading XML modules deleted. `/v1/messages` redesigned around eBay's conversation-threaded shape (3 handlers: list / thread / send) instead of the Trading-era flat `Message[]`. `/v1/feedback` shape unchanged externally; internals swapped. SDK + MCP tools + CLI updated.
 
-Re-consent required: existing users' OAuth tokens lack `commerce.message` + `commerce.feedback` scopes; next `/v1/connect/ebay/start` will request them.
+Re-consent required: existing users' OAuth tokens lack `commerce.message` + `commerce.feedback` scopes; next `/v1/connect/ebay` will request them.
 
 Still untested in production: POST writes (send_message, leave feedback, respond_to_feedback) — endpoints exist + scope granted, but no live POST executed. AAQ pre-purchase exposure unverified.
 

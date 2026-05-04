@@ -19,6 +19,7 @@ import {
 	AUTO_RECHARGE_COOLDOWN_MS,
 	creditsForCall,
 	effectiveTierForUser,
+	MIN_TOPUP_CREDITS,
 	recordUsage,
 	type SourceKindForBilling,
 	snapshotBurst,
@@ -45,6 +46,14 @@ function dashboardUrlIfAvailable(path: string, available: boolean): string | und
 declare module "hono" {
 	interface ContextVariableMap {
 		apiKey: ApiKey;
+		/**
+		 * Model the agent route resolved for the current `/v1/agent/chat`
+		 * turn. Set by the agent route after validating the request body
+		 * against tier permissions. Read by the post-handler in
+		 * `requireApiKey` to charge the correct per-turn credit cost
+		 * (mini=5, gpt-5.5=25). Undefined for non-agent endpoints.
+		 */
+		flipagentAgentModel?: string;
 	}
 }
 
@@ -133,11 +142,11 @@ export const requireApiKey = createMiddleware(async (c, next) => {
 	const downgraded = billingTier !== row.tier;
 
 	// Pre-flight credit needed for THIS call. We don't know the resolved
-	// transport yet (rest vs scrape vs bridge — that gets set by the
-	// handler via renderResultHeaders), so charge the worst case for the
-	// gate. Post-handler we recompute against the actual source and bill
-	// the realised cost. Worst-case gating is what stops a 30-credit
-	// caller from stealth-executing a 50-credit evaluate.
+	// agent model yet (the agent route sets `flipagentAgentModel` after
+	// validating tier permissions), so charge the worst case for the
+	// gate. Post-handler we recompute against the actual model and bill
+	// the realised cost. Worst-case gating is what stops a 20-credit
+	// caller from stealth-executing an 80-credit evaluate.
 	const worstCase = viaApiKey ? worstCaseCreditsForEndpoint(c.req.path) : 0;
 	const [usage, burst] = await Promise.all([
 		snapshotUsage({ apiKeyId: row.id, userId: row.userId }, billingTier),
@@ -146,7 +155,7 @@ export const requireApiKey = createMiddleware(async (c, next) => {
 
 	// Pre-charge gate. Block when worst-case cost > remaining credits,
 	// even if `overLimit` is technically false. This is what stops the
-	// "30 credits left, 50-credit evaluate sneaks through" foot-gun.
+	// "20 credits left, 80-credit evaluate sneaks through" foot-gun.
 	// Cost-0 endpoints (status / health / account introspection) stay
 	// accessible so the user can see WHY they're blocked and upgrade.
 	if (viaApiKey && worstCase > 0 && usage.creditsRemaining < worstCase) {
@@ -220,6 +229,7 @@ export const requireApiKey = createMiddleware(async (c, next) => {
 	const latencyMs = Date.now() - startedAt;
 	const statusCode = c.res.status;
 	const source = (c.var.flipagentSource ?? null) as SourceKindForBilling;
+	const agentModel = c.var.flipagentAgentModel ?? null;
 	// Don't charge credits for transient infra failures: 5xx (our or
 	// upstream's bug) and 429 from upstream (e.g. eBay Browse hit its
 	// app-credential daily cap — caller did nothing wrong). The audit
@@ -228,7 +238,8 @@ export const requireApiKey = createMiddleware(async (c, next) => {
 	// too, so a flurry of upstream 5xx/429s doesn't lock the caller out
 	// of legitimate retries via the burst gate.
 	const isTransientFailure = statusCode >= 500 || statusCode === 429;
-	const realisedCredits = viaApiKey && !isTransientFailure ? creditsForCall({ endpoint: c.req.path, source }) : 0;
+	const realisedCredits =
+		viaApiKey && !isTransientFailure ? creditsForCall({ endpoint: c.req.path, source, agentModel }) : 0;
 	c.res.headers.set("X-Flipagent-Credits-Charged", String(realisedCredits));
 
 	// Skip usage_events insert ONLY when the caller is the dashboard
@@ -290,8 +301,8 @@ async function maybeFireAutoRecharge(userId: string, tier: Tier, creditsRemainin
 		const [u] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1);
 		if (!u) return;
 		if (!u.autoRechargeEnabled) return;
-		if (!u.autoRechargeThreshold || !u.autoRechargeTopup) return;
-		if (creditsRemainingAfter > u.autoRechargeThreshold) return;
+		if (!u.autoRechargeTarget) return;
+		if (creditsRemainingAfter >= u.autoRechargeTarget) return;
 		if (tier === "free") return;
 		if (!u.stripeCustomerId) return;
 		// Subscription must be in good standing. Catches the cancel-vs-fire
@@ -333,8 +344,17 @@ async function maybeFireAutoRecharge(userId: string, tier: Tier, creditsRemainin
 			.returning({ id: userTable.id });
 		if (claim.length === 0) return;
 
-		await triggerAutoRecharge(cfg, { user: u, tier, credits: u.autoRechargeTopup });
-		console.log(`[auto-recharge] fired ${u.autoRechargeTopup} credits for ${userId}`);
+		// Charge the gap to target. Stripe's per-charge floor (~$0.50) +
+		// the no-op cycle of "balance ticked 1 below target → fire 1 →
+		// stuck at target − ε" both push us to a min size. The recharge
+		// may overshoot `target` slightly when the gap is tiny; that's
+		// fine and matches the user's intent ("at least target").
+		const gap = u.autoRechargeTarget - creditsRemainingAfter;
+		const credits = Math.max(gap, MIN_TOPUP_CREDITS);
+		await triggerAutoRecharge(cfg, { user: u, tier, credits });
+		console.log(
+			`[auto-recharge] fired ${credits} credits for ${userId} (target=${u.autoRechargeTarget}, balance=${creditsRemainingAfter})`,
+		);
 	} catch (err) {
 		// Declined / authentication_required / Stripe errors all land
 		// here. The webhook payment_intent.payment_failed handler

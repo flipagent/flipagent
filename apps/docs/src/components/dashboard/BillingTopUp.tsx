@@ -1,21 +1,18 @@
 /**
- * Auto-recharge widget. One job: configure the threshold-driven
- * auto-recharge. When `creditsRemaining` drops below the threshold,
- * the api fires an off-session PaymentIntent against the saved card.
+ * Auto-recharge widget. Configures a single target balance — when the
+ * caller's `creditsRemaining` drops below the target, the api charges
+ * the saved card to refill the gap (Stripe-min-bounded). One number
+ * controls everything: trigger and recharge size collapse into "the
+ * floor balance you want maintained".
  *
- * Layout — heading + switch on top, threshold input revealed only when
- * the switch is on. No top-up amount picker (server applies a tier
- * default: Hobby 5k / Standard 25k / Growth 100k).
- *
- * Free-tier users see the same heading + switch (disabled) + a
- * one-line "Subscribe to enable" hint. The threshold field stays
- * hidden because it's never editable from a free tier.
+ * Layout — heading + switch on top, target input revealed only when
+ * the switch is on. Free-tier users see a disabled switch + a one-line
+ * "Subscribe to enable" tooltip; the target field stays hidden.
  */
 
 import type {
 	BillingAutoRechargeConfig,
 	BillingAutoRechargeUpdateRequest,
-	BillingTopUpQuotesResponse,
 } from "@flipagent/types";
 import * as RxSwitch from "@radix-ui/react-switch";
 import * as RxTooltip from "@radix-ui/react-tooltip";
@@ -32,38 +29,41 @@ interface Props {
 	onChanged?: () => void;
 }
 
+/**
+ * Per-tier `targetCredits` upper bound — must match
+ * `TARGET_RANGE_BY_TIER` in `packages/api/src/auth/limits.ts`. The
+ * server re-validates so the dashboard can be opportunistic about
+ * showing a sensible max here.
+ */
+const TARGET_MAX_BY_TIER: Record<Exclude<Tier, "free">, number> = {
+	hobby: 10_000,
+	standard: 50_000,
+	growth: 200_000,
+};
+
+const TARGET_MIN = 500;
+const DEFAULT_TARGET = 1_000;
+
 export function BillingTopUp({ tier, onError, onChanged }: Props) {
 	const isFree = tier === "free";
+	const targetMax = isFree ? TARGET_MAX_BY_TIER.hobby : TARGET_MAX_BY_TIER[tier];
 
 	const [config, setConfig] = useState<BillingAutoRechargeConfig | null>(null);
-	const [topUpDisplay, setTopUpDisplay] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [savingConfig, setSavingConfig] = useState(false);
 
 	const [enabled, setEnabled] = useState(false);
-	const [thresholdInput, setThresholdInput] = useState("1000");
+	const [targetInput, setTargetInput] = useState(String(DEFAULT_TARGET));
 
 	useEffect(() => {
 		let alive = true;
 		(async () => {
 			try {
-				// /quote 403s on free; skip it there. Auto-recharge config
-				// works on every tier (returns the off-by-default shape
-				// for free).
-				const [c, q] = await Promise.all([
-					apiFetch<BillingAutoRechargeConfig>("/v1/billing/auto-recharge"),
-					isFree
-						? Promise.resolve(null)
-						: apiFetch<BillingTopUpQuotesResponse>("/v1/billing/quote").catch(() => null),
-				]);
+				const c = await apiFetch<BillingAutoRechargeConfig>("/v1/billing/auto-recharge");
 				if (!alive) return;
 				setConfig(c);
 				setEnabled(c.enabled);
-				if (c.thresholdCredits) setThresholdInput(String(c.thresholdCredits));
-				if (q && c.topUpCredits) {
-					const match = q.quotes.find((x) => x.credits === c.topUpCredits);
-					if (match) setTopUpDisplay(`${c.topUpCredits.toLocaleString()} credits (${match.priceDisplay})`);
-				}
+				if (c.targetCredits) setTargetInput(String(c.targetCredits));
 			} catch (err) {
 				if (alive) onError(err instanceof Error ? err.message : String(err));
 			} finally {
@@ -73,7 +73,7 @@ export function BillingTopUp({ tier, onError, onChanged }: Props) {
 		return () => {
 			alive = false;
 		};
-	}, [isFree, onError]);
+	}, [onError]);
 
 	async function saveConfig(nextEnabled: boolean) {
 		// Free can't toggle on — switch is disabled in the JSX, but the
@@ -82,9 +82,9 @@ export function BillingTopUp({ tier, onError, onChanged }: Props) {
 		setSavingConfig(true);
 		onError(null);
 		try {
-			const threshold = Number(thresholdInput);
+			const target = Number(targetInput);
 			const body: BillingAutoRechargeUpdateRequest = nextEnabled
-				? { enabled: true, thresholdCredits: threshold }
+				? { enabled: true, targetCredits: target }
 				: { enabled: false };
 			const updated = await apiFetch<BillingAutoRechargeConfig>("/v1/billing/auto-recharge", {
 				method: "PUT",
@@ -110,13 +110,9 @@ export function BillingTopUp({ tier, onError, onChanged }: Props) {
 	}
 
 	const switchDisabled = isFree || savingConfig;
-	// Same friendly description for everyone — the "you can't enable
-	// this yet" signal lives in the tooltip on the disabled switch,
-	// not in the body copy. Keeps the card welcoming on free.
-	const helpText =
-		topUpDisplay && enabled
-			? `Top up ${topUpDisplay} automatically when your balance gets low.`
-			: "Top up your credits automatically when your balance gets low.";
+	const helpText = enabled
+		? `We keep your balance at or above the target by topping up the saved card when it dips below.`
+		: "Keep your balance topped up automatically. Set a target floor and we refill when it dips below.";
 
 	return (
 		<div className="dash-card">
@@ -162,18 +158,18 @@ export function BillingTopUp({ tier, onError, onChanged }: Props) {
 
 			{enabled && !isFree && (
 				<div className="topup-field">
-					<label htmlFor="topup-threshold" className="topup-field-label">
-						Trigger threshold
+					<label htmlFor="topup-target" className="topup-field-label">
+						Target balance
 					</label>
 					<div className="topup-field-row">
 						<input
-							id="topup-threshold"
+							id="topup-target"
 							type="number"
-							min={100}
-							max={50_000}
+							min={TARGET_MIN}
+							max={targetMax}
 							step={100}
-							value={thresholdInput}
-							onChange={(e) => setThresholdInput(e.target.value)}
+							value={targetInput}
+							onChange={(e) => setTargetInput(e.target.value)}
 							disabled={savingConfig}
 						/>
 						<span className="topup-field-suffix">credits</span>

@@ -31,11 +31,11 @@ flipagent search "canon ef 50mm 1.8" --limit 10
 flipagent sold "canon ef 50mm 1.8" --limit 50
 
 # Score one listing — composite (server fetches detail + sold + active)
-flipagent evaluate v1|123456789|0
+flipagent evaluate 'v1|123456789|0'
 
 # Forwarder catalog + per-item quote
 flipagent ship providers
-flipagent ship quote --item v1|123456789|0 --weight 500 --dest NY
+flipagent ship quote --item 'v1|123456789|0' --weight 500 --dest NY
 ```
 
 All commands print JSON to stdout — pipe to `jq`, redirect to a file,
@@ -56,17 +56,42 @@ Re-running is idempotent — only the `flipagent` entry is replaced.
 
 ## All commands
 
+`flipagent --help` (or `-h`) prints the full reference; the canonical
+list lives there. Headlines:
+
 ```
+# Auth + diagnostics
 flipagent login [--key <value>] [--base-url <url>]
 flipagent logout
 flipagent whoami
+flipagent doctor                                         # which features wired + key scope
 
+# Sourcing + decisions
 flipagent search <query> [--limit N] [--filter <expr>] [--sort <key>]
 flipagent sold <query> [--limit N]
 flipagent evaluate <itemId> [--lookback-days N] [--sold-limit N] [--min-net <cents>]
 flipagent ship providers
 flipagent ship quote --item <id> --weight <g> --dest <state> [--provider <id>]
 
+# Buy
+flipagent buy <itemId> [--quantity N] [--variation <id>]
+
+# Sell + finance
+flipagent sales list [--status paid|shipped|delivered|refunded|cancelled] [--limit N]
+flipagent sales ship <orderId> --tracking <num> --carrier <name>
+flipagent payouts list [--limit N]
+flipagent transactions list [--type sale|refund|fee|adjustment] [--payout-id <id>] [--limit N]
+
+# Buyer comms + post-sale
+flipagent messages list [--type from_ebay|from_members] [--limit N]
+flipagent messages thread <conversationId> --type from_ebay|from_members
+flipagent messages send (--conversation <id> | --to <username>) --body <text> [--listing <itemId>]
+flipagent offers list [--direction incoming|outgoing] [--status pending|accepted|...]
+flipagent disputes list [--status open|awaiting_seller|...] [--type return|cancellation|inr|snad|inquiry]
+flipagent feedback awaiting
+flipagent feedback list [--role buyer|seller] [--rating positive|neutral|negative]
+
+# Setup
 flipagent init [--mcp] [--keys] [--key <value>]
 ```
 
@@ -88,7 +113,7 @@ If you'd rather paste it yourself, drop this into your host's MCP config:
 
 ## Get a key
 
-[flipagent.dev/signup](https://flipagent.dev/signup) — free tier (500 credits one-time, no card).
+[flipagent.dev/signup](https://flipagent.dev/signup) — free tier (1,000 credits one-time, no card).
 
 ## License
 

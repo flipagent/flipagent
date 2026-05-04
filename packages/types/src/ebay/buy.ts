@@ -678,7 +678,7 @@ export type SoldSearchQuery = Static<typeof SoldSearchQuery>;
 export const ItemDetailParams = Type.Object(
 	{
 		itemId: Type.String({
-			description: "eBay item id, e.g. 'v1|123456789|0'. Returned by flipagent_items_search results.",
+			description: "eBay item id, e.g. 'v1|123456789|0'. Returned by flipagent_search_items results.",
 		}),
 	},
 	{ $id: "ItemDetailParams" },
@@ -692,7 +692,7 @@ export type ItemDetailParams = Static<typeof ItemDetailParams>;
  * internally by the `/v1/purchases` resource service to model the
  * upstream wire payload; both transports produce these shapes:
  *
- *   1. EBAY_ORDER_API_APPROVED=1 → REST passthrough to api.ebay.com
+ *   1. EBAY_ORDER_APPROVED=1 → REST passthrough to api.ebay.com
  *   2. otherwise → flipagent's bridge implementation (Chrome
  *      extension watches the BIN flow and records the resulting order
  *      id; the user clicks BIN + Confirm-and-pay themselves)
@@ -732,7 +732,7 @@ export const InitiateCheckoutSessionRequest = Type.Object(
 		// shippingAddresses / paymentInstruments / pricingSummary etc.
 		// are accepted but ignored in bridge mode (the extension uses
 		// the user's eBay account defaults). Pass-through to REST when
-		// `EBAY_ORDER_API_APPROVED=1`.
+		// `EBAY_ORDER_APPROVED=1`.
 		shippingAddresses: Type.Optional(Type.Array(Type.Unknown())),
 		paymentInstruments: Type.Optional(Type.Array(Type.Unknown())),
 		pricingSummary: Type.Optional(PricingSummary),

@@ -15,8 +15,8 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { withTradingAuth } from "../../middleware/with-trading-auth.js";
-import { BlobNotConfiguredError, createMediaUpload, getMedia } from "../../services/media.js";
 import { uploadSiteHostedPicture } from "../../services/ebay/trading/pictures.js";
+import { BlobNotConfiguredError, createMediaUpload, getMedia } from "../../services/media.js";
 import { errorResponse, tbBody } from "../../utils/openapi.js";
 
 export const mediaRoute = new Hono();
@@ -71,7 +71,10 @@ mediaRoute.post(
 		const json = await c.req.json();
 		const parsed = json as { sourceUrl?: string; pictureName?: string; extensionInDays?: 1 | 5 | 7 | 30 | 60 };
 		if (!parsed.sourceUrl || typeof parsed.sourceUrl !== "string") {
-			return c.json({ error: "missing_source_url", message: "Body must include `sourceUrl` (HTTPS image URL)." }, 400);
+			return c.json(
+				{ error: "missing_source_url", message: "Body must include `sourceUrl` (HTTPS image URL)." },
+				400,
+			);
 		}
 		// Fetch the binary. Cap at 10MB — eBay's own per-image cap is
 		// 12MB but we leave a small margin for the multipart envelope.

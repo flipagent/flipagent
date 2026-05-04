@@ -40,7 +40,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td><code>forwarder</code></td><td>⬜</td><td>Package-forwarder ops via the flipagent extension (Planet Express today).</td></tr>
 						<tr><td><code>notifications</code></td><td>⬜</td><td>Webhooks + eBay platform notifications.</td></tr>
 						<tr><td><code>seller_account</code></td><td>⬜</td><td>Seller diagnostics — privilege, KYC, subscription, payments program, sales tax.</td></tr>
-						<tr><td><code>admin</code></td><td>⬜</td><td>Connection status, ship providers, location ops, browser-DOM escape hatch.</td></tr>
+						<tr><td><code>admin</code></td><td>⬜</td><td>Ship providers, location detail/delete + state toggles, browser-DOM escape hatch (<code>flipagent_query_browser</code>).</td></tr>
 					</tbody>
 				</table>
 
@@ -57,11 +57,11 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td colspan="2"><strong>Sourcing</strong></td></tr>
 						<tr><td><code>flipagent_search_items</code></td><td><code>GET /v1/items/search</code></td></tr>
 						<tr><td><code>flipagent_get_item</code></td><td><code>GET /v1/items/&#123;id&#125;</code></td></tr>
-						<tr><td><code>flipagent_search_sold_items</code></td><td><code>GET /v1/items/sold</code></td></tr>
+						<tr><td><code>flipagent_search_sold_items</code></td><td><code>GET /v1/items/search?status=sold</code></td></tr>
 						<tr><td><code>flipagent_list_categories</code> / <code>flipagent_suggest_category</code> / <code>flipagent_list_category_aspects</code></td><td><code>/v1/categories/*</code></td></tr>
 
 						<tr><td colspan="2"><strong>Decisions + operations</strong></td></tr>
-						<tr><td><code>flipagent_evaluate_item</code></td><td><code>POST /v1/evaluate</code> — composite (search + LLM same-product filter + score)</td></tr>
+						<tr><td><code>flipagent_evaluate_item</code></td><td><code>POST /v1/evaluate</code> — one call returns a buy/hold/skip verdict on a listing</td></tr>
 						<tr><td><code>flipagent_get_evaluate_job</code> / <code>flipagent_get_evaluation_pool</code></td><td><code>/v1/evaluate/*</code></td></tr>
 						<tr><td><code>flipagent_quote_shipping</code></td><td><code>POST /v1/ship/quote</code></td></tr>
 
@@ -89,7 +89,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<p>Every API error response that the caller can fix (OAuth not done, extension not paired, server-side env not configured) carries <code>next_action: &#123; kind, url, instructions &#125;</code>. The MCP renders this directly into <code>isError: true</code> content — relay the text to the end user and they'll know exactly where to go.</p>
 
 				<h2>Compose your own logic</h2>
-				<p>Tools are typed and orthogonal. <code>flipagent_evaluate_item</code> is composite — server-side it fetches detail, searches sold + active, runs an LLM same-product filter, and scores in a single call. Agents can also chain low-level tools (<code>flipagent_search_items</code> → <code>flipagent_search_sold_items</code> → <code>flipagent_evaluate_item</code> → <code>flipagent_quote_shipping</code>) to assemble custom reselling workflows. See the <a href="/docs/coverage/">eBay coverage</a> page for what's wrapped and the <a href="/docs/api/">API reference</a> for request shapes.</p>
+				<p>Tools are typed and orthogonal. <code>flipagent_evaluate_item</code> is the all-in-one tool: pass an itemId and one call returns a buy/hold/skip verdict with profit and demand signals. Agents can also chain low-level tools (<code>flipagent_search_items</code> → <code>flipagent_search_sold_items</code> → <code>flipagent_evaluate_item</code> → <code>flipagent_quote_shipping</code>) to assemble custom reselling workflows. See the <a href="/docs/coverage/">eBay coverage</a> page for what's wrapped and the <a href="/docs/api/">API reference</a> for request shapes.</p>
 			</article>
 		</div>
 	</div>

@@ -1,0 +1,64 @@
+/* Shared modal extras for the Connections flow. Base `.rx-dialog-*`
+ * styles live in Dashboard.css (used by sidebar thread rename/delete);
+ * this file only adds the bits the eBay-connect modal needs on top —
+ * a wider content variant, a bulleted disclosure list, and the consent
+ * checkbox row. Reusing the same vocabulary keeps the modal feel
+ * consistent across the dashboard. */
+
+.rx-dialog-content-wide {
+	max-width: 520px;
+}
+
+.rx-dialog-list {
+	margin: 0 0 14px;
+	padding-left: 18px;
+	font-size: 12.5px;
+	line-height: 1.55;
+	color: var(--text-2);
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.rx-dialog-list li {
+	margin: 0;
+}
+
+.rx-dialog-list code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+	font-size: 11.5px;
+	padding: 1px 5px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--text) 6%, transparent);
+	border: 1px solid var(--border-faint);
+	white-space: nowrap;
+}
+
+.rx-dialog-list a,
+.rx-dialog-desc a,
+.rx-dialog-consent a {
+	color: var(--brand);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.rx-dialog-consent {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin: 0 0 14px;
+	padding: 10px 12px;
+	background: var(--bg-soft);
+	border: 1px solid var(--border-faint);
+	border-radius: 8px;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--text-2);
+	cursor: pointer;
+}
+
+.rx-dialog-consent input[type="checkbox"] {
+	margin-top: 2px;
+	flex-shrink: 0;
+	cursor: pointer;
+}

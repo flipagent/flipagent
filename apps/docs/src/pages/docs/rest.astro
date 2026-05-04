@@ -8,7 +8,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>REST quickstart</h1>
-				<p class="lead">flipagent exposes one unified surface under <code>/v1/*</code>. Every resource is marketplace-agnostic; today eBay-shape responses, future Amazon / Mercari adapters reuse the same paths via a <code>marketplace</code> parameter.</p>
+				<p class="lead">flipagent exposes one unified surface under <code>/v1/*</code>. Responses are flipagent-native (cents-int Money, ISO 8601 timestamps, lowercase status enums, <code>marketplace</code> on every record). Future Amazon / Mercari adapters reuse the same paths via the <code>marketplace</code> parameter.</p>
 
 				<h2>Search active listings</h2>
 				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/items/search?q=canon%2050mm&limit=5" \\
@@ -30,7 +30,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
   -H "Authorization: Bearer fa_free_xxx" \\
   -H "Content-Type: application/json" \\
   -d '{"itemId": "v1|123456789|0", "opts": {"minNetCents": 2000}}'`}</code></pre></div>
-				<p>Composite: server fetches the item detail, searches sold + active listings of the same product, runs an LLM same-product filter, and scores. Returns <code>{`{ item, soldPool, activePool, rejectedSoldPool, rejectedActivePool, market, evaluation, meta }`}</code> — evaluation carries <code>rating: "buy" | "hold" | "skip"</code>, signals, and the recommended exit; meta describes what was fetched (<code>itemSource</code>, <code>soldCount</code>, <code>soldSource</code>, <code>activeCount</code>, <code>activeSource</code>, plus kept/rejected counts after the filter).</p>
+				<p>One call answers "should I flip this?". The server fetches the item, finds real recent sales of the same product, ignores listings that aren't actually the same item, and returns a <code>rating: "buy" | "hold" | "skip"</code> plus the math behind it. Response shape: <code>{`{ item, evaluation, market, sold, active, filter, returns, meta, ... }`}</code>. <code>evaluation</code> carries the rating, signals, and the recommended exit price. <code>sold</code> + <code>active</code> are pre-rolled digests (distribution, histogram, cadence, recent trend, condition mix) — prefer these over the heavier <code>soldPool</code> / <code>activePool</code> arrays kept for back-compat. <code>filter</code> reports kept/rejected counts. <code>meta</code> reports transport + cache provenance. Drill into individual rejected listings via <code>GET /v1/evaluate/&#123;itemId&#125;/pool</code>.</p>
 
 				<h2>Forwarder quote</h2>
 				<div class="code"><pre><code>{`curl -X POST "https://api.flipagent.dev/v1/ship/quote" \\
@@ -50,12 +50,11 @@ const { items, total } = await res.json();`}</code></pre></div>
 				<table class="api">
 					<thead><tr><th>Header</th><th>Meaning</th></tr></thead>
 					<tbody>
-						<tr><td><code>X-RateLimit-Limit</code></td><td>Calls per month for your tier.</td></tr>
-						<tr><td><code>X-RateLimit-Remaining</code></td><td>Calls left in the current period.</td></tr>
-						<tr><td><code>X-RateLimit-Reset</code></td><td>ISO-8601 timestamp of the next monthly reset (UTC).</td></tr>
-						<tr><td><code>X-Flipagent-Source</code></td><td>Origin of the data: <code>rest</code> (eBay REST passthrough), <code>scrape</code> (managed scraper vendor), <code>bridge</code> (Chrome extension in your session), <code>trading</code> (eBay Trading XML API), or <code>llm</code> (LLM-backed intelligence endpoint).</td></tr>
-						<tr><td><code>X-Flipagent-From-Cache</code></td><td><code>true</code> when the response was served from cache instead of a fresh upstream call. Cache hits don't change <code>X-Flipagent-Source</code> — that still reflects the original origin.</td></tr>
-						<tr><td><code>X-Flipagent-Cached-At</code></td><td>ISO-8601 timestamp of when the cached response was first written. Only set on cache hits.</td></tr>
+						<tr><td><code>X-RateLimit-Limit</code></td><td>Credit budget for your tier.</td></tr>
+						<tr><td><code>X-RateLimit-Remaining</code></td><td>Credits left in the current period.</td></tr>
+						<tr><td><code>X-RateLimit-Reset</code></td><td>ISO-8601 timestamp of the next reset (paid tiers only).</td></tr>
+						<tr><td><code>X-Flipagent-Credits-Charged</code></td><td>Credits this call cost.</td></tr>
+						<tr><td><code>X-Flipagent-From-Cache</code></td><td><code>true</code> when the response was served from cache instead of a fresh fetch.</td></tr>
 					</tbody>
 				</table>
 
@@ -68,7 +67,7 @@ const { items, total } = await res.json();`}</code></pre></div>
 						<tr><td>401</td><td><code>unauthorized</code> / <code>invalid_key</code></td><td>Missing or revoked key.</td></tr>
 						<tr><td>429</td><td><code>credits_exceeded</code></td><td>Monthly credit budget exhausted.</td></tr>
 						<tr><td>429</td><td><code>burst_rate_limited</code></td><td>Per-minute or per-hour burst cap hit.</td></tr>
-						<tr><td>502</td><td><code>upstream_failed</code></td><td>eBay returned an error or our scrape was blocked.</td></tr>
+						<tr><td>502</td><td><code>upstream_failed</code></td><td>The upstream marketplace call failed. Usually transient; retry once.</td></tr>
 						<tr><td>503</td><td><code>billing_not_configured</code></td><td>Stripe isn't enabled on the server. Hosted users won't see this.</td></tr>
 					</tbody>
 				</table>

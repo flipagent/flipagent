@@ -64,6 +64,10 @@ export interface ItemSummary {
 	/** Current bid for live AUCTION listings — surfaced in Active bids row. */
 	currentBidPrice?: Money;
 	bidCount?: number;
+	/** ISO 8601 — auction end time. Browse search returns it on summary
+	 * for AUCTION listings, so the row can render a countdown without
+	 * fetching detail. */
+	itemEndDate?: string;
 	image?: { imageUrl: string };
 	/** Eyebrow trust signal — feedback %, score. Server-populated on detail; sometimes on summary too. */
 	seller?: Seller;

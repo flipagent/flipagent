@@ -25,6 +25,8 @@ import { Toaster, toast } from "sonner";
 import { CHANGELOG, type ChangelogEntry, type ChangelogTag } from "../data/changelog";
 import { apiBase, apiFetch, authClient, signOut } from "../lib/authClient";
 import type { ComposeTab } from "./compose/ComposeCard";
+import { ConnChip } from "./connections/ConnChip";
+import { ConnectionsProvider } from "./connections/ConnectionsContext";
 import { BillingHistory } from "./dashboard/BillingHistory";
 import { BillingTopUp } from "./dashboard/BillingTopUp";
 import { EbayConnectConsentModal } from "./dashboard/EbayConnectConsentModal";
@@ -138,21 +140,25 @@ type Features = {
 	ebayOAuth: boolean;
 	orderApi: boolean;
 	insightsApi: boolean;
-	scrapeProxy: boolean;
+	biddingApi: boolean;
+	scraperApi: boolean;
 	betterAuth: boolean;
 	googleOAuth: boolean;
 	email: boolean;
 	stripe: boolean;
+	llm: boolean;
 };
 const DEFAULT_FEATURES: Features = {
 	ebayOAuth: true,
 	orderApi: false,
 	insightsApi: false,
-	scrapeProxy: true,
+	biddingApi: false,
+	scraperApi: true,
 	betterAuth: true,
 	googleOAuth: true,
 	email: true,
 	stripe: true,
+	llm: true,
 };
 
 type ScopeStatus = "ok" | "scrape" | "needs_oauth" | "approval_pending" | "unavailable";
@@ -166,7 +172,8 @@ type Permissions = {
 		inventory: ScopeStatus;
 		fulfillment: ScopeStatus;
 		finance: ScopeStatus;
-		orderApi: ScopeStatus;
+		order: ScopeStatus;
+		bidding: ScopeStatus;
 	};
 };
 
@@ -181,6 +188,12 @@ export default function Dashboard() {
 	// here, we navigate to evaluate; the panel reads it as its initial
 	// input and auto-runs.
 	const [evaluateSeed, setEvaluateSeed] = useState<string | null>(null);
+	// Deep-link from the landing hero: `/dashboard/?view=agent&seed=<prompt>`
+	// drops the visitor on the agent view with `seed` queued as the first
+	// turn. Cleared after `PlaygroundAgent` consumes it (the consumed value
+	// remains a valid React prop — the ref guard inside the component
+	// makes auto-send strictly mount-once).
+	const [agentSeed, setAgentSeed] = useState<string | null>(null);
 	const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
 	const [issued, setIssued] = useState<IssuedKey | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -315,6 +328,19 @@ export default function Dashboard() {
 			sessionStorage.setItem("flipagent_open_ebay_connect", "1");
 			window.history.replaceState({}, "", window.location.pathname);
 		}
+
+		// `/dashboard/?view=agent&seed=<prompt>` — landing hero deep-link.
+		// Switch the dashboard view, queue the prompt for the agent panel,
+		// then strip both params so a refresh / browser-back doesn't replay
+		// the same auto-send. PlaygroundAgent's own ref guard makes the
+		// fire strictly mount-once even if the prop lingers in state.
+		const viewParam = p.get("view");
+		const seedParam = p.get("seed");
+		if (viewParam === "agent" && seedParam) {
+			setAgentSeed(seedParam);
+			setView("playground/agent");
+			window.history.replaceState({}, "", window.location.pathname);
+		}
 	}, []);
 
 	// Cross-component nav: any descendant can dispatch `flipagent-goto`
@@ -342,6 +368,7 @@ export default function Dashboard() {
 	const needsConsent = profile.termsAcceptedVersion !== profile.currentTermsVersion;
 
 	return (
+		<ConnectionsProvider>
 		<div className={`dash-app ${collapsed ? "dash-app--collapsed" : ""}`}>
 			{needsConsent && (
 				<TermsConsentModal
@@ -366,17 +393,10 @@ export default function Dashboard() {
 			<main className="dash-main">
 				<TopBar
 					tier={profile.tier}
-					ebay={ebay}
 					onUpgrade={() => {
 						setView("settings");
 						requestAnimationFrame(() => {
 							document.getElementById("settings-billing")?.scrollIntoView({ behavior: "smooth", block: "center" });
-						});
-					}}
-					onEbay={() => {
-						setView("settings");
-						requestAnimationFrame(() => {
-							document.getElementById("settings-ebay")?.scrollIntoView({ behavior: "smooth", block: "center" });
 						});
 					}}
 				/>
@@ -422,6 +442,7 @@ export default function Dashboard() {
 								setEvaluateSeed(itemId);
 								setView("playground/evaluate");
 							}}
+							agentSeed={agentSeed}
 						/>
 					)}
 					{view === "keys" && (
@@ -456,6 +477,7 @@ export default function Dashboard() {
 
 			<Toaster position="top-right" richColors closeButton />
 		</div>
+		</ConnectionsProvider>
 	);
 }
 
@@ -1314,36 +1336,12 @@ const ICONS = {
 
 /* ─────────── Top bar ─────────── */
 
-function TopBar({
-	tier,
-	ebay,
-	onUpgrade,
-	onEbay,
-}: {
-	tier: Tier;
-	ebay: EbayStatus | null;
-	onUpgrade: () => void;
-	onEbay: () => void;
-}) {
+function TopBar({ tier, onUpgrade }: { tier: Tier; onUpgrade: () => void }) {
 	return (
 		<header className="dash-topbar">
 			<div className="dash-topbar-left">
 				<span className="dash-tier-pill" data-tier={tier}>{tier.toUpperCase()}</span>
-				{ebay && (
-					<button
-						type="button"
-						className={`dash-ebay-pill ${ebay.oauth.connected ? "is-connected" : "is-disconnected"}`}
-						onClick={onEbay}
-						title={ebay.oauth.connected ? "Manage eBay connection" : "Connect eBay account"}
-					>
-						<span className="dash-ebay-dot" aria-hidden="true" />
-						<span>
-							{ebay.oauth.connected
-								? `eBay${ebay.oauth.ebayUserName ? ` · @${ebay.oauth.ebayUserName}` : " · connected"}`
-								: "eBay · not connected"}
-						</span>
-					</button>
-				)}
+				<ConnChip />
 			</div>
 			<div className="dash-topbar-right">
 				<a href="/docs/" className="dash-topbar-link">Docs</a>
@@ -1491,11 +1489,6 @@ function ctaForStep(step: SetupStep, onGoto: (v: View) => void): { label: string
 					});
 				},
 			};
-		case "planetexpress":
-			return {
-				label: "Open Planet Express",
-				onClick: () => window.open("https://app.planetexpress.com/", "_blank", "noopener"),
-			};
 	}
 }
 
@@ -1553,7 +1546,7 @@ function Overview({
 				<EndpointCard
 					title="Evaluate"
 					tag="API"
-					body="Drop in any eBay item. Full pipeline: detail → sold + active search → same-product filter → buy/pass call."
+					body="Drop in any eBay item. Returns a buy/pass call backed by what the same item recently sold for."
 					onClick={() => onGoto("playground/evaluate")}
 				/>
 			</div>
@@ -1777,11 +1770,13 @@ function PlaygroundShell({
 	onChange,
 	evaluateSeed,
 	onEvaluate,
+	agentSeed,
 }: {
 	active: PgTabId;
 	onChange: (next: PgTabId) => void;
 	evaluateSeed: string | null;
 	onEvaluate: (itemId: string) => void;
+	agentSeed: string | null;
 }) {
 	const tabsProps = { tabs: PG_TABS, active, onChange } as const;
 	return (
@@ -1796,7 +1791,7 @@ function PlaygroundShell({
 				<PlaygroundEvaluate tabsProps={tabsProps} seed={evaluateSeed} />
 			</div>
 			<div className={active === "agent" ? "" : "hidden"}>
-				<PlaygroundAgent tabsProps={tabsProps} />
+				<PlaygroundAgent tabsProps={tabsProps} seedPrompt={agentSeed ?? undefined} />
 			</div>
 		</>
 	);
@@ -2296,7 +2291,7 @@ type BreakdownRow = {
 // Used in the breakdown table to render `count × credits = total` for each
 // endpoint. Keep in sync with the server-side function.
 function creditsForEndpoint(endpoint: string): number {
-	if (endpoint.startsWith("/v1/evaluate")) return 50;
+	if (endpoint.startsWith("/v1/evaluate")) return 80;
 	if (endpoint.startsWith("/v1/items")) return 1;
 	if (endpoint.startsWith("/v1/products")) return 1;
 	if (endpoint.startsWith("/v1/categories")) return 1;

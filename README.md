@@ -48,9 +48,7 @@
 
 ## Quick Start
 
-> **Want to try it before installing anything?** Run Sourcing and Evaluate live in the [playground](https://flipagent.dev/playground) right now.
-
-1. Sign up at [flipagent.dev](https://flipagent.dev/signup) for an API key (500 credits, no card).
+1. Sign up at [flipagent.dev](https://flipagent.dev/signup) for an API key (1,000 credits, no card).
 2. Install the MCP server in your AI client (Claude Code and others):
    ```bash
    npx -y flipagent-cli init --mcp
@@ -61,7 +59,7 @@
 
 > "Find me underpriced vintage camera lots ending in the next 24 hours."
 
-The agent looks up the category, then calls `flipagent_items_search { "categoryId": "...", "sort": "endTimeSoonest" }` and surfaces deals worth a closer look.
+The agent looks up the category, then calls `flipagent_search_items { "categoryId": "...", "sort": "endTimeSoonest" }` and surfaces deals worth a closer look.
 
 <details>
 <summary><b>SDK / cURL</b></summary>
@@ -82,7 +80,7 @@ curl -X GET 'https://api.flipagent.dev/v1/items/search?categoryId=...&sort=endTi
 
 > "Evaluate this eBay listing for me: https://www.ebay.com/itm/123456789. Is it a good flip?"
 
-The agent calls `flipagent_evaluate { "itemId": "https://www.ebay.com/itm/123456789" }` and gets back a rating plus expected net profit.
+The agent calls `flipagent_evaluate_item { "itemId": "https://www.ebay.com/itm/123456789" }` and gets back a rating plus expected net profit.
 
 <details>
 <summary><b>SDK / cURL</b></summary>
@@ -105,7 +103,7 @@ curl -X POST 'https://api.flipagent.dev/v1/evaluate' \
 
 > "Buy this one for me: https://www.ebay.com/itm/123456789."
 
-The agent calls `flipagent_purchases_create { "items": [...], "humanReviewedAt": "..." }`. eBay's policy makes checkout human-only, so the order pauses for your confirmation before it's placed.
+The agent calls `flipagent_create_purchase { "items": [...], "humanReviewedAt": "..." }`. eBay's policy makes checkout human-only, so the order pauses for your confirmation before it's placed.
 
 <details>
 <summary><b>SDK / cURL</b></summary>
@@ -197,13 +195,14 @@ await client.listings.relist(sku);
 
 ### Forwarder
 
-Pulls inbound package status from your forwarder (Planet Express today).
+Pulls inbound package status from your forwarder (Planet Express today). Address is per-key — the same `provider` literal threads every call.
 
 ```ts
-await client.forwarder.planetExpress.packages();
+await client.forwarder.refresh({ provider: "planetexpress" });
+const { packages } = await client.forwarder.inventory.list({ provider: "planetexpress" });
 ```
 
-Sales, payouts, transactions, expenses, categories, products, and ship quotes are all available too. See the [API reference](https://flipagent.dev/docs/api).
+Sales, payouts, transactions, categories, products, and ship quotes are all available too. See the [API reference](https://flipagent.dev/docs/api).
 
 ---
 
@@ -214,7 +213,7 @@ The backend is source-available under [FSL-1.1-ALv2](packages/api/LICENSE).
 ```bash
 git clone https://github.com/flipagent/flipagent && cd flipagent
 docker compose up
-docker compose exec api node packages/api/dist/scripts/issue-key.js you@example.com
+npm run --workspace @flipagent/api issue-key -- you@example.com
 ```
 
 Migrations run on boot. Scraper, Stripe, and OAuth credentials are optional; drop them in `packages/api/.env` (copy from `.env.example`) when you want them. See [`packages/api/README.md`](packages/api/README.md) for production setup.
@@ -225,8 +224,8 @@ Migrations run on boot. Scraper, Stripe, and OAuth credentials are optional; dro
 
 - [Documentation](https://flipagent.dev/docs)
 - [API Reference](https://flipagent.dev/docs/api)
-- [Playground](https://flipagent.dev/playground)
-- [Changelog](https://flipagent.dev/changelog)
+- [eBay coverage map](https://flipagent.dev/docs/coverage)
+- [Self-host runbook](https://flipagent.dev/docs/self-host)
 
 ---
 

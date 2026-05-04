@@ -1,14 +1,15 @@
 /**
- * `flipagent_purchases_create` / `_get` / `_cancel` — buy-side
- * tools backed by `/v1/purchases`. Auto-picks the REST transport when
- * `EBAY_ORDER_API_APPROVED=1`; otherwise drives the user's paired
+ * `flipagent_create_purchase` / `flipagent_get_purchase` /
+ * `flipagent_cancel_purchase` — buy-side tools backed by
+ * `/v1/purchases`. Auto-picks the REST transport when
+ * `EBAY_ORDER_APPROVED=1`; otherwise drives the user's paired
  * Chrome extension (the "bridge client") to BIN inside their real
  * Chrome session.
  *
- * `flipagent_purchases_create` queues a purchase and returns immediately
+ * `flipagent_create_purchase` queues a purchase and returns immediately
  * with the `purchaseOrderId`. The agent should poll
- * `flipagent_purchases_get` until
- * it reports a terminal state — `completed`, `failed`, `cancelled`.
+ * `flipagent_get_purchase` until it reports a terminal state —
+ * `completed`, `failed`, `cancelled`.
  * That keeps the MCP tool bounded (no minute-long blocking calls)
  * while the underlying transport works asynchronously.
  *
@@ -22,7 +23,7 @@ import { Type } from "@sinclair/typebox";
 import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 
-/* ------------------------ flipagent_purchases_create ------------------------ */
+/* ------------------------ flipagent_create_purchase ------------------------ */
 
 export const ebayBuyItemInput = Type.Object(
 	{
@@ -38,7 +39,7 @@ export const ebayBuyItemInput = Type.Object(
 );
 
 export const ebayBuyItemDescription =
-	"Buy an item (one-shot). Calls POST /v1/purchases — flipagent's normalized buy surface, which compresses initiate + place_order into a single call. Returns a `Purchase` with `status` in `queued | processing | completed | failed | cancelled`; poll `flipagent_get_purchase` until terminal. Auto-picks REST transport when the api operator has set `EBAY_ORDER_API_APPROVED=1` and the api key has eBay OAuth bound; otherwise the bridge transport drives the user's paired Chrome extension. On failure the response carries `next_action` with the exact link to send the user to (extension install / OAuth start).";
+	"Buy an item (one-shot). Calls POST /v1/purchases — flipagent's normalized buy surface, which compresses initiate + place_order into a single call. Returns a `Purchase` with `status` in `queued | processing | completed | failed | cancelled`; poll `flipagent_get_purchase` until terminal. Auto-picks REST transport when the api operator has set `EBAY_ORDER_APPROVED=1` and the api key has eBay OAuth bound; otherwise the bridge transport drives the user's paired Chrome extension. **Required**: pass `humanReviewedAt` as an ISO-8601 timestamp from when a human in your interface confirmed THIS specific order, not older than 5 minutes. eBay's User Agreement (effective 2026-02-20) prohibits buy-bots without per-order human review; the orchestrator returns 412 `disclaimer_not_acknowledged` on a missing or stale attestation. On failure the response carries `next_action` with the exact link to send the user to (extension install / OAuth start).";
 
 const LEGACY_ITEM_ID = /^\d{9,15}$/;
 const V1_ITEM_ID = /^v1\|(\d{9,15})\|(\d+)$/i;
@@ -120,7 +121,7 @@ export const ebayOrderCancelInput = Type.Object(
 );
 
 export const ebayOrderCancelDescription =
-	"Cancel a non-terminal purchase order via the bridge protocol. Today this hits the underlying bridge queue cancel — orders in QUEUED_FOR_PROCESSING / PROCESSING (pre-place) flip to CANCELED; once the extension is mid-place the cancel is no-op. (eBay Buy Order REST does not expose a public cancel; this is the bridge-mode extension.)";
+	'Cancel a non-terminal purchase order. Calls POST /v1/purchases/{id}/cancel. **When to use** — abort an order that\'s still `queued` or early `processing` before the extension hits the eBay review screen. Once the user is mid-place (clicked Buy It Now, on the Confirm-and-pay page) the cancel is a no-op — the agent should stop polling and let the human\'s click decide. **Inputs** — `purchaseOrderId` (UUID from `flipagent_create_purchase`). **Output** — `Purchase` row with `status: "cancelled"`. **Note** — eBay Buy Order REST does not expose a public cancel; flipagent\'s cancel hooks the bridge queue. **Example** — `{ purchaseOrderId: "..." }`.';
 
 export async function ebayOrderCancelExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const id = String(args.purchaseOrderId);

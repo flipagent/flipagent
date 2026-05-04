@@ -8,16 +8,16 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>Rate limits</h1>
-				<p class="lead">Credits cover the work that runs on flipagent's infrastructure — sourcing scrape (1) and AI evaluation (50). Calls that pass through to your own connected eBay account are unmetered. Cached responses don't count. Free is a one-time grant; paid tiers refill monthly (UTC).</p>
+				<p class="lead">Credits cover the work flipagent runs on its servers: each marketplace request, each evaluation, each agent turn. Calls that pass through to your own connected eBay account (listings, sales, fulfillment) are free. They don't run on us. Free is a one-time grant; paid tiers refill monthly (UTC).</p>
 
 				<h2>Tier table</h2>
 				<table class="api">
 					<thead><tr><th>Tier</th><th>Credits</th><th>Refill</th><th>Burst (min / hour)</th></tr></thead>
 					<tbody>
-						<tr><td>Free</td><td>500</td><td>One-time (lifetime grant)</td><td>10 / 200</td></tr>
+						<tr><td>Free</td><td>1,000</td><td>One-time (lifetime grant)</td><td>30 / 200</td></tr>
 						<tr><td>Hobby ($19/mo)</td><td>3,000</td><td>Monthly</td><td>30 / 1,200</td></tr>
-						<tr><td>Standard ($99/mo)</td><td>100,000</td><td>Monthly</td><td>120 / 6,000</td></tr>
-						<tr><td>Growth ($399/mo)</td><td>500,000</td><td>Monthly</td><td>600 / 25,000</td></tr>
+						<tr><td>Standard ($99/mo)</td><td>25,000</td><td>Monthly</td><td>120 / 6,000</td></tr>
+						<tr><td>Growth ($399/mo)</td><td>120,000</td><td>Monthly</td><td>600 / 25,000</td></tr>
 					</tbody>
 				</table>
 
@@ -25,19 +25,36 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<table class="api">
 					<thead><tr><th>Feature</th><th>Endpoint prefix</th><th>Credits</th></tr></thead>
 					<tbody>
-						<tr><td>Marketplace data</td><td><code>/v1/items</code>, <code>/v1/categories</code>, <code>/v1/products</code>, <code>/v1/trends</code></td><td>1</td></tr>
-						<tr><td>Evaluate</td><td><code>/v1/evaluate</code></td><td>50</td></tr>
-						<tr><td>Cache hit</td><td>any (response carries <code>X-Flipagent-From-Cache: true</code>)</td><td>0</td></tr>
+						<tr><td>Marketplace data</td><td><code>/v1/items</code>, <code>/v1/products</code>, <code>/v1/categories</code>, <code>/v1/trends</code>: search, get, list</td><td>1</td></tr>
+						<tr><td>Evaluate</td><td><code>/v1/evaluate</code>: one call returns a buy/hold/skip verdict with profit and demand signals</td><td>80</td></tr>
+						<tr><td>Agent (gpt-5.4-mini)</td><td><code>/v1/agent/chat</code> default: one chat turn</td><td>5</td></tr>
+						<tr><td>Agent (gemini-2.5-flash)</td><td><code>/v1/agent/chat</code> with <code>model: "gemini-2.5-flash"</code>: cheapest, also available on Free</td><td>3</td></tr>
+						<tr><td>Agent (claude-sonnet-4-7)</td><td><code>/v1/agent/chat</code> with <code>model: "claude-sonnet-4-7"</code>: paid tiers only</td><td>15</td></tr>
+						<tr><td>Agent (gpt-5.5)</td><td><code>/v1/agent/chat</code> with <code>model: "gpt-5.5"</code>: paid tiers only</td><td>25</td></tr>
+						<tr><td>Account ops</td><td>OAuth-connected sell-side, Chrome-extension buys + forwarder</td><td>0</td></tr>
+						<tr><td>Cache hit</td><td>any (response carries <code>X-Flipagent-From-Cache: true</code>)</td><td>same as a fresh call</td></tr>
 					</tbody>
 				</table>
-				<p>Free routes (uncounted, burst rate-limit only): everything that runs on your own connected eBay account or browser — <code>/v1/listings</code>, <code>/v1/sales</code>, <code>/v1/payouts</code>, <code>/v1/transactions</code>, <code>/v1/transfers</code>, <code>/v1/disputes</code>, <code>/v1/policies</code>, <code>/v1/violations</code>, <code>/v1/recommendations</code>, <code>/v1/marketplaces</code>, <code>/v1/me/seller</code>, <code>/v1/messages</code>, <code>/v1/offers</code>, <code>/v1/feedback</code>, <code>/v1/promotions</code>, <code>/v1/markdowns</code>, <code>/v1/ads</code>, <code>/v1/store</code>, <code>/v1/analytics</code>, <code>/v1/feeds</code>, <code>/v1/bids</code>, <code>/v1/translate</code>, <code>/v1/labels</code>, <code>/v1/purchases</code>, <code>/v1/forwarder/*</code>, <code>/v1/ship/*</code>, <code>/v1/expenses/*</code>, <code>/v1/browser/*</code>, <code>/v1/bridge/*</code>, <code>/v1/watching</code>, <code>/v1/saved-searches</code>, <code>/v1/charities</code>, <code>/v1/media</code>, <code>/v1/featured</code>, <code>/v1/listing-groups</code>, <code>/v1/locations</code>, <code>/v1/notifications</code>, <code>/v1/webhooks</code> — plus account routes: <code>/v1/health</code>, <code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/capabilities</code>, <code>/v1/admin/*</code>.</p>
+				<p>Free routes (uncounted, burst rate-limit only): everything that runs on your own connected eBay account or browser, including <code>/v1/listings</code>, <code>/v1/sales</code>, <code>/v1/payouts</code>, <code>/v1/transactions</code>, <code>/v1/transfers</code>, <code>/v1/disputes</code>, <code>/v1/policies</code>, <code>/v1/recommendations</code>, <code>/v1/me/seller</code>, <code>/v1/messages</code>, <code>/v1/offers</code>, <code>/v1/feedback</code>, <code>/v1/analytics</code>, <code>/v1/bids</code>, <code>/v1/labels</code>, <code>/v1/purchases</code>, <code>/v1/forwarder/*</code>, <code>/v1/ship/*</code>, <code>/v1/browser/*</code>, <code>/v1/bridge/*</code>, <code>/v1/media</code>, <code>/v1/locations</code>, <code>/v1/notifications</code>, <code>/v1/webhooks</code>. Plus account routes: <code>/v1/health</code>, <code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/capabilities</code>, <code>/v1/admin/*</code>.</p>
+
+				<h2>Worked examples</h2>
+				<table class="api">
+					<thead><tr><th>Workflow</th><th>Credits</th></tr></thead>
+					<tbody>
+						<tr><td>Find candidates: 10 keyword searches + 5 category browses</td><td>15</td></tr>
+						<tr><td>Score 5 listings before buying (5× evaluate)</td><td>400</td></tr>
+						<tr><td>20-message agent thread on mini</td><td>100</td></tr>
+						<tr><td>20-message agent thread on gpt-5.5</td><td>500</td></tr>
+						<tr><td>List + ship a sale (any volume)</td><td>0</td></tr>
+					</tbody>
+				</table>
 
 				<h2>Headers on every authed response</h2>
-				<div class="code"><pre><code>{`X-RateLimit-Limit:              500       # tier credit budget
-X-RateLimit-Remaining:          427       # credits left this month
-X-RateLimit-Reset:              2026-05-01T00:00:00.000Z
-X-Flipagent-Credits-Charged:    1         # what this call cost (0 for free routes)
-X-Flipagent-From-Cache:         true      # only on cache hits; not charged`}</code></pre></div>
+				<div class="code"><pre><code>{`X-RateLimit-Limit:              3000      # tier credit budget
+X-RateLimit-Remaining:          2727      # credits left this period
+X-RateLimit-Reset:              2026-06-01T00:00:00.000Z   # paid tiers only
+X-Flipagent-Credits-Charged:    1         # what this call cost
+X-Flipagent-From-Cache:         true      # cache hits charge the same as a fresh call`}</code></pre></div>
 
 				<h2>Hitting the limit</h2>
 				<p>When you've spent your monthly budget, you'll get a <code>429</code>:</p>
@@ -46,16 +63,16 @@ X-Flipagent-From-Cache:         true      # only on cache hits; not charged`}</c
   "message": "Monthly credit budget for tier \\"hobby\\" is 3000; you've used 3000.",
   "creditsUsed": 3000,
   "creditsLimit": 3000,
-  "resetAt": "2026-05-01T00:00:00.000Z",
+  "resetAt": "2026-06-01T00:00:00.000Z",
   "upgrade": "https://flipagent.dev/pricing"
 }`}</code></pre></div>
-				<p>If you spike too fast — e.g. 200 calls in one minute on a Hobby key — you'll get a separate <code>429</code> for the burst window:</p>
+				<p>If you spike too fast (e.g. 200 calls in one minute on a Hobby key), you'll get a separate <code>429</code> for the burst window:</p>
 				<div class="code"><pre><code>{`{
   "error": "burst_rate_limited",
   "window": "minute",
   "message": "Burst rate limit hit (per-minute). Slow down or upgrade for higher limits."
 }`}</code></pre></div>
-				<p>Paid plan counters reset at <code>00:00 UTC</code> on the first of the next month. The Free tier's 500 credits are a one-time grant — once spent, a maxed-out Free key can only proceed by upgrading. <code>resetAt</code> is <code>null</code> for Free; an ISO timestamp for paid tiers. Hit <code>POST /v1/billing/checkout</code> with <code>tier: "hobby"</code>, <code>"standard"</code>, or <code>"growth"</code> to upgrade.</p>
+				<p>Paid plan counters reset at <code>00:00 UTC</code> on the first of the next month. The Free tier's 1,000 credits are a one-time grant. Once spent, a maxed-out Free key can only proceed by upgrading. <code>resetAt</code> is <code>null</code> for Free; an ISO timestamp for paid tiers. Hit <code>POST /v1/billing/checkout</code> with <code>tier: "hobby"</code>, <code>"standard"</code>, or <code>"growth"</code> to upgrade.</p>
 			</article>
 		</div>
 	</div>

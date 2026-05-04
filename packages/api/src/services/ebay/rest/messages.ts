@@ -160,12 +160,20 @@ export async function getConversationThread(args: GetConversationThreadArgs): Pr
 		path: `/commerce/message/v1/conversation/${encodeURIComponent(args.conversationId)}?${params}`,
 		marketplace: "EBAY_US",
 	});
+	// eBay's thread detail GET often omits conversation-level
+	// `createdDate` even though the list endpoint includes it. Fall back
+	// to the earliest message's date so callers always get a populated
+	// `createdAt` — matches what the list view shows.
+	const earliestMessageDate = (res.messages ?? [])
+		.map((m) => m.createdDate)
+		.filter((d): d is string => !!d)
+		.sort()[0];
 	const summary: UpstreamConversationDetail = {
 		...(res.conversationId ? { conversationId: res.conversationId } : { conversationId: args.conversationId }),
 		...(res.conversationStatus ? { conversationStatus: res.conversationStatus } : {}),
 		...(res.conversationTitle ? { conversationTitle: res.conversationTitle } : {}),
 		conversationType: res.conversationType ?? denormalizeType(args.type),
-		...(res.createdDate ? { createdDate: res.createdDate } : {}),
+		...(res.createdDate || earliestMessageDate ? { createdDate: res.createdDate ?? earliestMessageDate } : {}),
 		...(res.referenceId ? { referenceId: res.referenceId } : {}),
 		...(res.referenceType ? { referenceType: res.referenceType } : {}),
 		...(res.unreadCount != null ? { unreadCount: res.unreadCount } : {}),

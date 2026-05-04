@@ -42,14 +42,14 @@ describe("toApiCallError", () => {
 				message: "Connect an eBay seller account first.",
 				next_action: {
 					kind: "ebay_oauth",
-					url: "https://api.flipagent.dev/v1/connect/ebay/start",
+					url: "https://api.flipagent.dev/v1/connect/ebay",
 					instructions: "Send the user to this URL to authorize.",
 				},
 			},
 		};
 		const e = toApiCallError(err);
 		expect(e.nextAction?.kind).toBe("ebay_oauth");
-		expect(e.nextAction?.url).toBe("https://api.flipagent.dev/v1/connect/ebay/start");
+		expect(e.nextAction?.url).toBe("https://api.flipagent.dev/v1/connect/ebay");
 		expect(e.nextAction?.instructions).toBe("Send the user to this URL to authorize.");
 	});
 

@@ -58,7 +58,7 @@ export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext
 	// human-review attestation; REST requires it unless the developer
 	// account holds Order API approval (in which case the attestation is
 	// satisfied at the eBay-relationship level, not per call).
-	const humanReviewRequired = transport === "bridge" || !config.EBAY_ORDER_API_APPROVED;
+	const humanReviewRequired = transport === "bridge" || !config.EBAY_ORDER_APPROVED;
 	if (humanReviewRequired) {
 		const ts = input.humanReviewedAt ? Date.parse(input.humanReviewedAt) : NaN;
 		if (!Number.isFinite(ts)) {
@@ -82,7 +82,7 @@ export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext
 		throw new PurchaseError(
 			"shipTo_unsupported_in_bridge_mode",
 			412,
-			"`shipTo` overrides only work in REST transport — bridge transport uses the buyer's stored eBay default. Set `transport='rest'` (requires EBAY_ORDER_API_APPROVED=1) or remove `shipTo`.",
+			"`shipTo` overrides only work in REST transport — bridge transport uses the buyer's stored eBay default. Set `transport='rest'` (requires EBAY_ORDER_APPROVED=1) or remove `shipTo`.",
 		);
 	}
 	if (input.couponCode && transport === "bridge") {
@@ -150,11 +150,11 @@ import type { Address, PurchasePaymentInstrument } from "@flipagent/types";
 import { sellRequest } from "../ebay/rest/user-client.js";
 
 function requireRest(): void {
-	if (!config.EBAY_ORDER_API_APPROVED) {
+	if (!config.EBAY_ORDER_APPROVED) {
 		throw new PurchaseError(
 			"multi_stage_rest_only",
 			412,
-			"Multi-stage updates only work in REST transport. Set EBAY_ORDER_API_APPROVED=1 once eBay grants Buy Order API access.",
+			"Multi-stage updates only work in REST transport. Set EBAY_ORDER_APPROVED=1 once eBay grants Buy Order API access.",
 		);
 	}
 }
@@ -239,7 +239,7 @@ function pickTransport(input: PurchaseCreate, ctx: PurchaseContext): "rest" | "b
 			explicit: input.transport,
 			oauthBound: true,
 			bridgePaired: ctx.bridgePaired ?? true,
-			envFlags: { EBAY_ORDER_API_APPROVED: config.EBAY_ORDER_API_APPROVED },
+			envFlags: { EBAY_ORDER_APPROVED: config.EBAY_ORDER_APPROVED },
 		});
 		// `orders.checkout` only declares rest+bridge in the capability
 		// matrix, so the broader `Transport` union narrows to these two
@@ -250,7 +250,7 @@ function pickTransport(input: PurchaseCreate, ctx: PurchaseContext): "rest" | "b
 			throw new PurchaseError(
 				"transport_unavailable",
 				412,
-				`No available transport: ${err.message}. Set EBAY_ORDER_API_APPROVED=1 for REST, or pair the Chrome extension for bridge.`,
+				`No available transport: ${err.message}. Set EBAY_ORDER_APPROVED=1 for REST, or pair the Chrome extension for bridge.`,
 				"rest_or_extension",
 			);
 		}

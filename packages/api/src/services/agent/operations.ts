@@ -1,33 +1,38 @@
 /**
  * `/v1/agent/*` (preview) — chat with a flipagent-aware agent.
  *
- * Stateful threads ride on OpenAI's Responses API:
- *   - first turn  → set `instructions` + `input`, persist `response.id`
- *   - next turns  → pass `previous_response_id` so OpenAI keeps history
- *                   server-side; only the new user message goes on the wire
+ * Multi-provider via the Vercel AI SDK: OpenAI (gpt-5.4-mini, gpt-5.5),
+ * Anthropic (claude-sonnet-4-7), and Google (gemini-2.5-flash) ride on
+ * the same `streamText` API. Conversation state is held locally in
+ * `agent_sessions.messages` (JSONB array of `ModelMessage`) — none of
+ * the three providers expose a stateful thread API equivalent to
+ * OpenAI's `previous_response_id`, so we always send the full history.
  *
  * User-stated rules / preferences live in `agent_rules` and are folded
- * into `instructions` every turn — that way an updated rule kicks in
- * immediately without resetting the thread.
+ * into the system instructions every turn — that way an updated rule
+ * kicks in immediately without resetting the thread.
  *
- * Tools come from `flipagent-mcp` via OpenAI's native MCP integration —
- * we hand the model an `mcp` tool entry pointing at our own `/mcp`
- * endpoint with the user's api key as the bearer header. New tool =
- * one file in `packages/mcp/src/tools/`; both the standalone MCP binary
- * (Claude Desktop) and the agent see it automatically. Tool use is
- * gated on `MCP_PUBLIC_URL` being set + the user's key having a
- * decryptable plaintext (issued after the ciphertext column existed);
- * without those the agent still chats, just without tools.
+ * Tools come from `flipagent-mcp`. We dispatch them in-process (NOT via
+ * the AI SDK's MCP client) so the full MCP CallTool result flows back
+ * unchanged: `_meta.ui.resourceUri` + `structuredContent` are
+ * captured into a per-request map keyed on `toolCallId`, then attached
+ * to the `tool_call_end` event for inline-UI rendering. The standalone
+ * `/mcp` HTTP endpoint stays available for external clients (Claude
+ * Desktop, etc.) that want native MCP.
  *
- * Cost: gpt-5.5 is $5 / 1M input, $30 / 1M output as of 2026-04-24.
- * We snapshot tokens + a rounded `cost_cents` per run; sub-cent runs
- * round to 0 (recompute precisely from tokens when it matters).
+ * Cost: per-call OpenAI/Anthropic/Google token rates — see
+ * `MODEL_PRICING_PER_1M`. We snapshot tokens + a rounded `cost_cents`
+ * per run; sub-cent runs round to 0 (recompute precisely from tokens
+ * when it matters).
  */
 
-import type { Config as McpConfig } from "flipagent-mcp/config";
-import { selectTools, type Tool as McpTool } from "flipagent-mcp/tools";
+import { anthropic } from "@ai-sdk/anthropic";
+import { google } from "@ai-sdk/google";
+import { openai } from "@ai-sdk/openai";
+import { jsonSchema, type LanguageModel, type ModelMessage, stepCountIs, streamText, type ToolSet, tool } from "ai";
 import { and, desc, eq, sql } from "drizzle-orm";
-import OpenAI from "openai";
+import type { Config as McpConfig } from "flipagent-mcp/config";
+import { type Tool as McpTool, selectTools } from "flipagent-mcp/tools";
 import { decryptKeyPlaintext, isKeyRevealConfigured } from "../../auth/key-cipher.js";
 import { config } from "../../config.js";
 import { db } from "../../db/client.js";
@@ -44,7 +49,7 @@ import {
 export class AgentNotConfiguredError extends Error {
 	readonly code = "agent_not_configured" as const;
 	constructor() {
-		super("OPENAI_API_KEY is not set; /v1/agent/* is disabled");
+		super("Agent not configured: no LLM provider key set (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY).");
 		this.name = "AgentNotConfiguredError";
 	}
 }
@@ -63,21 +68,20 @@ export class AgentError extends Error {
 export interface AgentContext {
 	/** Full validated api-key row. Service reads `id`, `userId`, and (for
 	 *  chat) `keyCiphertext` to decrypt the bearer token forwarded to
-	 *  OpenAI's MCP integration. */
+	 *  the in-process MCP tool dispatcher. */
 	apiKey: ApiKey;
 }
 
 /**
- * Pricing for `AGENT_OPENAI_MODEL`. Updated 2026-04-24 launch pricing
- * for the agent-positioned flagship; override only when OpenAI shifts
- * the meter. For models we don't recognize we charge 0 (run still
- * persists, but cost is unknown — the token columns stay truthful).
+ * Per-1M-token raw $ pricing for each supported model. Used to compute
+ * `cost_cents` on every run. Update when a provider shifts the meter.
+ * Unknown models charge 0 (run still persists with truthful tokens).
  */
 const MODEL_PRICING_PER_1M: Record<string, { input: number; output: number }> = {
-	"gpt-5.5": { input: 5, output: 30 },
-	"gpt-5.5-pro": { input: 30, output: 180 },
-	"gpt-5.4": { input: 2, output: 10 },
 	"gpt-5.4-mini": { input: 0.25, output: 2 },
+	"gpt-5.5": { input: 5, output: 30 },
+	"claude-sonnet-4-7": { input: 3, output: 15 },
+	"gemini-2.5-flash": { input: 0.3, output: 2.5 },
 };
 
 function costCentsFor(model: string, tokensIn: number, tokensOut: number): number {
@@ -88,20 +92,75 @@ function costCentsFor(model: string, tokensIn: number, tokensOut: number): numbe
 }
 
 /**
- * Build the system instructions sent to OpenAI on every turn. Updated
- * rules take effect on the very next message — no thread reset needed.
+ * Convert any error-shaped value to a human-readable string. AI SDK
+ * stream events sometimes carry a plain object (`{ name, message,
+ * cause }`) instead of an actual `Error` instance — `String(obj)` on
+ * that returns "[object Object]", which then lands in the agent_runs
+ * error_message column and gets shown to the user. This walks the
+ * known error shapes (Error, string, object-with-message,
+ * object-with-error.message, JSON fallback) and only resorts to
+ * "unknown_error" when nothing useful can be extracted.
+ */
+function describeError(err: unknown): string {
+	if (err instanceof Error) return err.message || err.name || "Error";
+	if (typeof err === "string") return err;
+	if (err && typeof err === "object") {
+		const o = err as { message?: unknown; error?: { message?: unknown }; name?: unknown };
+		if (typeof o.message === "string" && o.message.length > 0) return o.message;
+		if (o.error && typeof o.error === "object") {
+			const inner = (o.error as { message?: unknown }).message;
+			if (typeof inner === "string" && inner.length > 0) return inner;
+		}
+		if (typeof o.name === "string" && o.name.length > 0) return o.name;
+		try {
+			const json = JSON.stringify(err);
+			if (json && json !== "{}") return json;
+		} catch {
+			/* fall through */
+		}
+	}
+	return "unknown_error";
+}
+
+/**
+ * Resolve a model id to a Vercel AI SDK `LanguageModel`. The provider
+ * is selected from the prefix; route-level tier gating already
+ * validates the id before we get here. Throws `AgentError` when the
+ * required provider key isn't configured for that prefix.
+ */
+function pickModel(modelId: string): LanguageModel {
+	if (modelId.startsWith("gpt-")) {
+		if (!config.OPENAI_API_KEY) throw new AgentError("model_provider_not_configured", `OPENAI_API_KEY not set.`, 503);
+		return openai(modelId);
+	}
+	if (modelId.startsWith("claude-")) {
+		if (!config.ANTHROPIC_API_KEY)
+			throw new AgentError("model_provider_not_configured", `ANTHROPIC_API_KEY not set.`, 503);
+		return anthropic(modelId);
+	}
+	if (modelId.startsWith("gemini-")) {
+		if (!config.GOOGLE_API_KEY) throw new AgentError("model_provider_not_configured", `GOOGLE_API_KEY not set.`, 503);
+		return google(modelId);
+	}
+	throw new AgentError("unknown_model", `Model "${modelId}" is not registered.`, 400);
+}
+
+/**
+ * Build the system instructions sent to the model on every turn.
+ * Updated rules take effect on the very next message — no thread reset
+ * needed.
  */
 function buildInstructions(rules: AgentRuleRow[], mcpEnabled: boolean): string {
 	const today = new Date().toISOString().slice(0, 10);
 	const lines: string[] = [
-		"You are flipagent's reseller agent — you help users run an eBay reselling business.",
+		"You are flipagent's reseller agent. You help users run an eBay reselling business.",
 		"You can answer questions and explain decisions about sourcing, listing, pricing, and fulfillment.",
 	];
 	if (mcpEnabled) {
 		lines.push(
 			"Live data: you have the full `flipagent` MCP toolset wired up. Call `flipagent_get_capabilities` first when the user is new — it tells you which surfaces (eBay OAuth, extension, forwarder) are ready. Use specific tools (search_items, get_item, evaluate_item, list_listings, list_sales, list_payouts, etc.) for fresh data; don't fabricate numbers.",
-			"Do NOT narrate while tool calls are in flight. The host shows the user a live status indicator (\"Searching listings…\", \"Evaluating…\") for every tool call, plus the result UI inline — narration on top is noise. Stay silent until you have results, then write ONE concise reply summarizing what landed. No \"Let me check…\", no \"I'll look that up\", no announcing tools by name.",
-			"Write tools (buy, bid, list, end-listing, ship, cancel, send-message, leave-feedback, respond-to-dispute/offer, register/revoke webhook, opt-in/out program, dispatch package) all work — execute them when the user gives an explicit instruction. For irreversible or buyer/seller-visible actions, echo the key parameters back in one line BEFORE calling the tool (\"Placing a $42 bid on item 12345…\") so the user can interrupt. If the user's instruction is ambiguous or you'd be guessing at amounts/recipients, ask one clarifying question first.",
+			'Do NOT narrate while tool calls are in flight. The host shows the user a live status indicator ("Searching listings…", "Evaluating…") for every tool call, plus the result UI inline. Stay silent until you have results, then write ONE concise reply summarizing what landed. No "Let me check…", no "I\'ll look that up", no announcing tools by name.',
+			"Write tools (buy, bid, list, end-listing, ship, cancel, send-message, leave-feedback, respond-to-dispute/offer, register/revoke webhook, opt-in/out program, dispatch package) all work. Execute them when the user gives an explicit instruction. For irreversible or buyer/seller-visible actions, echo the key parameters back in one line BEFORE calling the tool (\"Placing a $42 bid on item 12345…\") so the user can interrupt. If the user's instruction is ambiguous or you'd be guessing at amounts/recipients, ask one clarifying question first.",
 		);
 	} else {
 		lines.push(
@@ -122,17 +181,11 @@ function buildInstructions(rules: AgentRuleRow[], mcpEnabled: boolean): string {
 }
 
 /**
- * Build the OpenAI function-tools array + per-request MCP config the
- * agent uses to dispatch tools in-process.
- *
- * Why not OpenAI's native MCP integration? The Responses API surfaces
- * MCP `mcp_call.output` items as bare strings (only `content[0].text`),
- * stripping `_meta` and `structuredContent`. That breaks the inline-UI
- * round-trip we need for MCP Apps rendering. By dispatching tools
- * ourselves, the full MCP CallTool result (incl. `_meta.ui.resourceUri`
- * + `structuredContent`) flows back unchanged, and the standalone
- * `/mcp` HTTP endpoint stays available for external clients (Claude
- * Desktop, etc.) that *do* receive the full payload.
+ * Build the in-process MCP tool catalog the agent dispatches. We do
+ * NOT use the AI SDK's `experimental_createMCPClient` because we need
+ * the full MCP CallTool envelope (incl. `_meta.ui.resourceUri` +
+ * `structuredContent`) to flow back unchanged for our inline-UI
+ * round-trip.
  *
  * Bails (returns null) when:
  *   - the api key has no stored ciphertext (legacy keys)
@@ -142,13 +195,6 @@ function buildInstructions(rules: AgentRuleRow[], mcpEnabled: boolean): string {
  */
 interface AgentToolBundle {
 	tools: McpTool[];
-	openaiTools: Array<{
-		type: "function";
-		name: string;
-		description: string;
-		parameters: Record<string, unknown>;
-		strict: boolean;
-	}>;
 	mcpConfig: McpConfig;
 }
 
@@ -166,18 +212,6 @@ function buildAgentTools(apiKey: ApiKey): AgentToolBundle | null {
 	// for irreversible actions); upstream errors (eBay scopes, missing
 	// bridge, etc.) surface back to the user verbatim.
 	const tools = selectTools(["*"]);
-	const openaiTools = tools.map((t) => ({
-		type: "function" as const,
-		name: t.name,
-		description: t.description.length > 1024 ? `${t.description.slice(0, 1020)}…` : t.description,
-		// Tool inputSchemas are TypeBox schemas — they serialize cleanly to
-		// JSON Schema, which is what OpenAI's function tool expects.
-		parameters: (t.inputSchema as unknown as Record<string, unknown>) ?? {
-			type: "object",
-			properties: {},
-		},
-		strict: false,
-	}));
 	const mcpConfig: McpConfig = {
 		flipagentBaseUrl: `http://127.0.0.1:${config.PORT}`,
 		authToken: plaintext,
@@ -185,7 +219,48 @@ function buildAgentTools(apiKey: ApiKey): AgentToolBundle | null {
 		userAgent: "flipagent-agent/0.0.1",
 		enabledToolsets: ["*"],
 	};
-	return { tools, openaiTools, mcpConfig };
+	return { tools, mcpConfig };
+}
+
+/**
+ * Wrap MCP tools as Vercel AI SDK `Tool` objects. Each `execute` runs
+ * our existing in-process `tool.execute(mcpConfig, args)` so we keep
+ * the full MCP envelope. UI hints get stashed in
+ * `uiHintsByCallId` (closure-scoped) keyed on the AI SDK's
+ * `toolCallId`, then surfaced on the matching `tool-result` stream
+ * event.
+ *
+ * Tool input schemas are TypeBox → JSON Schema. We pass them through
+ * `jsonSchema()` so the AI SDK accepts them natively.
+ */
+function buildAiSdkTools(bundle: AgentToolBundle, uiHintsByCallId: Map<string, ExtractedUiHint>): ToolSet {
+	const out: ToolSet = {};
+	for (const t of bundle.tools) {
+		const description = t.description.length > 1024 ? `${t.description.slice(0, 1020)}…` : t.description;
+		out[t.name] = tool({
+			description,
+			// AI SDK's typed `tool()` wants an InferenceSchema; we feed our
+			// TypeBox-derived JSON Schema, which is correct at runtime
+			// even though the TS bridge can't see it.
+			inputSchema: jsonSchema((t.inputSchema as any) ?? { type: "object", properties: {} }) as any,
+			execute: async (args, options) => {
+				let result: unknown;
+				try {
+					result = await t.execute(bundle.mcpConfig, args as Record<string, unknown>);
+				} catch (err) {
+					const message = describeError(err);
+					return JSON.stringify({ error: "tool_threw", message });
+				}
+				const hint = uiHintFromToolResult(result);
+				if (hint && options?.toolCallId) uiHintsByCallId.set(options.toolCallId, hint);
+				// Feed the model just the summary + structured payload.
+				// `_meta` (renderer hints) stays inside our process via the
+				// `uiHintsByCallId` side channel.
+				return toolResultToFnOutput(result);
+			},
+		});
+	}
+	return out;
 }
 
 function deriveTitle(message: string): string {
@@ -261,31 +336,40 @@ interface AgentChatAttachment {
 /**
  * Per-attachment hard cap on the data URL length. Each base64 character
  * encodes ~0.75 bytes, so 12MB of base64 is roughly 9MB of binary —
- * comfortably under OpenAI's 20MB image ceiling and our request body
- * limit. Bigger files are rejected at the route boundary; we re-check
- * here so service callers get the same guard.
+ * comfortably under provider per-image ceilings (~20MB). Bigger files
+ * are rejected at the route boundary; we re-check here so service
+ * callers get the same guard.
  */
 const ATTACHMENT_DATA_URL_MAX_CHARS = 12 * 1024 * 1024;
 
-function buildResponsesInput(
-	message: string,
-	attachments: AgentChatAttachment[],
-): string | Array<{ role: "user"; content: Array<Record<string, unknown>> }> {
-	if (attachments.length === 0) return message;
-	const content: Array<Record<string, unknown>> = [];
-	if (message.length > 0) content.push({ type: "input_text", text: message });
+/**
+ * Build the AI SDK `ModelMessage` for the user's turn. Image/file
+ * attachments ride as additional content parts on the same message.
+ * The SDK normalises these to provider-native shapes (OpenAI
+ * `input_image`, Anthropic `image` block, Gemini `inlineData`) so this
+ * one shape works for all three.
+ */
+function buildUserMessage(message: string, attachments: AgentChatAttachment[]): ModelMessage {
+	if (attachments.length === 0) return { role: "user", content: message };
+	const parts: Array<
+		| { type: "text"; text: string }
+		| { type: "image"; image: string; mediaType?: string }
+		| { type: "file"; data: string; mediaType: string; filename?: string }
+	> = [];
+	if (message.length > 0) parts.push({ type: "text", text: message });
 	for (const a of attachments) {
 		if (a.kind === "image") {
-			content.push({ type: "input_image", image_url: a.dataUrl });
+			parts.push({ type: "image", image: a.dataUrl, ...(a.mimeType ? { mediaType: a.mimeType } : {}) });
 		} else {
-			content.push({
-				type: "input_file",
+			parts.push({
+				type: "file",
+				data: a.dataUrl,
+				mediaType: a.mimeType ?? "application/octet-stream",
 				...(a.name ? { filename: a.name } : {}),
-				file_data: a.dataUrl,
 			});
 		}
 	}
-	return [{ role: "user", content }];
+	return { role: "user", content: parts };
 }
 
 function describeAttachmentsForLog(attachments: AgentChatAttachment[]): string {
@@ -313,9 +397,9 @@ function userActionAsPrompt(action: AgentChatUserAction): string {
 }
 
 /**
- * UI hint extracted from a Responses-API `mcp_call` output item. We
- * prefer the LAST mcp_call's metadata so multi-tool turns surface the
- * most recent UI surface (e.g., search → evaluate → renders evaluate).
+ * UI hint extracted from an MCP CallTool result's `_meta`. We prefer
+ * the LAST hint of a multi-tool turn so the host renders the most
+ * recent UI surface (e.g., search → evaluate → renders evaluate).
  */
 interface ExtractedUiHint {
 	resourceUri: string;
@@ -350,10 +434,10 @@ function uiHintFromToolResult(result: unknown): ExtractedUiHint | null {
 }
 
 /**
- * Stringify a tool's raw return for OpenAI's `function_call_output`
- * channel. For MCP-shaped returns we send `{ summary, data }` so the
- * model gets both the human text and the structured payload, but the
- * heavy `_meta` (renderer hints) stays inside our process.
+ * Stringify a tool's raw return for the AI SDK tool-result channel.
+ * For MCP-shaped returns we send `{ summary, data }` so the model
+ * gets both the human text and the structured payload, but the heavy
+ * `_meta` (renderer hints) stays inside our process.
  */
 function toolResultToFnOutput(result: unknown): string {
 	if (!result || typeof result !== "object") return JSON.stringify(result ?? null);
@@ -394,7 +478,7 @@ export type AgentEvent =
 			tokensOut: number;
 			costCents: number;
 			ui?: ExtractedUiHint;
-		}
+	  }
 	| { type: "error"; code: string; message: string };
 
 export async function* chatWithAgentStream(
@@ -404,10 +488,12 @@ export async function* chatWithAgentStream(
 		sessionId?: string | undefined;
 		attachments?: AgentChatAttachment[] | undefined;
 		userAction?: AgentChatUserAction | undefined;
+		/** Per-request model override. Tier-permission is enforced in the
+		 *  route layer; this service trusts whatever it gets and falls
+		 *  back to `config.AGENT_OPENAI_MODEL` when undefined. */
+		model?: string | undefined;
 	},
 ): AsyncGenerator<AgentEvent, void, void> {
-	if (!config.OPENAI_API_KEY) throw new AgentNotConfiguredError();
-
 	const attachments = req.attachments ?? [];
 	for (const a of attachments) {
 		if (a.dataUrl.length > ATTACHMENT_DATA_URL_MAX_CHARS) {
@@ -436,27 +522,32 @@ export async function* chatWithAgentStream(
 	const instructions = buildInstructions(rules, bundle != null);
 
 	const startedAt = new Date();
-	const model = config.AGENT_OPENAI_MODEL;
-	const openai = new OpenAI({ apiKey: config.OPENAI_API_KEY });
+	const modelId = req.model ?? config.AGENT_OPENAI_MODEL;
+	let modelInstance: LanguageModel;
+	try {
+		modelInstance = pickModel(modelId);
+	} catch (err) {
+		if (err instanceof AgentError) {
+			yield { type: "error", code: err.code, message: err.message };
+			return;
+		}
+		throw err;
+	}
 	const userLogText = `${effectiveMessage}${describeAttachmentsForLog(attachments)}`.trim();
 
-	type ResponsesCreateParams = Parameters<typeof openai.responses.create>[0];
-	type ResponsesResult = OpenAI.Responses.Response;
+	// Load prior history from the session row (defaults to empty for
+	// fresh sessions). We persist `ModelMessage[]` directly — the AI SDK
+	// accepts that shape verbatim and providers normalise it.
+	const priorMessages: ModelMessage[] = Array.isArray(session?.messages) ? (session.messages as ModelMessage[]) : [];
 
+	const userMessage = buildUserMessage(effectiveMessage, attachments);
+	const inputMessages: ModelMessage[] = [...priorMessages, userMessage];
+
+	const uiHintsByCallId = new Map<string, ExtractedUiHint>();
+	let lastUiHint: ExtractedUiHint | null = null;
+	let replyBuf = "";
 	let tokensIn = 0;
 	let tokensOut = 0;
-	let uiHint: ExtractedUiHint | null = null;
-	// `response.output_text` is auto-populated only in non-stream mode.
-	// In stream mode the `response.completed` event's response object
-	// doesn't carry it, so we accumulate text deltas ourselves.
-	let replyBuf = "";
-
-	const baseParams: ResponsesCreateParams = {
-		model,
-		instructions,
-		store: true,
-		...(bundle ? { tools: bundle.openaiTools as unknown as ResponsesCreateParams["tools"] } : {}),
-	};
 
 	async function persistErrorRun(message: string) {
 		const finishedAt = new Date();
@@ -466,12 +557,12 @@ export async function* chatWithAgentStream(
 				userId: ctx.apiKey.userId,
 				sessionId: session?.id ?? null,
 				triggerKind: "chat",
-				model,
+				model: modelId,
 				userMessage: userLogText,
 				reply: null,
 				tokensIn,
 				tokensOut,
-				costCents: costCentsFor(model, tokensIn, tokensOut),
+				costCents: costCentsFor(modelId, tokensIn, tokensOut),
 				errorMessage: message.slice(0, 1000),
 				startedAt,
 				finishedAt,
@@ -481,195 +572,94 @@ export async function* chatWithAgentStream(
 		}
 	}
 
-	/**
-	 * Run one OpenAI streaming `responses.create` call to completion.
-	 * Yields `text_delta` and `tool_call_start` semantic events as they
-	 * arrive; on completion, returns the final Response object so the
-	 * caller can collect output items + token usage. Stuck-chain
-	 * recovery (drop `previous_response_id` and retry once) lives here
-	 * so it covers every iteration, not just the first.
-	 */
-	async function* runOpenAIStream(params: ResponsesCreateParams): AsyncGenerator<AgentEvent, ResponsesResult> {
-		async function open(p: ResponsesCreateParams) {
-			return openai.responses.create({ ...p, stream: true });
-		}
-		let stream: Awaited<ReturnType<typeof open>>;
-		try {
-			stream = await open(params);
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : String(err);
-			const isStuckChain =
-				/No tool output found for function call/i.test(msg) &&
-				typeof params === "object" &&
-				params != null &&
-				"previous_response_id" in params;
-			if (isStuckChain && session) {
-				try {
-					await db
-						.update(agentSessions)
-						.set({ openaiResponseId: "", lastActiveAt: new Date() })
-						.where(eq(agentSessions.id, session.id));
-				} catch {
-					/* swallow */
-				}
-				const { previous_response_id: _drop, ...rest } = params as ResponsesCreateParams & {
-					previous_response_id?: string;
-				};
-				stream = await open(rest as ResponsesCreateParams);
-			} else {
-				await persistErrorRun(msg);
-				throw new AgentError("upstream_error", `OpenAI: ${msg}`, 502);
-			}
-		}
-		let final: ResponsesResult | null = null;
-		const startedCallIds = new Set<string>();
-		for await (const ev of stream as AsyncIterable<unknown>) {
-			const e = ev as { type?: string; [k: string]: unknown };
-			if (e.type === "response.output_text.delta" && typeof e.delta === "string") {
-				replyBuf += e.delta;
-				yield { type: "text_delta", delta: e.delta };
-			} else if (
-				e.type === "response.function_call_arguments.done" &&
-				typeof e.name === "string"
-			) {
-				const itemId = typeof e.item_id === "string" ? (e.item_id as string) : "";
-				if (!itemId || !startedCallIds.has(itemId)) {
-					if (itemId) startedCallIds.add(itemId);
-					let args: Record<string, unknown> = {};
-					if (typeof e.arguments === "string" && e.arguments.length > 0) {
-						try {
-							args = JSON.parse(e.arguments) as Record<string, unknown>;
-						} catch {
-							/* swallow */
-						}
-					}
-					yield { type: "tool_call_start", name: e.name, args };
-				}
-			} else if (e.type === "response.output_item.done") {
-				// Fallback path for models / SDK builds that finalize a
-				// function_call without separate args.done events. Emit
-				// `tool_call_start` here if we haven't already.
-				const item = (e as { item?: { type?: string; name?: string; arguments?: string; id?: string } }).item;
-				if (item && item.type === "function_call" && typeof item.name === "string") {
-					const itemId = item.id ?? "";
-					if (!itemId || !startedCallIds.has(itemId)) {
-						if (itemId) startedCallIds.add(itemId);
-						let args: Record<string, unknown> = {};
-						if (typeof item.arguments === "string" && item.arguments.length > 0) {
-							try {
-								args = JSON.parse(item.arguments) as Record<string, unknown>;
-							} catch {
-								/* swallow */
-							}
-						}
-						yield { type: "tool_call_start", name: item.name, args };
-					}
-				}
-			} else if (e.type === "response.completed") {
-				final = (e.response ?? null) as ResponsesResult | null;
-			}
-		}
-		if (!final) {
-			await persistErrorRun("stream_ended_without_response_completed");
-			throw new AgentError("upstream_error", "OpenAI stream ended without response.completed", 502);
-		}
-		return final;
-	}
+	const aiTools = bundle ? buildAiSdkTools(bundle, uiHintsByCallId) : undefined;
 
-	let response: ResponsesResult;
+	const result = streamText({
+		model: modelInstance,
+		system: instructions,
+		messages: inputMessages,
+		...(aiTools ? { tools: aiTools } : {}),
+		stopWhen: stepCountIs(MAX_TOOL_LOOP_ITERATIONS),
+	});
+
 	try {
-		response = yield* runOpenAIStream({
-			...baseParams,
-			input: buildResponsesInput(effectiveMessage, attachments) as ResponsesCreateParams["input"],
-			...(session?.openaiResponseId ? { previous_response_id: session.openaiResponseId } : {}),
-		});
+		for await (const part of result.fullStream) {
+			switch (part.type) {
+				case "text-delta": {
+					const delta = (part as { type: "text-delta"; text?: string; delta?: string }).text ?? "";
+					if (delta) {
+						replyBuf += delta;
+						yield { type: "text_delta", delta };
+					}
+					break;
+				}
+				case "tool-call": {
+					const tc = part as { type: "tool-call"; toolName: string; input?: unknown };
+					const args = tc.input && typeof tc.input === "object" ? (tc.input as Record<string, unknown>) : {};
+					yield { type: "tool_call_start", name: tc.toolName, args };
+					break;
+				}
+				case "tool-result": {
+					const tr = part as {
+						type: "tool-result";
+						toolName: string;
+						toolCallId: string;
+						output?: unknown;
+					};
+					const hint = uiHintsByCallId.get(tr.toolCallId);
+					if (hint) lastUiHint = hint;
+					yield {
+						type: "tool_call_end",
+						name: tr.toolName,
+						...(hint ? { ui: hint } : {}),
+					};
+					break;
+				}
+				case "tool-error": {
+					const te = part as { type: "tool-error"; toolName: string; error?: unknown };
+					const message = describeError(te.error ?? "tool_error");
+					yield { type: "tool_call_end", name: te.toolName, error: message };
+					break;
+				}
+				case "error": {
+					const ee = part as { type: "error"; error?: unknown };
+					const msg = describeError(ee.error ?? "stream_error");
+					await persistErrorRun(msg);
+					yield { type: "error", code: "upstream_error", message: msg };
+					return;
+				}
+				default:
+					/* ignore other event types (start, finish, reasoning, …) */
+					break;
+			}
+		}
 	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err);
+		const msg = describeError(err);
+		await persistErrorRun(msg);
 		yield { type: "error", code: "upstream_error", message: msg };
 		return;
 	}
-	tokensIn += response.usage?.input_tokens ?? 0;
-	tokensOut += response.usage?.output_tokens ?? 0;
 
-	for (let iter = 0; iter < MAX_TOOL_LOOP_ITERATIONS; iter++) {
-		const items = Array.isArray(response.output) ? response.output : [];
-		const calls = items.filter(
-			(it): it is { type: "function_call"; name: string; call_id: string; arguments: string } =>
-				(it as { type?: string })?.type === "function_call",
-		);
-		if (calls.length === 0 || !bundle) break;
-		const fnOutputs: Array<{ type: "function_call_output"; call_id: string; output: string }> = [];
-		for (const call of calls) {
-			const tool = bundle.tools.find((t) => t.name === call.name);
-			if (!tool) {
-				yield { type: "tool_call_end", name: call.name, error: "unknown_tool" };
-				fnOutputs.push({
-					type: "function_call_output",
-					call_id: call.call_id,
-					output: JSON.stringify({ error: "unknown_tool", name: call.name }),
-				});
-				continue;
-			}
-			let args: Record<string, unknown> = {};
-			try {
-				args = call.arguments ? (JSON.parse(call.arguments) as Record<string, unknown>) : {};
-			} catch {
-				args = {};
-			}
-			let toolResult: unknown;
-			let toolError: string | undefined;
-			try {
-				toolResult = await tool.execute(bundle.mcpConfig, args);
-			} catch (err) {
-				toolError = err instanceof Error ? err.message : String(err);
-				toolResult = { error: "tool_threw", message: toolError };
-			}
-			const hint = uiHintFromToolResult(toolResult);
-			if (hint) uiHint = hint;
-			yield {
-				type: "tool_call_end",
-				name: call.name,
-				...(hint ? { ui: hint } : {}),
-				...(toolError ? { error: toolError } : {}),
-			};
-			fnOutputs.push({
-				type: "function_call_output",
-				call_id: call.call_id,
-				output: toolResultToFnOutput(toolResult),
-			});
-		}
-		try {
-			response = yield* runOpenAIStream({
-				...baseParams,
-				previous_response_id: response.id,
-				input: fnOutputs as unknown as ResponsesCreateParams["input"],
-			});
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			yield { type: "error", code: "upstream_error", message: msg };
-			return;
-		}
-		tokensIn += response.usage?.input_tokens ?? 0;
-		tokensOut += response.usage?.output_tokens ?? 0;
-	}
+	const usage = await result.totalUsage;
+	tokensIn = usage.inputTokens ?? 0;
+	tokensOut = usage.outputTokens ?? 0;
+
+	// Append assistant turn(s) to the history. `result.response.messages`
+	// returns just the messages produced this turn (assistant + any
+	// tool-result entries); we stash them after the prior + user pair to
+	// build the next turn's input.
+	const responseMessages = (await result.response).messages as ModelMessage[];
+	const updatedMessages: ModelMessage[] = [...inputMessages, ...responseMessages];
 
 	const finishedAt = new Date();
-	// Prefer the streamed-delta accumulator; fall back to the SDK's
-	// auto-populated `output_text` only when streaming gave us nothing
-	// (e.g., model emitted only function_calls and no message item).
-	const reply = replyBuf.length > 0 ? replyBuf : (response.output_text ?? "");
-	const costCents = costCentsFor(model, tokensIn, tokensOut);
-	const finalItems = Array.isArray((response as { output?: unknown[] }).output)
-		? ((response as { output?: unknown[] }).output as unknown[])
-		: [];
-	const hasDanglingCalls = finalItems.some((it) => (it as { type?: string })?.type === "function_call");
-	const persistResponseId = hasDanglingCalls ? "" : response.id;
+	const reply = replyBuf;
+	const costCents = costCentsFor(modelId, tokensIn, tokensOut);
 
 	let sessionId: string;
 	if (session) {
 		await db
 			.update(agentSessions)
-			.set({ openaiResponseId: persistResponseId, lastActiveAt: finishedAt })
+			.set({ messages: updatedMessages, lastActiveAt: finishedAt })
 			.where(eq(agentSessions.id, session.id));
 		sessionId = session.id;
 	} else {
@@ -678,7 +668,7 @@ export async function* chatWithAgentStream(
 			.values({
 				apiKeyId: ctx.apiKey.id,
 				userId: ctx.apiKey.userId,
-				openaiResponseId: persistResponseId,
+				messages: updatedMessages,
 				title: deriveTitle(userLogText || "(attachment)"),
 				lastActiveAt: finishedAt,
 			})
@@ -693,13 +683,13 @@ export async function* chatWithAgentStream(
 			userId: ctx.apiKey.userId,
 			sessionId,
 			triggerKind: "chat",
-			model,
+			model: modelId,
 			userMessage: userLogText,
 			reply,
 			tokensIn,
 			tokensOut,
 			costCents,
-			...(uiHint ? { uiResourceUri: uiHint.resourceUri, uiProps: uiHint.props ?? {} } : {}),
+			...(lastUiHint ? { uiResourceUri: lastUiHint.resourceUri, uiProps: lastUiHint.props ?? {} } : {}),
 			startedAt,
 			finishedAt,
 		})
@@ -710,11 +700,11 @@ export async function* chatWithAgentStream(
 		sessionId,
 		runId: insertedRun[0]!.id,
 		reply,
-		model,
+		model: modelId,
 		tokensIn,
 		tokensOut,
 		costCents,
-		...(uiHint ? { ui: uiHint } : {}),
+		...(lastUiHint ? { ui: lastUiHint } : {}),
 	};
 }
 
@@ -730,6 +720,7 @@ export async function chatWithAgent(
 		sessionId?: string | undefined;
 		attachments?: AgentChatAttachment[] | undefined;
 		userAction?: AgentChatUserAction | undefined;
+		model?: string | undefined;
 	},
 ): Promise<{
 	sessionId: string;

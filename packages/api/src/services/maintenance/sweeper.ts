@@ -31,6 +31,11 @@
  *       BRIDGE_TOKEN_IDLE_DAYS (90). Reduces blast radius if a forgotten
  *       extension install is later compromised.
  *
+ *   - webhook delivery retention
+ *       Delete webhook_deliveries rows older than
+ *       WEBHOOK_DELIVERY_RETENTION_DAYS (30). Honors privacy.astro's
+ *       30-day retention promise for outbound webhook delivery logs.
+ *
  * The whole sweep is single-replica safe via row-level WHERE clauses;
  * if two workers tick at once, the second one's UPDATE just touches no
  * rows because the first already set the marker.
@@ -40,13 +45,23 @@ import { and, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { sendOpsEmail } from "../../auth/email.js";
 import { config } from "../../config.js";
 import { db } from "../../db/client.js";
-import { bridgeTokens, forwarderInventory, marketplaceNotifications, takedownRequests } from "../../db/schema.js";
+import {
+	bridgeTokens,
+	forwarderInventory,
+	marketplaceNotifications,
+	takedownRequests,
+	webhookDeliveries,
+} from "../../db/schema.js";
 
 const TAKEDOWN_SLA_HOURS = 48;
 const NOTIFICATION_PII_RETENTION_DAYS = 90;
 const NOTIFICATION_HARD_DELETE_DAYS = 548; // ~18 months
 const FORWARDER_PHOTO_RETENTION_DAYS = 180;
 const BRIDGE_TOKEN_IDLE_DAYS = 90;
+// Webhook delivery records are operational logs (delivery attempt +
+// status + payload), kept long enough to debug a failing endpoint then
+// dropped. Privacy policy promises 30-day retention; this sweep enforces.
+const WEBHOOK_DELIVERY_RETENTION_DAYS = 30;
 
 interface SweepResult {
 	task: string;
@@ -75,7 +90,25 @@ export async function runMaintenanceTick(): Promise<SweepResult[]> {
 	results.push(await safe("notif_hard_delete", notificationHardDelete));
 	results.push(await safe("forwarder_photos", forwarderPhotoCleanup));
 	results.push(await safe("bridge_token_ttl", bridgeTokenTtl));
+	results.push(await safe("webhook_delivery_retention", webhookDeliveryRetention));
 	return results;
+}
+
+/**
+ * Drop webhook_deliveries rows older than the privacy-promised 30-day
+ * retention window. These are operational logs (endpoint, event type,
+ * status, payload, attempt count) — useful for debugging a failing
+ * endpoint, but not load-bearing once the row's gone stale.
+ *
+ * Idempotent: row absence on the next tick just means nothing matched.
+ */
+async function webhookDeliveryRetention(): Promise<number> {
+	const cutoff = new Date(Date.now() - WEBHOOK_DELIVERY_RETENTION_DAYS * 86_400_000);
+	const result = await db
+		.delete(webhookDeliveries)
+		.where(lt(webhookDeliveries.createdAt, cutoff))
+		.returning({ id: webhookDeliveries.id });
+	return result.length;
 }
 
 async function takedownSlaEnforcer(): Promise<number> {

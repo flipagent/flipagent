@@ -10,7 +10,12 @@
  * shipping new content-script code per iteration.
  */
 
-import { BrowserCookiesRequest, BrowserCookiesResponse, BrowserQueryRequest, BrowserQueryResponse } from "@flipagent/types";
+import {
+	BrowserCookiesRequest,
+	BrowserCookiesResponse,
+	BrowserQueryRequest,
+	BrowserQueryResponse,
+} from "@flipagent/types";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";

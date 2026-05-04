@@ -60,7 +60,7 @@ npm run --workspace @flipagent/api issue-key -- you@example.com standard`}</code
 						</tr>
 						<tr>
 							<td>Order API <span style="opacity:0.6">(Limited Release)</span></td>
-							<td><code>EBAY_ORDER_API_APPROVED=1</code> after eBay tenant approval</td>
+							<td><code>EBAY_ORDER_APPROVED=1</code> after eBay tenant approval</td>
 							<td><code>501 not_implemented</code> until approved</td>
 						</tr>
 						<tr>
@@ -129,6 +129,7 @@ LLM_PROVIDER=anthropic`}</code></pre>
   "ebayOAuth":   false,
   "orderApi":    false,
   "insightsApi": false,
+  "biddingApi":  false,
   "scraperApi":  true,
   "betterAuth":  false,
   "googleOAuth": false,
@@ -143,7 +144,7 @@ LLM_PROVIDER=anthropic`}</code></pre>
 					<li>Create a free account at <a href="https://developer.ebay.com/" rel="noopener noreferrer" target="_blank">developer.ebay.com</a>.</li>
 					<li>Create a production keyset under <strong>Application Keys</strong>. Copy <code>App ID (Client ID)</code> → <code>EBAY_CLIENT_ID</code> and <code>Cert ID (Client Secret)</code> → <code>EBAY_CLIENT_SECRET</code>.</li>
 					<li>Under <strong>User Tokens → Get a Token from eBay via Your Application</strong>, register a RuName (eBay's redirect URI alias). Set the <em>Auth Accepted URL</em> to <code>https://your-host/v1/connect/ebay/callback</code>. Copy the RuName → <code>EBAY_RU_NAME</code>.</li>
-					<li>Restart the api. <code>/v1/connect/ebay/start</code> now redirects to eBay's consent page; users come back via the callback and their tokens land in <code>user_ebay_oauth</code>, scoped to the calling API key.</li>
+					<li>Restart the api. <code>GET /v1/connect/ebay</code> now redirects to eBay's consent page; users come back via the callback and their tokens land in <code>user_ebay_oauth</code>, scoped to the calling API key.</li>
 					<li>For the sandbox, set <code>EBAY_BASE_URL=https://api.sandbox.ebay.com</code> and <code>EBAY_AUTH_URL=https://auth.sandbox.ebay.com</code>.</li>
 				</ol>
 
@@ -176,7 +177,14 @@ https://api.ebay.com/oauth/api_scope/sell.inventory
 https://api.ebay.com/oauth/api_scope/sell.fulfillment
 https://api.ebay.com/oauth/api_scope/sell.finances
 https://api.ebay.com/oauth/api_scope/sell.account
-https://api.ebay.com/oauth/api_scope/commerce.identity.readonly`}</code></pre>
+https://api.ebay.com/oauth/api_scope/commerce.identity.readonly
+https://api.ebay.com/oauth/api_scope/commerce.message
+https://api.ebay.com/oauth/api_scope/commerce.feedback
+https://api.ebay.com/oauth/api_scope/sell.marketing
+https://api.ebay.com/oauth/api_scope/sell.marketing.readonly
+https://api.ebay.com/oauth/api_scope/sell.analytics.readonly
+https://api.ebay.com/oauth/api_scope/sell.payment.dispute
+https://api.ebay.com/oauth/api_scope/sell.reputation`}</code></pre>
 				</div>
 				<p>The <code>sell.*</code> scopes ship standard with any production keyset; no extra opt-in in the developer portal. Trim the list to narrow what sellers grant (e.g. drop <code>sell.finances</code> if you don't surface payouts); the matching <code>/v1/payouts</code>, <code>/v1/transactions</code>, <code>/v1/transfers</code> calls will then 401 from eBay until the seller reconnects with the wider scope.</p>
 
@@ -184,7 +192,7 @@ https://api.ebay.com/oauth/api_scope/commerce.identity.readonly`}</code></pre>
 				<p>Two capabilities need additional eBay-side approval beyond the standard developer keyset:</p>
 				<ul>
 					<li><strong>Marketplace Insights</strong> (sold-listing history). Apply at developer.ebay.com → Marketplace Insights. Once granted, set <code>EBAY_INSIGHTS_APPROVED=1</code>: <code>/v1/items/search?status=sold</code> then hits the REST endpoint with the app token (faster, cleaner data, <code>source: "rest"</code>). Without approval flipagent serves the same endpoint via the scrape transport, and <code>/v1/me/permissions</code> reports <code>marketplaceInsights: "scrape"</code>.</li>
-					<li><strong>Order API</strong> (Limited Release). Lets your authenticated buyer place purchases via REST. Apply at developer.ebay.com → Order API. Once eBay grants tenant approval, set <code>EBAY_ORDER_API_APPROVED=1</code>; until then <code>/v1/purchases</code> only works in bridge transport.</li>
+					<li><strong>Order API</strong> (Limited Release). Lets your authenticated buyer place purchases via REST. Apply at developer.ebay.com → Order API. Once eBay grants tenant approval, set <code>EBAY_ORDER_APPROVED=1</code>; until then <code>/v1/purchases</code> only works in bridge transport.</li>
 				</ul>
 
 				<h2>Inspect a user's eBay scope tier</h2>
@@ -194,6 +202,7 @@ https://api.ebay.com/oauth/api_scope/commerce.identity.readonly`}</code></pre>
 <pre><code>{`{
   "ebayConnected": true,
   "ebayUserName": "your-ebay-handle",
+  "ebayUserId":   "ebay:1234567890",
   "scopes": {
     "browse":              "ok",
     "marketplaceInsights": "scrape",

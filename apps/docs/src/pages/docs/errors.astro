@@ -30,6 +30,8 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td>401</td><td><code>invalid_key</code></td><td>API key not found or revoked.</td></tr>
 						<tr><td>401</td><td><code>unauthenticated</code></td><td>Session-only route (<code>/v1/me/*</code>) called without a valid session cookie.</td></tr>
 						<tr><td>401</td><td><code>not_connected</code></td><td>Sell-side or Order route called before <code>/v1/connect/ebay</code> bound the calling key to an eBay account.</td></tr>
+							<tr><td>401</td><td><code>auth_missing</code></td><td>MCP endpoint <code>/mcp</code> called without a Bearer token.</td></tr>
+							<tr><td>401</td><td><code>auth_invalid</code></td><td>MCP endpoint <code>/mcp</code> called with an unrecognized or revoked Bearer token.</td></tr>
 						<tr><td>403</td><td><code>forbidden</code></td><td>Authenticated, but not allowed to access this resource.</td></tr>
 						<tr><td>404</td><td><code>not_found</code></td><td>Item or path doesn't exist.</td></tr>
 						<tr><td>429</td><td><code>credits_exceeded</code></td><td>Monthly credit budget exhausted. Body carries <code>creditsUsed</code> / <code>creditsLimit</code> / <code>resetAt</code>. See <a href="/docs/rate-limits/">rate limits</a>.</td></tr>
@@ -37,15 +39,31 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td>500</td><td><code>internal_error</code></td><td>Unhandled exception. We get notified; retry with exponential backoff.</td></tr>
 						<tr><td>500</td><td><code>handler_failed</code></td><td>Stripe webhook handler threw. Stripe will retry per its dunning schedule.</td></tr>
 						<tr><td>500</td><td><code>checkout_failed</code></td><td>Stripe Checkout / Customer Portal session creation failed upstream.</td></tr>
-						<tr><td>502</td><td><code>upstream_failed</code></td><td>eBay returned an error or scraping was blocked. Usually transient; retry once.</td></tr>
+						<tr><td>502</td><td><code>upstream_failed</code></td><td>The upstream marketplace call failed. Usually transient; retry once.</td></tr>
 						<tr><td>503</td><td><code>billing_not_configured</code></td><td>Stripe isn't enabled on the server. Hosted users won't see this.</td></tr>
 						<tr><td>503</td><td><code>auth_not_configured</code></td><td>Better-Auth env (<code>BETTER_AUTH_SECRET</code>, GitHub/Google OAuth) not set. <code>/v1/me/*</code> + <code>/api/auth/*</code> return this.</td></tr>
 						<tr><td>503</td><td><code>ebay_not_configured</code></td><td>eBay OAuth env (<code>EBAY_CLIENT_ID</code>, etc.) not set. <code>/v1/connect/ebay</code> and any sell-side route that needs user OAuth (listings, sales, payouts, transactions, transfers, policies, …) return this. Same for <code>/v1/purchases</code> in REST transport mode.</td></tr>
 					</tbody>
 				</table>
+				<p>The table above is the cross-cutting catalog. Individual routes also emit feature-specific codes (e.g. <code>extension_not_paired</code>, <code>ebay_account_not_connected</code>, <code>disclaimer_not_acknowledged</code>, <code>image_too_large</code>, <code>no_card_on_file</code>). Errors that the caller can fix carry a <code>next_action: &#123; kind, url, instructions &#125;</code> block — relay it to the end user verbatim.</p>
+
+				<h2>Headers on every authed response</h2>
+				<p>Beyond the rate-limit headers (see <a href="/docs/rate-limits/">rate limits</a>), three flipagent-specific headers signal billing or transport state:</p>
+				<table class="api">
+					<thead><tr><th>Header</th><th>When</th><th>Meaning</th></tr></thead>
+					<tbody>
+						<tr><td><code>X-Flipagent-Credits-Required</code></td><td>preflight (every authed call)</td><td>Worst-case credits this call could charge before the handler runs. The realised cost lands in <code>X-Flipagent-Credits-Charged</code> after the handler.</td></tr>
+						<tr><td><code>X-Flipagent-Credits-Charged</code></td><td>after the handler runs</td><td>Actual credits debited (matches the <code>usage_events</code> row).</td></tr>
+						<tr><td><code>X-Flipagent-Effective-Tier</code></td><td>only when the user's billing tier was downgraded</td><td>The tier currently being enforced — set when a paid subscription has been past_due past the grace window. <code>tier</code> on <code>/v1/keys/me</code> stays truthful; this header tells you what the rate-limiter is enforcing right now.</td></tr>
+						<tr><td><code>X-RateLimit-Warning</code></td><td>≥90% of monthly budget used</td><td>Soft signal that auto-recharge or upgrade is about to matter.</td></tr>
+						<tr><td><code>X-Flipagent-Source</code></td><td>marketplace-data + decisions routes</td><td><code>rest</code> | <code>scrape</code> | <code>bridge</code> | <code>trading</code> | <code>llm</code> — which transport / engine produced the response.</td></tr>
+						<tr><td><code>X-Flipagent-From-Cache</code></td><td>cache hits</td><td><code>true</code> when the response was served from the proxy cache.</td></tr>
+						<tr><td><code>X-Flipagent-Cached-At</code></td><td>cache hits</td><td>ISO-8601 timestamp of the cached row's write.</td></tr>
+					</tbody>
+				</table>
 
 				<h2>Idempotency</h2>
-				<p>All <code>GET</code> endpoints are idempotent. <code>POST /v1/me/keys</code> creates a fresh key on every call, so store the <code>plaintext</code> exactly once and don't retry blindly. <code>POST /v1/me/keys/revoke</code> is idempotent. <code>POST /v1/takedown</code> deduplicates by <code>(itemId, contactEmail)</code> server-side.</p>
+				<p>All <code>GET</code> endpoints are idempotent. <code>POST /v1/me/keys</code> creates a fresh key on every call, so store the <code>plaintext</code> exactly once and don't retry blindly. <code>POST /v1/keys/revoke</code> (calling-key self-revoke, API-key auth) and <code>DELETE /v1/me/keys/&#123;id&#125;</code> (per-key revoke from the dashboard, session auth) are both idempotent. <code>POST /v1/takedown</code> deduplicates by <code>(itemId, contactEmail)</code> server-side.</p>
 			</article>
 		</div>
 	</div>

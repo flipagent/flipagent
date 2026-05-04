@@ -34,7 +34,7 @@ import { eq, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 import { sendAutoRechargeFailedEmail } from "../auth/email.js";
 import type { Tier } from "../auth/keys.js";
-import { ensureValidCreditAmount } from "../auth/limits.js";
+import { MIN_TOPUP_CREDITS } from "../auth/limits.js";
 import { config, isEmailConfigured } from "../config.js";
 import { db } from "../db/client.js";
 import { apiKeys, creditGrants, user as userTable } from "../db/schema.js";
@@ -89,7 +89,7 @@ async function applyTier(userId: string, tier: Tier, fields: Partial<typeof user
 	// aggregation, so a free→hobby→free cycle correctly inherits the
 	// pre-upgrade free usage without a reset. Bumping here would
 	// re-open the cycle exploit (subscribe for $19, downgrade, get
-	// fresh 500 credits, repeat).
+	// fresh 1,000 credits, repeat).
 	const now = new Date();
 	const tierFields = tierChanged && tier !== "free" ? { creditsResetAt: now } : {};
 	await db
@@ -163,13 +163,16 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
 		console.warn(`[stripe] auto-recharge intent ${intent.id} missing userId metadata`);
 		return;
 	}
-	let credits: number;
-	try {
-		credits = ensureValidCreditAmount(rawCredits);
-	} catch (err) {
-		console.warn(`[stripe] auto-recharge intent ${intent.id} bad credits=${rawCredits}: ${(err as Error).message}`);
+	// Auto-recharge fires dynamic credit amounts (gap-to-target,
+	// floored at MIN_TOPUP_CREDITS) — not the fixed PACK_DENOMINATIONS
+	// the manual checkout uses. Validate here as "positive integer ≥
+	// the same floor" so a corrupt metadata payload doesn't insert a
+	// negative or fractional grant.
+	if (!Number.isFinite(rawCredits) || !Number.isInteger(rawCredits) || rawCredits < MIN_TOPUP_CREDITS) {
+		console.warn(`[stripe] auto-recharge intent ${intent.id} bad credits=${rawCredits}`);
 		return;
 	}
+	const credits = rawCredits;
 	await insertTopUpGrant({
 		userId,
 		credits,

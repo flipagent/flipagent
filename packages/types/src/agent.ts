@@ -111,6 +111,24 @@ export const AgentUserAction = Type.Union(
 );
 export type AgentUserAction = Static<typeof AgentUserAction>;
 
+/**
+ * Models the agent surface accepts. Free-tier callers are restricted to
+ * the cheap pair (`gpt-5.4-mini` and `gemini-2.5-flash`); paid tiers
+ * (Hobby / Standard / Growth) unlock `gpt-5.5` and `claude-sonnet-4-7`
+ * for stronger reasoning. Per-turn credit cost varies by model — see
+ * `agentTurnCreditsFor` in `packages/api/src/auth/limits.ts`.
+ */
+export const AgentModel = Type.Union(
+	[
+		Type.Literal("gpt-5.4-mini"),
+		Type.Literal("gpt-5.5"),
+		Type.Literal("claude-sonnet-4-7"),
+		Type.Literal("gemini-2.5-flash"),
+	],
+	{ $id: "AgentModel" },
+);
+export type AgentModel = Static<typeof AgentModel>;
+
 export const AgentChatRequest = Type.Object(
 	{
 		/**
@@ -128,6 +146,13 @@ export const AgentChatRequest = Type.Object(
 		 * action so the model picks it up as ordinary user input.
 		 */
 		userAction: Type.Optional(AgentUserAction),
+		/**
+		 * Override the underlying LLM. Defaults to the instance's
+		 * `AGENT_OPENAI_MODEL` (currently `gpt-5.4-mini`). `gpt-5.5` is
+		 * paid-tier only; the route returns 403 with an upgrade pointer
+		 * if a Free-tier caller asks for it.
+		 */
+		model: Type.Optional(AgentModel),
 	},
 	{ $id: "AgentChatRequest" },
 );

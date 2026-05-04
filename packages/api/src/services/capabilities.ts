@@ -189,9 +189,9 @@ function ebayCapabilities(input: EbayInputs): MarketplaceCapabilities {
 	const evaluate: CapabilityStatus = "ok";
 
 	// Buy-side: needs bridge client paired AND user signed into eBay
-	// in their browser. Order API approval (`EBAY_ORDER_API_APPROVED`)
+	// in their browser. Order API approval (`EBAY_ORDER_APPROVED`)
 	// is the alternative path that doesn't need the extension.
-	const buy: CapabilityStatus = config.EBAY_ORDER_API_APPROVED
+	const buy: CapabilityStatus = config.EBAY_ORDER_APPROVED
 		? "ok"
 		: !input.extensionPaired
 			? "unavailable"

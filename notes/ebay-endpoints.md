@@ -94,11 +94,11 @@ OpenAPI contract not bundled in `references/ebay-mcp/docs/` (sell-only mirror). 
 
 ### Buy / Order (`/buy/order/v1`) — LR — host: `apiz.ebay.com`
 
-**Host:** routed through `apiz.ebay.com` by `services/ebay/host.ts:ebayHostFor` 2026-05-03 — hitting `api.ebay.com` returned no-envelope 404 silently. Bug never surfaced because `EBAY_ORDER_API_APPROVED` defaults false (purchases use bridge).
+**Host:** routed through `apiz.ebay.com` by `services/ebay/host.ts:ebayHostFor` 2026-05-03 — hitting `api.ebay.com` returned no-envelope 404 silently. Bug never surfaced because `EBAY_ORDER_APPROVED` defaults false (purchases use bridge).
 
 | Method | eBay path | Scope | Our wrapper | Our route | Status | Notes |
 |---|---|---|---|---|---|---|
-| POST | `/checkout_session/initiate` | `buy.order` (user) | `services/purchases/orchestrate.ts` (called via orchestrator) | `/v1/purchases` POST | LR (REST) / OK (bridge) | LR-gated REST behind `EBAY_ORDER_API_APPROVED`; default flag is false → orchestrator routes to bridge transport (Chrome extension). REST path is now apiz-host-correct after 2026-05-03 fix. |
+| POST | `/checkout_session/initiate` | `buy.order` (user) | `services/purchases/orchestrate.ts` (called via orchestrator) | `/v1/purchases` POST | LR (REST) / OK (bridge) | LR-gated REST behind `EBAY_ORDER_APPROVED`; default flag is false → orchestrator routes to bridge transport (Chrome extension). REST path is now apiz-host-correct after 2026-05-03 fix. |
 | GET | `/checkout_session/{id}` | `buy.order` (user) | `services/purchases/orchestrate.ts` | `/v1/purchases/{id}` | LR (REST) / OK (bridge) | apiz host. Same gating as above. |
 | POST | `/checkout_session/{id}/place_order` | `buy.order` (user) | `services/purchases/orchestrate.ts` | `/v1/purchases/{id}` POST `place_order` | LR (REST) / OK (bridge) | apiz host. |
 | POST | `/checkout_session/{id}/shipping_address` | `buy.order` (user) | `services/purchases/orchestrate.ts:171` | `/v1/purchases/{id}/shipping_address` | LR (REST) | apiz host. REST-only (bridge returns 412). |
@@ -780,7 +780,7 @@ After the four-sweep audit (probe + path-sweep + spec-diff + field-diff), the fo
 - `/sell/stores/v1/store` — REST is gated; Trading `GetStore` workaround in place
 - `/sell/finances/v1/transfer` (sub-resource only) — LR within otherwise-open Finances
 - `/buy/offer/v1_beta/bidding/*` — LR; `buy.offer.auction` only in sandbox scope catalog
-- `/buy/order/v1/checkout_session/*` — LR; orchestrator falls back to bridge transport when `EBAY_ORDER_API_APPROVED=0`
+- `/buy/order/v1/checkout_session/*` — LR; orchestrator falls back to bridge transport when `EBAY_ORDER_APPROVED=0`
 - `/buy/marketplace_insights/v1_beta/*` — LR; falls back to scrape
 
 ### Wrappers exist, never tested with real-data POST (need a real listing/order/conversation)
@@ -858,7 +858,7 @@ The remaining ~12 in this bucket are genuine future-wrap candidates: sell/accoun
 
 ## Section 7: How to use this file
 
-When you change anything in `EBAY_SCOPES`, when you wrap a new endpoint, or when you discover a 4xx in production, update the relevant row. Re-run live probes by token-exchanging via `/v1/connect/ebay/start` consent flow and `curl -H "Authorization: Bearer $TOK" -H "X-EBAY-C-MARKETPLACE-ID: EBAY_US" "$EBAY_BASE_URL$PATH"` (use `Authorization: IAF $TOK` for `/post-order/v2/*`). Mark OK with the probe date in the Notes column. The Status column is the source of truth for "does this work today."
+When you change anything in `EBAY_SCOPES`, when you wrap a new endpoint, or when you discover a 4xx in production, update the relevant row. Re-run live probes by token-exchanging via `/v1/connect/ebay` consent flow and `curl -H "Authorization: Bearer $TOK" -H "X-EBAY-C-MARKETPLACE-ID: EBAY_US" "$EBAY_BASE_URL$PATH"` (use `Authorization: IAF $TOK` for `/post-order/v2/*`). Mark OK with the probe date in the Notes column. The Status column is the source of truth for "does this work today."
 
 When wrapping a new endpoint:
 1. Find its row in Section 1 (or add one if missing — eBay added it post-2026-04-24 OpenAPI snapshot).
@@ -995,7 +995,7 @@ The broad path sweep specifically searches for the empty-body-404 signature that
 | Wrapper | Was | Root cause | Fix |
 |---|---|---|---|
 | `services/store.ts:35,50` (`getStoreCategories`, `putStoreCategories`) | empty 404 on `api.ebay.com/sell/stores/v2/store-categories` | wrong host — Sell Stores v2 lives on `apiz.ebay.com`. Without the host swap every store-category mutation silently 404'd. | added `/sell/stores/v2/` to `ebayHostFor`'s APIZ_PREFIXES |
-| `services/purchases/orchestrate.ts:171,186,208,215` (`updateShippingAddress`, `updatePaymentInstrument`, `applyCoupon`, `removeCoupon`) | empty 404 on `api.ebay.com/buy/order/v1/checkout_session/{id}/...` | wrong host — Buy Order also lives on `apiz.ebay.com`. The bug never surfaced in production because `EBAY_ORDER_API_APPROVED` defaults false (purchases route through bridge), so REST transport never ran. Would have failed silently the moment we got Order API approval. | added `/buy/order/v1/` to APIZ_PREFIXES |
+| `services/purchases/orchestrate.ts:171,186,208,215` (`updateShippingAddress`, `updatePaymentInstrument`, `applyCoupon`, `removeCoupon`) | empty 404 on `api.ebay.com/buy/order/v1/checkout_session/{id}/...` | wrong host — Buy Order also lives on `apiz.ebay.com`. The bug never surfaced in production because `EBAY_ORDER_APPROVED` defaults false (purchases route through bridge), so REST transport never ran. Would have failed silently the moment we got Order API approval. | added `/buy/order/v1/` to APIZ_PREFIXES |
 
 ### Bugs fixed earlier this sweep (root-cause table)
 
@@ -1031,7 +1031,7 @@ one place. Every `OK 2026-05-03` row in Section 1 that flipped from
 | `GET /sell/stores/v1/store` | 403 errorId 1100 | Sell Stores API gated at app level (verified: returns 403 even with `sell.stores.readonly` consented + active store on account) | Apply for Stores API approval in eBay dev portal. Workaround: Trading `GetStore` (already wired in `services/store.ts`). |
 | `GET /sell/feed/v1/inventory_task?feed_type=…` | 403 errorId 160022 | Sell Feed Limited Release | Apply via "Contact Developer Technical Support" path |
 | `GET /buy/feed/v1_beta/item` | 403 errorId 1100 | Buy Feed Limited Release | Same as above |
-| `GET /buy/order/v2/checkout_session/{id}` | 404 (no JSON envelope) | Buy Order Limited Release; flagged via `EBAY_ORDER_API_APPROVED` env. Without that flag, /v1/purchases routes to the bridge. | Apply for Buy Order API approval |
+| `GET /buy/order/v2/checkout_session/{id}` | 404 (no JSON envelope) | Buy Order Limited Release; flagged via `EBAY_ORDER_APPROVED` env. Without that flag, /v1/purchases routes to the bridge. | Apply for Buy Order API approval |
 | `GET /sell/finances/v1/transfer?limit=1` | 404 errorId 2002 | The transfer sub-resource is itself Limited Release within Finances (the rest of Finances is open) | Apply for Transfer API approval; payout / transaction stay open |
 | `POST /buy/offer/v1_beta/bidding/{id}/place_proxy_bid` | 403 errorId 1100 | `buy.offer.auction` exists in sandbox-only scope catalog; production access is gated | Apply for Buy Offer auction approval |
 | `GET /sell/logistics/v1_beta/shipment/{id}` | 403 errorId 1100 | `sell.logistics` is not in eBay's published prod or sandbox scope catalog; the API itself is gated | Apply for Sell Logistics approval. (Scope previously added then removed — confirmed not in catalog.) |

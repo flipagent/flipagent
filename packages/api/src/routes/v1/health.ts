@@ -83,8 +83,9 @@ v1HealthRoute.get(
 	(c) => {
 		return c.json({
 			ebayOAuth: isEbayOAuthConfigured(),
-			orderApi: config.EBAY_ORDER_API_APPROVED,
+			orderApi: config.EBAY_ORDER_APPROVED,
 			insightsApi: isInsightsApproved(),
+			biddingApi: config.EBAY_BIDDING_APPROVED,
 			scraperApi: isScraperApiConfigured(),
 			betterAuth: isAuthConfigured(),
 			googleOAuth: Boolean(config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET),

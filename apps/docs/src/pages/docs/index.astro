@@ -34,13 +34,13 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 					<div class="feature">
 						<div class="ic">iv.</div>
 						<h3>Chrome extension</h3>
-						<p>Bridges <code>/v1/purchases</code> through your real Chrome (bridge transport when EBAY_ORDER_API_APPROVED=0) so eBay sees a normal session. Required for the buy-flow until eBay grants Order API access.</p>
+						<p>Powers buying and package-forwarder ops (<code>/v1/purchases</code>, <code>/v1/forwarder/*</code>) inside your real Chrome session. eBay's checkout is human-only by policy; the extension keeps every click in your hands.</p>
 						<div style="margin-top:14px;"><a href="/docs/extension/">Extension setup →</a></div>
 					</div>
 					<div class="feature">
 						<div class="ic">v.</div>
 						<h3>Scraper</h3>
-						<p><code>@flipagent/ebay-scraper</code>. Standalone eBay HTML parsers. BYO proxy.</p>
+						<p><code>@flipagent/ebay-scraper</code>. Standalone eBay HTML parsers + plain-HTTPS fetcher. BYO proxy for sustained volume.</p>
 						<div style="margin-top:14px;"><a href="https://github.com/flipagent/flipagent/tree/main/packages/ebay-scraper">Source →</a></div>
 					</div>
 				</div>

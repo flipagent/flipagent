@@ -2,7 +2,7 @@ import { ItemSearchQuery } from "@flipagent/types";
 import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 import { mockSearch } from "../mock.js";
-import { uiResource } from "../server-factory.js";
+import { uiResource } from "../ui-resource.js";
 
 export { ItemSearchQuery as ebaySearchInput };
 
@@ -13,9 +13,7 @@ export async function ebaySearchExecute(config: Config, args: Record<string, unk
 	if (config.mock) return mockSearch();
 	try {
 		const client = getClient(config);
-		const result = await client.items.search(
-			args as unknown as Parameters<typeof client.items.search>[0],
-		);
+		const result = await client.items.search(args as unknown as Parameters<typeof client.items.search>[0]);
 		const items = (result as { items?: unknown[] }).items ?? [];
 		const total = (result as { total?: number }).total;
 		const query = typeof args.q === "string" ? args.q : "";

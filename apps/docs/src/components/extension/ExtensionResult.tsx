@@ -131,7 +131,7 @@ function ErrorBanner({ error }: { error: IframeError }) {
 				</p>
 				<p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: "var(--text)" }}>
 					{isCredits
-						? "Free tier includes 500 credits (~5 evaluates). Upgrade for more."
+						? "Free tier includes 1,000 credits (~12 evaluations). Upgrade for more."
 						: error.message}
 				</p>
 			</div>

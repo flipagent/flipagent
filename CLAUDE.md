@@ -20,7 +20,7 @@ any other vendor-side concern.
 |---|---|---|---|
 | `packages/types` | `@flipagent/types` | MIT | TypeBox schemas for the flipagent-native `/v1/*` surface. One file per resource (`items`, `listings`, `purchases`, `sales`, `payouts`, `messages`, `offers`, `disputes`, `policies`, `evaluate`, `ship`, `expenses`, …). |
 | `packages/types/ebay` | `@flipagent/types/ebay` | MIT | TypeBox schemas mirroring eBay's REST shapes (`buy`, `sell`, `commerce`). Used by the api internally for upstream wire shape, and by the Chrome extension + MCP mock for typing eBay-shape responses. |
-| `packages/ebay-scraper` | `@flipagent/ebay-scraper` | MIT | Pure eBay HTML parsers (no fetcher, no DB). The fetcher + vendor dispatch lives in `packages/api/src/services/ebay/scrape/`. |
+| `packages/ebay-scraper` | `@flipagent/ebay-scraper` | MIT | eBay HTML parsers + a plain-HTTPS fetcher (`fetchHtml`, `fetchEbaySearch`, `fetchEbayItemDetail`) for BYO-proxy / standalone use. The hosted api still wraps them with its own managed-vendor dispatcher in `packages/api/src/services/ebay/scrape/` so production traffic flows through Oxylabs et al., but the package itself is fully usable on its own. |
 | `packages/sdk` | `@flipagent/sdk` | MIT | Typed thin client for `api.flipagent.dev`. Namespaces match the route resources: `items`, `listings`, `purchases`, `sales`, `payouts`, `transactions`, `disputes`, `policies`, `categories`, `products`, `forwarder`, `evaluate`, `ship`, `expenses`, `webhooks`, `capabilities`. |
 | `packages/mcp` | `flipagent-mcp` | MIT | MCP server — exposes flipagent tools (search, evaluate, buy, list, …) to Claude Desktop / Cursor / Cline. |
 | `packages/cli` | `flipagent-cli` | MIT | One-command MCP setup. Detects Claude Desktop / Cursor and writes the `flipagent` server entry. `npx -y flipagent-cli init --mcp --keys`. |
@@ -60,17 +60,27 @@ get the same scoring without re-implementing it.
   (Amazon, Mercari, …) reuse the same paths via the `marketplace`
   parameter rather than path prefixes.
 
-  Resources, by group:
+  Resources, by group. Phase 1 = live mounts in `routes/v1/index.ts`;
+  V2 = typed service + route wrappers ready, mount commented out until
+  promoted (see the bottom block of `routes/v1/index.ts`).
 
-  - **Marketplace data (read)** — `/v1/{items,categories,products,charities,media,featured}`
-  - **My side (write)** — `/v1/{listings,listings/bulk,listing-groups,locations,purchases,sales}`
+  Phase 1 (live):
+  - **Marketplace data (read)** — `/v1/{items,categories,products,media}`
+  - **My side (write)** — `/v1/{listings,locations,purchases,bids,sales}`
   - **Money + comms + disputes** —
-    `/v1/{payouts,transactions,transfers,messages,offers,feedback,disputes,policies,violations,recommendations,marketplaces}`
-  - **Intelligence** — `/v1/{evaluate,ship,expenses,trends}`
-  - **Marketing + storefront** — `/v1/{promotions,markdowns,ads,store,analytics,feeds,bids,translate,labels}`
-  - **My eBay surfaces** — `/v1/me/seller`, `/v1/me/{selling,buying}`, `/v1/{watching,saved-searches}`
+    `/v1/{payouts,transactions,transfers,messages,offers,feedback,disputes,policies,recommendations}`
+  - **Intelligence** — `/v1/{evaluate,ship}`
+  - **Storefront ops** — `/v1/{analytics,labels}`
+  - **My eBay surfaces** — `/v1/me/seller`, `/v1/me/{selling,buying,programs,quota,…}`
   - **Account / ops** — `/v1/{forwarder,connect,me,keys,billing,health,capabilities,takedown,admin}`
+  - **Agent (preview)** — `/v1/agent` (OpenAI Responses API, stateful threads + native MCP wiring)
   - **Agent plumbing** — `/v1/{bridge,browser,notifications,webhooks}`
+
+  V2 (wrapped, not mounted): `charities, featured, listings/bulk,
+  listing-groups, cart, edelivery, violations, marketplaces, expenses,
+  trends, promotions, markdowns, ads, store, feeds, translate,
+  watching, saved-searches, developer`. Re-enable by uncommenting
+  the import + mount in `routes/v1/index.ts`.
 
   Operator routes (`requireAdmin` = session + `user.role==='admin'`):
   `/v1/admin/{users,grants,keys,stats}`. Bootstrap by adding emails
@@ -110,8 +120,13 @@ get the same scoring without re-implementing it.
   reach into it from packages.
 
 - **Scraping is OSS, the vendor creds are env.** `@flipagent/ebay-scraper`
-  ships pure parsers. The fetch path (vendor dispatcher) lives in
-  `packages/api/src/services/ebay/scrape/` and is OSS too; the shared
+  ships both the parsers and a plain-HTTPS fetcher (`fetchHtml`,
+  `fetchEbaySearch`, `fetchEbayItemDetail`) so it works as a standalone
+  package — BYO proxies, drop into your own pipeline, fine for
+  low-volume / fixture / test work. The hosted api wraps the same
+  parsers with its own managed-vendor dispatcher in
+  `packages/api/src/services/ebay/scrape/`; the dispatcher is what runs
+  in production so we don't pound ebay.com from our IPs. The shared
   response cache primitives sit in `services/shared/cache.ts`. The
   managed Web Scraper API takes a URL and returns rendered HTML —
   whatever rendering, IP routing, or JS execution the vendor performs
@@ -171,7 +186,7 @@ transports — `rest` and `bridge`. Both produce the same flipagent
 `Purchase` shape; neither is a "fallback" for the other.
 `selectTransport` (in `services/shared/transport.ts`) picks one given
 the capability matrix + per-call `?transport=` override + env flag
-(`EBAY_ORDER_API_APPROVED`). REST requires the env flag + the api
+(`EBAY_ORDER_APPROVED`). REST requires the env flag + the api
 key's eBay OAuth binding; bridge requires a paired Chrome extension.
 The 2-stage flow (`initiate` → `place_order`) is fully implemented in
 both transports. Multi-stage update endpoints (`shipping_address`,
@@ -327,9 +342,11 @@ the bridge route maps source → task name via
   cents-denominated. Add a vitest in
   `packages/api/test/services/<area>/`.
 
-- **New scraper helper** → goes to `@flipagent/ebay-scraper` only if
-  it's pure parsing. Anything that talks to a vendor scraper or DB
-  belongs in `packages/api/src/services/ebay/scrape/`.
+- **New scraper helper** → parsers go to `@flipagent/ebay-scraper`
+  (`src/parse-*.ts`); BYO-proxy fetch helpers can live there too
+  (`src/fetch-*.ts`). Anything that talks to a managed-vendor scraper
+  (Oxylabs et al.) or to the DB belongs in
+  `packages/api/src/services/ebay/scrape/`.
 
 - **New marketplace adapter (Amazon, Mercari, etc.)** → *future*;
   siblings of `services/ebay/`, e.g. `services/amazon/`,

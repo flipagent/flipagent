@@ -372,10 +372,7 @@ function deriveBuyingOptions(raw: EbayItemDetail): ItemDetail["buyingOptions"] {
 	return opts;
 }
 
-function isLiveAuctionSignal(raw: {
-	bidCount?: number | null;
-	timeLeftText?: string | null;
-}): boolean {
+function isLiveAuctionSignal(raw: { bidCount?: number | null; timeLeftText?: string | null }): boolean {
 	if (raw.bidCount != null) return true;
 	if (raw.timeLeftText) return true;
 	return false;

@@ -71,11 +71,19 @@ const Schema = Type.Object({
 	// flipagent's tenant — `/v1/purchases` then uses REST transport
 	// (synchronous BIN). Without it the orchestrator routes to the bridge
 	// transport (Chrome extension), and multi-stage updates 412.
-	EBAY_ORDER_API_APPROVED: Type.Boolean({ default: false }),
+	EBAY_ORDER_APPROVED: Type.Boolean({ default: false }),
 	// Marketplace Insights program approval (sold-listing history). With
 	// this flag, `/v1/items/search?status=sold` hits Marketplace Insights
 	// REST; without it the route falls back to scraping.
 	EBAY_INSIGHTS_APPROVED: Type.Boolean({ default: false }),
+	// Buy Offer (Bidding) API is Limited Release. eBay grants this one
+	// independently from Buy Order — proxy auction bidding (POST/GET on
+	// `/buy/offer/v1_beta/bidding/{itemId}`) is gated by its own
+	// `buy.offer.bidding` scope. With the flag set, `/v1/bids` POST
+	// places a real proxy bid via REST. Without it the route 412s
+	// upfront so the OAuth scope error doesn't leak to the caller (no
+	// bridge-driven bidding fallback yet).
+	EBAY_BIDDING_APPROVED: Type.Boolean({ default: false }),
 	// Commerce Catalog API APP-CREDENTIAL approval. Verified live
 	// 2026-05-03 that USER OAuth works without this flag, so any
 	// connected eBay account hits Catalog REST automatically — this flag
@@ -162,10 +170,11 @@ const Schema = Type.Object({
 	// Agent (preview) — `/v1/agent/chat` runs OpenAI's Responses API
 	// statefully (server-held thread via `previous_response_id`). Kept
 	// separate from `OPENAI_MODEL` (which the same-product matcher
-	// uses): the matcher wants a cheap fast model, the agent wants a
-	// smarter one. When `OPENAI_API_KEY` is unset, /v1/agent/* return
-	// 503 not_configured.
-	AGENT_OPENAI_MODEL: Type.String({ default: "gpt-5.5" }),
+	// uses): the matcher wants a cheap fast model, the agent has a
+	// per-request override (paid-tier callers can opt up to gpt-5.5).
+	// This env sets the *default* and free-tier-locked model. When
+	// `OPENAI_API_KEY` is unset, /v1/agent/* return 503 not_configured.
+	AGENT_OPENAI_MODEL: Type.String({ default: "gpt-5.4-mini" }),
 	// Public URL where this api's `/mcp` endpoint is reachable from
 	// OpenAI's infrastructure (so the model can call flipagent tools
 	// natively via the Responses API's MCP integration). For local dev:
@@ -204,8 +213,9 @@ const raw = {
 	EBAY_BASE_URL: process.env.EBAY_BASE_URL ?? "https://api.ebay.com",
 	EBAY_AUTH_URL: process.env.EBAY_AUTH_URL ?? "https://auth.ebay.com",
 	EBAY_SCOPES: process.env.EBAY_SCOPES,
-	EBAY_ORDER_API_APPROVED: process.env.EBAY_ORDER_API_APPROVED === "1",
+	EBAY_ORDER_APPROVED: process.env.EBAY_ORDER_APPROVED === "1",
 	EBAY_INSIGHTS_APPROVED: process.env.EBAY_INSIGHTS_APPROVED === "1",
+	EBAY_BIDDING_APPROVED: process.env.EBAY_BIDDING_APPROVED === "1",
 	EBAY_CATALOG_APPROVED: process.env.EBAY_CATALOG_APPROVED === "1",
 	BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
 	KEYS_ENCRYPTION_KEY: process.env.KEYS_ENCRYPTION_KEY,
@@ -234,7 +244,7 @@ const raw = {
 	GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
 	GOOGLE_MODEL: process.env.GOOGLE_MODEL,
 	LLM_MAX_CONCURRENT: process.env.LLM_MAX_CONCURRENT ? Number.parseInt(process.env.LLM_MAX_CONCURRENT, 10) : undefined,
-	AGENT_OPENAI_MODEL: process.env.AGENT_OPENAI_MODEL ?? "gpt-5.5",
+	AGENT_OPENAI_MODEL: process.env.AGENT_OPENAI_MODEL ?? "gpt-5.4-mini",
 	MCP_PUBLIC_URL: process.env.MCP_PUBLIC_URL,
 	OBSERVATION_ENABLED: process.env.OBSERVATION_ENABLED === "1",
 	ADMIN_EMAILS: process.env.ADMIN_EMAILS ?? "",
@@ -262,8 +272,9 @@ export const config = decoded as {
 	EBAY_BASE_URL: string;
 	EBAY_AUTH_URL: string;
 	EBAY_SCOPES: string;
-	EBAY_ORDER_API_APPROVED: boolean;
+	EBAY_ORDER_APPROVED: boolean;
 	EBAY_INSIGHTS_APPROVED: boolean;
+	EBAY_BIDDING_APPROVED: boolean;
 	EBAY_CATALOG_APPROVED: boolean;
 	BETTER_AUTH_SECRET?: string;
 	KEYS_ENCRYPTION_KEY?: string;
@@ -377,12 +388,14 @@ export function isLlmConfigured(): boolean {
 }
 
 /**
- * True when the agent surface (`/v1/agent/*`) has what it needs:
- * an OpenAI key. Model has a sane default (`gpt-5.5`) so it isn't
- * gated on `AGENT_OPENAI_MODEL`. The agent specifically wants OpenAI's
- * Responses API for stateful threads, so we don't fall back to other
- * providers here.
+ * True when the agent surface (`/v1/agent/*`) has at least one provider
+ * key configured. Multi-provider via the Vercel AI SDK: OpenAI for
+ * `gpt-*`, Anthropic for `claude-*`, Google for `gemini-*`. Per-model
+ * key requirement is enforced lazily in `pickModel` — if a caller
+ * picks a model whose provider isn't keyed, they get a 503 from the
+ * route. This guard is the coarser "is the agent surface usable AT
+ * ALL" check.
  */
 export function isAgentConfigured(): boolean {
-	return Boolean(config.OPENAI_API_KEY);
+	return Boolean(config.OPENAI_API_KEY || config.ANTHROPIC_API_KEY || config.GOOGLE_API_KEY);
 }

@@ -17,7 +17,7 @@
  * other Trading calls). No RequesterCredentials block in the XML.
  */
 
-import { TRADING_COMPAT_LEVEL, TradingApiError, escapeXml, parseTrading, stringFrom } from "./client.js";
+import { escapeXml, parseTrading, stringFrom, TRADING_COMPAT_LEVEL, TradingApiError } from "./client.js";
 
 const TRADING_ENDPOINT = process.env.EBAY_TRADING_URL ?? "https://api.ebay.com/ws/api.dll";
 
@@ -107,7 +107,12 @@ export async function uploadSiteHostedPicture(input: UploadInput): Promise<Uploa
 	} catch (err) {
 		clearTimeout(timer);
 		if (err instanceof Error && err.name === "AbortError") {
-			throw new TradingApiError("UploadSiteHostedPictures", 504, [], `upstream timeout after ${DEFAULT_TIMEOUT_MS}ms`);
+			throw new TradingApiError(
+				"UploadSiteHostedPictures",
+				504,
+				[],
+				`upstream timeout after ${DEFAULT_TIMEOUT_MS}ms`,
+			);
 		}
 		throw err;
 	}

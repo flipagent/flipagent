@@ -5,7 +5,7 @@
  * renders as plain text. Code fences get a copy button overlay.
  */
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -26,7 +26,7 @@ function getCodeText(children: unknown): string {
 	return "";
 }
 
-function FencedCode({ lang, children }: { lang?: string; children: unknown }) {
+function FencedCode({ lang, children }: { lang?: string; children: ReactNode }) {
 	const [copied, setCopied] = useState(false);
 	const text = getCodeText(children);
 	function copy() {

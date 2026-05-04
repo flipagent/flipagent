@@ -197,17 +197,19 @@ async function runLogin(args: ParsedArgs): Promise<void> {
 	}
 	// Verify before persisting — wrong keys shouldn't get saved silently.
 	const verifyBase = baseUrl ?? DEFAULT_BASE_URL;
-	const me = await api<{ tier?: string; usage?: { used: number; limit: number } }>("GET", "/v1/keys/me", undefined, {
-		apiKey: key,
-		baseUrl: verifyBase,
-	}).catch((err) => {
+	const me = await api<{ tier?: string; usage?: { creditsUsed: number; creditsLimit: number } }>(
+		"GET",
+		"/v1/keys/me",
+		undefined,
+		{ apiKey: key, baseUrl: verifyBase },
+	).catch((err) => {
 		throw new Error(`Could not verify key: ${(err as Error).message}`);
 	});
 	const cfg: StoredConfig = { apiKey: key };
 	if (baseUrl && baseUrl !== DEFAULT_BASE_URL) cfg.baseUrl = baseUrl;
 	saveConfig(cfg);
 	stdout.write(
-		`✓ Stored at ${CONFIG_PATH}\n  tier: ${me.tier ?? "?"}, used: ${me.usage?.used ?? "?"}/${me.usage?.limit ?? "?"}\n`,
+		`✓ Stored at ${CONFIG_PATH}\n  tier: ${me.tier ?? "?"}, used: ${me.usage?.creditsUsed ?? "?"}/${me.usage?.creditsLimit ?? "?"}\n`,
 	);
 }
 
@@ -220,15 +222,26 @@ async function runWhoami(): Promise<void> {
 	const cfg = loadConfig();
 	const apiKey = resolveApiKey(cfg);
 	const baseUrl = resolveBaseUrl(cfg);
-	const me = await api<{ tier?: string; usage?: { used: number; limit: number; resetAt?: string } }>(
-		"GET",
-		"/v1/keys/me",
-		undefined,
-		{ apiKey, baseUrl },
-	);
+	// Field names match `usageToWire` on the api side (`creditsUsed` /
+	// `creditsLimit` / `creditsRemaining` / `resetAt`). `effectiveTier`
+	// is set when the billing tier was downgraded for past_due.
+	const me = await api<{
+		tier?: string;
+		usage?: {
+			creditsUsed: number;
+			creditsLimit: number;
+			creditsRemaining?: number;
+			resetAt?: string | null;
+			effectiveTier?: string;
+		};
+	}>("GET", "/v1/keys/me", undefined, { apiKey, baseUrl });
 	const prefix = `${apiKey.slice(0, 12)}…`;
+	const tierStr =
+		me.usage?.effectiveTier && me.usage.effectiveTier !== me.tier
+			? `${me.tier ?? "?"} (enforced as ${me.usage.effectiveTier})`
+			: (me.tier ?? "?");
 	stdout.write(
-		`key: ${prefix}\nbaseUrl: ${baseUrl}\ntier: ${me.tier ?? "?"}\nusage: ${me.usage?.used ?? "?"}/${me.usage?.limit ?? "?"}\nresets: ${me.usage?.resetAt ?? "?"}\n`,
+		`key: ${prefix}\nbaseUrl: ${baseUrl}\ntier: ${tierStr}\nusage: ${me.usage?.creditsUsed ?? "?"}/${me.usage?.creditsLimit ?? "?"}\nresets: ${me.usage?.resetAt ?? "?"}\n`,
 	);
 }
 
@@ -238,11 +251,13 @@ type FeaturesResponse = {
 	ebayOAuth: boolean;
 	orderApi: boolean;
 	insightsApi: boolean;
-	scrapeProxy: boolean;
+	biddingApi: boolean;
+	scraperApi: boolean;
 	betterAuth: boolean;
 	googleOAuth: boolean;
 	email: boolean;
 	stripe: boolean;
+	llm: boolean;
 };
 type ScopeStatus = "ok" | "scrape" | "needs_oauth" | "approval_pending" | "unavailable";
 type PermissionsResponse = {
@@ -254,14 +269,15 @@ type PermissionsResponse = {
 		inventory: ScopeStatus;
 		fulfillment: ScopeStatus;
 		finance: ScopeStatus;
-		orderApi: ScopeStatus;
+		order: ScopeStatus;
+		bidding: ScopeStatus;
 	};
 };
 
 const SCOPE_HINT: Record<ScopeStatus, string> = {
 	ok: "",
 	scrape: "Served via the scrape transport (REST not approved/wired or resource is scrape-only).",
-	needs_oauth: "Open the dashboard → Connect eBay account, or hit /v1/connect/ebay/start with this key.",
+	needs_oauth: "Open the dashboard → Connect eBay account, or hit /v1/connect/ebay with this key.",
 	approval_pending: "Apply at developer.ebay.com, then set EBAY_*_APPROVED=1 once granted.",
 	unavailable: "Host has no eBay env wired. See /docs/self-host/.",
 };
@@ -271,7 +287,8 @@ const SCOPE_TITLE: Record<keyof PermissionsResponse["scopes"], string> = {
 	inventory: "Inventory",
 	fulfillment: "Fulfillment",
 	finance: "Finance",
-	orderApi: "Order API (Limited Release)",
+	order: "Buy Order (Limited Release)",
+	bidding: "Buy Offer / Bidding (Limited Release)",
 };
 
 async function fetchPublic<T>(baseUrl: string, path: string): Promise<T> {
@@ -303,11 +320,13 @@ async function runDoctor(): Promise<void> {
 		stdout.write(`${formatFlag("ebayOAuth", features.ebayOAuth)}\n`);
 		stdout.write(`${formatFlag("orderApi", features.orderApi)}\n`);
 		stdout.write(`${formatFlag("insightsApi", features.insightsApi)}\n`);
-		stdout.write(`${formatFlag("scrapeProxy", features.scrapeProxy)}\n`);
+		stdout.write(`${formatFlag("biddingApi", features.biddingApi)}\n`);
+		stdout.write(`${formatFlag("scraperApi", features.scraperApi)}\n`);
 		stdout.write(`${formatFlag("betterAuth", features.betterAuth)}\n`);
 		stdout.write(`${formatFlag("googleOAuth", features.googleOAuth)}\n`);
 		stdout.write(`${formatFlag("email", features.email)}\n`);
 		stdout.write(`${formatFlag("stripe", features.stripe)}\n`);
+		stdout.write(`${formatFlag("llm", features.llm)}\n`);
 	} catch (err) {
 		stdout.write(`  · could not reach ${baseUrl} — ${err instanceof Error ? err.message : String(err)}\n`);
 		stdout.write("\nHint: is the api running? Start with `npm run --workspace @flipagent/api dev`.\n");
@@ -346,7 +365,8 @@ async function runDoctor(): Promise<void> {
 		stdout.write(`${formatScope(SCOPE_TITLE.inventory, perms.scopes.inventory)}\n`);
 		stdout.write(`${formatScope(SCOPE_TITLE.fulfillment, perms.scopes.fulfillment)}\n`);
 		stdout.write(`${formatScope(SCOPE_TITLE.finance, perms.scopes.finance)}\n`);
-		stdout.write(`${formatScope(SCOPE_TITLE.orderApi, perms.scopes.orderApi)}\n`);
+		stdout.write(`${formatScope(SCOPE_TITLE.order, perms.scopes.order)}\n`);
+		stdout.write(`${formatScope(SCOPE_TITLE.bidding, perms.scopes.bidding)}\n`);
 	} catch (err) {
 		stdout.write(`  · permissions lookup failed — ${err instanceof Error ? err.message : String(err)}\n`);
 	}
@@ -550,7 +570,12 @@ async function runBuy(args: ParsedArgs): Promise<void> {
 	if (args.values.variation ?? args.values.variationId) {
 		item.variationId = args.values.variation ?? args.values.variationId;
 	}
-	const out = await api("POST", "/v1/purchases", { items: [item] }, opts);
+	// `humanReviewedAt` is the eBay-UA-Feb-2026 attestation — bridge
+	// transport requires it on every call (REST too unless the operator
+	// has Order API approval). The CLI invocation with an explicit
+	// itemId arg counts as the human's per-order review, so send the
+	// current timestamp; the orchestrator's freshness window is 5 min.
+	const out = await api("POST", "/v1/purchases", { items: [item], humanReviewedAt: new Date().toISOString() }, opts);
 	printJson(out);
 }
 
@@ -760,7 +785,7 @@ click Buy It Now and Confirm-and-pay yourself, the way eBay's
 policy requires). Extension install + setup:
 https://flipagent.dev/docs/extension/
 
-Get a free key (500 credits one-time, no card) at https://flipagent.dev/signup.
+Get a free key (1,000 credits one-time, no card) at https://flipagent.dev/signup.
 Self-hosting? See https://flipagent.dev/docs/self-host/.
 `);
 }

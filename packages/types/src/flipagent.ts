@@ -27,8 +27,13 @@ export type Role = Static<typeof Role>;
 /* ------------------------------- error codes ------------------------------- */
 
 /**
- * Every `error` string the API can return. Keep in sync with route handlers
- * and the `errors.astro` docs page (which imports this list at build time).
+ * Cross-cutting `error` codes — auth, billing, validation, transport. The
+ * full union is intentionally curated; individual routes also emit
+ * feature-specific codes (e.g. `extension_not_paired`,
+ * `ebay_account_not_connected`, `disclaimer_not_acknowledged`,
+ * `image_too_large`) that don't belong on this short list. The docs page
+ * `apps/docs/src/pages/docs/errors.astro` mirrors this catalog plus
+ * notes the long tail; keep both in sync when adding cross-cutting codes.
  */
 export const ErrorCode = Type.Union(
 	[
@@ -100,9 +105,13 @@ export type Health = Static<typeof Health>;
 export const FeaturesResponse = Type.Object(
 	{
 		ebayOAuth: Type.Boolean({ description: "EBAY_CLIENT_ID/SECRET/RU_NAME all set." }),
-		orderApi: Type.Boolean({ description: "EBAY_ORDER_API_APPROVED=1 (Limited Release tenant approval)." }),
+		orderApi: Type.Boolean({ description: "EBAY_ORDER_APPROVED=1 (Limited Release tenant approval)." }),
 		insightsApi: Type.Boolean({
 			description: "EBAY_INSIGHTS_APPROVED=1 (Marketplace Insights program approval — REST sold history).",
+		}),
+		biddingApi: Type.Boolean({
+			description:
+				"EBAY_BIDDING_APPROVED=1 (Buy Offer / Bidding API — Limited Release per-tenant approval; gates /v1/bids).",
 		}),
 		scraperApi: Type.Boolean({
 			description:
@@ -159,7 +168,8 @@ export const PermissionsResponse = Type.Object(
 			inventory: ScopeStatus,
 			fulfillment: ScopeStatus,
 			finance: ScopeStatus,
-			orderApi: ScopeStatus,
+			order: ScopeStatus,
+			bidding: ScopeStatus,
 		}),
 	},
 	{ $id: "PermissionsResponse" },
@@ -205,8 +215,9 @@ export type KeyCreateResponse = Static<typeof KeyCreateResponse>;
 
 const Usage = Type.Object({
 	// One unified credit budget. Each call charges N credits depending on
-	// what it does (1 rest / 2 scrape / 50 evaluate / 0 passthrough — see
-	// /docs/rate-limits). See /docs/rate-limits for the full table.
+	// what it does (1 marketplace data / 80 evaluate / 5 mini agent turn /
+	// 25 gpt-5.5 agent turn / 0 passthrough — see /docs/rate-limits for the
+	// full table).
 	creditsUsed: Type.Integer(),
 	creditsLimit: Type.Integer(),
 	creditsRemaining: Type.Integer(),
@@ -215,7 +226,7 @@ const Usage = Type.Object({
 	// so the dashboard can render a "+N admin bonus" hint without
 	// re-querying the grant ledger.
 	bonusCredits: Type.Integer({ default: 0 }),
-	// Refill timestamp. Null for the Free tier — its 500 credits are a
+	// Refill timestamp. Null for the Free tier — its 1,000 credits are a
 	// one-time grant, not a monthly allotment. Paid tiers refill on the
 	// 1st of each month (UTC).
 	resetAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
@@ -509,10 +520,10 @@ export type BillingHistoryResponse = Static<typeof BillingHistoryResponse>;
  * no card on file → 403 on the config endpoints; they need to
  * subscribe first.
  */
-export const BillingTopUpCredits = Type.Union(
-	[Type.Literal(5_000), Type.Literal(25_000), Type.Literal(100_000)],
-	{ $id: "BillingTopUpCredits", description: "One of the catalogued top-up amounts (5k / 25k / 100k)." },
-);
+export const BillingTopUpCredits = Type.Union([Type.Literal(1_500), Type.Literal(7_500), Type.Literal(30_000)], {
+	$id: "BillingTopUpCredits",
+	description: "One of the catalogued top-up amounts (5k / 25k / 100k).",
+});
 export type BillingTopUpCredits = Static<typeof BillingTopUpCredits>;
 
 /**
@@ -545,12 +556,13 @@ export type BillingTopUpQuotesResponse = Static<typeof BillingTopUpQuotesRespons
 export const BillingAutoRechargeConfig = Type.Object(
 	{
 		enabled: Type.Boolean(),
-		// Trigger threshold in credits — when creditsRemaining drops
-		// below this, the next request fires the off-session top-up.
-		// Null when enabled is false.
-		thresholdCredits: Type.Union([Type.Integer({ minimum: 100, maximum: 50_000 }), Type.Null()]),
-		// Top-up amount per fire — must be one of `BillingTopUpCredits`.
-		topUpCredits: Type.Union([BillingTopUpCredits, Type.Null()]),
+		// Target balance in credits — when creditsRemaining drops below
+		// this, the next billable request charges the saved card to
+		// bring the balance back to (or just above) the target. One
+		// number replaces the previous threshold + topup pair. Bounds
+		// are tier-dependent — see `targetRangeForTier()` in the API.
+		// Null when `enabled` is false.
+		targetCredits: Type.Union([Type.Integer({ minimum: 500 }), Type.Null()]),
 		// Last successful auto-recharge. Null when disabled or never fired.
 		// Dashboard renders "Last recharged: 3h ago" off this.
 		lastRechargedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
@@ -561,22 +573,21 @@ export type BillingAutoRechargeConfig = Static<typeof BillingAutoRechargeConfig>
 
 /**
  * Request body for `PUT /v1/billing/auto-recharge`. Client supplies
- * just `thresholdCredits` — the server picks `topUpCredits` from the
- * tier default (`defaultTopUpForTier`), keeping the dashboard form to
- * a single number. Disabling carries no fields.
+ * `targetCredits` — the desired floor balance. The server validates
+ * it against the user's tier-specific range; out-of-range values 400.
+ * Disabling carries no fields.
  */
 export const BillingAutoRechargeUpdateRequest = Type.Union(
 	[
 		Type.Object({ enabled: Type.Literal(false) }),
 		Type.Object({
 			enabled: Type.Literal(true),
-			thresholdCredits: Type.Integer({ minimum: 100, maximum: 50_000 }),
+			targetCredits: Type.Integer({ minimum: 500 }),
 		}),
 	],
 	{ $id: "BillingAutoRechargeUpdateRequest" },
 );
 export type BillingAutoRechargeUpdateRequest = Static<typeof BillingAutoRechargeUpdateRequest>;
-
 
 /* ------------------------------- /v1/takedown ------------------------------ */
 

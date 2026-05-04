@@ -32,6 +32,7 @@ export function SearchResult({
 	pending,
 	onPage,
 	onSelectItem,
+	onEvalItem,
 	selectedItemId,
 	mockMode = false,
 }: {
@@ -41,16 +42,27 @@ export function SearchResult({
 	/** Pagination handler — fires on Prev/Next click. */
 	onPage?: (nextOffset: number) => void;
 	/**
-	 * When provided, each row becomes clickable; click fires this with
-	 * the row's `ItemSummary`. Used by Search and Sourcing to slide a
-	 * detail drawer in on the right (`<RowDrawer>`). Omit and rows just
-	 * link out to eBay.
+	 * Row activation. PlaygroundSearch / Sourcing wire this to slide a
+	 * detail drawer in on the right (`<RowDrawer>`); the agent inline
+	 * panel wires it to dispatch an `embed-tool` for the next chat
+	 * turn. Omit and rows just link out to eBay.
 	 */
 	onSelectItem?: (item: ItemSummary) => void;
+	/**
+	 * Per-row "Evaluate" button click. When provided, the button bypasses
+	 * the local eval store entirely and hands off to the parent — used
+	 * by hosts that route evaluation through their own pipeline (e.g.
+	 * the agent inline panel forwards back to the next chat turn).
+	 * Omit and the button keeps its standalone behavior: idle → run via
+	 * `runEvalForItem` against the local store, complete → open drawer,
+	 * running → cancel.
+	 */
+	onEvalItem?: (item: ItemSummary) => void;
 	selectedItemId?: string | null;
 	/** When true, per-row Run Evaluate uses the canned mockData fixtures
 	 *  instead of hitting the live API — same flag the drawer's mockMode
-	 *  uses for the logged-out hero. */
+	 *  uses for the logged-out hero. Only consulted when `onEvalItem` is
+	 *  not provided (parent override always wins). */
 	mockMode?: boolean;
 }) {
 	const items: ItemSummary[] = outcome.body
@@ -83,6 +95,7 @@ export function SearchResult({
 							item={item}
 							mode={outcome.mode}
 							onSelect={onSelectItem}
+							onEval={onEvalItem}
 							selected={selectedItemId === item.itemId}
 							mockMode={mockMode}
 						/>
@@ -130,6 +143,22 @@ function formatCompactCount(n: number): string {
 	return COMPACT_COUNT.format(n);
 }
 
+function formatEndsIn(iso: string | undefined): string | null {
+	if (!iso) return null;
+	const end = Date.parse(iso);
+	if (!Number.isFinite(end)) return null;
+	const ms = end - Date.now();
+	if (ms <= 0) return "ended";
+	const sec = Math.floor(ms / 1000);
+	const days = Math.floor(sec / 86400);
+	const hours = Math.floor((sec % 86400) / 3600);
+	const mins = Math.floor((sec % 3600) / 60);
+	if (days >= 1) return `ends in ${days}d ${hours}h`;
+	if (hours >= 1) return `ends in ${hours}h ${mins}m`;
+	if (mins >= 1) return `ends in ${mins}m`;
+	return "ends <1m";
+}
+
 function SkeletonRow() {
 	return (
 		<div className="pg-result-matches-row pg-result-matches-row--skel">
@@ -152,16 +181,22 @@ function SkeletonRow() {
 	);
 }
 
+/** Reusable idle-state literal for the parent-owned eval path so we
+ *  don't allocate a new object each render. */
+const IDLE_STATE = { status: "idle" } as const;
+
 function SearchRow({
 	item,
 	mode,
 	onSelect,
+	onEval,
 	selected,
 	mockMode,
 }: {
 	item: ItemSummary;
 	mode: "active" | "sold";
 	onSelect?: (item: ItemSummary) => void;
+	onEval?: (item: ItemSummary) => void;
 	selected?: boolean;
 	mockMode: boolean;
 }) {
@@ -174,6 +209,7 @@ function SearchRow({
 		if (isAuction) modeTag = currentBid ? `Auction · $${currentBid} bid` : "Auction · no bids";
 		else if (acceptsOffer) modeTag = "Best Offer";
 	}
+	const endsTag = mode === "active" && isAuction ? formatEndsIn(item.itemEndDate) : null;
 
 	// Shared per-itemId eval state — flipping in the store also updates
 	// the RowDrawer when it's open for this item, so running progress and
@@ -183,6 +219,13 @@ function SearchRow({
 
 	function onEvalClick(e: React.MouseEvent) {
 		e.stopPropagation();
+		// Parent override — host owns evaluation (e.g. agent inline panel
+		// forwards back to the next chat turn). Skip the local eval store
+		// entirely so we don't double-run / mis-redirect.
+		if (onEval) {
+			onEval(item);
+			return;
+		}
 		if (evalState.status === "running") {
 			cancelEvalForItem(item.itemId);
 		} else if (evalState.status === "complete") {
@@ -227,10 +270,14 @@ function SearchRow({
 					{item.condition && <span>{item.condition}</span>}
 					{priceText && <span className="font-mono">${priceText}</span>}
 					{modeTag && <span className="pg-result-matches-tag">{modeTag}</span>}
+					{endsTag && <span className="pg-result-matches-tag">{endsTag}</span>}
 				</div>
 			</div>
 			<div className="pg-search-row-actions">
-				<EvalButton state={evalState} onClick={onEvalClick} />
+				{/* When the parent owns eval, force the visual to the idle "Run
+				    Evaluate" state — local-store status (running/complete) is
+				    meaningless from the parent's perspective. */}
+				<EvalButton state={onEval ? IDLE_STATE : evalState} onClick={onEvalClick} />
 				<a
 					href={cleanItemUrl(item.itemWebUrl)}
 					target="_blank"
@@ -335,7 +382,7 @@ function EvalButton({
 				<path d="M8 11l2.5-2.5" />
 				<circle cx="8" cy="11" r="0.6" fill="currentColor" />
 			</svg>
-			Eval
+			Evaluate
 		</button>
 	);
 }

@@ -8,16 +8,18 @@
 import { describe, expect, it } from "vitest";
 import {
 	AUTO_RECHARGE_COOLDOWN_MS,
-	AUTO_RECHARGE_MAX_THRESHOLD,
-	AUTO_RECHARGE_MIN_THRESHOLD,
 	creditsForCall,
+	DEFAULT_AUTO_RECHARGE_TARGET,
 	effectiveTier,
 	ensureValidCreditAmount,
+	MIN_TOPUP_CREDITS,
 	PACK_DENOMINATIONS,
 	PAST_DUE_GRACE_DAYS,
 	PER_CREDIT_USD,
 	pricePerCreditUsd,
+	TARGET_RANGE_BY_TIER,
 	TIER_LIMITS,
+	targetRangeForTier,
 	topUpPriceCents,
 	worstCaseCreditsForEndpoint,
 } from "../../src/auth/limits.js";
@@ -25,7 +27,13 @@ import {
 describe("TIER_LIMITS", () => {
 	it("Free is one-time (lifetime grant)", () => {
 		expect(TIER_LIMITS.free.oneTime).toBe(true);
-		expect(TIER_LIMITS.free.credits).toBe(500);
+		expect(TIER_LIMITS.free.credits).toBe(1_000);
+	});
+
+	it("paid tier sizes match the pricing page (Hobby 3k / Standard 25k / Growth 120k)", () => {
+		expect(TIER_LIMITS.hobby.credits).toBe(3_000);
+		expect(TIER_LIMITS.standard.credits).toBe(25_000);
+		expect(TIER_LIMITS.growth.credits).toBe(120_000);
 	});
 
 	it("paid tiers refill monthly", () => {
@@ -35,16 +43,22 @@ describe("TIER_LIMITS", () => {
 	});
 
 	it("burst caps escalate with tier", () => {
-		expect(TIER_LIMITS.free.burstPerMin).toBeLessThan(TIER_LIMITS.hobby.burstPerMin);
+		// Per-min caps allow short spikes; free + hobby intentionally share
+		// the same per-min ceiling — the per-hour cap is what separates them.
+		expect(TIER_LIMITS.free.burstPerMin).toBeLessThanOrEqual(TIER_LIMITS.hobby.burstPerMin);
 		expect(TIER_LIMITS.hobby.burstPerMin).toBeLessThan(TIER_LIMITS.standard.burstPerMin);
 		expect(TIER_LIMITS.standard.burstPerMin).toBeLessThan(TIER_LIMITS.growth.burstPerMin);
+		// Per-hour caps are strictly increasing across every tier.
+		expect(TIER_LIMITS.free.burstPerHour).toBeLessThan(TIER_LIMITS.hobby.burstPerHour);
+		expect(TIER_LIMITS.hobby.burstPerHour).toBeLessThan(TIER_LIMITS.standard.burstPerHour);
+		expect(TIER_LIMITS.standard.burstPerHour).toBeLessThan(TIER_LIMITS.growth.burstPerHour);
 	});
 });
 
-describe("creditsForCall — transport-aware pricing", () => {
-	it("evaluate is 50 regardless of source", () => {
-		expect(creditsForCall({ endpoint: "/v1/evaluate", source: "rest" })).toBe(50);
-		expect(creditsForCall({ endpoint: "/v1/evaluate/items/123", source: "scrape" })).toBe(50);
+describe("creditsForCall — transport-uniform endpoint pricing", () => {
+	it("evaluate is 80 regardless of source", () => {
+		expect(creditsForCall({ endpoint: "/v1/evaluate", source: "rest" })).toBe(80);
+		expect(creditsForCall({ endpoint: "/v1/evaluate/items/123", source: "scrape" })).toBe(80);
 	});
 
 	it("evaluate sub-routes (featured, scopes) charge 0", () => {
@@ -52,21 +66,35 @@ describe("creditsForCall — transport-aware pricing", () => {
 		expect(creditsForCall({ endpoint: "/v1/evaluate/scopes", source: "scrape" })).toBe(0);
 	});
 
-	it("items/products/categories/trends — scrape charges 2c, rest charges 1c", () => {
-		expect(creditsForCall({ endpoint: "/v1/items/search", source: "scrape" })).toBe(2);
+	it("items/products/categories/trends — uniform 1 credit per call (transport hidden from user)", () => {
+		expect(creditsForCall({ endpoint: "/v1/items/search", source: "scrape" })).toBe(1);
 		expect(creditsForCall({ endpoint: "/v1/items/search", source: "rest" })).toBe(1);
-		expect(creditsForCall({ endpoint: "/v1/products/abc", source: "scrape" })).toBe(2);
+		expect(creditsForCall({ endpoint: "/v1/products/abc", source: "scrape" })).toBe(1);
 		expect(creditsForCall({ endpoint: "/v1/categories/tree", source: "rest" })).toBe(1);
-		expect(creditsForCall({ endpoint: "/v1/trends/popular", source: "scrape" })).toBe(2);
+		expect(creditsForCall({ endpoint: "/v1/trends/popular", source: "scrape" })).toBe(1);
 	});
 
-	it("items via bridge or trading is 0 (runs in user's browser/passthrough)", () => {
-		expect(creditsForCall({ endpoint: "/v1/items/123", source: "bridge" })).toBe(0);
-		expect(creditsForCall({ endpoint: "/v1/items/123", source: "trading" })).toBe(0);
+	it("items via bridge or trading still charges 1 (transport-uniform)", () => {
+		// Old model dropped to 0 for bridge/trading (passthrough); new model
+		// hides transport from the user — same logical request = same price.
+		expect(creditsForCall({ endpoint: "/v1/items/123", source: "bridge" })).toBe(1);
+		expect(creditsForCall({ endpoint: "/v1/items/123", source: "trading" })).toBe(1);
 	});
 
-	it("unknown source defaults to 1c on metered paths (conservative)", () => {
+	it("unknown source still resolves to 1 on metered paths", () => {
 		expect(creditsForCall({ endpoint: "/v1/items/123", source: null })).toBe(1);
+	});
+
+	it("agent chat — per-model credit costs (4 supported models)", () => {
+		expect(creditsForCall({ endpoint: "/v1/agent/chat", source: null, agentModel: "gpt-5.4-mini" })).toBe(5);
+		expect(creditsForCall({ endpoint: "/v1/agent/chat", source: null, agentModel: "gpt-5.5" })).toBe(25);
+		expect(creditsForCall({ endpoint: "/v1/agent/chat", source: null, agentModel: "claude-sonnet-4-7" })).toBe(15);
+		expect(creditsForCall({ endpoint: "/v1/agent/chat", source: null, agentModel: "gemini-2.5-flash" })).toBe(3);
+	});
+
+	it("agent chat — unknown model falls back to mini cost (safe default)", () => {
+		expect(creditsForCall({ endpoint: "/v1/agent/chat", source: null, agentModel: null })).toBe(5);
+		expect(creditsForCall({ endpoint: "/v1/agent/chat", source: null, agentModel: "gpt-future" })).toBe(5);
 	});
 
 	it("sell-side / passthrough endpoints always charge 0", () => {
@@ -78,16 +106,20 @@ describe("creditsForCall — transport-aware pricing", () => {
 });
 
 describe("worstCaseCreditsForEndpoint — pre-charge gate", () => {
-	it("evaluate worst case = 50", () => {
-		expect(worstCaseCreditsForEndpoint("/v1/evaluate")).toBe(50);
-		expect(worstCaseCreditsForEndpoint("/v1/evaluate/items/123")).toBe(50);
+	it("evaluate worst case = 80", () => {
+		expect(worstCaseCreditsForEndpoint("/v1/evaluate")).toBe(80);
+		expect(worstCaseCreditsForEndpoint("/v1/evaluate/items/123")).toBe(80);
 	});
 
-	it("items/products/categories/trends worst case = 2 (scrape)", () => {
-		expect(worstCaseCreditsForEndpoint("/v1/items/search")).toBe(2);
-		expect(worstCaseCreditsForEndpoint("/v1/products/123")).toBe(2);
-		expect(worstCaseCreditsForEndpoint("/v1/categories/tree")).toBe(2);
-		expect(worstCaseCreditsForEndpoint("/v1/trends/popular")).toBe(2);
+	it("items/products/categories/trends worst case = 1 (transport-uniform)", () => {
+		expect(worstCaseCreditsForEndpoint("/v1/items/search")).toBe(1);
+		expect(worstCaseCreditsForEndpoint("/v1/products/123")).toBe(1);
+		expect(worstCaseCreditsForEndpoint("/v1/categories/tree")).toBe(1);
+		expect(worstCaseCreditsForEndpoint("/v1/trends/popular")).toBe(1);
+	});
+
+	it("agent/chat worst case = 25 (gpt-5.5 turn — most expensive selectable model)", () => {
+		expect(worstCaseCreditsForEndpoint("/v1/agent/chat")).toBe(25);
 	});
 
 	it("evaluate sub-routes (featured/scopes) are 0", () => {
@@ -106,50 +138,31 @@ describe("effectiveTier — past_due grace expiry", () => {
 	const NOW = new Date("2026-05-10T12:00:00Z");
 
 	it("free stays free", () => {
-		expect(
-			effectiveTier(
-				{ tier: "free", subscriptionStatus: null, pastDueSince: null },
-				NOW,
-			),
-		).toBe("free");
+		expect(effectiveTier({ tier: "free", subscriptionStatus: null, pastDueSince: null }, NOW)).toBe("free");
 	});
 
 	it("paid + active stays at paid tier", () => {
-		expect(
-			effectiveTier(
-				{ tier: "standard", subscriptionStatus: "active", pastDueSince: null },
-				NOW,
-			),
-		).toBe("standard");
+		expect(effectiveTier({ tier: "standard", subscriptionStatus: "active", pastDueSince: null }, NOW)).toBe(
+			"standard",
+		);
 	});
 
 	it("paid + past_due within grace stays at paid tier", () => {
 		const fiveDaysAgo = new Date(NOW.getTime() - 5 * 24 * 60 * 60 * 1000);
-		expect(
-			effectiveTier(
-				{ tier: "standard", subscriptionStatus: "past_due", pastDueSince: fiveDaysAgo },
-				NOW,
-			),
-		).toBe("standard");
+		expect(effectiveTier({ tier: "standard", subscriptionStatus: "past_due", pastDueSince: fiveDaysAgo }, NOW)).toBe(
+			"standard",
+		);
 	});
 
 	it("paid + past_due past grace downgrades to free", () => {
 		const eightDaysAgo = new Date(NOW.getTime() - 8 * 24 * 60 * 60 * 1000);
-		expect(
-			effectiveTier(
-				{ tier: "standard", subscriptionStatus: "past_due", pastDueSince: eightDaysAgo },
-				NOW,
-			),
-		).toBe("free");
+		expect(effectiveTier({ tier: "standard", subscriptionStatus: "past_due", pastDueSince: eightDaysAgo }, NOW)).toBe(
+			"free",
+		);
 	});
 
 	it("past_due with null anchor doesn't downgrade (defensive — webhook bug shouldn't kill paid users)", () => {
-		expect(
-			effectiveTier(
-				{ tier: "growth", subscriptionStatus: "past_due", pastDueSince: null },
-				NOW,
-			),
-		).toBe("growth");
+		expect(effectiveTier({ tier: "growth", subscriptionStatus: "past_due", pastDueSince: null }, NOW)).toBe("growth");
 	});
 
 	it("PAST_DUE_GRACE_DAYS is exactly 7", () => {
@@ -167,20 +180,20 @@ describe("top-up pricing — tier-aware per-credit", () => {
 		expect(() => pricePerCreditUsd("free")).toThrow(/Free tier has no top-up pricing/);
 	});
 
-	it("topUpPriceCents — Hobby 5k = $15.00 (1500c)", () => {
-		expect(topUpPriceCents("hobby", 5_000)).toBe(1500);
+	it("topUpPriceCents — Hobby 1.5k = $14.25 (1425c)", () => {
+		expect(topUpPriceCents("hobby", 1_500)).toBe(1425);
 	});
 
-	it("topUpPriceCents — Standard 25k = $50.00 (5000c)", () => {
-		expect(topUpPriceCents("standard", 25_000)).toBe(5000);
+	it("topUpPriceCents — Standard 7.5k = $45.00 (4500c)", () => {
+		expect(topUpPriceCents("standard", 7_500)).toBe(4500);
 	});
 
-	it("topUpPriceCents — Growth 100k = $150.00 (15000c)", () => {
-		expect(topUpPriceCents("growth", 100_000)).toBe(15000);
+	it("topUpPriceCents — Growth 30k = $150.00 (15000c)", () => {
+		expect(topUpPriceCents("growth", 30_000)).toBe(15000);
 	});
 
-	it("a Hobby 25k pack costs more than a Standard 25k pack (Hobby pays more per credit)", () => {
-		expect(topUpPriceCents("hobby", 25_000)).toBeGreaterThan(topUpPriceCents("standard", 25_000));
+	it("a Hobby 7.5k pack costs more than a Standard 7.5k pack (Hobby pays more per credit)", () => {
+		expect(topUpPriceCents("hobby", 7_500)).toBeGreaterThan(topUpPriceCents("standard", 7_500));
 	});
 });
 
@@ -193,22 +206,32 @@ describe("ensureValidCreditAmount — closed denomination set", () => {
 
 	it("rejects off-menu amounts", () => {
 		expect(() => ensureValidCreditAmount(1_000)).toThrow();
-		expect(() => ensureValidCreditAmount(50_000)).toThrow();
+		expect(() => ensureValidCreditAmount(5_000)).toThrow();
 		expect(() => ensureValidCreditAmount(99_999)).toThrow();
 	});
 
 	it("rejects non-integers", () => {
-		expect(() => ensureValidCreditAmount(5_000.5)).toThrow();
+		expect(() => ensureValidCreditAmount(1_500.5)).toThrow();
 	});
 });
 
 describe("auto-recharge bounds", () => {
-	it("threshold lower bound is 100 (smaller is meaningless — every call would fire)", () => {
-		expect(AUTO_RECHARGE_MIN_THRESHOLD).toBe(100);
+	it("default target is 1k — uniform across paid tiers", () => {
+		expect(DEFAULT_AUTO_RECHARGE_TARGET).toBe(1_000);
 	});
 
-	it("threshold upper bound is 50k (above this, upgrade tier instead)", () => {
-		expect(AUTO_RECHARGE_MAX_THRESHOLD).toBe(50_000);
+	it("min top-up is 100 credits (~$0.50, the Stripe per-charge floor)", () => {
+		expect(MIN_TOPUP_CREDITS).toBe(100);
+	});
+
+	it("target ranges scale with tier — same min, growing max", () => {
+		expect(TARGET_RANGE_BY_TIER.hobby).toEqual({ min: 500, max: 10_000 });
+		expect(TARGET_RANGE_BY_TIER.standard).toEqual({ min: 500, max: 50_000 });
+		expect(TARGET_RANGE_BY_TIER.growth).toEqual({ min: 500, max: 200_000 });
+	});
+
+	it("targetRangeForTier throws on free", () => {
+		expect(() => targetRangeForTier("free")).toThrow();
 	});
 
 	it("cooldown is 60s (long enough to avoid double-fire, short enough to feel responsive)", () => {

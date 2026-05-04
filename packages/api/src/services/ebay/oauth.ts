@@ -95,7 +95,7 @@ async function refreshUserAccess(refreshToken: string): Promise<RefreshResponse>
 	// refresh returned `invalid_scope` after `sell.logistics` was added
 	// to the default). Omit it: eBay returns a token with whatever scopes
 	// the binding was granted at consent time. Newly-added scopes only
-	// activate once the user re-consents through `/v1/connect/ebay/start`.
+	// activate once the user re-consents through `/v1/connect/ebay`.
 	const body = new URLSearchParams({
 		grant_type: "refresh_token",
 		refresh_token: refreshToken,

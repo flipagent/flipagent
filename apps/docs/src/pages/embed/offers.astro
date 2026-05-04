@@ -1,0 +1,40 @@
+---
+/**
+ * /embed/offers — inline UI for `flipagent_list_offers`. Mounted inside
+ * an iframe by the chat host. Bare layout: tokens + fonts only. Same
+ * protocol as the other /embed/* surfaces — see EmbedOffers.tsx.
+ */
+import "../../styles/global.css";
+import "../../components/playground/Playground.css";
+import { EmbedOffers } from "../../components/embed/EmbedOffers";
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>flipagent · pending offers</title>
+		<style>
+			:root {
+				color-scheme: light;
+			}
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+				background: transparent;
+				overflow: hidden;
+			}
+			body {
+				font-family: "Geist", system-ui, sans-serif;
+				color: var(--text);
+				font-size: 13px;
+				line-height: 1.45;
+			}
+		</style>
+	</head>
+	<body>
+		<EmbedOffers client:load />
+	</body>
+</html>

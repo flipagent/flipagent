@@ -103,11 +103,7 @@ adminRoute.get(
 			db
 				.select({
 					calls: sql<number>`cast(count(*) as int)`,
-					credits: sql<number>`cast(coalesce(sum(case
-						when ${usageEvents.endpoint} like '/v1/evaluate%' then 50
-						when ${usageEvents.endpoint} like '/v1/browser%' then 5
-						else 1
-					end), 0) as int)`,
+					credits: sql<number>`cast(coalesce(sum(${usageEvents.creditsCharged}), 0) as int)`,
 				})
 				.from(usageEvents)
 				.where(gte(usageEvents.createdAt, monthCutoff)),
@@ -227,11 +223,7 @@ adminRoute.get(
 			db
 				.select({
 					userId: usageEvents.userId,
-					credits: sql<number>`cast(coalesce(sum(case
-						when ${usageEvents.endpoint} like '/v1/evaluate%' then 50
-						when ${usageEvents.endpoint} like '/v1/browser%' then 5
-						else 1
-					end), 0) as int)`,
+					credits: sql<number>`cast(coalesce(sum(${usageEvents.creditsCharged}), 0) as int)`,
 				})
 				.from(usageEvents)
 				.where(and(inArray(usageEvents.userId, ids), gte(usageEvents.createdAt, sql`date_trunc('month', now())`)))
@@ -580,8 +572,7 @@ async function loadUserDetail(id: string) {
 			subscriptionStatus: userTable.subscriptionStatus,
 			pastDueSince: userTable.pastDueSince,
 			autoRechargeEnabled: userTable.autoRechargeEnabled,
-			autoRechargeThreshold: userTable.autoRechargeThreshold,
-			autoRechargeTopup: userTable.autoRechargeTopup,
+			autoRechargeTarget: userTable.autoRechargeTarget,
 			lastAutoRechargeAt: userTable.lastAutoRechargeAt,
 		})
 		.from(userTable)
@@ -689,8 +680,7 @@ async function loadUserDetail(id: string) {
 			pastDueSince: row.pastDueSince ? row.pastDueSince.toISOString() : null,
 			autoRecharge: {
 				enabled: row.autoRechargeEnabled,
-				thresholdCredits: row.autoRechargeThreshold,
-				topUpCredits: row.autoRechargeTopup,
+				targetCredits: row.autoRechargeTarget,
 				lastRechargedAt: row.lastAutoRechargeAt ? row.lastAutoRechargeAt.toISOString() : null,
 			},
 			activeKeyCount: keys.filter((k) => !k.revokedAt).length,

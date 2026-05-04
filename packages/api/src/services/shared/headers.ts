@@ -7,8 +7,9 @@
  *   X-Flipagent-Cached-At   ISO timestamp when fromCache
  *
  * Also stashes `result.source` in the Hono context as `flipagentSource`
- * so `requireApiKey` can read it post-handler and bill transport-aware
- * (rest=1c vs scrape=2c on the same endpoint) without re-deriving it.
+ * for `usage_events.source` telemetry — pricing itself is now
+ * transport-uniform (one credit cost per logical request, regardless
+ * of scrape/rest/bridge), so the field is informational, not billing.
  *
  * Routes call this exactly once before `c.json(result.body)`.
  */

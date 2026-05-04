@@ -51,7 +51,7 @@ npm run watch              # dev rebuild on change
 
 1. `chrome://extensions` → enable Developer mode
 2. **Load unpacked** → select `packages/extension/dist`
-3. Click the extension's options page → paste your `fa_…` key →
+3. Click the extension icon to open its popup → paste your `fa_…` key →
    click **Save + pair**
 4. The extension issues a bridge token, pairs the device, and the
    service worker starts polling.

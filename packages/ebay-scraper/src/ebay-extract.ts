@@ -117,28 +117,33 @@ function classifyAttributeRows(card: Element): {
 	let seller: string | null = null;
 	let soldQty: string | null = null;
 
+	// Each row may pack multiple signals at once (eBay's modern SRP often
+	// renders "0 bids · Time left 2h 57m left  (Mon, 02:35 PM)" as one
+	// row). Run every pattern independently per row instead of an
+	// `else if` chain — the chain would let the first match consume the
+	// row and silently swallow downstream signals (cost us auction
+	// `timeLeft` until 2026-05).
 	for (const row of rows) {
 		const text = row.textContent?.trim() ?? "";
 		if (!text) continue;
 
 		if (!watchers && /\d+\s*(watchers?|watching)/i.test(text)) watchers = text;
-		else if (
+		if (
 			!shipping &&
 			/(free\s+(delivery|shipping)|\+?\$[0-9.]+\s*(delivery|shipping)|\+?\$[0-9.]+\s*postage)/i.test(text)
 		)
 			shipping = text;
-		else if (!buyingFormat && /(or best offer|buy it now|auction)/i.test(text)) buyingFormat = text;
-		else if (!bids && /\d+\s*bids?/i.test(text)) bids = text;
-		else if (!timeLeft && /(\d+d\s*\d+h|\d+h\s*\d+m|\d+m\s*\d+s|ends in|left|days? left)/i.test(text))
-			timeLeft = text;
-		else if (!soldDate && /^sold\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(text))
+		if (!buyingFormat && /(or best offer|buy it now|auction)/i.test(text)) buyingFormat = text;
+		if (!bids && /\d+\s*bids?/i.test(text)) bids = text;
+		if (!timeLeft && /(\d+d\s*\d+h|\d+h\s*\d+m|\d+m\s*\d+s|ends in|left|days? left)/i.test(text)) timeLeft = text;
+		if (!soldDate && /^sold\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(text))
 			// Match "Sold Mar 30, 2026" — date-style sold lines, not "5 sold" quantity.
 			soldDate = text;
-		else if (!soldDate && /verkauft am|completed/i.test(text)) soldDate = text;
-		else if (!soldQty && /^\d+\s+sold\b/i.test(text))
+		if (!soldDate && /verkauft am|completed/i.test(text)) soldDate = text;
+		if (!soldQty && /^\d+\s+sold\b/i.test(text))
 			// "5 sold", "5 sold of 10", "9 sold this week" — active-side popularity.
 			soldQty = text;
-		else if (!seller && /\d+(\.\d+)?%\s*positive/i.test(text)) seller = text;
+		if (!seller && /\d+(\.\d+)?%\s*positive/i.test(text)) seller = text;
 	}
 	return {
 		shippingText: shipping,
@@ -471,6 +476,11 @@ export interface EbayVariation {
 	currency: string;
 	/** Per-axis aspects (e.g. `Size: US M8`, `Color: Black`). */
 	aspects: Array<{ name: string; value: string }>;
+	/** Per-variation image when eBay exposes one (REST item-group response
+	 *  carries `item.image.imageUrl` for each SKU). Optional — many
+	 *  multi-SKU listings share a single parent photo, in which case
+	 *  callers fall back to the parent listing's hero image. */
+	imageUrl?: string | null;
 }
 
 /**

@@ -199,11 +199,18 @@ export const ForwarderAddress = Type.Object(
 		label: Type.String(),
 		/** True for the warehouse the forwarder treats as the user's default — first-mailout, the "active" tab in the dashboard. Exactly one address has `isPrimary: true`. */
 		isPrimary: Type.Boolean(),
-		name: Type.String({ description: "Recipient name printed on labels (typically the user's account name + suite)." }),
+		name: Type.String({
+			description: "Recipient name printed on labels (typically the user's account name + suite).",
+		}),
 		line1: Type.String(),
 		line2: Type.Optional(Type.String({ description: "Suite / unit number assigned to the user by the forwarder." })),
 		city: Type.String(),
-		region: Type.Optional(Type.String({ description: "ISO 3166-2 region; for US use 2-letter (e.g. NV). Optional because some non-US warehouses (e.g. UK) don't expose a state/region field." })),
+		region: Type.Optional(
+			Type.String({
+				description:
+					"ISO 3166-2 region; for US use 2-letter (e.g. NV). Optional because some non-US warehouses (e.g. UK) don't expose a state/region field.",
+			}),
+		),
 		postalCode: Type.String(),
 		country: Type.String({ description: "ISO 3166-1 alpha-2 (e.g. US)." }),
 		phone: Type.Optional(Type.String()),

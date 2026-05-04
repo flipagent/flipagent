@@ -89,24 +89,23 @@ export const user = pgTable("user", {
 	 */
 	pastDueSince: timestamp("past_due_since", { withTimezone: true }),
 	/**
-	 * Auto-recharge top-up state. When `autoRechargeEnabled` is true and
-	 * the user's `creditsRemaining` falls below `autoRechargeThreshold`,
-	 * the api charges their saved card for `autoRechargeTopup` credits at
-	 * tier-specific per-credit pricing (`pricePerCreditUsd(tier)` in
-	 * `auth/limits.ts`). `lastAutoRechargeAt` guards against double-fire
-	 * during a brief check-window race — middleware only triggers if the
-	 * stamp is older than 60s. Threshold + topup are nullable while
-	 * `enabled=false`; the route layer enforces the "enabled implies both
-	 * set" invariant on PUT so we don't need a CHECK constraint.
+	 * Auto-recharge target balance. When `autoRechargeEnabled` is true
+	 * and the user's `creditsRemaining` falls below `autoRechargeTarget`,
+	 * the api charges their saved card to bring the balance back up to
+	 * the target (gap-bounded by `MIN_TOPUP_CREDITS` so we never fire
+	 * sub-Stripe-min charges). One column instead of separate threshold
+	 * + topup amount: simpler UX, simpler invariant, and matches how
+	 * Vercel / AWS expose auto-top-up. Nullable while `enabled=false`;
+	 * the route layer enforces "enabled implies target set" on PUT.
 	 *
-	 * Card-on-file comes from the user's existing subscription — Stripe
-	 * stores it as `customer.invoice_settings.default_payment_method` on
-	 * first checkout. Auto-recharge is only available to users on a paid
-	 * tier (free has no card on file).
+	 * `lastAutoRechargeAt` guards against double-fire during the
+	 * check-window race — middleware only triggers if the stamp is
+	 * older than 60s. Card-on-file comes from the user's existing
+	 * subscription (Stripe `customer.invoice_settings.default_payment_method`).
+	 * Auto-recharge is only available on paid tiers (free has no card).
 	 */
 	autoRechargeEnabled: boolean("auto_recharge_enabled").notNull().default(false),
-	autoRechargeThreshold: integer("auto_recharge_threshold"),
-	autoRechargeTopup: integer("auto_recharge_topup"),
+	autoRechargeTarget: integer("auto_recharge_target"),
 	lastAutoRechargeAt: timestamp("last_auto_recharge_at", { withTimezone: true }),
 	/**
 	 * Clickwrap consent record. Set the moment the user submits the sign-up
@@ -222,16 +221,17 @@ export const usageEvents = pgTable(
 		/**
 		 * Credits charged for this call, snapshotted at write time. Lets
 		 * snapshotUsage() SUM a plain integer instead of a hand-synced SQL
-		 * CASE expression — and lets us add transport-aware variable pricing
-		 * (rest=1c vs scrape=2c on the same endpoint) without another schema
-		 * bump. Defaults to 0 because billing principle is "charge for what
-		 * runs on our infra"; passthrough endpoints stay free.
+		 * CASE expression — and lets endpoint-specific pricing (e.g. agent
+		 * cost varying by selected model) ride on a single column without
+		 * another schema bump. Defaults to 0 because billing principle is
+		 * "charge for what runs on our infra"; passthrough endpoints stay
+		 * free.
 		 */
 		creditsCharged: integer("credits_charged").notNull().default(0),
 		/**
 		 * The user's tier at the moment of the call. Recorded so a free user
 		 * who upgrades to hobby and downgrades back doesn't get a fresh
-		 * 500-credit lifetime window: snapshotUsage filters by tier='free'
+		 * 1000-credit lifetime window: snapshotUsage filters by tier='free'
 		 * when computing free aggregation, so prior free usage stays counted
 		 * regardless of how many subscription cycles happen in between.
 		 */
@@ -672,7 +672,7 @@ export const bridgeJobs = pgTable(
 
 /**
  * Buy Order checkout sessions — bridge-implementation backing for the
- * pre-place_order stage of `/v1/purchases` when EBAY_ORDER_API_APPROVED=0.
+ * pre-place_order stage of `/v1/purchases` when EBAY_ORDER_APPROVED=0.
  *
  * eBay's Buy Order REST API has a 2-step flow: `initiate` creates a
  * session (no execution); `place_order` triggers the actual purchase.
@@ -1098,12 +1098,13 @@ export type CreditGrant = typeof creditGrants.$inferSelect;
 export type NewCreditGrant = typeof creditGrants.$inferInsert;
 
 /**
- * Agent (preview) — chat-style sessions backed by OpenAI's Responses API.
- * `openaiResponseId` is the most recent response id we received; the next
- * call passes it as `previous_response_id` so OpenAI keeps history server-
- * side (no token resending). Sessions are scoped per api_key so a user's
- * agent thread doesn't leak across keys. `title` is either user-set or
- * derived from the first user message (first ~60 chars).
+ * Agent (preview) — chat-style sessions multi-provider via the Vercel
+ * AI SDK (OpenAI / Anthropic / Google). The full conversation history
+ * lives in `messages` (JSONB array of `ModelMessage`); none of the three
+ * providers expose a stateful thread API, so we send the full array on
+ * every turn. Sessions are scoped per api_key so a user's agent thread
+ * doesn't leak across keys. `title` is either user-set or derived from
+ * the first user message (first ~60 chars).
  */
 export const agentSessions = pgTable(
 	"agent_sessions",
@@ -1113,7 +1114,17 @@ export const agentSessions = pgTable(
 			.notNull()
 			.references(() => apiKeys.id, { onDelete: "cascade" }),
 		userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
-		openaiResponseId: text("openai_response_id").notNull(),
+		/**
+		 * Full conversation history as Vercel AI SDK `UIMessage[]`. Preserves
+		 * text, tool-call, tool-result, and reasoning parts in one structure.
+		 * Replaces the prior OpenAI-Responses-API-only `previous_response_id`
+		 * chain so the agent runs against any provider (OpenAI / Anthropic /
+		 * Gemini) — neither Anthropic nor Gemini exposes a server-held thread
+		 * equivalent, so we hold history locally for all providers and pass
+		 * the full array on every turn. Each turn appends user + assistant
+		 * messages.
+		 */
+		messages: jsonb("messages").notNull().default(sql`'[]'::jsonb`),
 		title: text("title"),
 		/** Set when the user pins/favorites the thread. List queries sort
 		 *  pinned threads above unpinned ones (pinnedAt desc, then

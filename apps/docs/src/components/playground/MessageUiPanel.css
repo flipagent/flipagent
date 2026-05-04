@@ -1,0 +1,407 @@
+/* MessageUiPanel — inline panels rendered directly inside chat bubbles
+ * for known `ui://flipagent/<kind>` hints. Unknown kinds keep using the
+ * iframe path; this stylesheet only owns the inline variants.
+ *
+ * The base `.msg-ui-panel` mirrors `ComposeCard` (border + radius +
+ * surface + soft shadow) so a panel rendered inline in chat looks the
+ * same as one rendered in the playground. Each variant (search, eval,
+ * offers) layers its own padding / structure inside this frame. */
+
+.msg-ui-panel {
+	margin-top: 6px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--surface);
+	overflow: hidden;
+	box-shadow:
+		0 1px 2px rgba(0, 0, 0, 0.04),
+		0 12px 36px rgba(0, 0, 0, 0.06);
+}
+
+/* Shared eyebrow band — small uppercase header at the top of every panel
+ * (search count, evaluation label, offers count). Mirrors the section
+ * eyebrow used elsewhere in the site so panels feel native here. */
+.msg-ui-eyebrow {
+	padding: 8px 14px;
+	font-size: 10.5px;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--text-4);
+	font-weight: 600;
+	border-bottom: 1px solid var(--border-faint);
+	background: var(--bg-soft);
+}
+
+.msg-ui-empty {
+	padding: 14px 16px;
+	font-size: 12.5px;
+	color: var(--text-3);
+}
+
+/* ----------------------------- Evaluate ------------------------------ */
+
+/* Evaluate's inner blocks (hero, chart, facts) have no horizontal
+ * padding of their own — they rely on a padded parent, the way the
+ * playground's ComposeOutput pads them. The `.pg-result-facts`
+ * border-top/bottom intentionally extends to this padded box's edges
+ * (a thin inset rule), matching how it reads in the playground. */
+.msg-ui-eval-body {
+	padding: 16px 18px 8px;
+}
+
+.msg-ui-eval-hint {
+	margin: 0 0 10px;
+	font-size: 12.5px;
+	color: var(--text-2);
+	line-height: 1.5;
+}
+
+.msg-ui-eval-var-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.msg-ui-eval-var-list .msg-ui-action {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	text-align: left;
+}
+
+.msg-ui-eval-var-thumb {
+	width: 40px;
+	height: 40px;
+	border-radius: 6px;
+	object-fit: cover;
+	background: var(--bg-soft);
+	flex-shrink: 0;
+}
+
+.msg-ui-eval-var-thumb-empty {
+	display: inline-block;
+}
+
+.msg-ui-eval-var-label {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.msg-ui-eval-var-price {
+	color: var(--text-3);
+	font-variant-numeric: tabular-nums;
+	flex-shrink: 0;
+}
+
+/* Footer action band — sits flush against the bottom of the panel,
+ * border-top edge-to-edge with the outer panel border. Mirrors how
+ * `EvalFooter` reads in the playground (action row above a thin rule)
+ * but trimmed to the chat context: just the workflow buttons, no
+ * trace toggle (we don't carry steps in the inline panel). */
+.msg-ui-foot {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 10px 14px;
+	border-top: 1px solid var(--border-faint);
+	background: var(--bg-soft);
+}
+
+.msg-ui-action-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	text-decoration: none;
+}
+
+/* ----------------------------- Search -------------------------------- */
+
+/* Search runs flush — no body padding so row dividers and the pager
+ * border-top reach the outer panel border. The pager normally has a
+ * 6px top margin (against the playground's padded ComposeOutput) which
+ * we drop here so its top rule sits flush against the last list row's
+ * spot, leaving only one continuous horizontal line. */
+.msg-ui-search .pg-result-search-pager {
+	margin-top: 0;
+}
+
+/* ----------------------------- Offers -------------------------------- */
+
+/* Offers uses the base panel frame + eyebrow; its own children just
+ * need divider + padding rules. */
+
+.msg-ui-offers-list {
+	display: flex;
+	flex-direction: column;
+}
+
+.msg-ui-offer-row {
+	display: grid;
+	grid-template-columns: 56px 1fr;
+	gap: 14px;
+	padding: 14px;
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.msg-ui-offer-row:last-child {
+	border-bottom: none;
+}
+
+.msg-ui-offer-thumb {
+	display: block;
+	width: 56px;
+	height: 56px;
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--bg-soft);
+}
+
+.msg-ui-offer-thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.msg-ui-offer-thumb-empty {
+	width: 100%;
+	height: 100%;
+}
+
+.msg-ui-offer-body {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+.msg-ui-offer-title {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text);
+	line-height: 1.35;
+}
+
+/* One-line headline: buyer offer + how far below list. No auto
+ * recommendation / market analysis — the user runs Evaluate on a row
+ * if they want comps. */
+.msg-ui-offer-headline {
+	font-size: 13px;
+	color: var(--text-2);
+	line-height: 1.45;
+}
+
+.msg-ui-offer-headline strong {
+	color: var(--text);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.msg-ui-offer-headline-diff {
+	color: var(--text-3);
+}
+
+.msg-ui-offer-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 4px;
+}
+
+.msg-ui-action {
+	font-size: 11.5px;
+	padding: 5px 10px;
+	border-radius: 7px;
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	color: var(--text-2);
+	cursor: pointer;
+	font-family: inherit;
+	transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+	font-variant-numeric: tabular-nums;
+}
+
+.msg-ui-action:hover {
+	border-color: var(--border);
+	color: var(--text);
+}
+
+.msg-ui-action-primary {
+	background: var(--brand, #ea580c);
+	border-color: var(--brand, #ea580c);
+	color: white;
+}
+
+.msg-ui-action-primary:hover {
+	filter: brightness(1.05);
+	color: white;
+}
+
+/* Ghost action — secondary affordance set apart from the main action
+ * group. Used for opt-in drill-downs (e.g., per-row Evaluate on the
+ * offers panel) — pushed to the right edge so it visually separates
+ * from accept/counter/decline. */
+.msg-ui-action-ghost {
+	margin-left: auto;
+	color: var(--text-3);
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.msg-ui-action-ghost:hover {
+	color: var(--text);
+}
+
+/* ----------------------------- Next Action --------------------------- */
+
+.msg-ui-na-body {
+	display: grid;
+	grid-template-columns: 32px 1fr;
+	gap: 14px;
+	padding: 16px 18px;
+}
+
+.msg-ui-na-icon {
+	width: 32px;
+	height: 32px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--brand, #ea580c) 12%, transparent);
+	color: var(--brand, #ea580c);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.msg-ui-na-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text);
+	line-height: 1.35;
+	margin-bottom: 4px;
+}
+
+.msg-ui-na-detail {
+	margin: 0;
+	font-size: 12px;
+	color: var(--text-2);
+	line-height: 1.5;
+}
+
+/* ----------------------------- Listings ------------------------------ */
+
+.msg-ui-listings-list {
+	display: flex;
+	flex-direction: column;
+}
+
+.msg-ui-listing-row {
+	display: grid;
+	grid-template-columns: 56px 1fr;
+	gap: 14px;
+	padding: 14px;
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.msg-ui-listing-row:last-child {
+	border-bottom: none;
+}
+
+.msg-ui-listing-thumb {
+	display: block;
+	width: 56px;
+	height: 56px;
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--bg-soft);
+}
+
+.msg-ui-listing-thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.msg-ui-listing-thumb-empty {
+	width: 100%;
+	height: 100%;
+}
+
+.msg-ui-listing-body {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+.msg-ui-listing-title {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text);
+	line-height: 1.35;
+}
+
+.msg-ui-listing-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+	font-size: 11.5px;
+	color: var(--text-3);
+	align-items: center;
+}
+
+.msg-ui-listing-price {
+	color: var(--text);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.msg-ui-listing-status {
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	padding: 2px 7px;
+	border-radius: 999px;
+	border: 1px solid transparent;
+}
+
+.msg-ui-listing-status--active {
+	background: color-mix(in srgb, var(--success, #15803d) 10%, transparent);
+	color: var(--success, #15803d);
+	border-color: color-mix(in srgb, var(--success, #15803d) 22%, transparent);
+}
+
+.msg-ui-listing-status--draft {
+	background: color-mix(in srgb, var(--brand, #ea580c) 10%, transparent);
+	color: var(--brand, #ea580c);
+	border-color: color-mix(in srgb, var(--brand, #ea580c) 22%, transparent);
+}
+
+.msg-ui-listing-status--ended,
+.msg-ui-listing-status--withdrawn {
+	background: color-mix(in srgb, var(--text-3) 10%, transparent);
+	color: var(--text-3);
+	border-color: var(--border-faint);
+}
+
+.msg-ui-listing-status--sold {
+	background: color-mix(in srgb, var(--text) 10%, transparent);
+	color: var(--text);
+	border-color: var(--border-faint);
+}
+
+.msg-ui-listing-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 4px;
+}

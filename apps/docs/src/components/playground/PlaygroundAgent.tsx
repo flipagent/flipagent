@@ -12,18 +12,119 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiBase, apiFetch } from "../../lib/authClient";
+import { apiBase } from "../../lib/authClient";
 import type { ComposeTab } from "../compose/ComposeCard";
+import { ConnChip } from "../connections/ConnChip";
+import { useConnections } from "../connections/ConnectionsContext";
+import { findMockScript, type MockScript } from "./agentMockScripts";
 import { MarkdownLite } from "./MarkdownLite";
+import { hasInlinePanel, MessageUiPanel } from "./MessageUiPanel";
 import "./PlaygroundAgent.css";
 
-/** Mirrors `/v1/me/ebay/status`. eBay account access has two paths —
- * server-side OAuth (REST) and the Chrome extension bridge — that flow
- * to the same eBay account but unlock different operations. The hero
- * chip surfaces both so users see exactly what the agent can reach. */
-interface ConnStatus {
-	oauth: { connected: boolean; ebayUserName: string | null };
-	bridge: { paired: boolean; ebayLoggedIn: boolean; ebayUserName: string | null };
+/**
+ * Agent model selectable per chat turn. Free unlocks the cheap pair
+ * (mini OpenAI + Flash Gemini); paid tiers add the stronger reasoning
+ * models (gpt-5.5, claude-sonnet-4-7). Costs mirror raw provider
+ * pricing (~$0.001/credit calibration). Keep in sync with the
+ * `AgentModel` union in `@flipagent/types` and `AGENT_TURN_CREDITS`
+ * in `packages/api/src/auth/limits.ts`.
+ */
+type AgentModel = "gpt-5.4-mini" | "gpt-5.5" | "claude-sonnet-4-7" | "gemini-2.5-flash";
+
+const AGENT_MODEL_LABELS: Record<AgentModel, { label: string; cost: string; tagline: string }> = {
+	"gpt-5.4-mini": { label: "gpt-5.4-mini", cost: "5 credits / turn", tagline: "Fast and frugal. Fits most flows." },
+	"gemini-2.5-flash": {
+		label: "gemini-2.5-flash",
+		cost: "3 credits / turn",
+		tagline: "Cheapest option, very fast.",
+	},
+	"claude-sonnet-4-7": {
+		label: "claude-sonnet-4-7",
+		cost: "15 credits / turn",
+		tagline: "Strong reasoning, careful tool use.",
+	},
+	"gpt-5.5": { label: "gpt-5.5", cost: "25 credits / turn", tagline: "Top OpenAI for tricky threads." },
+};
+
+/**
+ * Inline model picker — ghost chip + upward popover. Used in both the
+ * pre-chat hero composer and the active-chat composer's action row so
+ * the user can pick a model before the first turn AND mid-thread. Self
+ * manages open state + outside-click / Escape close (mirrors the
+ * connection-chip pattern).
+ */
+function ModelPicker({ value, onChange }: { value: AgentModel; onChange: (m: AgentModel) => void }) {
+	const [open, setOpen] = useState(false);
+	const wrapRef = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		if (!open) return;
+		function onDocMouseDown(e: MouseEvent) {
+			const wrap = wrapRef.current;
+			if (!wrap) return;
+			if (wrap.contains(e.target as Node)) return;
+			setOpen(false);
+		}
+		function onKey(e: KeyboardEvent) {
+			if (e.key === "Escape") setOpen(false);
+		}
+		document.addEventListener("mousedown", onDocMouseDown);
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("mousedown", onDocMouseDown);
+			document.removeEventListener("keydown", onKey);
+		};
+	}, [open]);
+
+	return (
+		<div className="agent-model-picker" ref={wrapRef}>
+			<button
+				type="button"
+				className="agent-model-chip"
+				onClick={() => setOpen((v) => !v)}
+				aria-haspopup="menu"
+				aria-expanded={open}
+				title={`Model: ${value} (${AGENT_MODEL_LABELS[value].cost})`}
+			>
+				<span className="agent-model-chip-label">{AGENT_MODEL_LABELS[value].label}</span>
+				<svg
+					width="9"
+					height="9"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="2"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+					aria-hidden="true"
+				>
+					<path d="m6 9 6 6 6-6" />
+				</svg>
+			</button>
+			{open && (
+				<div className="agent-model-menu" role="menu">
+					{(Object.keys(AGENT_MODEL_LABELS) as AgentModel[]).map((m) => (
+						<button
+							key={m}
+							type="button"
+							role="menuitem"
+							className={`agent-model-item${value === m ? " is-selected" : ""}`}
+							onClick={() => {
+								onChange(m);
+								setOpen(false);
+							}}
+						>
+							<div className="agent-model-item-row">
+								<span className="agent-model-item-name">{AGENT_MODEL_LABELS[m].label}</span>
+								<span className="agent-model-item-cost">{AGENT_MODEL_LABELS[m].cost}</span>
+							</div>
+							<div className="agent-model-item-tagline">{AGENT_MODEL_LABELS[m].tagline}</div>
+						</button>
+					))}
+				</div>
+			)}
+		</div>
+	);
 }
 
 interface AgentSession {
@@ -66,6 +167,21 @@ interface ActionSubject {
 	url?: string;
 }
 
+/**
+ * Args captured at send time so an error bubble's Retry button can
+ * re-dispatch the same turn (text + attachments + tool action). Mirror
+ * the public `send()` opts; we hold a snapshot of attachments-at-the-
+ * moment because the live `pendingAttachments` array is wiped right
+ * after a successful queue (so Retry would otherwise lose them).
+ */
+interface RetryOpts {
+	text?: string;
+	attachments?: Attachment[];
+	userAction?: UserAction;
+	uiPlaceholderText?: string;
+	subject?: ActionSubject;
+}
+
 interface ChatMessage {
 	role: "user" | "assistant" | "error";
 	content: string;
@@ -89,6 +205,11 @@ interface ChatMessage {
 	 *  on `tool_call_end` for a non-renderable tool, or on `text_delta`
 	 *  / `done`. */
 	toolStatus?: string;
+	/** Set on error rows — the original send opts so the Retry button can
+	 *  dispatch the same turn again. Undefined for unrecoverable errors
+	 *  (e.g. `agent_not_configured`) where Retry would only reproduce
+	 *  the same error. */
+	retryOpts?: RetryOpts;
 	at: number;
 }
 
@@ -110,8 +231,12 @@ function toolStatusLabel(name: string): string {
 			return "Loading comps";
 		case "flipagent_get_item":
 			return "Loading item";
+		case "flipagent_list_listings":
+			return "Loading listings";
 		case "flipagent_list_sales":
 			return "Loading sales";
+		case "flipagent_list_offers":
+			return "Loading offers";
 		case "flipagent_list_payouts":
 			return "Loading payouts";
 		case "flipagent_list_transactions":
@@ -192,6 +317,10 @@ function predictUiResource(toolName: string): string | null {
 		case "flipagent_get_evaluate_job":
 		case "flipagent_get_evaluation_pool":
 			return "ui://flipagent/evaluate";
+		case "flipagent_list_offers":
+			return "ui://flipagent/offers";
+		case "flipagent_list_listings":
+			return "ui://flipagent/listings";
 		default:
 			return null;
 	}
@@ -207,22 +336,119 @@ const MAX_ATTACHMENTS = 8;
  * cover the three biggest reseller-cycle entry points: comping, evaluating,
  * and reviewing your own activity.
  */
+/**
+ * Animated placeholder rotation for the empty-hero textarea — types each
+ * line out, holds, deletes, types the next. Keeps the empty surface feel
+ * alive without overspecifying the agent's surface area. Skipped on the
+ * active-chat compose (the static "Reply…" / "Ask the agent…" reads
+ * better against an in-flight conversation).
+ */
+const HERO_PLACEHOLDERS: ReadonlyArray<string> = [
+	"Ask agent to find Nintendo Switch auctions ending in 30 minutes",
+	"Ask agent to evaluate https://www.ebay.com/itm/377151909505 for resale",
+	"Ask agent to list my open Best Offers and recommend responses",
+	"Ask agent to snipe Apple Watch Ultra auctions under $400",
+	"Ask agent to compare this month's payouts vs last month",
+];
+
+function useTypewriterPlaceholder(
+	messages: ReadonlyArray<string>,
+	opts: { typeMs?: number; deleteMs?: number; holdMs?: number; pauseMs?: number } = {},
+): string {
+	const { typeMs = 38, deleteMs = 22, holdMs = 1800, pauseMs = 380 } = opts;
+	const [idx, setIdx] = useState(0);
+	const [chars, setChars] = useState(0);
+	const [phase, setPhase] = useState<"type" | "hold" | "del" | "pause">("type");
+	const message = messages[idx % messages.length] ?? "";
+	useEffect(() => {
+		let t: number;
+		if (phase === "type") {
+			if (chars < message.length) {
+				t = window.setTimeout(() => setChars((c) => c + 1), typeMs);
+			} else {
+				t = window.setTimeout(() => setPhase("hold"), 0);
+			}
+		} else if (phase === "hold") {
+			t = window.setTimeout(() => setPhase("del"), holdMs);
+		} else if (phase === "del") {
+			if (chars > 0) {
+				t = window.setTimeout(() => setChars((c) => c - 1), deleteMs);
+			} else {
+				t = window.setTimeout(() => setPhase("pause"), 0);
+			}
+		} else {
+			t = window.setTimeout(() => {
+				setIdx((i) => i + 1);
+				setPhase("type");
+			}, pauseMs);
+		}
+		return () => window.clearTimeout(t);
+	}, [phase, chars, idx, message, typeMs, deleteMs, holdMs, pauseMs]);
+	return message.slice(0, chars);
+}
+
 const HERO_EXAMPLES: { title: string; prompt: string }[] = [
 	{
-		title: "Find Jordan 1 listings under $200 with sold comps",
-		prompt:
-			"Search active eBay listings for Jordan 1 under $200, then pull sold comps for the top 3 so I can see which are flippable.",
+		title: "Snipe game-console auctions ending in 10 minutes",
+		prompt: "Game console auctions ending in 10 minutes — which ones can I snipe?",
 	},
 	{
-		title: "Evaluate an eBay item for resale margin",
-		prompt:
-			"Evaluate this eBay item for me: <paste eBay URL or itemId>. I want sold comps, fee estimate, and expected margin.",
+		title: "Is this Canon EF 50mm worth flipping?",
+		prompt: "Is https://www.ebay.com/itm/377151909505 worth flipping?",
 	},
 	{
-		title: "Show my active listings, recent sales, and last payout",
-		prompt: "List my active eBay listings, recent sales this month, and the last payout amount.",
+		title: "Any open Best Offers I should respond to?",
+		prompt: "Any pending Best Offers I should accept?",
 	},
 ];
+
+/**
+ * Replay a canned `MockScript` through the same `updateAssistant` patch
+ * helper the live stream uses. Tool-start events drive the shimmer
+ * label; text events append to the bubble; the `done` event freezes
+ * the final reply and clears `streaming`. Each event waits its
+ * `delayMs` before applying — that's what gives the surface its real
+ * pacing instead of a 0ms snap-to-final.
+ */
+async function playMockScript(
+	script: MockScript,
+	updateAssistant: (patch: (m: ChatMessage) => ChatMessage) => void,
+): Promise<void> {
+	let buf = "";
+	for (const ev of script.events) {
+		if (ev.delayMs) await new Promise<void>((r) => setTimeout(r, ev.delayMs));
+		if (ev.kind === "tool_start") {
+			const label = toolStatusLabel(ev.name);
+			// Tool-start only updates the shimmer label. The iframe
+			// (`m.ui`) is intentionally NOT pre-mounted with empty
+			// props — that path made the surface race the iframe load,
+			// fight an empty-vs-real data ambiguity, and surface a
+			// skeleton that sometimes never resolved. Mounting only
+			// once tool_end provides real data is simpler and removes
+			// the whole class of bug.
+			updateAssistant((m) => ({ ...m, toolStatus: label }));
+		} else if (ev.kind === "tool_end") {
+			// Drop in the real UI hint when the script provides one.
+			// Otherwise keep the status label visible until the next
+			// event so progress reads as continuous, not flickery —
+			// matches live behavior.
+			if (ev.ui) {
+				const ui = ev.ui;
+				updateAssistant((m) => ({ ...m, ui, toolStatus: undefined }));
+			}
+		} else if (ev.kind === "text") {
+			buf += ev.delta;
+			updateAssistant((m) => ({ ...m, content: buf, toolStatus: undefined }));
+		} else if (ev.kind === "done") {
+			updateAssistant((m) => ({
+				...m,
+				content: ev.reply,
+				streaming: false,
+				toolStatus: undefined,
+			}));
+		}
+	}
+}
 
 function readAsDataUrl(file: File): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -283,6 +509,7 @@ async function* streamChat(opts: {
 	sessionId: string | null;
 	attachments?: Attachment[];
 	userAction?: UserAction;
+	model?: AgentModel;
 	signal?: AbortSignal;
 }): AsyncGenerator<AgentStreamEvent, void, void> {
 	const payload: Record<string, unknown> = { message: opts.message };
@@ -296,6 +523,7 @@ async function* streamChat(opts: {
 		}));
 	}
 	if (opts.userAction) payload.userAction = opts.userAction;
+	if (opts.model) payload.model = opts.model;
 	const res = await fetch(`${apiBase}/v1/agent/chat`, {
 		method: "POST",
 		credentials: "include",
@@ -349,32 +577,6 @@ async function* streamChat(opts: {
 			}
 		}
 	}
-}
-
-async function fetchConn(): Promise<ConnStatus> {
-	return apiFetch<ConnStatus>("/v1/me/ebay/status");
-}
-
-/** Cheap browser+OS label for the pair flow's device name field —
- * mirrors the heuristic in the extension popup. Server-side display
- * only; never used for trust decisions. */
-function guessDeviceName(): string {
-	const ua = navigator.userAgent;
-	const browser = /Edg\//.test(ua)
-		? "Edge"
-		: /OPR\//.test(ua)
-			? "Opera"
-			: /Chrome\//.test(ua)
-				? "Chrome"
-				: "Browser";
-	const os = /Mac OS X/.test(ua)
-		? "Mac"
-		: /Windows/.test(ua)
-			? "Windows"
-			: /Linux/.test(ua)
-				? "Linux"
-				: "Device";
-	return `${browser} on ${os}`;
 }
 
 async function fetchSessions(): Promise<AgentSession[]> {
@@ -480,116 +682,160 @@ const IconChevron = (
 	</svg>
 );
 const IconPlus = (
-	<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
 		<path d="M12 5v14M5 12h14" />
 	</svg>
 );
+const IconMic = (
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+		<rect x="9" y="2" width="6" height="12" rx="3" />
+		<path d="M5 11a7 7 0 0 0 14 0" />
+		<line x1="12" y1="18" x2="12" y2="22" />
+	</svg>
+);
+const IconFile = (
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+		<polyline points="14 2 14 8 20 8" />
+	</svg>
+);
+const IconImage = (
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+		<rect x="3" y="3" width="18" height="18" rx="2" />
+		<circle cx="9" cy="9" r="1.5" />
+		<path d="m21 15-5-5-9 9" />
+	</svg>
+);
+const IconCamera = (
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" />
+		<circle cx="12" cy="13" r="3.5" />
+	</svg>
+);
 
-export function PlaygroundAgent({
+// Web Speech API isn't part of our lib.dom typings (and the constructor
+// is vendor-prefixed: `webkitSpeechRecognition` on Safari). Detect at
+// module load so the mic button can be hidden in unsupported browsers.
+const SPEECH_SUPPORTED =
+	typeof window !== "undefined" &&
+	(("SpeechRecognition" in window) || ("webkitSpeechRecognition" in window));
+
+export function PlaygroundAgent<TabId extends string = string>({
 	tabsProps: _tabsProps,
+	seedPrompt,
+	onExamplePrompt,
+	mockMode = false,
 }: {
 	// Accepted for API compatibility with sibling playground panels but
 	// unused — the agent surface lives directly on the dash background
 	// without an in-card tab switcher (sidebar handles navigation).
-	tabsProps: { tabs: ReadonlyArray<ComposeTab<string>>; active: string; onChange: (next: string) => void };
+	// Optional because the landing-hero mount drops the tab strip and
+	// renders the agent surface as the only thing on the page-frame.
+	// Generic over TabId so callers using a narrow union (e.g. PgTabId)
+	// stay type-safe without the function-parameter contravariance trap.
+	tabsProps?: { tabs: ReadonlyArray<ComposeTab<TabId>>; active: TabId; onChange: (next: TabId) => void };
+	/**
+	 * One-shot prompt fired automatically on mount as if the user typed
+	 * it and pressed send. Used by the landing-hero deep-link: a logged-in
+	 * visitor clicks an example chip → lands on `/dashboard/?view=agent&seed=…`
+	 * → the prompt streams as the first turn so they pick up where the
+	 * landing pitched. Empty / undefined keeps the surface idle.
+	 */
+	seedPrompt?: string;
+	/**
+	 * Override for the example-chip click. Default behavior (used in the
+	 * dashboard surface) is to drop the prompt into the composer and
+	 * focus it so the user can edit before sending. The landing hero
+	 * supplies its own callback that either navigates a logged-in
+	 * visitor straight to the dashboard with a `?seed=` param, or kicks
+	 * off the in-place mock simulation for a logged-out one.
+	 */
+	onExamplePrompt?: (prompt: string) => void;
+	/**
+	 * Marketing-mode flag. When true the surface short-circuits the live
+	 * `/v1/agent/messages` stream — anything the visitor sends is met
+	 * with a friendly "Sign in to chat" assistant bubble instead of a
+	 * real 401 from the api gate. Phase 2 will replace the stub with a
+	 * canned simulation script driven by the same component primitives.
+	 */
+	mockMode?: boolean;
 }) {
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [input, setInput] = useState("");
 	const [sessionId, setSessionId] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [model, setModel] = useState<string | null>(null);
+	// Per-request model override. Defaults to mini (which Free can use too);
+	// switching to gpt-5.5 surfaces a 403 from the api for Free callers,
+	// which we map back to a tier-upgrade nudge in the chat error renderer.
+	const [selectedModel, setSelectedModel] = useState<AgentModel>("gpt-5.4-mini");
 	const [totalCostCents, setTotalCostCents] = useState(0);
 	const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
 	const [attachError, setAttachError] = useState<string | null>(null);
 	const [unavailable, setUnavailable] = useState<string | null>(null);
 	const [sessions, setSessions] = useState<AgentSession[]>([]);
 	const [dragOver, setDragOver] = useState(false);
-	const [conn, setConn] = useState<ConnStatus | null>(null);
-	const [connOpen, setConnOpen] = useState(false);
-	// Tri-state: null = haven't decided yet, true = presence beacon
-	// arrived from the extension content script, false = ~600ms passed
-	// with no beacon → treat as not installed.
-	const [extInstalled, setExtInstalled] = useState<boolean | null>(null);
-	// Extension's chrome runtime id, harvested from the presence beacon
-	// so we can launch the pair flow without hardcoding the published
-	// Web Store id (and matching whatever unpacked id is loaded in dev).
-	const [extensionId, setExtensionId] = useState<string | null>(null);
+	// Connection status (eBay OAuth + extension bridge) lives in
+	// `<ConnectionsProvider>` — shared with Settings + future surfaces.
+	const connections = useConnections();
+
+	// Typewriter rotation for the empty-hero textarea placeholder. Runs
+	// continuously even when input is non-empty (placeholder is hidden
+	// then anyway) — cheap React state churn, no DOM thrash.
+	const heroPlaceholder = useTypewriterPlaceholder(HERO_PLACEHOLDERS);
 
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
+	const photoInputRef = useRef<HTMLInputElement | null>(null);
+	const cameraInputRef = useRef<HTMLInputElement | null>(null);
 	const messagesRef = useRef<HTMLDivElement | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-	const connWrapRef = useRef<HTMLDivElement | null>(null);
+	const attachWrapRef = useRef<HTMLDivElement | null>(null);
+	// any: Web Speech API isn't typed in our lib.dom (and is vendor-prefixed
+	// `webkitSpeechRecognition` on Safari).
+	const recognitionRef = useRef<any>(null);
+	const [attachOpen, setAttachOpen] = useState(false);
+	const [voiceListening, setVoiceListening] = useState(false);
 	// dragenter / dragleave fire across child element boundaries — using a
 	// counter is the standard fix for the resulting flicker.
 	const dragDepthRef = useRef(0);
 
 
 	// Load thread list on mount; refresh on window focus so changes from
-	// other tabs / devices propagate.
+	// other tabs / devices propagate. Connection status is owned by the
+	// shared `useConnections()` provider — no fetch wiring here.
 	useEffect(() => {
 		fetchSessions().then(setSessions);
 		function onFocus() {
 			fetchSessions().then(setSessions);
-			fetchConn().then(setConn).catch(() => {});
 		}
 		window.addEventListener("focus", onFocus);
 		return () => window.removeEventListener("focus", onFocus);
 	}, []);
 
-	// Fetch the connection snapshot once for the hero chip. Failure leaves
-	// it null → chip falls back to the "Connect" CTA state, which is the
-	// right thing to do if /v1/me/* isn't reachable for any reason.
 	useEffect(() => {
-		fetchConn().then(setConn).catch(() => {});
-	}, []);
-
-	// Extension presence detection. The extension's content script (only
-	// injected on flipagent.dev / localhost) posts a presence message on
-	// load and re-posts on demand. We send a ping in case the page mounted
-	// after the initial post, then time out after 600ms — long enough for
-	// document_start injection to round-trip, short enough to feel snappy.
-	useEffect(() => {
-		let mounted = true;
-		function onMessage(e: MessageEvent) {
-			if (e.source !== window) return;
-			const data = e.data as { type?: unknown; source?: unknown; extensionId?: unknown } | null;
-			if (!data || data.type !== "flipagent-extension-present") return;
-			if (data.source !== "flipagent-extension") return;
-			if (!mounted) return;
-			setExtInstalled(true);
-			if (typeof data.extensionId === "string" && data.extensionId.length > 0) {
-				setExtensionId(data.extensionId);
-			}
-		}
-		window.addEventListener("message", onMessage);
-		// Ping the extension in case its initial post fired before this
-		// listener attached (SPA tab switch, etc).
-		window.postMessage({ type: "flipagent-extension-ping" }, window.location.origin);
-		const timer = window.setTimeout(() => {
-			if (!mounted) return;
-			setExtInstalled((cur) => (cur === null ? false : cur));
-		}, 600);
-		return () => {
-			mounted = false;
-			window.removeEventListener("message", onMessage);
-			window.clearTimeout(timer);
-		};
-	}, []);
-
-	// Close the conn popover on outside click. Anchored to the chip wrap
-	// rather than the popover itself so clicking links inside the dropdown
-	// fires before close.
-	useEffect(() => {
-		if (!connOpen) return;
+		if (!attachOpen) return;
 		function onDocMouseDown(e: MouseEvent) {
-			const wrap = connWrapRef.current;
+			const wrap = attachWrapRef.current;
 			if (!wrap) return;
 			if (wrap.contains(e.target as Node)) return;
-			setConnOpen(false);
+			setAttachOpen(false);
 		}
 		document.addEventListener("mousedown", onDocMouseDown);
 		return () => document.removeEventListener("mousedown", onDocMouseDown);
-	}, [connOpen]);
+	}, [attachOpen]);
+
+	useEffect(() => {
+		return () => {
+			const rec = recognitionRef.current;
+			if (rec) {
+				try {
+					rec.stop();
+				} catch {
+					/* swallow */
+				}
+			}
+		};
+	}, []);
 
 	// Auto-scroll on new messages.
 	useEffect(() => {
@@ -693,6 +939,57 @@ export function PlaygroundAgent({
 		e.target.value = "";
 	}
 
+	function toggleVoice() {
+		if (voiceListening) {
+			try {
+				recognitionRef.current?.stop();
+			} catch {
+				/* swallow */
+			}
+			return;
+		}
+		if (!SPEECH_SUPPORTED) {
+			setAttachError("Voice input isn't supported in this browser.");
+			return;
+		}
+		// any: vendor-prefixed Web Speech constructor not in our lib.dom.
+		const SR: any =
+			(window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+		if (!SR) {
+			setAttachError("Voice input isn't supported in this browser.");
+			return;
+		}
+		const rec = new SR();
+		rec.continuous = true;
+		rec.interimResults = false;
+		rec.lang = navigator.language || "en-US";
+		rec.onstart = () => setVoiceListening(true);
+		rec.onresult = (e: any) => {
+			let final = "";
+			for (let i = e.resultIndex; i < e.results.length; i++) {
+				const r = e.results[i];
+				if (r.isFinal) final += r[0].transcript;
+			}
+			if (final) {
+				setInput((prev) => {
+					const sep = prev && !/\s$/.test(prev) ? " " : "";
+					return (prev + sep + final.trim()).slice(0, MAX_INPUT_LEN);
+				});
+			}
+		};
+		rec.onerror = () => setVoiceListening(false);
+		rec.onend = () => {
+			setVoiceListening(false);
+			recognitionRef.current = null;
+		};
+		recognitionRef.current = rec;
+		try {
+			rec.start();
+		} catch {
+			setVoiceListening(false);
+		}
+	}
+
 	function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
 		const items = e.clipboardData?.items;
 		if (!items) return;
@@ -746,14 +1043,35 @@ export function PlaygroundAgent({
 	}
 
 	async function send(
-		opts: { userAction?: UserAction; uiPlaceholderText?: string; subject?: ActionSubject } = {},
+		opts: {
+			userAction?: UserAction;
+			uiPlaceholderText?: string;
+			subject?: ActionSubject;
+			text?: string;
+			/** Override the live `pendingAttachments` array — used by Retry,
+			 *  which holds a snapshot from the original turn (the live
+			 *  array was wiped right after the first send). */
+			attachments?: Attachment[];
+		} = {},
 	) {
-		const trimmed = input.trim();
+		const trimmed = (opts.text ?? input).trim();
+		const effectiveAttachments = opts.attachments ?? pendingAttachments;
 		const hasMessage = trimmed.length > 0;
-		const hasAttachments = pendingAttachments.length > 0;
+		const hasAttachments = effectiveAttachments.length > 0;
 		const hasAction = !!opts.userAction;
 		if ((!hasMessage && !hasAttachments && !hasAction) || busy) return;
-		const attachmentsForTurn = hasAttachments ? pendingAttachments : [];
+
+		const attachmentsForTurn = hasAttachments ? effectiveAttachments : [];
+		// Snapshot of what we're sending — attached to error messages so
+		// the Retry button can re-dispatch the same turn even after the
+		// composer state (input / pendingAttachments) was cleared.
+		const retryOpts: RetryOpts = {
+			text: trimmed,
+			...(attachmentsForTurn.length > 0 ? { attachments: attachmentsForTurn } : {}),
+			...(opts.userAction ? { userAction: opts.userAction } : {}),
+			...(opts.uiPlaceholderText ? { uiPlaceholderText: opts.uiPlaceholderText } : {}),
+			...(opts.subject ? { subject: opts.subject } : {}),
+		};
 		const userMsg: ChatMessage = hasAction
 			? {
 					role: "user",
@@ -797,6 +1115,30 @@ export function PlaygroundAgent({
 			});
 		};
 
+		// Marketing-mode (logged-out landing hero) replays a canned script
+		// through the same updateAssistant pipeline the live stream uses,
+		// so the surface looks indistinguishable from production. Falls
+		// back to a sign-in CTA when the input doesn't match any chip.
+		if (mockMode) {
+			try {
+				const script = findMockScript(trimmed);
+				if (script) {
+					await playMockScript(script, updateAssistant);
+				} else {
+					updateAssistant((m) => ({
+						...m,
+						content:
+							"Sign in or [grab a free key](/signup/) to send your own request.",
+						streaming: false,
+						toolStatus: undefined,
+					}));
+				}
+			} finally {
+				setBusy(false);
+			}
+			return;
+		}
+
 		let sawDone = false;
 		let textBuf = "";
 		// Throttle text_delta state updates so React doesn't re-render the
@@ -809,16 +1151,32 @@ export function PlaygroundAgent({
 				message: hasAction ? "" : trimmed,
 				sessionId,
 				attachments: attachmentsForTurn,
+				model: selectedModel,
 				...(opts.userAction ? { userAction: opts.userAction } : {}),
 			})) {
 				if (event.type === "tool_call_start") {
 					const label = toolStatusLabel(event.name);
 					const uri = predictUiResource(event.name);
-					updateAssistant((m) => ({
-						...m,
-						toolStatus: label,
-						...(uri ? { ui: { resourceUri: uri, props: {} } } : {}),
-					}));
+					updateAssistant((m) => {
+						// Mount the empty-props skeleton ONLY when there isn't
+						// already a hydrated panel of the same kind sitting in
+						// the bubble. Without this guard, an agent that fires
+						// back-to-back tool calls in one turn (search → refine
+						// → search again) makes the previous results blink
+						// out into a skeleton between each call, which reads
+						// as "results keep shuffling". Keeping the prior
+						// rendered panel visible until the next `tool_call_end`
+						// drops the new props in is far calmer.
+						const sameUri = m.ui?.resourceUri === uri;
+						const hasHydrated =
+							sameUri && !!m.ui?.props && Object.keys(m.ui.props as object).length > 0;
+						const shouldMountSkeleton = !!uri && !hasHydrated;
+						return {
+							...m,
+							toolStatus: label,
+							...(shouldMountSkeleton ? { ui: { resourceUri: uri, props: {} } } : {}),
+						};
+					});
 				} else if (event.type === "tool_call_end") {
 					if (event.ui) {
 						updateAssistant((m) => ({ ...m, ui: event.ui, toolStatus: undefined }));
@@ -871,23 +1229,50 @@ export function PlaygroundAgent({
 					if (event.code === "agent_not_configured") {
 						setUnavailable(event.message ?? "Agent not configured on this instance.");
 					}
+					// `agent_not_configured` is a config error — retrying
+					// won't help. Everything else (upstream_error,
+					// stream_error, http_*) is worth a retry.
+					const recoverable = event.code !== "agent_not_configured";
 					setMessages((prev) => {
 						const without = prev.filter((m) => m.at !== assistantAt);
-						return [...without, { role: "error", content: event.message, at: Date.now() }];
+						return [
+							...without,
+							{
+								role: "error",
+								content: event.message,
+								at: Date.now(),
+								...(recoverable ? { retryOpts } : {}),
+							},
+						];
 					});
 				}
 			}
 			if (!sawDone) {
 				setMessages((prev) => {
 					const without = prev.filter((m) => m.at !== assistantAt);
-					return [...without, { role: "error", content: "Stream ended unexpectedly.", at: Date.now() }];
+					return [
+						...without,
+						{
+							role: "error",
+							content: "Stream ended unexpectedly.",
+							at: Date.now(),
+							retryOpts,
+						},
+					];
 				});
 			}
 		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
+			// Network failure (fetch threw before any stream event). Most
+			// commonly: server briefly down, tunnel hiccup, captive portal.
+			// Surface a friendlier message than the raw `Failed to fetch`
+			// and keep the retry path open.
+			const raw = err instanceof Error ? err.message : String(err);
+			const friendly = /failed to fetch|networkerror|err_failed|err_internet/i.test(raw)
+				? "Network error — couldn't reach the api. Check your connection and retry."
+				: raw;
 			setMessages((prev) => {
 				const without = prev.filter((m) => m.at !== assistantAt);
-				return [...without, { role: "error", content: msg, at: Date.now() }];
+				return [...without, { role: "error", content: friendly, at: Date.now(), retryOpts }];
 			});
 		} finally {
 			setBusy(false);
@@ -896,6 +1281,23 @@ export function PlaygroundAgent({
 
 	const sendRef = useRef(send);
 	sendRef.current = send;
+
+	// One-shot seed prompt: fire after first paint so the surface mounts
+	// idle (composer renders, ConnectionsProvider settles), then auto-send
+	// the prompt as if the user had typed it. The ref guard makes this
+	// strictly mount-once even under React 18 strict-mode double-invoke
+	// or seedPrompt churning.
+	const didSeedRef = useRef(false);
+	useEffect(() => {
+		const seed = seedPrompt?.trim();
+		if (!seed || didSeedRef.current) return;
+		didSeedRef.current = true;
+		// Defer one frame so any in-flight session-list fetch has a chance
+		// to settle before the user turn pushes onto the messages array.
+		requestAnimationFrame(() => {
+			void sendRef.current({ text: seed });
+		});
+	}, [seedPrompt]);
 
 	// Receive postMessage actions from any inline UI iframe (`<ChatIframe>`)
 	// rendered inside this chat. Tool intents → next agent turn with
@@ -970,6 +1372,22 @@ export function PlaygroundAgent({
 						className="agent-file-hidden"
 						onChange={onPickFiles}
 					/>
+					<input
+						ref={photoInputRef}
+						type="file"
+						multiple
+						accept="image/*"
+						className="agent-file-hidden"
+						onChange={onPickFiles}
+					/>
+					<input
+						ref={cameraInputRef}
+						type="file"
+						accept="image/*"
+						capture="environment"
+						className="agent-file-hidden"
+						onChange={onPickFiles}
+					/>
 					{isHero ? (
 						<div className="agent-hero">
 							<h2 className="agent-hero-title">What do you want to flip today?</h2>
@@ -985,42 +1403,50 @@ export function PlaygroundAgent({
 											if (canSend) send();
 										}
 									}}
-									placeholder="Ask the agent — search, evaluate, list, fulfill"
-									rows={2}
+									placeholder={heroPlaceholder}
+									rows={1}
 									disabled={busy}
 									className="agent-hero-textarea"
 								/>
 								<div className="agent-hero-actions">
 									<div className="agent-hero-actions-left">
+										<AttachMenu
+											btnClassName="agent-hero-attach"
+											open={attachOpen}
+											onToggle={() => setAttachOpen((v) => !v)}
+											onClose={() => setAttachOpen(false)}
+											onUploadFile={() => fileInputRef.current?.click()}
+											onUploadPhoto={() => photoInputRef.current?.click()}
+											onTakePhoto={() => cameraInputRef.current?.click()}
+											wrapRef={attachWrapRef}
+										/>
+										<ConnChip />
+									</div>
+									<div className="agent-hero-actions-right">
+										<ModelPicker value={selectedModel} onChange={setSelectedModel} />
+										{SPEECH_SUPPORTED && (
+											<button
+												type="button"
+												className={`agent-voice-hero${voiceListening ? " agent-voice-active" : ""}`}
+												onClick={toggleVoice}
+												aria-label={voiceListening ? "Stop voice input" : "Start voice input"}
+												aria-pressed={voiceListening}
+												title={voiceListening ? "Stop voice input" : "Voice input"}
+											>
+												{IconMic}
+											</button>
+										)}
 										<button
 											type="button"
-											className="agent-hero-attach"
-											onClick={() => fileInputRef.current?.click()}
+											className="agent-hero-send"
+											onClick={() => send()}
+											disabled={!canSend}
+											aria-label="Send"
+											title="Send (Enter)"
 										>
-											{IconAttach}
-											Attach
+											{IconArrowUp}
 										</button>
-										<ConnChip
-											conn={conn}
-											setConn={setConn}
-											extInstalled={extInstalled}
-											extensionId={extensionId}
-											open={connOpen}
-											onToggle={() => setConnOpen((v) => !v)}
-											onClose={() => setConnOpen(false)}
-											wrapRef={connWrapRef}
-										/>
 									</div>
-									<button
-										type="button"
-										className="agent-hero-send"
-										onClick={() => send()}
-										disabled={!canSend}
-										aria-label="Send"
-										title="Send (Enter)"
-									>
-										{IconArrowUp}
-									</button>
 								</div>
 							</div>
 							{pendingAttachments.length > 0 && (
@@ -1038,6 +1464,22 @@ export function PlaygroundAgent({
 										type="button"
 										className="agent-hero-example"
 										onClick={() => {
+											if (onExamplePrompt) {
+												onExamplePrompt(ex.prompt);
+												return;
+											}
+											// Marketing mode (logged-out hero): fire send
+											// directly so the canned simulation plays
+											// immediately on click instead of leaving
+											// the user staring at a filled input wondering
+											// what to do next. Dashboard mount has neither
+											// `mockMode` nor `onExamplePrompt`, so it keeps
+											// the original "fill + focus" behavior so the
+											// user can edit the prompt before sending.
+											if (mockMode) {
+												void send({ text: ex.prompt });
+												return;
+											}
 											setInput(ex.prompt);
 											textareaRef.current?.focus();
 										}}
@@ -1075,6 +1517,46 @@ export function PlaygroundAgent({
 										</div>
 									);
 								}
+								if (m.role === "error") {
+									return (
+										<div key={`${m.at}-${i}`} className="agent-msg agent-msg-error">
+											<svg
+												className="agent-msg-error-icon"
+												width="13"
+												height="13"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												strokeWidth="2"
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												aria-hidden="true"
+											>
+												<circle cx="12" cy="12" r="10" />
+												<path d="M12 8v4M12 16h.01" />
+											</svg>
+											<div className="agent-msg-error-body">
+												<div className="agent-msg-error-text">{m.content}</div>
+												{m.retryOpts && (
+													<button
+														type="button"
+														className="agent-msg-error-retry"
+														onClick={() => {
+															// Drop the error bubble + the stranded user
+															// message that triggered it so the retry
+															// re-creates them cleanly.
+															setMessages((prev) => prev.filter((x) => x.at !== m.at && x.at !== m.at - 1));
+															void send(m.retryOpts ?? {});
+														}}
+														disabled={busy}
+													>
+														Retry
+													</button>
+												)}
+											</div>
+										</div>
+									);
+								}
 								return (
 								<div key={`${m.at}-${i}`} className={`agent-msg agent-msg-${m.role}`}>
 									{m.attachments && m.attachments.length > 0 && (
@@ -1090,7 +1572,12 @@ export function PlaygroundAgent({
 											<span className="agent-status-ellipsis">…</span>
 										</span>
 									)}
-									{m.role === "assistant" && m.ui && <ChatIframe ui={m.ui} />}
+									{m.role === "assistant" && m.ui &&
+									(hasInlinePanel(m.ui.resourceUri) ? (
+										<MessageUiPanel ui={m.ui} />
+									) : (
+										<ChatIframe ui={m.ui} />
+									))}
 									{(m.content || m.subject) &&
 										(m.role === "assistant" ? (
 											<div className="agent-msg-text">
@@ -1156,7 +1643,12 @@ export function PlaygroundAgent({
 												)}
 											</div>
 										))}
-									{m.role !== "assistant" && m.ui && <ChatIframe ui={m.ui} />}
+									{m.role !== "assistant" && m.ui &&
+									(hasInlinePanel(m.ui.resourceUri) ? (
+										<MessageUiPanel ui={m.ui} />
+									) : (
+										<ChatIframe ui={m.ui} />
+									))}
 								</div>
 								);
 							})
@@ -1178,17 +1670,9 @@ export function PlaygroundAgent({
 						)}
 						{attachError && <div className="agent-attach-error">{attachError}</div>}
 						<div className="agent-input">
-							<button
-								type="button"
-								className="agent-input-attach"
-								onClick={() => fileInputRef.current?.click()}
-								title="Attach file"
-								aria-label="Attach file"
-							>
-								{IconAttach}
-							</button>
 							<textarea
 								ref={textareaRef}
+								className="agent-input-textarea"
 								value={input}
 								onChange={(e) => setInput(e.target.value.slice(0, MAX_INPUT_LEN))}
 								onPaste={onPaste}
@@ -1199,20 +1683,75 @@ export function PlaygroundAgent({
 									}
 								}}
 								placeholder={sessionId ? "Reply…" : "Ask the agent…"}
-								rows={1}
+								rows={2}
 								disabled={busy}
 							/>
-							<button
-								type="button"
-								className="agent-input-send"
-								onClick={() => send()}
-								disabled={!canSend}
-								aria-label="Send"
-								title="Send (Enter)"
-							>
-								{IconArrowUp}
-							</button>
+							<div className="agent-input-actions">
+								<AttachMenu
+									btnClassName="agent-input-attach"
+									open={attachOpen}
+									onToggle={() => setAttachOpen((v) => !v)}
+									onClose={() => setAttachOpen(false)}
+									onUploadFile={() => fileInputRef.current?.click()}
+									onUploadPhoto={() => photoInputRef.current?.click()}
+									onTakePhoto={() => cameraInputRef.current?.click()}
+									wrapRef={attachWrapRef}
+								/>
+								<div className="agent-input-actions-right">
+									<ModelPicker value={selectedModel} onChange={setSelectedModel} />
+									{SPEECH_SUPPORTED && (
+										<button
+											type="button"
+											className={`agent-input-voice${voiceListening ? " agent-voice-active" : ""}`}
+											onClick={toggleVoice}
+											aria-label={voiceListening ? "Stop voice input" : "Start voice input"}
+											aria-pressed={voiceListening}
+											title={voiceListening ? "Stop voice input" : "Voice input"}
+										>
+											{IconMic}
+										</button>
+									)}
+									<button
+										type="button"
+										className="agent-input-send"
+										onClick={() => send()}
+										disabled={!canSend}
+										aria-label="Send"
+										title="Send (Enter)"
+									>
+										{IconArrowUp}
+									</button>
+								</div>
+							</div>
 						</div>
+						{/* Mock mode (logged-out landing hero): keep the example
+						    chips visible below the composer so the visitor can
+						    cycle through every canned simulation without
+						    refreshing or hunting for them. Dashboard mount
+						    (mockMode=false) renders them only on the empty
+						    hero state — once a real conversation starts they'd
+						    just be noise. */}
+						{mockMode && (
+							<div className="agent-compose-examples">
+								{HERO_EXAMPLES.map((ex) => (
+									<button
+										key={ex.title}
+										type="button"
+										className="agent-hero-example"
+										disabled={busy}
+										onClick={() => {
+											if (onExamplePrompt) {
+												onExamplePrompt(ex.prompt);
+												return;
+											}
+											void send({ text: ex.prompt });
+										}}
+									>
+										{ex.title}
+									</button>
+								))}
+							</div>
+						)}
 					</div>
 					</>
 					)}
@@ -1245,15 +1784,29 @@ function ChatIframe({ ui }: { ui: UiHint }) {
 	const [height, setHeight] = useState(140);
 	const src = useMemo(() => resolveUiUri(ui.resourceUri), [ui.resourceUri]);
 
+	// Latest props in a ref so the message-listener closure can read them
+	// without re-attaching on every change. The ref-write happens during
+	// render so the listener (running on the next microtask) always sees
+	// the freshest props — no `[ui.props]` dependency on the listener
+	// effect, no cleanup-then-reattach gap where an `embed-ready` could
+	// land on no listener and silently drop.
+	const propsRef = useRef(ui.props);
+	propsRef.current = ui.props;
+
 	useEffect(() => {
 		function onMessage(e: MessageEvent) {
-			if (e.source !== ref.current?.contentWindow) return;
-			const m = e.data as { type?: string; [k: string]: unknown } | null;
+			const m = e.data as { type?: string; source?: string; [k: string]: unknown } | null;
 			if (!m || typeof m !== "object" || typeof m.type !== "string") return;
+			// Filter by the embed's own source field instead of comparing
+			// `e.source` to `ref.current?.contentWindow`. The latter is
+			// brittle: in dev with HMR the iframe occasionally posts
+			// before React's ref settles, and the message gets rejected
+			// silently — no init, no resize, stuck skeleton + scrollbar.
+			if (m.source !== "flipagent-embed") return;
 			if (m.type === "embed-ready") {
 				readyRef.current = true;
 				ref.current?.contentWindow?.postMessage(
-					{ type: "embed-init", data: ui.props ?? {}, source: "flipagent-host" },
+					{ type: "embed-init", data: propsRef.current ?? {}, source: "flipagent-host" },
 					"*",
 				);
 			} else if (m.type === "embed-resize" && typeof m.height === "number") {
@@ -1267,7 +1820,7 @@ function ChatIframe({ ui }: { ui: UiHint }) {
 		}
 		window.addEventListener("message", onMessage);
 		return () => window.removeEventListener("message", onMessage);
-	}, [ui.props]);
+	}, []);
 
 	// Push a fresh init whenever props change (skeleton → real data).
 	// Iframe stays mounted; embed page re-renders on the new init.
@@ -1291,255 +1844,92 @@ function ChatIframe({ ui }: { ui: UiHint }) {
 	);
 }
 
+
 /**
- * Connections chip — sits next to Attach in the hero. Status dot tells
- * the user at a glance whether the agent has the surfaces it needs;
- * clicking opens a small dropdown listing eBay account + browser
- * extension with a Connect / Install link for whichever is missing.
- *
- * The "connect eBay" action goes through a window-level CustomEvent so
- * the Dashboard root can flip its view + open the consent modal without
- * a full page reload (matches the extension popup deep-link flow).
+ * "+" button + dropdown menu (Upload file / Upload photo / Take photo)
+ * that replaces the old single-shot "Attach" button. Each menu item
+ * triggers a hidden `<input type="file">` configured for that source —
+ * `Upload file` is unrestricted, `Upload photo` is `accept="image/*"`,
+ * `Take photo` adds `capture="environment"` so mobile browsers open
+ * the camera. The menu pops upward (`bottom: 100%`) since it sits at
+ * the bottom of the composer card.
  */
-function ConnChip({
-	conn,
-	setConn,
-	extInstalled,
-	extensionId,
+function AttachMenu({
+	btnClassName,
 	open,
 	onToggle,
 	onClose,
+	onUploadFile,
+	onUploadPhoto,
+	onTakePhoto,
 	wrapRef,
 }: {
-	conn: ConnStatus | null;
-	setConn: (next: ConnStatus | null) => void;
-	/** Tri-state from window-postMessage detection: true (presence beacon
-	 * received), false (timeout, treat as not installed), null (still
-	 * waiting in the first 600ms). */
-	extInstalled: boolean | null;
-	/** Extension's chrome runtime id — needed to build a working
-	 * `/extension/connect/?ext=…` pair URL. Harvested from the same
-	 * presence beacon. Null until the beacon arrives. */
-	extensionId: string | null;
+	btnClassName: string;
 	open: boolean;
 	onToggle: () => void;
 	onClose: () => void;
+	onUploadFile: () => void;
+	onUploadPhoto: () => void;
+	onTakePhoto: () => void;
 	wrapRef: React.RefObject<HTMLDivElement | null>;
 }) {
-	// Two-click confirm — first click flips a row into "Click again to
-	// disconnect" state. Local to the chip, resets when popover closes.
-	const [confirming, setConfirming] = useState<"oauth" | null>(null);
-	const [busy, setBusy] = useState<"oauth" | null>(null);
-	useEffect(() => {
-		if (!open) {
-			setConfirming(null);
-			setBusy(null);
-		}
-	}, [open]);
-	async function disconnectEbay() {
-		setBusy("oauth");
-		try {
-			await apiFetch("/v1/me/ebay/connect", { method: "DELETE" });
-			const next = await fetchConn().catch(() => null);
-			setConn(next);
-			setConfirming(null);
-		} catch {
-			// Leave the row in confirming state so the user sees nothing
-			// happened; click anywhere else to dismiss.
-		} finally {
-			setBusy(null);
-		}
-	}
-	const oauthOk = !!conn?.oauth.connected;
-	const bridgeOk = !!conn?.bridge.paired && !!conn?.bridge.ebayLoggedIn;
-	const bridgeInstalled = !!conn?.bridge.paired;
-	const anyOk = oauthOk || bridgeOk;
-	// `loading` is conn === null (status not yet fetched). Render a neutral
-	// dot so we don't flash "Connect" before the real state arrives.
-	const loading = conn === null;
-	const dotClass = loading
-		? "agent-hero-conn-dot-loading"
-		: anyOk
-			? "agent-hero-conn-dot-ok"
-			: "agent-hero-conn-dot-off";
-	const handle = conn?.oauth.ebayUserName || conn?.bridge.ebayUserName || null;
-	const label = loading
-		? "Checking…"
-		: anyOk
-			? handle
-				? `@${handle}`
-				: "Connected"
-			: "Connect";
-
-	function gotoEbayConnect() {
-		// Dashboard listens for this and flips to settings + opens the eBay
-		// consent modal. Same end state as the extension's `?connect=ebay`
-		// deep-link, but no page reload — agent state stays alive.
-		window.dispatchEvent(
-			new CustomEvent("flipagent-goto", {
-				detail: { to: "settings", flag: "flipagent_open_ebay_connect" },
-			}),
-		);
-		onClose();
-	}
-	function gotoExtension() {
-		window.open("/docs/extension/", "_blank", "noopener,noreferrer");
-		onClose();
-	}
-
 	return (
-		<div className="agent-hero-conn-wrap" ref={wrapRef}>
+		<div className="agent-attach-wrap" ref={wrapRef}>
 			<button
 				type="button"
-				className={`agent-hero-conn${anyOk ? " agent-hero-conn-on" : ""}`}
+				className={btnClassName}
 				onClick={onToggle}
 				aria-expanded={open}
 				aria-haspopup="menu"
+				aria-label="Add attachment"
+				title="Add attachment"
 			>
-				<span className={`agent-hero-conn-dot ${dotClass}`} />
-				<span className="agent-hero-conn-label">{label}</span>
-				<svg
-					className="agent-hero-conn-chev"
-					width="9"
-					height="9"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="2"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-				>
-					<path d="m6 9 6 6 6-6" />
-				</svg>
+				{IconPlus}
 			</button>
 			{open && (
-				<div className="agent-hero-conn-pop" role="menu">
-					<div className="agent-hero-conn-row">
-						<span
-							className={`agent-hero-conn-row-dot ${
-								oauthOk ? "agent-hero-conn-dot-ok" : "agent-hero-conn-dot-off"
-							}`}
-						/>
-						<div className="agent-hero-conn-row-meta">
-							<span className="agent-hero-conn-row-title">eBay account</span>
-							<span className="agent-hero-conn-row-sub">
-								{oauthOk ? `@${conn?.oauth.ebayUserName ?? "signed in"}` : "Not connected"}
-							</span>
-						</div>
-						{oauthOk ? (
-							<button
-								type="button"
-								className={`agent-hero-conn-row-action${
-									confirming === "oauth" ? " agent-hero-conn-row-action-danger" : " agent-hero-conn-row-action-muted"
-								}`}
-								onClick={() => {
-									if (busy) return;
-									if (confirming === "oauth") void disconnectEbay();
-									else setConfirming("oauth");
-								}}
-								disabled={busy === "oauth"}
-							>
-								{busy === "oauth"
-									? "Disconnecting…"
-									: confirming === "oauth"
-										? "Click to confirm"
-										: "Disconnect"}
-							</button>
-						) : (
-							<button
-								type="button"
-								className="agent-hero-conn-row-action"
-								onClick={gotoEbayConnect}
-							>
-								Connect
-							</button>
-						)}
-					</div>
-					<div className="agent-hero-conn-row">
-						<span
-							className={`agent-hero-conn-row-dot ${
-								bridgeOk
-									? "agent-hero-conn-dot-ok"
-									: bridgeInstalled || extInstalled
-										? "agent-hero-conn-dot-warn"
-										: "agent-hero-conn-dot-off"
-							}`}
-						/>
-						<div className="agent-hero-conn-row-meta">
-							<span className="agent-hero-conn-row-title">Browser extension</span>
-							<span className="agent-hero-conn-row-sub">
-								{bridgeOk
-									? `@${conn?.bridge.ebayUserName ?? "signed in"}`
-									: bridgeInstalled
-										? "Not signed in to eBay"
-										: extInstalled === false
-											? "Not installed"
-											: extInstalled === true
-												? "Not paired"
-												: "Checking…"}
-							</span>
-						</div>
-						{bridgeOk ? (
-							<button
-								type="button"
-								className="agent-hero-conn-row-action agent-hero-conn-row-action-muted"
-								onClick={() => {
-									// Per-device unpair lives on the Devices panel — multiple
-									// browsers can pair, so the chip can't pick one to revoke.
-									window.dispatchEvent(
-										new CustomEvent("flipagent-goto", { detail: { to: "settings" } }),
-									);
-									onClose();
-								}}
-							>
-								Manage
-							</button>
-						) : bridgeInstalled ? (
-							<button
-								type="button"
-								className="agent-hero-conn-row-action"
-								onClick={() => {
-									window.open("https://www.ebay.com/signin", "_blank", "noopener,noreferrer");
-									onClose();
-								}}
-							>
-								Open eBay
-							</button>
-						) : extInstalled === true ? (
-							<button
-								type="button"
-								className="agent-hero-conn-row-action"
-								onClick={() => {
-									if (extensionId) {
-										// Same URL the popup builds — `?ext=<id>` is what
-										// authorises the connect flow to message back.
-										const device = encodeURIComponent(guessDeviceName());
-										window.open(
-											`/extension/connect/?ext=${encodeURIComponent(extensionId)}&device=${device}`,
-											"_blank",
-											"noopener,noreferrer",
-										);
-									} else {
-										// We saw the presence beacon but it carried no id —
-										// fall back to the docs page that explains the
-										// popup-driven flow.
-										window.open("/docs/extension/", "_blank", "noopener,noreferrer");
-									}
-									onClose();
-								}}
-							>
-								Pair
-							</button>
-						) : extInstalled === null ? null : (
-							<button
-								type="button"
-								className="agent-hero-conn-row-action"
-								onClick={gotoExtension}
-							>
-								Install
-							</button>
-						)}
-					</div>
+				<div className="agent-attach-menu" role="menu">
+					<button
+						type="button"
+						role="menuitem"
+						className="agent-attach-menu-item"
+						onClick={() => {
+							onUploadFile();
+							onClose();
+						}}
+					>
+						<span className="agent-attach-menu-icon" aria-hidden="true">
+							{IconFile}
+						</span>
+						Upload file
+					</button>
+					<button
+						type="button"
+						role="menuitem"
+						className="agent-attach-menu-item"
+						onClick={() => {
+							onUploadPhoto();
+							onClose();
+						}}
+					>
+						<span className="agent-attach-menu-icon" aria-hidden="true">
+							{IconImage}
+						</span>
+						Upload photo
+					</button>
+					<button
+						type="button"
+						role="menuitem"
+						className="agent-attach-menu-item"
+						onClick={() => {
+							onTakePhoto();
+							onClose();
+						}}
+					>
+						<span className="agent-attach-menu-icon" aria-hidden="true">
+							{IconCamera}
+						</span>
+						Take photo
+					</button>
 				</div>
 			)}
 		</div>

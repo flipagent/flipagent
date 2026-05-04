@@ -21,7 +21,9 @@ export const MediaUpload = Type.Object(
 		uploadUrl: Type.String(),
 		uploadHeaders: Type.Record(Type.String(), Type.String()),
 		expiresAt: Type.String(),
-		publicUrl: Type.Optional(Type.String({ description: "Public URL the blob will be reachable at after the PUT (image uploads only)." })),
+		publicUrl: Type.Optional(
+			Type.String({ description: "Public URL the blob will be reachable at after the PUT (image uploads only)." }),
+		),
 		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "MediaUpload" },
@@ -58,7 +60,10 @@ export type MediaUploadRequest = Static<typeof MediaUploadRequest>;
 export const EbayPictureUploadRequest = Type.Object(
 	{
 		/** Public URL flipagent fetches the image from before forwarding to eBay. Caller-supplied so we don't have to handle binary upload over MCP. */
-		sourceUrl: Type.String({ format: "uri", description: "HTTPS URL of the image. flipagent fetches → forwards to eBay's Picture Hosting." }),
+		sourceUrl: Type.String({
+			format: "uri",
+			description: "HTTPS URL of the image. flipagent fetches → forwards to eBay's Picture Hosting.",
+		}),
 		/** 1, 5, 7, 30, 60. eBay deletes the picture this many days after the last listing referencing it ends. Default 30. */
 		extensionInDays: Type.Optional(
 			Type.Union([Type.Literal(1), Type.Literal(5), Type.Literal(7), Type.Literal(30), Type.Literal(60)]),
@@ -73,7 +78,9 @@ export type EbayPictureUploadRequest = Static<typeof EbayPictureUploadRequest>;
 export const EbayPictureUploadResponse = Type.Object(
 	{
 		fullUrl: Type.String({ description: "Stable `https://i.ebayimg.com/...` URL. Use as-is in `imageUrls[]`." }),
-		memberUrls: Type.Array(Type.String(), { description: "Secondary URLs (different sizes — thumbnails, supersize)." }),
+		memberUrls: Type.Array(Type.String(), {
+			description: "Secondary URLs (different sizes — thumbnails, supersize).",
+		}),
 		extensionInDays: Type.Integer(),
 	},
 	{ $id: "EbayPictureUploadResponse" },

@@ -24,8 +24,7 @@ export type AdminUserListQuery = Static<typeof AdminUserListQuery>;
 export const AdminAutoRechargeView = Type.Object(
 	{
 		enabled: Type.Boolean(),
-		thresholdCredits: Type.Union([Type.Integer(), Type.Null()]),
-		topUpCredits: Type.Union([Type.Integer(), Type.Null()]),
+		targetCredits: Type.Union([Type.Integer(), Type.Null()]),
 		lastRechargedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
 	},
 	{ $id: "AdminAutoRechargeView" },

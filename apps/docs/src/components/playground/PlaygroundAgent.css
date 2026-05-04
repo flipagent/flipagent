@@ -4,11 +4,17 @@
 
 /* The agent surface lives directly on the dashboard background — no
  * ComposeCard, no in-card tab switcher (the sidebar handles that).
- * This wrapper just gives layout a single hook. */
+ * This wrapper just gives layout a single hook.
+ *
+ * `text-align: start` resets the centered text the landing-hero
+ * (`.hero { text-align: center }`) inherits down. Dashboard's
+ * `.dash-content` already reads as start-aligned; this just makes the
+ * surface portable across both mounts. */
 .agent-page {
 	width: 100%;
 	display: flex;
 	flex-direction: column;
+	text-align: start;
 }
 
 .agent-shell {
@@ -62,7 +68,7 @@
 	align-items: center;
 	justify-content: center;
 	gap: 14px;
-	padding: 56px 24px 48px;
+	padding: 0 24px;
 }
 
 .agent-hero-title {
@@ -96,9 +102,9 @@
 
 .agent-hero-textarea {
 	width: 100%;
-	min-height: 56px;
+	min-height: 44px;
 	max-height: 220px;
-	padding: 16px 18px;
+	padding: 12px 18px;
 	background: transparent;
 	border: none;
 	outline: none;
@@ -140,216 +146,164 @@
 .agent-hero-attach {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	justify-content: center;
+	width: 28px;
 	height: 28px;
-	padding: 0 10px;
+	padding: 0;
 	background: transparent;
 	border: 1px solid transparent;
 	border-radius: 7px;
 	color: var(--text-2);
-	font-size: 12.5px;
 	cursor: pointer;
 	transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.agent-hero-attach:hover {
+.agent-hero-attach:hover,
+.agent-hero-attach[aria-expanded="true"] {
 	background: var(--bg-soft);
 	border-color: var(--border-faint);
 	color: var(--text);
 }
 
-/* Connections chip — sits next to Attach. Compact pill with a status
- * dot + handle/CTA + chevron. Click drops a small popover with eBay
- * account + browser-extension rows. */
-.agent-hero-conn-wrap {
+/* "+" attach button + dropdown menu (Upload file / Upload photo / Take
+ * photo). Wrap is a positioning anchor so the menu can pop upward from
+ * the bottom-anchored composer without escaping the document flow. */
+.agent-attach-wrap {
 	position: relative;
-}
-
-.agent-hero-conn {
 	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	height: 28px;
-	padding: 0 8px 0 9px;
-	background: transparent;
-	border: 1px solid transparent;
-	border-radius: 7px;
-	color: var(--text-2);
-	font-size: 12px;
-	font-family: inherit;
-	cursor: pointer;
-	transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
-	max-width: 200px;
-}
-
-.agent-hero-conn:hover {
-	background: var(--bg-soft);
-	border-color: var(--border-faint);
-	color: var(--text);
-}
-
-.agent-hero-conn-on {
-	color: var(--text);
-}
-
-.agent-hero-conn-dot {
-	width: 7px;
-	height: 7px;
-	border-radius: 50%;
-	flex-shrink: 0;
-	background: var(--text-4);
-}
-
-.agent-hero-conn-dot-ok {
-	background: #16a34a;
-	box-shadow: 0 0 0 2px color-mix(in srgb, #16a34a 18%, transparent);
-}
-
-.agent-hero-conn-dot-warn {
-	background: #d97706;
-	box-shadow: 0 0 0 2px color-mix(in srgb, #d97706 18%, transparent);
-}
-
-.agent-hero-conn-dot-off {
-	background: var(--brand);
-	box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 18%, transparent);
-}
-
-.agent-hero-conn-dot-loading {
-	background: var(--text-4);
-}
-
-.agent-hero-conn-label {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	max-width: 130px;
-}
-
-.agent-hero-conn-chev {
-	color: var(--text-4);
 	flex-shrink: 0;
 }
 
-.agent-hero-conn-pop {
+.agent-attach-menu {
 	position: absolute;
-	top: calc(100% + 6px);
+	bottom: calc(100% + 6px);
 	left: 0;
 	z-index: 20;
-	width: 320px;
+	min-width: 180px;
 	background: var(--surface);
 	border: 1px solid var(--border);
 	border-radius: 10px;
 	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.06);
-	padding: 6px;
+	padding: 4px;
 	animation: agent-conn-pop 140ms ease-out;
 }
 
-@keyframes agent-conn-pop {
-	from { opacity: 0; transform: translateY(-4px); }
-	to   { opacity: 1; transform: translateY(0); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-	.agent-hero-conn-pop { animation: none; }
+	.agent-attach-menu {
+		animation: none;
+	}
 }
 
-.agent-hero-conn-row {
+.agent-attach-menu-item {
 	display: flex;
 	align-items: center;
-	gap: 10px;
-	padding: 9px 10px;
-	border-radius: 7px;
-}
-
-.agent-hero-conn-row + .agent-hero-conn-row {
-	margin-top: 1px;
-}
-
-.agent-hero-conn-row-dot {
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-	flex-shrink: 0;
-	margin-top: 4px;
-	align-self: flex-start;
-}
-
-.agent-hero-conn-row-meta {
-	display: flex;
-	flex-direction: column;
-	gap: 1px;
-	flex: 1;
-	min-width: 0;
-}
-
-.agent-hero-conn-row-title {
+	gap: 9px;
+	width: 100%;
+	padding: 8px 10px;
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	color: var(--text-2);
 	font-size: 12.5px;
-	font-weight: 500;
-	color: var(--text);
 	line-height: 1.3;
+	text-align: left;
+	cursor: pointer;
+	font-family: inherit;
+	transition: background 120ms ease, color 120ms ease;
 }
 
-.agent-hero-conn-row-sub {
-	font-size: 11.5px;
-	color: var(--text-3);
-	line-height: 1.35;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+.agent-attach-menu-item:hover {
+	background: var(--bg-soft);
+	color: var(--text);
 }
 
-.agent-hero-conn-row-action {
+.agent-attach-menu-icon {
 	display: inline-flex;
 	align-items: center;
-	height: 26px;
-	padding: 0 10px;
-	background: var(--brand);
-	border: 1px solid transparent;
-	border-radius: 6px;
-	color: white;
-	font-size: 11.5px;
-	font-weight: 500;
-	font-family: inherit;
-	cursor: pointer;
+	justify-content: center;
+	width: 16px;
+	color: var(--text-3);
 	flex-shrink: 0;
-	transition: filter 120ms ease, background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.agent-hero-conn-row-action:hover {
-	filter: brightness(1.05);
-}
-
-.agent-hero-conn-row-action:disabled {
-	opacity: 0.6;
-	cursor: not-allowed;
-}
-
-/* Muted variant — used for low-stakes actions on connected rows
- * (Disconnect default state, Manage). Reads as a plain ghost button so
- * the green status dot keeps the spotlight; only the explicit confirm
- * step turns red. */
-.agent-hero-conn-row-action-muted {
-	background: transparent;
-	border-color: var(--border-faint);
+.agent-attach-menu-item:hover .agent-attach-menu-icon {
 	color: var(--text-2);
 }
 
-.agent-hero-conn-row-action-muted:hover {
+/* Right cluster of the hero actions row: voice (mic) + send. */
+.agent-hero-actions-right {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+/* Voice (mic) button — hero variant. Sits between the textarea and the
+ * send button. Same sizing as send for visual rhythm. */
+.agent-voice-hero {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	color: var(--text-3);
+	cursor: pointer;
+	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.agent-voice-hero:hover {
 	background: var(--bg-soft);
-	border-color: var(--border);
+	border-color: var(--border-faint);
 	color: var(--text);
-	filter: none;
 }
 
-.agent-hero-conn-row-action-danger {
-	background: #c0392b;
-	border-color: #c0392b;
-	color: white;
+/* Voice (mic) button — active-chat composer variant. Mirrors the size
+ * and layout of `.agent-input-attach` so the row reads as: + … mic ↑. */
+.agent-input-voice {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	background: transparent;
+	border: none;
+	border-radius: 7px;
+	color: var(--text-3);
+	cursor: pointer;
+	transition: background 120ms ease, color 120ms ease;
+	flex-shrink: 0;
 }
 
-.agent-hero-conn-row-action-danger:hover {
-	filter: brightness(1.05);
+.agent-input-voice:hover {
+	background: var(--bg-soft);
+	color: var(--text-2);
+}
+
+/* Recording state — shared between hero + active-chat variants. Subtle
+ * red tint plus a slow opacity pulse so it reads as "listening". */
+.agent-voice-active,
+.agent-voice-active:hover {
+	color: #c0392b;
+	background: color-mix(in srgb, #c0392b 10%, transparent);
+	border-color: transparent;
+	animation: agent-voice-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes agent-voice-pulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.55;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.agent-voice-active {
+		animation: none;
+	}
 }
 
 /* Icon-only chat-style send button — no "Run agent" label, just the
@@ -392,26 +346,31 @@
 }
 
 .agent-hero-examples {
-	display: grid;
-	grid-template-columns: repeat(3, 1fr);
-	gap: 10px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
 	width: 100%;
 	max-width: 720px;
 	margin-top: 6px;
 }
 
 .agent-hero-example {
+	flex: 1 1 0;
+	min-width: 0;
 	text-align: left;
-	padding: 12px 14px;
+	padding: 8px 12px;
 	background: var(--surface);
 	border: 1px solid var(--border-faint);
 	border-radius: 10px;
-	font-size: 12.5px;
+	font-size: 12px;
 	line-height: 1.45;
 	color: var(--text-2);
 	cursor: pointer;
 	transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
 	font-family: inherit;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .agent-hero-example:hover {
@@ -422,10 +381,34 @@
 
 @media (max-width: 720px) {
 	.agent-hero-examples {
-		grid-template-columns: 1fr;
+		flex-direction: column;
 	}
 	.agent-hero-title {
 		font-size: 22px;
+	}
+}
+
+/* Mock-mode chip strip below the composer. Same chip visual as the
+ * empty-hero examples but laid out tighter — these sit under an active
+ * conversation, not centered as a hero. Border separator on top so the
+ * strip doesn't read as part of the composer. */
+.agent-compose-examples {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 10px 0 0;
+	margin-top: 10px;
+	border-top: 1px solid var(--border-faint);
+}
+
+.agent-compose-examples .agent-hero-example:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+	.agent-compose-examples {
+		flex-direction: column;
 	}
 }
 
@@ -433,6 +416,32 @@
 	.agent-hero-send:hover:not(:disabled) {
 		transform: none;
 	}
+}
+
+/* Landing-hero overrides — the agent surface mounts inside the marketing
+ * page-frame which already provides its own copy ("Let your agent run
+ * the eBay reselling business"). Drop the dashboard's
+ * "What do you want to flip today?" hero title, the viewport-fill
+ * min-height, and the flex centering so the composer sits flush under
+ * the hero text instead of floating in a 540px tall card. A modest
+ * top margin keeps the composer from clinging to the lead paragraph. */
+.agent-host-hero {
+	margin-top: 48px;
+}
+.agent-host-hero .agent-hero-title {
+	display: none;
+}
+.agent-host-hero .agent-shell-hero {
+	min-height: auto;
+}
+.agent-host-hero .agent-shell {
+	min-height: auto;
+}
+.agent-host-hero .agent-hero {
+	flex: none;
+	justify-content: flex-start;
+	gap: 10px;
+	padding: 0;
 }
 
 .agent-bar {
@@ -726,14 +735,68 @@
 	max-width: 88%;
 }
 
+/* Error bubble — soft red surface with a small icon and an inline
+ * "Retry" button (when the failure is recoverable). Looks like a
+ * regular message row but tinted, so the user notices without it
+ * feeling alarmist. */
 .agent-msg-error {
 	align-self: stretch;
 	max-width: 100%;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px 12px;
+	background: color-mix(in srgb, #c0392b 6%, transparent);
+	border: 1px solid color-mix(in srgb, #c0392b 18%, transparent);
+	border-radius: 9px;
+	color: var(--text);
 }
 
-.agent-msg-error .agent-msg-text {
-	background: color-mix(in srgb, #c0392b 6%, transparent);
+.agent-msg-error-icon {
+	flex-shrink: 0;
+	color: #c0392b;
+	margin-top: 2px;
+}
+
+.agent-msg-error-body {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+.agent-msg-error-text {
+	font-size: 13px;
+	line-height: 1.45;
 	color: var(--text);
+	word-break: break-word;
+}
+
+.agent-msg-error-retry {
+	align-self: flex-start;
+	display: inline-flex;
+	align-items: center;
+	height: 26px;
+	padding: 0 12px;
+	background: transparent;
+	border: 1px solid color-mix(in srgb, #c0392b 35%, var(--border));
+	border-radius: 6px;
+	color: #c0392b;
+	font-size: 12px;
+	font-weight: 500;
+	font-family: inherit;
+	cursor: pointer;
+	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.agent-msg-error-retry:hover:not(:disabled) {
+	background: color-mix(in srgb, #c0392b 8%, transparent);
+}
+
+.agent-msg-error-retry:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .agent-msg-pending .agent-msg-text {
@@ -878,11 +941,15 @@
 	padding-bottom: 4px;
 }
 
+/* Composer card — textarea on top (multi-line), action row beneath
+ * (left: attach +, right: model picker · mic · send). Stays the same
+ * height before/after the first message — typing into a thread doesn't
+ * collapse the card to a single line. */
 .agent-input {
 	display: flex;
-	align-items: flex-end;
+	flex-direction: column;
 	gap: 4px;
-	padding: 4px 4px 4px 6px;
+	padding: 8px 8px 6px;
 	border: 1px solid var(--border-faint);
 	border-radius: 10px;
 	background: var(--surface);
@@ -894,23 +961,64 @@
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 10%, transparent);
 }
 
+.agent-input-textarea {
+	display: block;
+	width: 100%;
+	min-height: 44px;
+	max-height: 200px;
+	resize: none;
+	background: transparent;
+	border: none;
+	outline: none;
+	font-family: inherit;
+	font-size: 13px;
+	line-height: 1.45;
+	color: var(--text);
+	padding: 2px 4px;
+	overflow-y: auto;
+	box-sizing: border-box;
+}
+
+.agent-input-textarea::placeholder {
+	color: var(--text-4);
+}
+
+.agent-input-textarea:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.agent-input-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+}
+
+.agent-input-actions-right {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
 .agent-input-attach,
 .agent-input-send {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 26px;
-	height: 26px;
+	width: 28px;
+	height: 28px;
 	background: transparent;
 	border: none;
-	border-radius: 6px;
+	border-radius: 7px;
 	color: var(--text-3);
 	cursor: pointer;
 	transition: background 120ms ease, color 120ms ease;
 	flex-shrink: 0;
 }
 
-.agent-input-attach:hover {
+.agent-input-attach:hover,
+.agent-input-attach[aria-expanded="true"] {
 	background: var(--bg-soft);
 	color: var(--text-2);
 }
@@ -927,33 +1035,6 @@
 .agent-input-send:disabled {
 	background: color-mix(in srgb, var(--brand) 30%, var(--bg-soft));
 	color: color-mix(in srgb, white 60%, transparent);
-	cursor: not-allowed;
-}
-
-.agent-input textarea {
-	flex: 1;
-	min-height: 26px;
-	max-height: 160px;
-	resize: none;
-	background: transparent;
-	border: none;
-	outline: none;
-	font-family: inherit;
-	font-size: 13px;
-	line-height: 1.45;
-	color: var(--text);
-	padding: 4px 4px;
-	overflow-y: auto;
-	box-sizing: border-box;
-	display: block;
-}
-
-.agent-input textarea::placeholder {
-	color: var(--text-4);
-}
-
-.agent-input textarea:disabled {
-	opacity: 0.6;
 	cursor: not-allowed;
 }
 
@@ -1279,4 +1360,107 @@
 .agent-unavailable p {
 	margin: 0;
 	color: var(--text-3);
+}
+
+/* ─── Model picker ──────────────────────────────────────────────────
+   Ghost chip that lives in the right cluster of the composer's action
+   row (left of mic + send), styled to match the connections chip
+   (`.conn-chip`) language: transparent by default, soft hover, no dot.
+   Click opens a small dropdown UPWARDS listing the selectable agent
+   models with their per-turn cost. */
+
+.agent-model-picker {
+	position: relative;
+	flex-shrink: 0;
+}
+
+.agent-model-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 8px 0 9px;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 7px;
+	color: var(--text-2);
+	font-size: 12px;
+	font-family: inherit;
+	cursor: pointer;
+	transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.agent-model-chip:hover,
+.agent-model-chip[aria-expanded="true"] {
+	background: var(--bg-soft);
+	border-color: var(--border-faint);
+	color: var(--text);
+}
+
+.agent-model-chip-label {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 150px;
+}
+
+.agent-model-menu {
+	position: absolute;
+	bottom: calc(100% + 6px);
+	right: 0;
+	min-width: 260px;
+	display: flex;
+	flex-direction: column;
+	padding: 4px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.06);
+	z-index: 20;
+}
+
+.agent-model-item {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 8px 10px;
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	text-align: left;
+	cursor: pointer;
+	transition: background 120ms ease;
+}
+
+.agent-model-item:hover {
+	background: var(--bg-soft);
+}
+
+.agent-model-item.is-selected {
+	background: color-mix(in srgb, var(--brand) 8%, transparent);
+}
+
+.agent-model-item-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.agent-model-item-name {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text);
+}
+
+.agent-model-item-cost {
+	font-size: 11px;
+	color: var(--text-3);
+	font-variant-numeric: tabular-nums;
+}
+
+.agent-model-item-tagline {
+	font-size: 11px;
+	color: var(--text-3);
+	line-height: 1.35;
 }

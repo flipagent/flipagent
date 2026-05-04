@@ -7,9 +7,18 @@
 import type { MeProgramsResponse, MeQuotaResponse, ProgramOptResponse, QuotaApi } from "@flipagent/types";
 import { sellRequest, swallow404 } from "./ebay/rest/user-client.js";
 
+interface UpstreamRate {
+	limit?: number;
+	remaining?: number;
+	reset?: string;
+	timeWindow?: number;
+}
 interface UpstreamRateLimitResource {
 	name?: string;
-	limit?: { limit?: number; remaining?: number; reset?: string; timeWindow?: number };
+	/** eBay returns one or more rate windows per resource (e.g. daily +
+	 *  burst). We surface the smallest-window rate that actually carries
+	 *  numbers — that's the one a caller cares about for backoff. */
+	rates?: UpstreamRate[];
 }
 interface UpstreamRateLimit {
 	apiContext?: string;
@@ -21,18 +30,27 @@ interface UpstreamRateLimitsResponse {
 	rateLimits?: UpstreamRateLimit[];
 }
 
+function pickRate(rates: UpstreamRate[] | undefined): UpstreamRate | undefined {
+	if (!rates || rates.length === 0) return undefined;
+	// Prefer rates with concrete numbers; fall back to the first entry.
+	return rates.find((r) => r.limit != null || r.remaining != null) ?? rates[0];
+}
+
 function toQuotaApis(res: UpstreamRateLimitsResponse | null): QuotaApi[] {
 	return (res?.rateLimits ?? []).map((api) => ({
 		apiContext: api.apiContext ?? "",
 		apiName: api.apiName ?? "",
 		apiVersion: api.apiVersion ?? "",
-		resources: (api.resources ?? []).map((r) => ({
-			name: r.name ?? "",
-			...(r.limit?.limit != null ? { limit: r.limit.limit } : {}),
-			...(r.limit?.remaining != null ? { remaining: r.limit.remaining } : {}),
-			...(r.limit?.reset ? { reset: r.limit.reset } : {}),
-			...(r.limit?.timeWindow != null ? { timeWindow: r.limit.timeWindow } : {}),
-		})),
+		resources: (api.resources ?? []).map((r) => {
+			const rate = pickRate(r.rates);
+			return {
+				name: r.name ?? "",
+				...(rate?.limit != null ? { limit: rate.limit } : {}),
+				...(rate?.remaining != null ? { remaining: rate.remaining } : {}),
+				...(rate?.reset ? { reset: rate.reset } : {}),
+				...(rate?.timeWindow != null ? { timeWindow: rate.timeWindow } : {}),
+			};
+		}),
 	}));
 }
 

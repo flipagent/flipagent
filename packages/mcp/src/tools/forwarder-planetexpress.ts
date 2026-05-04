@@ -167,7 +167,12 @@ export async function planetExpressGetAddressExecute(config: Config, _args: Reco
 		const client = getClient(config);
 		return await client.forwarder.getAddress({ provider: "planetexpress" });
 	} catch (err) {
-		return toolErrorEnvelope(err, "get_forwarder_address_failed", "/v1/forwarder/planetexpress/address", PE_LOGIN_HINT);
+		return toolErrorEnvelope(
+			err,
+			"get_forwarder_address_failed",
+			"/v1/forwarder/planetexpress/address",
+			PE_LOGIN_HINT,
+		);
 	}
 }
 

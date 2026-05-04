@@ -155,6 +155,11 @@ interface ItemGroupResponse {
 		itemId?: string;
 		price?: { value?: string; currency?: string };
 		localizedAspects?: Array<{ name?: string; value?: string }>;
+		/** Per-variation image. eBay populates this for SKUs with their
+		 *  own photo (color-distinct apparel, swatches, etc). Surfaced
+		 *  to the variation picker so the user sees what they're
+		 *  picking instead of just an aspect string. */
+		image?: { imageUrl?: string };
 	}>;
 }
 
@@ -189,6 +194,7 @@ async function fetchItemGroupVariationsRest(legacyId: string, opts: RestRequestO
 			priceCents: it.price?.value ? toCents(it.price.value) : null,
 			currency: it.price?.currency ?? "USD",
 			aspects,
+			...(it.image?.imageUrl ? { imageUrl: it.image.imageUrl } : {}),
 		});
 	}
 	return out;

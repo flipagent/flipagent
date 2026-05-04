@@ -39,7 +39,7 @@ export const ebayTaxonomySuggestInput = Type.Object({
 });
 
 export const ebayTaxonomySuggestDescription =
-	'Suggest the most likely leaf category for a free-text title. Calls GET /v1/categories/suggest. **When to use** — first step before `flipagent_create_listing` to pick `categoryId`; one call instead of walking the tree manually. **Inputs** — `title` (item title or free-text description), optional `marketplace` (default `ebay`). **Output** — `{ suggestions: [{ categoryId, categoryName, ancestorIds, confidence }] }`, sorted by confidence desc. Take `[0].categoryId` if confidence is high (typically >0.7); fall back to `flipagent_list_categories` if none feel right. **Prereqs** — `FLIPAGENT_API_KEY`; no eBay OAuth needed. **Example** — `{ title: "canon ef 50mm f/1.8 stm autofocus lens" }`.';
+	'Suggest the most likely leaf category for a free-text title. Calls GET /v1/categories/suggest. **When to use** — first step before `flipagent_create_listing` to pick `categoryId`; one call instead of walking the tree manually. **Inputs** — `title` (item title or free-text description), optional `marketplace` (default `ebay`). **Output** — `{ suggestions: [{ id, name, path }] }` in eBay\'s relevance order (top hit first). Take `suggestions[0].id` for the listing\'s `categoryId`; fall back to `flipagent_list_categories` to walk the tree if none feel right. `path` is the breadcrumb (e.g. `"Cell Phones & Accessories > Cell Phones & Smartphones"`) for human display. **Prereqs** — `FLIPAGENT_API_KEY`; no eBay OAuth needed. **Example** — `{ title: "canon ef 50mm f/1.8 stm autofocus lens" }`.';
 
 export async function ebayTaxonomySuggestExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {

@@ -95,11 +95,10 @@ describe("/v1/keys", () => {
 			usage: { creditsUsed: number; creditsLimit: number; creditsRemaining: number };
 		};
 		expect(body.tier).toBe("free");
-		// Free tier: 500 credits one-time (auth/limits.ts TIER_LIMITS.free).
-		// `/v1/keys/me` is unmetered (account-ops, 0 credits) under the
-		// scrape/AI-only pricing model — usage_events still records the call,
-		// but it contributes 0 to creditsUsed.
-		expect(body.usage.creditsLimit).toBe(500);
+		// Free tier: 1,000 credits one-time (auth/limits.ts TIER_LIMITS.free).
+		// `/v1/keys/me` is unmetered (account-ops, 0 credits) — usage_events
+		// still records the call, but it contributes 0 to creditsUsed.
+		expect(body.usage.creditsLimit).toBe(1000);
 		expect(body.usage.creditsUsed).toBe(0);
 	});
 
@@ -121,9 +120,10 @@ describe("/v1/health/features", () => {
 		expect(body.ebayOAuth).toBe(false);
 		// Every flag is a boolean — no nulls.
 		for (const v of Object.values(body)) expect(typeof v).toBe("boolean");
-		// All nine flags present.
+		// All ten flags present.
 		expect(Object.keys(body).sort()).toEqual([
 			"betterAuth",
+			"biddingApi",
 			"ebayOAuth",
 			"email",
 			"googleOAuth",
@@ -155,7 +155,8 @@ describe("/v1/keys/permissions", () => {
 		expect(body.scopes.browse).toBe("scrape");
 		expect(body.scopes.marketplaceInsights).toBe("scrape");
 		expect(body.scopes.inventory).toBe("unavailable");
-		expect(body.scopes.orderApi).toBe("unavailable");
+		expect(body.scopes.order).toBe("unavailable");
+		expect(body.scopes.bidding).toBe("unavailable");
 	});
 });
 
@@ -184,8 +185,8 @@ describe("/v1/items (mocked scrape)", () => {
 			headers: { authorization: `Bearer ${key}` },
 		});
 		expect(res.status).toBe(200);
-		// Free tier: 500 credits one-time (auth/limits.ts TIER_LIMITS.free).
-		expect(res.headers.get("x-ratelimit-limit")).toBe("500");
+		// Free tier: 1,000 credits one-time (auth/limits.ts TIER_LIMITS.free).
+		expect(res.headers.get("x-ratelimit-limit")).toBe("1000");
 		expect(res.headers.get("x-flipagent-source")).toMatch(/^(scrape|cache:scrape)$/);
 		const body = (await res.json()) as { items: Array<{ id: string; status: string }> };
 		expect(body.items.length).toBe(1);

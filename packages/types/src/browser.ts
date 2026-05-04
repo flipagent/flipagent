@@ -91,7 +91,12 @@ export const BrowserCookieEntry = Type.Object(
 		expiresAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
 		httpOnly: Type.Boolean(),
 		secure: Type.Boolean(),
-		sameSite: Type.Union([Type.Literal("strict"), Type.Literal("lax"), Type.Literal("no_restriction"), Type.Literal("unspecified")]),
+		sameSite: Type.Union([
+			Type.Literal("strict"),
+			Type.Literal("lax"),
+			Type.Literal("no_restriction"),
+			Type.Literal("unspecified"),
+		]),
 	},
 	{ $id: "BrowserCookieEntry" },
 );

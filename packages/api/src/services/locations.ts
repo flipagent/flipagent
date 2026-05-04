@@ -71,11 +71,20 @@ export async function getLocation(id: string, ctx: LocationsContext): Promise<Lo
 	return res ? ebayToFlipagent(res) : null;
 }
 
+/**
+ * Idempotent upsert behind `PUT /v1/locations/{id}`. eBay's create
+ * endpoint refuses when the key is taken; we detect that with a GET
+ * first and fall through to `update_location_details` so re-calling
+ * with the same id replaces (matches what the route summary + MCP
+ * description promise).
+ */
 export async function createLocation(
 	id: string,
 	input: LocationCreate,
 	ctx: LocationsContext,
 ): Promise<Location | null> {
+	const existing = await getLocation(id, ctx);
+	if (existing) return updateLocationDetails(id, input, ctx);
 	await sellRequest({
 		apiKeyId: ctx.apiKeyId,
 		method: "POST",
@@ -163,7 +172,7 @@ export async function updateLocationDetails(
 			},
 		};
 	}
-	if (patch.locationTypes) body.locationTypes = patch.locationTypes;
+	if (patch.locationTypes) body.locationTypes = patch.locationTypes.map((t) => t.toUpperCase());
 	if (patch.instructions) body.locationInstructions = patch.instructions;
 	if (patch.additionalInformation) body.locationAdditionalInformation = patch.additionalInformation;
 	if (patch.webUrl) body.locationWebUrl = patch.webUrl;

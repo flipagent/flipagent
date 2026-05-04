@@ -81,12 +81,12 @@ npm run dev             # tsx watch
 Some flows need an HTTPS-reachable hostname pointing at your local API:
 
 - **eBay OAuth callback** — eBay redirects to the RuName's configured URL
-  (`https://dev.flipagent.dev/v1/connect/ebay/callback`).
+  (`https://api-dev.flipagent.dev/v1/connect/ebay/callback`).
 - **eBay Trading API notifications** — pushed to `EBAY_NOTIFY_URL` from
   eBay's servers, must be HTTPS.
-- **Stripe webhooks** — likewise pushed to `STRIPE_WEBHOOK_URL`.
+- **Stripe webhooks** — pushed to whatever URL you configured in the Stripe dashboard (typically `${BETTER_AUTH_URL}/v1/billing/webhook` for prod or the tunnel host for dev). The signing secret is read from `STRIPE_WEBHOOK_SECRET`; no env var holds the URL itself — Stripe calls the URL you registered with them, flipagent just verifies signature on receive.
 
-Two opt-in commands map `dev.flipagent.dev` → `localhost:$PORT`:
+Two opt-in commands map `api-dev.flipagent.dev` → `localhost:$PORT` (and the dashboard at `dev.flipagent.dev` → `localhost:$DASHBOARD_PORT`):
 
 ```bash
 # Tunnel only — useful when api is already running in another shell
@@ -107,23 +107,32 @@ Override defaults via env: `PORT=4001 TUNNEL_HOSTNAME=other.example.dev npm run 
 
 ## Endpoint groups
 
+Phase 1 surface — what's mounted in `routes/v1/index.ts`. Wrappers exist
+for additional surfaces (`charities`, `featured`, `edelivery`,
+`violations`, `marketplaces`, `expenses`, `trends`, `promotions`,
+`markdowns`, `ads`, `store`, `feeds`, `translate`, `watching`,
+`saved-searches`, `developer`, `cart`, `listings/bulk`, `listing-groups`)
+that stay disabled at the route mount until V2; their service code is
+ready and re-enables with one uncomment.
+
 | Group | Path | Auth | Notes |
 |---|---|---|---|
 | Liveness | `GET /healthz` | none | Postgres ping |
 | Capabilities | `GET /v1/health/features` | none | Which optional features are wired |
 | Manifest | `GET /` | none | Lists every advertised path |
 | Keys | `GET /v1/keys/me`, `POST /v1/keys/revoke` | API key | Plaintext shown once when issued via dashboard (`POST /v1/me/keys`) |
-| Takedown | `POST /v1/takedown` | none | Seller opt-out / DMCA / GDPR |
+| Takedown | `POST /v1/takedown`, `POST /v1/takedown/counter-notice` | none | Seller opt-out + DMCA §512(c)(3) + GDPR Art. 17 + CCPA §1798.105; counter-notice covers §512(g) |
 | Connect | `/v1/connect/ebay/*` | API key | eBay OAuth handshake |
 | Billing | `POST /v1/billing/{checkout,portal,webhook}` | mixed | Stripe-driven |
 | Dashboard | `GET /v1/me/*` | session | Dashboard backend |
-| **Marketplace data** | `GET /v1/items/*`, `GET /v1/items/search?status=sold` | API key | scrape or app-token REST (selectTransport) |
+| **Marketplace data** | `GET /v1/items/*` (`?status=sold` for sold listings), `GET /v1/categories/*`, `GET /v1/products/*`, `GET /v1/media/*` | API key | scrape or app-token REST (selectTransport) |
 | **Decisions** | `POST /v1/evaluate` (sync) + `/v1/evaluate/jobs/*` (async + SSE + cancel) | API key | composite — detail + sold/active search + LLM same-product filter + score |
 | **Operations** | `POST /v1/ship/quote`, `GET /v1/ship/providers` | API key | forwarder math |
-| Buy-side | `/v1/purchases/*`, `/v1/featured`, `/v1/bids/*`, `/v1/feeds/*` | API key + (eBay OAuth where applicable) | rest + bridge transports |
-| Sell-side write | `/v1/listings/*`, `/v1/listings/bulk/*`, `/v1/listing-groups/*`, `/v1/locations/*`, `/v1/sales/*`, `/v1/offers/*`, `/v1/promotions/*`, `/v1/markdowns/*`, `/v1/ads/*`, `/v1/store/*`, `/v1/labels/*` | API key + eBay OAuth | rest + Trading XML |
-| Money + comms | `/v1/payouts/*`, `/v1/transactions/*`, `/v1/transfers/*`, `/v1/messages`, `/v1/feedback`, `/v1/disputes/*`, `/v1/violations/*`, `/v1/policies/*`, `/v1/recommendations`, `/v1/marketplaces`, `/v1/me/seller/*` | API key + eBay OAuth | normalized — cents-int Money + lifecycle status |
-| Marketplace meta | `/v1/categories/*`, `/v1/products/*`, `/v1/charities`, `/v1/media/*`, `/v1/translate`, `/v1/analytics/*`, `/v1/feeds/*`, `/v1/saved-searches`, `/v1/watching` | API key (eBay OAuth on writes) | cross-cutting marketplace data |
+| Buy-side | `/v1/purchases/*`, `/v1/bids/*`, `/v1/forwarder/*` | API key + (eBay OAuth or paired extension) | rest + bridge transports |
+| Sell-side write | `/v1/listings/*`, `/v1/locations/*`, `/v1/policies/*`, `/v1/sales/*`, `/v1/labels/*`, `/v1/offers/*` | API key + eBay OAuth | rest + Trading XML |
+| Money + comms | `/v1/payouts/*`, `/v1/transactions/*`, `/v1/transfers/*`, `/v1/messages`, `/v1/feedback`, `/v1/disputes/*`, `/v1/recommendations`, `/v1/me/seller/*`, `/v1/analytics/*` | API key + eBay OAuth | normalized — cents-int Money + lifecycle status |
+| Notifications | `/v1/notifications/*`, `/v1/webhooks/*` | mixed | eBay platform notifications + outbound webhooks |
+| Agent plumbing | `/v1/bridge/*`, `/v1/browser/*`, `/v1/agent/*` | mixed | Extension wire protocol, DOM primitive escape hatch, OpenAI Responses preview |
 
 Authenticated endpoints accept either header:
 
@@ -139,10 +148,10 @@ Each metered call sets `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
 
 | Tier | Credits | Refill | Notes |
 |---|---|---|---|
-| `free` | 500 | one-time (lifetime grant) | Sign up via dashboard, key issued once |
+| `free` | 1,000 | one-time (lifetime grant) | Sign up via dashboard, key issued once |
 | `hobby` | 3,000 | monthly (UTC) | Stripe upgrade |
-| `standard` | 100,000 | monthly (UTC) | Stripe upgrade |
-| `growth` | 500,000 | monthly (UTC) | Stripe upgrade |
+| `standard` | 25,000 | monthly (UTC) | Stripe upgrade |
+| `growth` | 120,000 | monthly (UTC) | Stripe upgrade |
 
 ## Backend chain
 

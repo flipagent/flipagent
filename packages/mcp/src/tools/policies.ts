@@ -70,12 +70,14 @@ export const sellerPoliciesSetupInput = Type.Object({
 		}),
 		shipping: Type.Object({
 			mode: Type.Union([Type.Literal("free"), Type.Literal("flat"), Type.Literal("calculated")], {
-				description: "free = seller eats cost. flat = fixed $X charged at checkout. calculated = carrier rate (needs package weight on each listing).",
+				description:
+					"free = seller eats cost. flat = fixed $X charged at checkout. calculated = carrier rate (needs package weight on each listing).",
 			}),
 			serviceCode: Type.String({
 				minLength: 2,
 				maxLength: 60,
-				description: "eBay shipping service code. Safe defaults: USPSPriority. Common: USPSGroundAdvantage, UPSGround, FedExGround.",
+				description:
+					"eBay shipping service code. Safe defaults: USPSPriority. Common: USPSGroundAdvantage, UPSGround, FedExGround.",
 			}),
 			flatRateCents: Type.Optional(
 				Type.Integer({ minimum: 0, description: "Required when mode=flat. Amount in cents." }),

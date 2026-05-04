@@ -32,7 +32,7 @@ If unsure, ask the user.
 ## Step 2 — Get an API key
 
 First check `FLIPAGENT_API_KEY` in the environment. If present and
-matching `^fa_(free|hobby|standard|growth|pro|business)_[A-Za-z0-9]{16,}$`, skip ahead
+matching `^fa_(free|hobby|standard|growth)_[A-Za-z0-9]{16,}$`, skip ahead
 to verification (`curl -H "Authorization: Bearer $FLIPAGENT_API_KEY"
 https://api.flipagent.dev/v1/keys/me` should return 200).
 
@@ -40,7 +40,7 @@ If absent or invalid:
 
 1. Direct the user to `https://flipagent.dev/signup` (open the URL if
    you have a browser tool; otherwise instruct the user to open it).
-   Tell them: "Free tier is a one-time 500 credits (≈500 searches or 10 evaluations — credits don't refill on Free), no card."
+   Tell them: "Free tier is a one-time 1,000 credits (≈1,000 searches or 12 evaluations — credits don't refill on Free), no card."
 2. Ask the user to paste back the key (`fa_free_*`).
 3. Verify:
    ```
@@ -120,10 +120,10 @@ Available namespaces (every endpoint at `api.flipagent.dev/v1/*`):
 | `client.sales.*` | seller orders + ship + refund + cancel (needs `/v1/connect/ebay`) |
 | `client.payouts.*` / `client.transactions.*` | finance — cents-int Money + lifecycle status |
 | `client.disputes.*` | returns / cases / cancellations / inquiries / payment disputes |
-| `client.policies.*` | fulfillment / payment / return policies (24h cache) |
-| `client.expenses.*` | P&L ledger — record purchases, COGS, fees; monthly summaries |
+| `client.policies.*` | fulfillment / payment / return policies (needs `/v1/connect/ebay`) |
 | `client.forwarder.*` | Planet Express inbound packages (via bridge) |
 | `client.webhooks.*`, `client.capabilities.*` | webhook subscriptions + agent capability discovery |
+| `client.agent.*` | OpenAI Responses-API stateful chat (preview) |
 | `client.http.*` | escape hatch for any /v1/* path not yet typed |
 
 ### 3c. Other languages (Python, Go, Rust, ...)
@@ -144,7 +144,7 @@ to your language's codegen (e.g. `openapi-python-client`,
 Run exactly one call to confirm the wiring is alive. Pick by runtime:
 
 **MCP** (3a): Tell the user to ask their AI client "search eBay for
-canon ef 50mm using flipagent". The `flipagent_items_search` tool should
+canon ef 50mm using flipagent". The `flipagent_search_items` tool should
 fire and return results. If the tool doesn't appear, the client wasn't
 restarted.
 

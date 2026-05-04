@@ -357,9 +357,9 @@ variable "llm_max_concurrent" {
 # id and the public MCP URL are the only new vars.
 
 variable "agent_openai_model" {
-  description = "OpenAI model id for /v1/agent/chat. Kept separate from openai_model (the same-product matcher uses a cheaper fast model; the agent wants a smarter one)."
+  description = "Default OpenAI model for /v1/agent/chat (also the only model Free-tier callers can use). Paid-tier callers can opt up to gpt-5.5 per request. Kept separate from openai_model (the same-product matcher) so the two surfaces can diverge."
   type        = string
-  default     = "gpt-5.5"
+  default     = "gpt-5.4-mini"
 }
 
 variable "mcp_public_url" {

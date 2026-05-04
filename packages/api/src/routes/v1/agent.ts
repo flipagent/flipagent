@@ -25,9 +25,11 @@ import {
 	AgentSessionPatch,
 } from "@flipagent/types";
 import { Hono } from "hono";
-import { describeRoute } from "hono-openapi";
 import { streamSSE } from "hono/streaming";
-import { isAgentConfigured } from "../../config.js";
+import { describeRoute } from "hono-openapi";
+import type { Tier } from "../../auth/keys.js";
+import { effectiveTierForUser } from "../../auth/limits.js";
+import { config, isAgentConfigured, isAuthConfigured, isStripeConfigured } from "../../config.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import {
 	AgentError,
@@ -51,6 +53,52 @@ const NOT_CONFIGURED = {
 	message: "OPENAI_API_KEY is not set on this instance — /v1/agent/* is disabled.",
 };
 
+/**
+ * Models a given tier may select for `/v1/agent/chat`. Free unlocks the
+ * two cheap models (one OpenAI mini, one Gemini Flash) so callers can
+ * comparison-test before paying. Paid tiers add the two stronger
+ * reasoning models (OpenAI gpt-5.5, Anthropic Claude Sonnet 4.7). Keep
+ * synced with the `AgentModel` union in `@flipagent/types/agent` and
+ * the `AGENT_TURN_CREDITS` table in `auth/limits.ts`.
+ */
+const AGENT_MODELS_BY_TIER: Record<Tier, ReadonlyArray<string>> = {
+	free: ["gpt-5.4-mini", "gemini-2.5-flash"],
+	hobby: ["gpt-5.4-mini", "gemini-2.5-flash", "gpt-5.5", "claude-sonnet-4-7"],
+	standard: ["gpt-5.4-mini", "gemini-2.5-flash", "gpt-5.5", "claude-sonnet-4-7"],
+	growth: ["gpt-5.4-mini", "gemini-2.5-flash", "gpt-5.5", "claude-sonnet-4-7"],
+};
+
+function dashboardUrl(path: string, available: boolean): string | undefined {
+	if (!available) return undefined;
+	return `${config.APP_URL.replace(/\/+$/, "")}${path}`;
+}
+
+/**
+ * Resolve which model a request gets to use. Returns the resolved
+ * model on success; throws `AgentError(403, model_requires_upgrade)`
+ * when the request asked for a model the caller's tier can't reach.
+ *
+ * `requested` is the request body's optional `model` field; `apiKey.tier`
+ * is the caller's tier (after past_due-grace downgrade). Defaults to the
+ * env model when `requested` is undefined — that's always allowed.
+ */
+async function resolveAgentModel(apiKey: { userId: string | null; tier: string }, requested: string | undefined) {
+	const fallback = config.AGENT_OPENAI_MODEL;
+	const wanted = requested ?? fallback;
+	const billingTier = await effectiveTierForUser(apiKey.userId, apiKey.tier as Tier);
+	const allowed = AGENT_MODELS_BY_TIER[billingTier] ?? AGENT_MODELS_BY_TIER.free;
+	if (!allowed.includes(wanted)) {
+		const upgrade = dashboardUrl("/pricing/", isStripeConfigured() && isAuthConfigured());
+		throw new AgentError(
+			"model_requires_upgrade",
+			`Model "${wanted}" is not available on the "${billingTier}" tier. Upgrade to use it, or omit \`model\` to use the default (${fallback}).` +
+				(upgrade ? ` See ${upgrade}.` : ""),
+			403,
+		);
+	}
+	return { model: wanted, tier: billingTier };
+}
+
 agentRoute.post(
 	"/chat",
 	describeRoute({
@@ -62,6 +110,7 @@ agentRoute.post(
 			200: jsonResponse("Reply.", AgentChatResponse),
 			400: errorResponse("Validation failed."),
 			401: errorResponse("Auth missing."),
+			403: errorResponse("Model not available on this tier (e.g. Free + gpt-5.5)."),
 			404: errorResponse("Session not found."),
 			502: errorResponse("Upstream OpenAI error."),
 			503: errorResponse("Agent not configured."),
@@ -74,6 +123,22 @@ agentRoute.post(
 		const apiKey = c.var.apiKey;
 		const body = c.req.valid("json");
 		const wantsStream = (c.req.header("accept") ?? "").includes("text/event-stream");
+
+		// Resolve the model BEFORE entering the stream. tier-gating + the
+		// context-var stash both have to happen before requireApiKey's
+		// post-handler runs (so credit billing sees the right model);
+		// inside SSE the response is already committed.
+		let model: string;
+		try {
+			const resolved = await resolveAgentModel(apiKey, body.model);
+			model = resolved.model;
+			c.set("flipagentAgentModel", model);
+		} catch (err) {
+			if (err instanceof AgentError) {
+				return c.json({ error: err.code, message: err.message }, err.status as 400 | 403 | 404 | 413 | 502);
+			}
+			throw err;
+		}
 
 		if (wantsStream) {
 			// SSE: stream semantic events as the agent runs. Each frame is a
@@ -89,6 +154,7 @@ agentRoute.post(
 							sessionId: body.sessionId,
 							attachments: body.attachments,
 							userAction: body.userAction,
+							model,
 						},
 					)) {
 						await sse.writeSSE({ data: JSON.stringify(event) });
@@ -114,13 +180,14 @@ agentRoute.post(
 					sessionId: body.sessionId,
 					attachments: body.attachments,
 					userAction: body.userAction,
+					model,
 				},
 			);
 			return c.json(result);
 		} catch (err) {
 			if (err instanceof AgentNotConfiguredError) return c.json(NOT_CONFIGURED, 503);
 			if (err instanceof AgentError) {
-				return c.json({ error: err.code, message: err.message }, err.status as 400 | 404 | 413 | 502);
+				return c.json({ error: err.code, message: err.message }, err.status as 400 | 403 | 404 | 413 | 502);
 			}
 			throw err;
 		}
@@ -166,7 +233,8 @@ agentRoute.delete(
 	describeRoute({
 		tags: ["Agent (preview)"],
 		summary: "Delete an agent session",
-		description: "Removes the session and its runs (cascade). The OpenAI thread itself is left as-is on OpenAI's side.",
+		description:
+			"Removes the session and its runs (cascade). The OpenAI thread itself is left as-is on OpenAI's side.",
 		responses: {
 			200: { description: "Deleted." },
 			401: errorResponse("Auth missing."),

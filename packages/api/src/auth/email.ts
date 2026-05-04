@@ -129,7 +129,7 @@ export interface AutoRechargeFailedEmailInput {
 	name: string | null | undefined;
 	/** What we tried to charge — e.g. "$50" — for the message body. */
 	amountDisplay: string;
-	/** What pack — e.g. "25,000 credits" — so the user knows what was lost. */
+	/** What pack — e.g. "7,500 credits" — so the user knows what was lost. */
 	creditsDisplay: string;
 	/** Stripe-supplied decline reason where available. Optional — fallback
 	 *  to a generic "your card was declined" line when null. */

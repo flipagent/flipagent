@@ -18,6 +18,17 @@ export function toCents(s: string | undefined | null): number {
 	return Number.isFinite(n) ? Math.round(n * 100) : 0;
 }
 
+/**
+ * Same as `toCents` but preserves "no value" — empty/invalid → `null`.
+ * Use when missing-vs-zero is a meaningful distinction (e.g. analytics
+ * rows where 0 would be misread as a real $0 price).
+ */
+export function toCentsOrNull(s: string | undefined | null): number | null {
+	if (s == null || s === "") return null;
+	const n = Number.parseFloat(s);
+	return Number.isFinite(n) ? Math.round(n * 100) : null;
+}
+
 /** cents-int → eBay dollar string with two decimals. */
 export function toDollarString(cents: number): string {
 	return (cents / 100).toFixed(2);

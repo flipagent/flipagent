@@ -3,10 +3,14 @@
 [TypeBox](https://github.com/sinclairzx81/typebox) schemas for the
 [flipagent](https://flipagent.dev) hosted API. Two subpaths:
 
-- `@flipagent/types` — schemas for flipagent's own `/v1/*` surface
-  (`evaluate`, `discover`, `ship`, `market`, `match`, `draft`, `reprice`,
-  `expenses`, plus errors, tier, billing, keys, takedown, health,
-  capabilities).
+- `@flipagent/types` — schemas for flipagent's own `/v1/*` surface,
+  one file per resource (`items`, `evaluate`, `ship`, `purchases`,
+  `bids`, `listings`, `locations`, `policies`, `media`, `sales`,
+  `labels`, `payouts`, `money`, `messages`, `feedback`, `offers`,
+  `disputes`, `recommendations`, `forwarder`, `notifications`,
+  `webhooks`, `bridge`, `browser`, `categories`, `products`, `seller`,
+  `me-account`, `me-ebay`, `agent`, `legal`, `flipagent` errors +
+  tiers, plus `compute-jobs` / `bridge-jobs` envelopes).
 - `@flipagent/types/ebay` — schemas mirroring eBay REST shapes —
   `/buy` (Browse + Marketplace Insights) and `/sell` (Inventory,
   Fulfillment, Finance, Account).

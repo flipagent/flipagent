@@ -16,7 +16,7 @@ import { EvaluateRequest as EvaluateListingInputSchema, type EvaluateRequest } f
 import { Type } from "@sinclair/typebox";
 import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
-import { uiResource } from "../server-factory.js";
+import { uiResource } from "../ui-resource.js";
 
 export { EvaluateListingInputSchema as evaluateListingInput };
 
@@ -71,7 +71,7 @@ export const evaluateJobInput = Type.Object(
 );
 
 export const evaluateJobDescription =
-	'Poll an evaluation job until it reaches a terminal state. Calls GET /v1/evaluate/jobs/{id}. **When to use** — after `flipagent_evaluate_item` returned `{ jobId, status: "queued", poll_with: "flipagent_get_evaluate_job" }`, call this every ~5–10s until `status` is in `terminal_states`. **Inputs** — `jobId` (UUID from `flipagent_evaluate_item`). **Output (still running)** — `{ jobId, status: "queued" | "running", queuedAt, startedAt?, poll_with: "flipagent_get_evaluate_job" }`. Keep polling. **Output (completed)** — `{ jobId, status: "completed", queuedAt, completedAt, result: <digest> }`. The digest is `{ item, evaluation, market, sold, active, filter, returns, meta }`. `evaluation` is the headline: `{ rating: "buy" | "hold" | "skip", reason, expectedNetCents, confidence, bidCeilingCents, safeBidBreakdown, netRangeCents, recommendedExit, signals[] }`. `sold`/`active` digests carry distribution stats (`priceCents.{p10..p90}`, `priceHistogram`, `conditionMix`, `recentTrend`, `lastSale*` / `bestPriceCents`, `sellerConcentration`). `filter.rejectionsByCategory` counts rejections per category. **How to present to user (when completed)** — speak in pattern-level language using the stats; do NOT quote individual listings. Surface `evaluation.rating` + `reason` + `bidCeilingCents`, cite `sold.priceCents.p50` + IQR, `salesPerDay`, `recentTrend.direction`, and `filter.rejectionsByCategory` so the user can audit how the comp set was filtered. The default digest answers ~95% of "why?" questions on its own. For specific listings call `flipagent_get_evaluation_pool({ itemId })`. **Output (failed)** — `{ jobId, status: "failed", errorCode, errorMessage }`. Common: `variation_required` (multi-SKU listing — re-call `flipagent_evaluate_item` with `v1|<n>|<variation>`), `too_few_sold` (under N matches; try lower confidence or different `lookbackDays`), `item_not_found`. **Output (cancelled)** — `{ jobId, status: "cancelled" }`. Rare. **Cost** — no usage event per poll. **Prereqs** — `FLIPAGENT_API_KEY`. Job lives 7 days. **Example** — `{ jobId: "abcd1234-..." }`.';
+	'Poll an evaluation job until it reaches a terminal state. Calls GET /v1/evaluate/jobs/{id}. **When to use** — after `flipagent_evaluate_item` returned `{ jobId, status: "queued", poll_with: "flipagent_get_evaluate_job" }`, call this every ~5–10s until `status` is in `terminal_states`. **Inputs** — `jobId` (UUID from `flipagent_evaluate_item`). **Output (still running)** — `{ jobId, status: "queued" | "running", queuedAt, startedAt?, poll_with: "flipagent_get_evaluate_job" }`. Keep polling. **Output (completed)** — `{ jobId, status: "completed", queuedAt, completedAt, outcome: <digest> }`. The digest is `{ item, evaluation, market, sold, active, filter, returns, meta }`. `evaluation` is the headline: `{ rating: "buy" | "hold" | "skip", reason, expectedNetCents, confidence, bidCeilingCents, safeBidBreakdown, netRangeCents, recommendedExit, signals[] }`. `sold`/`active` digests carry distribution stats (`priceCents.{p10..p90}`, `priceHistogram`, `conditionMix`, `recentTrend`, `lastSale*` / `bestPriceCents`, `sellerConcentration`). `filter.rejectionsByCategory` counts rejections per category. **How to present to user (when completed)** — speak in pattern-level language using the stats; do NOT quote individual listings. Surface `evaluation.rating` + `reason` + `bidCeilingCents`, cite `sold.priceCents.p50` + IQR, `salesPerDay`, `recentTrend.direction`, and `filter.rejectionsByCategory` so the user can audit how the comp set was filtered. The default digest answers ~95% of "why?" questions on its own. For specific listings call `flipagent_get_evaluation_pool({ itemId })`. **Output (failed)** — `{ jobId, status: "failed", errorCode, errorMessage }`. Common: `variation_required` (multi-SKU listing — re-call `flipagent_evaluate_item` with `v1|<n>|<variation>`), `too_few_sold` (under N matches; try lower confidence or different `lookbackDays`), `item_not_found`. **Output (cancelled)** — `{ jobId, status: "cancelled" }`. Rare. **Cost** — no usage event per poll. **Prereqs** — `FLIPAGENT_API_KEY`. Job lives 7 days. **Example** — `{ jobId: "abcd1234-..." }`.';
 
 export async function evaluateJobExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const jobId = String(args.jobId);
@@ -106,10 +106,7 @@ export async function evaluateJobExecute(config: Config, args: Record<string, un
 			if (/429|rate.?limit/i.test(msg)) return rateLimitedReturn();
 			throw err;
 		}
-		while (
-			(job.status === "queued" || job.status === "running") &&
-			Date.now() + intervalMs < deadline
-		) {
+		while ((job.status === "queued" || job.status === "running") && Date.now() + intervalMs < deadline) {
 			await new Promise((r) => setTimeout(r, intervalMs));
 			try {
 				job = await client.evaluate.jobs.get(jobId);
@@ -154,19 +151,31 @@ export async function evaluateJobExecute(config: Config, args: Record<string, un
 			};
 		}
 		const trimmed = job.result ? trimToDigest(job.result as unknown as Record<string, unknown>) : null;
-		const evalBlock = trimmed && typeof trimmed === "object" ? (trimmed.evaluation as Record<string, unknown> | undefined) : undefined;
-		const itemBlock = trimmed && typeof trimmed === "object" ? (trimmed.item as Record<string, unknown> | undefined) : undefined;
+		const evalBlock =
+			trimmed && typeof trimmed === "object"
+				? (trimmed.evaluation as Record<string, unknown> | undefined)
+				: undefined;
+		const itemBlock =
+			trimmed && typeof trimmed === "object" ? (trimmed.item as Record<string, unknown> | undefined) : undefined;
 		const rating = evalBlock && typeof evalBlock.rating === "string" ? (evalBlock.rating as string) : "result";
-		const titleSnippet = itemBlock && typeof itemBlock.title === "string" ? (itemBlock.title as string).slice(0, 60) : "";
+		const titleSnippet =
+			itemBlock && typeof itemBlock.title === "string" ? (itemBlock.title as string).slice(0, 60) : "";
 		const summary = `Evaluation ${rating.toUpperCase()}${titleSnippet ? ` — "${titleSnippet}"` : ""}. Inline card shows the verdict + key stats; ask follow-ups or hit "See comps" for the rejected/kept pools.`;
 		return uiResource({
 			uri: "ui://flipagent/evaluate",
+			// `outcome` (not `result`) — that's the field name the inline
+			// `EvaluatePanel` reads to mark a run as terminal. With
+			// `result`, the panel sees `props.outcome === undefined`,
+			// flips into pending mode forever, and the user sees the
+			// "Evaluation · running" skeleton even after the agent
+			// returned a final verdict in chat. Align the two so the
+			// completed run lights up the panel in place.
 			structuredContent: {
 				jobId: job.id,
 				status: "completed",
 				queuedAt: job.createdAt,
 				completedAt: job.completedAt,
-				result: trimmed,
+				outcome: trimmed,
 			},
 			summary,
 		});

@@ -21,6 +21,7 @@ import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { listingObservations, type NewListingObservation } from "../db/schema.js";
 import { toLegacyId } from "../utils/item-id.js";
+import { toCentsOrNull } from "./shared/money.js";
 
 export interface ObservationContext {
 	marketplace?: string; // default "ebay"
@@ -106,12 +107,10 @@ function buildRow(item: ObservableItem, ctx: ObservationContext): NewListingObse
 		title: item.title ?? null,
 		condition: item.condition ?? null,
 		conditionId: item.conditionId ?? null,
-		priceCents: item.price ? toCents(item.price.value) : null,
+		priceCents: toCentsOrNull(item.price?.value),
 		currency: item.price?.currency ?? "USD",
-		shippingCents: item.shippingOptions?.[0]?.shippingCost
-			? toCents(item.shippingOptions[0].shippingCost.value)
-			: null,
-		lastSoldPriceCents: item.lastSoldPrice ? toCents(item.lastSoldPrice.value) : null,
+		shippingCents: toCentsOrNull(item.shippingOptions?.[0]?.shippingCost?.value),
+		lastSoldPriceCents: toCentsOrNull(item.lastSoldPrice?.value),
 		lastSoldDate: item.lastSoldDate ? new Date(item.lastSoldDate) : null,
 		sellerUsername: item.seller?.username ?? null,
 		sellerFeedbackScore: item.seller?.feedbackScore ?? null,
@@ -123,11 +122,4 @@ function buildRow(item: ObservableItem, ctx: ObservationContext): NewListingObse
 		itemCreationDate: item.itemCreationDate ? new Date(item.itemCreationDate) : null,
 		itemEndDate: item.itemEndDate ? new Date(item.itemEndDate) : null,
 	};
-}
-
-function toCents(dollarString: string | undefined | null): number | null {
-	if (dollarString == null || dollarString === "") return null;
-	const n = Number.parseFloat(dollarString);
-	if (!Number.isFinite(n)) return null;
-	return Math.round(n * 100);
 }

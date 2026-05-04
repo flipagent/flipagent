@@ -1,7 +1,7 @@
 {
 	"name": "@flipagent/sdk",
 	"version": "0.0.2",
-	"description": "Official SDK for api.flipagent.dev — the unified reseller API. Typed namespaces for marketplace data (items, categories, products), my-side writes (listings, purchases, sales), money (payouts, transactions), disputes / policies / forwarder, plus flipagent intelligence (evaluate, ship, expenses) and ops (webhooks, capabilities). One client, one API key.",
+	"description": "Official SDK for api.flipagent.dev — the unified reseller API. Typed namespaces for marketplace data (items, categories, products, media), my-side writes (listings, locations, purchases, bids, sales, forwarder), money + comms (payouts, transactions, transfers, messages, feedback, offers, disputes), flipagent intelligence (evaluate, ship), and ops (me, seller, keys, billing, connect, policies, recommendations, analytics, labels, notifications, webhooks, capabilities, browser, agent). One client, one API key.",
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",

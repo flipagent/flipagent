@@ -14,13 +14,13 @@
  *   - Analyze:       payouts, transactions, transfers, analytics, recommendations
  *   - Tax:           seller (sales-tax under /v1/me/seller)
  *   - Operational:   connect, me, keys, billing, health, capabilities, admin
+ *   - Compliance:    takedown (DMCA / GDPR / CCPA / seller opt-out)
  *   - Plumbing:      bridge (extension wire protocol — required for purchases + forwarder)
  *
  * Surfaces with wrappers but disabled for V1 (left commented at the bottom):
  *   charities, featured, edelivery, violations, marketplaces (metadata),
  *   expenses, trends, promotions, markdowns, ads, store, feeds, translate,
- *   watching, saved-searches, takedown, developer, browser, cart,
- *   listings/bulk, listing-groups, ship.
+ *   watching, saved-searches, developer, cart, listings/bulk, listing-groups.
  *
  * To re-enable: uncomment the import + mount line. Service-layer wrappers
  * stay intact under `services/*` so the call site is ready when needed.
@@ -61,6 +61,7 @@ import { recommendationsRoute } from "./recommendations.js";
 import { salesRoute } from "./sales.js";
 import { sellerRoute } from "./seller.js";
 import { shipRoute } from "./ship.js";
+import { takedownRoute } from "./takedown.js";
 import { transactionsRoute } from "./transactions.js";
 import { transfersRoute } from "./transfers.js";
 import { webhooksRoute } from "./webhooks.js";
@@ -127,6 +128,13 @@ v1Routes.route("/health", v1HealthRoute);
 v1Routes.route("/capabilities", capabilitiesRoute);
 v1Routes.route("/admin", adminRoute);
 
+// ---- ToS hygiene / regulatory compliance ------------------------------
+// `/takedown` covers DMCA §512(c)(3) infringement notices, GDPR Art. 17
+// erasure, CCPA §1798.105 deletion, and voluntary seller opt-out. Single
+// pipe, three regulatory regimes. Counter-notice (§512(g)) hangs off the
+// same router. Unauthenticated by design — requesters don't need a key.
+v1Routes.route("/takedown", takedownRoute);
+
 // ---- Agent (preview) ---------------------------------------------------
 // `/agent/*` is the chat surface backed by OpenAI's Responses API.
 // Stateful threads (server-side history via `previous_response_id`) +
@@ -161,7 +169,6 @@ v1Routes.route("/browser", browserRoute);
 // import { promotionsRoute } from "./promotions.js";
 // import { savedSearchesRoute } from "./saved-searches.js";
 // import { storeRoute } from "./store.js";
-// import { takedownRoute } from "./takedown.js";
 // import { translateRoute } from "./translate.js";
 // import { trendsRoute } from "./trends.js";
 // import { violationsRoute } from "./violations.js";
@@ -185,5 +192,4 @@ v1Routes.route("/browser", browserRoute);
 // v1Routes.route("/translate", translateRoute);
 // v1Routes.route("/watching", watchingRoute);
 // v1Routes.route("/saved-searches", savedSearchesRoute);
-// v1Routes.route("/takedown", takedownRoute);
 // v1Routes.route("/developer", developerRoute);

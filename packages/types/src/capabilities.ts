@@ -99,7 +99,9 @@ export const SetupHints = Type.Object(
 		extensionInstall: Type.Object({
 			from: Type.Union([Type.Literal("chrome-web-store"), Type.Literal("unpacked-dev-build")]),
 			url: Type.Optional(Type.String({ description: "Web Store URL when mode=hosted." })),
-			devBuildSteps: Type.Optional(Type.Array(Type.String({ description: "Shell commands when mode=self-hosted." }))),
+			devBuildSteps: Type.Optional(
+				Type.Array(Type.String({ description: "Shell commands when mode=self-hosted." })),
+			),
 		}),
 		dashboardUrl: Type.String({ description: "Where the user manages keys / OAuth / billing." }),
 	},
@@ -132,10 +134,9 @@ export const SetupStepId = Type.Union(
 );
 export type SetupStepId = Static<typeof SetupStepId>;
 
-export const SetupStepStatus = Type.Union(
-	[Type.Literal("done"), Type.Literal("active"), Type.Literal("locked")],
-	{ $id: "SetupStepStatus" },
-);
+export const SetupStepStatus = Type.Union([Type.Literal("done"), Type.Literal("active"), Type.Literal("locked")], {
+	$id: "SetupStepStatus",
+});
 export type SetupStepStatus = Static<typeof SetupStepStatus>;
 
 export const SetupStep = Type.Object(

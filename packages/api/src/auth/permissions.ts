@@ -56,10 +56,14 @@ function buildResponse(binding: Binding | undefined): PermissionsResponse {
 		return hasScope(scopes, suffix) ? "ok" : "needs_oauth";
 	}
 
-	// Order API: Limited Release. Tenant-level env flag is the eBay-side
-	// approval signal we have; user OAuth alone isn't enough.
-	const orderApi: ScopeStatus = ebayConfigured
-		? config.EBAY_ORDER_API_APPROVED
+	// Order + Bidding APIs: both Limited Release per-program. eBay grants
+	// each one independently, so we read separate env flags. Without
+	// approval the status is "approval_pending" (eBay-side gate, not
+	// something the user can fix); without `EBAY_CLIENT_ID/SECRET` at
+	// all we report "unavailable" (host-side gate).
+	const order: ScopeStatus = ebayConfigured ? (config.EBAY_ORDER_APPROVED ? "ok" : "approval_pending") : "unavailable";
+	const bidding: ScopeStatus = ebayConfigured
+		? config.EBAY_BIDDING_APPROVED
 			? "ok"
 			: "approval_pending"
 		: "unavailable";
@@ -74,7 +78,8 @@ function buildResponse(binding: Binding | undefined): PermissionsResponse {
 			inventory: userScope("sell.inventory"),
 			fulfillment: userScope("sell.fulfillment"),
 			finance: userScope("sell.finances"),
-			orderApi,
+			order,
+			bidding,
 		},
 	};
 }

@@ -8,7 +8,7 @@
  * single `POST /v1/purchases`. Caller passes the items + (optional)
  * overrides; we initiate, apply overrides if any, then place_order.
  *
- * Both transports — REST (with `EBAY_ORDER_API_APPROVED=1`) and bridge
+ * Both transports — REST (with `EBAY_ORDER_APPROVED=1`) and bridge
  * (Chrome extension) — surface through this same shape. Multi-stage
  * shipping/payment/coupon overrides only work in REST transport;
  * passing them in bridge mode gets a 412 with a clear pointer.
@@ -141,7 +141,7 @@ export const PurchaseCreate = Type.Object(
 		 * orders without human review." flipagent's bridge transport
 		 * requires this acknowledgement on every `/v1/purchases` call;
 		 * REST transport requires it unless the eBay developer account
-		 * holds Order API approval (`EBAY_ORDER_API_APPROVED=1`). Pass
+		 * holds Order API approval (`EBAY_ORDER_APPROVED=1`). Pass
 		 * an ISO-8601 timestamp not older than 5 minutes — the
 		 * attestation means a human in your interface confirmed THIS
 		 * specific order within the last few minutes. The shape check

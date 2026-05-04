@@ -105,6 +105,19 @@ export function createFlipagentMcpServer(opts: CreateServerOptions): { server: S
 			const result = await tool.execute(opts.config, req.params.arguments ?? {});
 			const apiErr = asApiError(result);
 			if (apiErr) {
+				// Errors with `next_action` get a UI hint so MCP-Apps hosts
+				// can render an actionable panel (Connect eBay, Install
+				// extension, …) instead of asking the user to read raw
+				// instructions out of the tool reply. Hosts that don't
+				// render UI fall through to the same text content.
+				if (apiErr.next_action?.kind) {
+					return {
+						content: [{ type: "text", text: formatError(tool.name, apiErr) }],
+						structuredContent: { error: apiErr.error, message: apiErr.message, next_action: apiErr.next_action },
+						_meta: { "ui.resourceUri": "ui://flipagent/next-action" },
+						isError: true,
+					};
+				}
 				return {
 					content: [{ type: "text", text: formatError(tool.name, apiErr) }],
 					isError: true,
@@ -114,11 +127,7 @@ export function createFlipagentMcpServer(opts: CreateServerOptions): { server: S
 			// shape (e.g., a UI-rendering tool returning `uiResource(...)`):
 			// it carries `content` + optional `structuredContent` + `_meta`
 			// for inline-UI rendering on hosts that support MCP Apps.
-			if (
-				result &&
-				typeof result === "object" &&
-				Array.isArray((result as Record<string, unknown>).content)
-			) {
+			if (result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).content)) {
 				return result as { content: unknown[] };
 			}
 			return {
@@ -136,46 +145,8 @@ export function createFlipagentMcpServer(opts: CreateServerOptions): { server: S
 	return { server, tools };
 }
 
-/**
- * Compose a CallTool result that asks the MCP host to render an
- * interactive UI (per the MCP Apps standard). Hosts without UI support
- * (e.g., a plain stdio Claude Desktop reading the catalog as text) see
- * `summary` only — `_meta.ui.resourceUri` is silently ignored.
- *
- *   - `uri`: the MCP-UI resource identifier; conventionally
- *     `ui://flipagent/<kind>` so the renderer can route to the right
- *     embed page on our docs origin.
- *   - `structuredContent`: data the iframe initializes from (passed via
- *     postMessage `init`). Keep it serializable JSON.
- *   - `summary`: human-readable text fallback shown in non-UI hosts and
- *     used by the LLM to build its own narrative around the result.
- *   - `mimeType`: optional hint for the renderer; defaults to MCP-UI's
- *     standard `text/uri-list` for remote-URL resources.
- *   - `openaiOutputTemplate`: when set, also adds OpenAI Apps SDK's
- *     `_meta["openai/outputTemplate"]` so the same MCP server runs as a
- *     ChatGPT App with no extra metadata wiring.
- */
-export interface UiResourceOptions {
-	uri: string;
-	structuredContent: Record<string, unknown>;
-	summary: string;
-	mimeType?: string;
-	openaiOutputTemplate?: string;
-}
-
-export function uiResource(opts: UiResourceOptions): {
-	content: Array<{ type: "text"; text: string }>;
-	structuredContent: Record<string, unknown>;
-	_meta: Record<string, string>;
-} {
-	const meta: Record<string, string> = {
-		"ui.resourceUri": opts.uri,
-	};
-	if (opts.mimeType) meta["ui.mimeType"] = opts.mimeType;
-	if (opts.openaiOutputTemplate) meta["openai/outputTemplate"] = opts.openaiOutputTemplate;
-	return {
-		content: [{ type: "text", text: opts.summary }],
-		structuredContent: opts.structuredContent,
-		_meta: meta,
-	};
-}
+// `uiResource` lives in `./ui-resource.js` to avoid a circular import
+// (tool modules import `uiResource`, this factory imports the registry,
+// the registry imports the tool modules). Re-exported here for any
+// caller that already imports it from server-factory.
+export { type UiResourceOptions, uiResource } from "./ui-resource.js";

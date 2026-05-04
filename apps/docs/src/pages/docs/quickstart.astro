@@ -12,7 +12,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 
 				<h2>1. Get an API key</h2>
 				<p>
-					<a href="/signup/">Sign up</a>. The free tier is a one-time 500-credit grant — about 500 searches or 10 AI evaluations. Mix as you like. Credits don't refill on Free; upgrade for monthly credits. No card required. Your dashboard issues a key in one click; copy it from the modal (it's only shown once).
+					<a href="/signup/">Sign up</a>. The free tier is a one-time 1,000-credit grant — about 1,000 searches or 12 full listing evaluations. Mix as you like. Credits don't refill on Free; upgrade for monthly credits. No card required. Your dashboard issues a key in one click; copy it from the modal (it's only shown once).
 				</p>
 				<p>
 					Self-hosting? Run the API in your own infrastructure and your dashboard will be at <code>your-host/dashboard/</code> instead. See <a href="/docs/self-host/">self-host</a>.
@@ -52,8 +52,8 @@ const { items } = await client.items.search({ q: "canon 50mm", limit: 10 });
 console.log(items.length, "active listings");`}</code></pre>
 				</div>
 
-				<h2>3. Score a listing</h2>
-				<p>Server-side scoring runs on the API, so the math is identical regardless of language. <code>evaluate.listing</code> is composite — pass an itemId and the server fetches the item, searches sold + active, runs an LLM same-product filter, and scores in one call:</p>
+				<h2>3. Should you flip it?</h2>
+				<p>One call to <code>evaluate.listing</code> answers that. Pass an itemId and the server pulls real recent sales of the same product, ignores listings that aren't actually the same item, and returns a buy/hold/skip verdict with profit and demand signals. The math runs server-side, so the answer is identical from every language:</p>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>node</span></div>
 <pre><code>{`const { evaluation } = await client.evaluate.listing({

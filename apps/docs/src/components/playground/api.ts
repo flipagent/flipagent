@@ -150,7 +150,8 @@ function moneyCentsToDollarString(m: FlipagentMoney | undefined): { value: strin
 	return { value: (m.value / 100).toFixed(2), currency: m.currency };
 }
 
-function flipagentItemToSummary(item: FlipagentItem) {
+export type { FlipagentItem };
+export function flipagentItemToSummary(item: FlipagentItem) {
 	const itemId = item.id.startsWith("ebay:") ? item.id.slice(5) : item.id;
 	const buyingOptions = item.buyingOptions?.map((b) =>
 		b === "auction" ? ("AUCTION" as const) : b === "fixed_price" ? ("FIXED_PRICE" as const) : ("BEST_OFFER" as const),
@@ -169,6 +170,7 @@ function flipagentItemToSummary(item: FlipagentItem) {
 		buyingOptions,
 		bidCount: item.bidding?.count,
 		currentBidPrice: moneyCentsToDollarString(item.bidding?.currentBid),
+		itemEndDate: item.endsAt,
 		image: item.images?.[0] ? { imageUrl: item.images[0] } : undefined,
 		seller: item.seller,
 		shippingOptions,

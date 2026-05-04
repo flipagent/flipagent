@@ -8,11 +8,10 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>Chrome extension</h1>
-				<p class="lead">The flipagent extension powers the <code>/v1/purchases</code> bridge transport from inside your existing Chrome — your browser, your eBay session, your account. The extension auto-navigates to the listing and validates the cart against your cap. <strong>You click Buy It Now and Confirm-and-pay yourself</strong>; the extension never auto-clicks.</p>
+				<p class="lead">The flipagent extension runs the buy flow from inside your existing Chrome: your browser, your eBay session, your account. It auto-navigates to the listing and validates the cart against your cap. <strong>You click Buy It Now and Confirm-and-pay yourself</strong>; the extension never auto-clicks.</p>
 
 				<h2>Why this exists</h2>
-				<p>eBay's checkout is human-only by policy. The bridge transport is built around that requirement — the extension keeps every click in human hands and only handles what isn't a click: opening the listing tab, reading the price, validating the cart against your cap, and capturing the order id once eBay confirms. The hosted API queues a <code>purchase_order_id</code>; the extension polls for it via <code>/v1/bridge/poll</code>, opens or focuses the <code>ebay.com/itm/&#123;id&#125;</code> tab, banners the page for you to click Buy It Now, validates the total on the review screen, captures the eBay order id after you click Confirm-and-pay, and posts the result back via <code>/v1/bridge/result</code>.</p>
-				<p>If your tenant has eBay's Buy Order API approval, set <code>EBAY_ORDER_API_APPROVED=1</code> on the API and the same <code>/v1/purchases</code> surface switches to direct REST passthrough — bridge becomes optional. The SDK and MCP shape stay the same: <code>client.purchases.*</code> works either way.</p>
+				<p>eBay's checkout is human-only by policy. The extension keeps every click in human hands and only handles what isn't a click: opening the listing tab, reading the price, validating the cart against your cap, and capturing the order id once eBay confirms. The hosted API queues the job; the extension picks it up, opens or focuses the <code>ebay.com/itm/&#123;id&#125;</code> tab, banners the page for you to click Buy It Now, validates the total on the review screen, captures the eBay order id after you click Confirm-and-pay, and posts the result back.</p>
 
 				<h2>Install (developer / unpacked)</h2>
 				<p>The extension isn't on the Chrome Web Store yet. To install from source:</p>
@@ -25,9 +24,9 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 
 				<h2>Pair it with your API key</h2>
 				<ol>
-					<li>Open the options page: right-click the extension icon → <strong>Options</strong> (or visit <code>chrome-extension://&lt;id&gt;/options.html</code>)</li>
+					<li>Click the extension icon to open the popup.</li>
 					<li>Paste your <code>fa_…</code> API key. Get one from your <a href="/dashboard/">dashboard</a>, or for self-host run <code>npm run --workspace @flipagent/api issue-key -- you@example.com</code></li>
-					<li>Click <strong>Save + pair</strong>. The extension calls <code>POST /v1/bridge/tokens</code> with your API key to mint a long-lived bridge token (<code>fbt_…</code>); the API key never leaves the options page after that.</li>
+					<li>Click <strong>Save + pair</strong>. The extension calls <code>POST /v1/bridge/tokens</code> with your API key to mint a long-lived bridge token (<code>fbt_…</code>); the API key never leaves the popup after that.</li>
 					<li>Self-host? Set the API base URL to <code>http://localhost:4000</code> (or your host) before pairing.</li>
 				</ol>
 				<p>Once paired, the popup shows a green dot when the service worker is polling. The dashboard's eBay panel reflects the same state.</p>
@@ -36,7 +35,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<p>The extension operates inside whatever eBay session your Chrome already has. If you're not signed in, click <strong>Sign in to eBay</strong> in the popup. The extension opens <code>ebay.com/signin</code> in a new tab, you sign in normally, and from then on the cookies stay with your profile. The extension reports session state via <code>POST /v1/bridge/login-status</code> so the api knows whether it's worth dispatching jobs.</p>
 
 				<h2>Place an order from your agent</h2>
-				<p>Once paired + signed in, anything that hits the bridge surface works. The example below uses <code>quickCheckout</code> — initiate session + place_order in one shot — but the multi-stage <code>checkoutSession.initiate</code> → <code>checkoutSession.placeOrder</code> form is also available.</p>
+				<p><code>POST /v1/purchases</code> compresses eBay's two-stage <em>initiate session</em> + <em>place_order</em> into one call. Both transports — REST (when <code>EBAY_ORDER_APPROVED=1</code>) and bridge (this extension) — surface through the same shape; <code>selectTransport</code> picks the right one. <code>humanReviewedAt</code> is required: pass an ISO-8601 timestamp from when a human in your interface confirmed <em>this specific order</em>, not older than 5 minutes. eBay's User Agreement (effective Feb 20, 2026) prohibits buy-bots without per-order human review, and the orchestrator 412s on a missing or stale attestation.</p>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>node</span></div>
 <pre><code>{`import { createFlipagentClient } from "@flipagent/sdk";
@@ -45,7 +44,10 @@ const client = createFlipagentClient({ apiKey: "fa_…" });
 
 // Bridge mode: extension auto-opens ebay.com/itm/&#123;id&#125; in your Chrome.
 // You click Buy It Now + Confirm-and-pay; extension validates and records.
-const order = await client.purchases.create({ itemId: "v1|123456789|0", quantity: 1 });
+const order = await client.purchases.create({
+  items: [{ itemId: "v1|123456789|0", quantity: 1 }],
+  humanReviewedAt: new Date().toISOString(),
+});
 
 // Poll until terminal. Status lifecycle:
 //   queued → processing → completed | failed | cancelled
@@ -72,7 +74,7 @@ console.log(final.status, final.marketplaceOrderId);`}</code></pre>
 						<tr><td><code>claimed</code></td><td><code>queued</code></td><td>Extension picked it up via <code>/v1/bridge/poll</code> and is opening the listing tab.</td></tr>
 						<tr><td><code>awaiting_user_confirm</code></td><td><code>processing</code></td><td>Listing tab is open with the flipagent banner; waiting for you to click <em>Buy It Now</em>.</td></tr>
 						<tr><td><code>placing</code></td><td><code>processing</code></td><td>You're on the eBay review screen; cap re-validated against the total. Waiting for your <em>Confirm and pay</em> click.</td></tr>
-						<tr><td><code>completed</code></td><td><code>completed</code></td><td>eBay order id captured from the post-purchase page. The hosted API posts a <code>purchase.completed</code> webhook.</td></tr>
+						<tr><td><code>completed</code></td><td><code>completed</code></td><td>eBay order id captured from the post-purchase page. The hosted API posts an <code>order.completed</code> webhook (other lifecycle events: <code>order.queued</code>, <code>order.claimed</code>, <code>order.awaiting_user_confirm</code>, <code>order.placing</code>, <code>order.failed</code>, <code>order.cancelled</code>, <code>order.expired</code>).</td></tr>
 						<tr><td><code>failed</code></td><td><code>failed</code></td><td>Listing ended, price exceeded <code>maxPriceCents</code>, total exceeded the cap on the review screen, or the price selector returned <code>null</code>. Reason in <code>failureReason</code>.</td></tr>
 						<tr><td><code>cancelled</code></td><td><code>cancelled</code></td><td>Cancelled via <code>POST /v1/purchases/&#123;id&#125;/cancel</code> while non-terminal.</td></tr>
 						<tr><td><code>expired</code></td><td><code>failed</code></td><td>No extension claimed the job within <code>expires_at</code>. Usually means the extension isn't running or isn't paired.</td></tr>
@@ -88,7 +90,7 @@ console.log(final.status, final.marketplaceOrderId);`}</code></pre>
 				</ul>
 
 				<h2>What the extension can read + send</h2>
-				<p>Permissions in the manifest: <code>storage</code> (your bridge token and settings), <code>alarms</code> (30-second poll), <code>tabs</code> (open or focus the listing tab — never closes other tabs), <code>scripting</code> (inject the observer content script), <code>cookies</code> (probe whether you're signed into eBay). Host permissions are scoped to <code>ebay.com</code> and the flipagent api. Nothing else. The extension does not synthesize click events on the buy flow — every BIN and Confirm-and-pay press is yours.</p>
+				<p>Permissions in the manifest: <code>storage</code> (your bridge token and settings), <code>alarms</code> (30-second poll), <code>tabs</code> (open or focus the listing tab — never closes other tabs), <code>scripting</code> (inject the observer content script), <code>sidePanel</code> (the in-page evaluate panel), <code>cookies</code> (probe whether you're signed into eBay or Planet Express). Host permissions are scoped to <code>ebay.com</code>, <code>app.planetexpress.com</code> (forwarder integration), and the flipagent api (production + localhost dev ports). Nothing else. The extension does not synthesize click events on the buy flow — every BIN and Confirm-and-pay press is yours.</p>
 				<p>The extension never reads other browser tabs, never persists cookies anywhere, and never sees plaintext your API key after the first pair-and-store cycle (only the <code>fbt_…</code> bridge token).</p>
 			</article>
 		</div>

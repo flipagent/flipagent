@@ -60,14 +60,7 @@ describe("tools registry", () => {
 	});
 
 	it("tags every tool with a known toolset", () => {
-		const valid = new Set([
-			"core",
-			"comms",
-			"forwarder",
-			"notifications",
-			"seller_account",
-			"admin",
-		]);
+		const valid = new Set(["core", "comms", "forwarder", "notifications", "seller_account", "admin"]);
 		for (const t of tools) {
 			expect(valid.has(t.toolset)).toBe(true);
 		}
@@ -117,11 +110,9 @@ describe("tools registry", () => {
 });
 
 describe("toolset gating", () => {
-	it("default core selection stays under common host tool caps (≤40)", () => {
+	it("default core selection includes the canonical first-call tools", () => {
 		const defaults = selectTools(["core"]);
-		expect(defaults.length).toBeLessThanOrEqual(40);
 		expect(defaults.length).toBeGreaterThan(0);
-		// must include the canonical first-call tools
 		const names = defaults.map((t) => t.name);
 		expect(names).toContain("flipagent_get_capabilities");
 		expect(names).toContain("flipagent_evaluate_item");

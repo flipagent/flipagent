@@ -8,7 +8,7 @@
  *
  * `id` is eBay's `purchaseOrderId`. Both REST and bridge transports
  * are first-class — `selectTransport` picks based on
- * `EBAY_ORDER_API_APPROVED` + bridge pairing + the optional
+ * `EBAY_ORDER_APPROVED` + bridge pairing + the optional
  * `transport` field on the body.
  */
 
@@ -67,7 +67,7 @@ purchasesRoute.post(
 		tags: ["Purchases"],
 		summary: "Buy an item (one-shot)",
 		description:
-			"Compresses eBay's two-stage Buy Order flow (initiate + place_order) into one call. Auto-picks REST transport when `EBAY_ORDER_API_APPROVED=1` and the api key has eBay OAuth bound; otherwise bridge (Chrome extension). `shipTo` and `couponCode` only work in REST transport — bridge uses buyer defaults.",
+			"Compresses eBay's two-stage Buy Order flow (initiate + place_order) into one call. Auto-picks REST transport when `EBAY_ORDER_APPROVED=1` and the api key has eBay OAuth bound; otherwise bridge (Chrome extension). `shipTo` and `couponCode` only work in REST transport — bridge uses buyer defaults.",
 		responses: {
 			201: jsonResponse("Purchase placed (status may still be `queued`/`processing`).", PurchaseResponse),
 			400: errorResponse("Validation failed."),

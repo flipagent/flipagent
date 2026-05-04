@@ -37,7 +37,12 @@ app.use(
 		origin: (origin) => origin ?? config.APP_URL,
 		credentials: true,
 		allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-		allowHeaders: ["Content-Type", "Authorization", "X-API-Key"],
+		// `Accept` is included for SSE callers (`/v1/agent/chat` with
+		// `Accept: text/event-stream`). Most browsers safelist Accept
+		// for simple values, but treat custom values like
+		// `text/event-stream` as non-safelisted, triggering a preflight
+		// rejection without an explicit allow.
+		allowHeaders: ["Content-Type", "Authorization", "X-API-Key", "Accept"],
 		exposeHeaders: [
 			"X-RateLimit-Limit",
 			"X-RateLimit-Remaining",

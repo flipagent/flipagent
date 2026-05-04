@@ -21,7 +21,7 @@
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import type { Tier } from "../auth/keys.js";
-import { ensureValidCreditAmount, topUpPriceCents } from "../auth/limits.js";
+import { MIN_TOPUP_CREDITS, topUpPriceCents } from "../auth/limits.js";
 import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { type User, user as userTable } from "../db/schema.js";
@@ -87,7 +87,15 @@ export async function triggerAutoRecharge(
 	cfg: StripeConfig,
 	input: { user: User; tier: Exclude<Tier, "free">; credits: number },
 ): Promise<Stripe.PaymentIntent> {
-	const credits = ensureValidCreditAmount(input.credits);
+	// Auto-recharge no longer pins to PACK_DENOMINATIONS — middleware
+	// passes the dynamic gap-to-target (already floored at
+	// MIN_TOPUP_CREDITS by the caller). Defensive floor + integer
+	// coercion here too: never let a stray fractional / sub-Stripe-min
+	// value reach `paymentIntents.create` and 400 us.
+	if (!Number.isInteger(input.credits)) {
+		throw new Error(`auto-recharge credits must be an integer; got ${input.credits}`);
+	}
+	const credits = Math.max(input.credits, MIN_TOPUP_CREDITS);
 	const customerId = await ensureStripeCustomer(cfg, input.user);
 	const amountCents = topUpPriceCents(input.tier, credits);
 	return stripeClient(cfg).paymentIntents.create({

@@ -1,6 +1,6 @@
 /* MainFeatures — asymmetric grid:
-     row 1: lead card (full width) — Card 1: distribution
-     row 2: two cards side-by-side — Card 2: ops, Card 3: queue
+     row 1: lead card (full width) — Card 1: sourcing (hunts)
+     row 2: two cards side-by-side — Card 2: evaluate, Card 3: ops
    Edge-flush panel; internal dividers are solid 1px lines that
    visually continue the page-frame line system. No rounded
    containers, no card-in-card boxes, no decorative backgrounds. */
@@ -158,102 +158,240 @@
 	color: var(--text-4);
 }
 
-/* === Card 1 — distribution: histogram + smooth curve ============= */
+/* === Card 1 — sourcing: cycling prompt + abstract results stage ===
+ * Two-column stage inside a quiet bordered panel. Left column shows
+ * one of three prompts at a time; right column shows the matching
+ * abstract result rows. Both columns run the same `hunt-cycle`
+ * keyframe at staggered delays (0s, 3s, 6s) on a 9s loop, so a
+ * prompt and its results fade in/out in lockstep. Numbers and bar
+ * widths are illustrative — the message is "describe anything, the
+ * agent finds it", not specific deals. */
 
-.dist-svg {
-	display: block;
+.feat-viz-hunts {
+	align-items: center;
+}
+
+.hunt-stage {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 36px;
 	width: 100%;
-	height: auto;
-	max-height: 280px;
+	max-width: 440px;
 }
 
-.dist-axis {
-	stroke: var(--border);
-	stroke-width: 1;
+/* === Prompt row: prefix + cycling text/cursor/spinner =============
+ * Each text-item carries its own cursor + spinner so the trailing
+ * indicator hugs that item's text width (no orphan cursor floating
+ * past short prompts). Stack uses CSS grid: all items share grid
+ * cell 1/1 so the row sizes to the widest item.
+ *
+ * Per-slot timing (4s of a 12s loop):
+ *   0.00–0.48s  text + cursor fade in
+ *   0.48–1.32s  cursor blinks (the "you typed it" beat)
+ *   1.44–2.04s  cursor → spinner (the "agent is searching" beat)
+ *   2.16–3.60s  results fade in below, spinner stops
+ *   3.84–4.00s  everything fades to next slot
+ *
+ * `--d` is set inline per item (0s, 4s, 8s) and read by every
+ * animation here, including the per-element cursor/spinner shows. */
+
+.hunt-prompts {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 28px;
 }
 
-.dist-hist-bar {
-	fill: var(--brand);
-	opacity: 0;
-	transform-box: fill-box;
-	transform-origin: bottom;
-	animation: dist-bar-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes dist-bar-rise {
-	from { opacity: 0; transform: scaleY(0); }
-	to   { opacity: 0.18; transform: scaleY(1); }
-}
-
-.dist-curve-stroke {
-	stroke: var(--brand);
-	stroke-width: 2;
-	stroke-linejoin: round;
-	stroke-linecap: round;
-	stroke-dasharray: 1500;
-	stroke-dashoffset: 1500;
-	animation: dist-stroke-in 1.4s cubic-bezier(0.65, 0, 0.35, 1) 0.7s forwards;
-}
-
-@keyframes dist-stroke-in {
-	to { stroke-dashoffset: 0; }
-}
-
-.dist-pmark {
-	stroke: var(--text-4);
-	stroke-width: 1;
-	opacity: 0;
-	animation: dist-fade 0.5s ease-out 1.7s forwards;
-}
-
-.dist-median-line {
-	stroke: var(--brand);
-	stroke-width: 1.5;
-	opacity: 0;
-	animation: dist-fade 0.5s ease-out 1.9s forwards;
-}
-
-.dist-median-dot {
-	fill: var(--brand);
-	opacity: 0;
-	transform-box: fill-box;
-	transform-origin: center;
-	animation: dist-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 2.0s forwards;
-}
-
-.dist-median-label {
+.hunt-prefix {
 	font-family: var(--mono);
-	font-size: 12px;
-	font-weight: 500;
-	fill: var(--brand);
-	letter-spacing: -0.005em;
-	opacity: 0;
-	animation: dist-fade 0.5s ease-out 2.15s forwards;
+	font-size: 13px;
+	color: var(--brand);
+	line-height: 1;
+	flex: 0 0 auto;
 }
 
-.dist-tick {
+.hunt-text-stack {
+	display: inline-grid;
+	align-items: center;
+}
+
+.hunt-text-item {
+	grid-area: 1 / 1;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	white-space: nowrap;
+	opacity: 0;
+	animation: hunt-cycle 12s infinite;
+	animation-delay: var(--d, 0s);
+	will-change: opacity, transform;
+}
+
+.hunt-text {
+	font-size: 15px;
+	letter-spacing: -0.005em;
+	color: var(--text);
+}
+
+.hunt-tail {
+	position: relative;
+	display: inline-block;
+	width: 12px;
+	height: 14px;
+	flex: 0 0 auto;
+}
+
+.hunt-cursor {
+	position: absolute;
+	top: 50%;
+	left: 5px;
+	width: 1px;
+	height: 14px;
+	background: var(--brand);
+	transform: translateY(-50%);
+	opacity: 0;
+	animation:
+		hunt-cursor-blink 1s step-end infinite,
+		hunt-cursor-show 12s infinite;
+	animation-delay: 0s, var(--d, 0s);
+}
+
+.hunt-spinner {
+	position: absolute;
+	top: 50%;
+	left: 1px;
+	width: 10px;
+	height: 10px;
+	border: 1.5px solid var(--border);
+	border-top-color: var(--brand);
+	border-radius: 50%;
+	box-sizing: border-box;
+	transform: translateY(-50%);
+	transform-origin: center;
+	opacity: 0;
+	animation:
+		hunt-spin 0.7s linear infinite,
+		hunt-spinner-show 12s infinite;
+	animation-delay: 0s, var(--d, 0s);
+}
+
+/* Cursor blink toggles visibility (not opacity) so it doesn't fight
+   the cursor-show opacity animation running on the same element. */
+@keyframes hunt-cursor-blink {
+	50% { visibility: hidden; }
+}
+
+@keyframes hunt-cursor-show {
+	0%, 3%    { opacity: 0; }
+	4%, 11%   { opacity: 1; }
+	12%, 100% { opacity: 0; }
+}
+
+@keyframes hunt-spinner-show {
+	0%, 11%   { opacity: 0; }
+	12%, 17%  { opacity: 1; }
+	18%, 100% { opacity: 0; }
+}
+
+@keyframes hunt-spin {
+	to { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* === Results block: abstract rows, cycling, centered =============== */
+
+.hunt-results-stack {
+	position: relative;
+	width: 100%;
+	height: 96px;
+}
+
+.hunt-results {
+	position: absolute;
+	inset: 0;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+}
+
+/* Each row carries its own pop cycle with a per-row stagger so the
+   rows wave in (and out) instead of landing as one block. The slot's
+   `--d` offsets the whole row sequence; the nth-child rules add
+   0.15s / 0.30s on top of that for rows 2 and 3. */
+.hunt-result {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 320px;
+	opacity: 0;
+	animation: hunt-result-pop 12s infinite;
+	animation-delay: var(--d, 0s);
+	will-change: opacity, transform;
+}
+
+.hunt-result:nth-child(2) {
+	animation-delay: calc(var(--d, 0s) + 0.15s);
+}
+
+.hunt-result:nth-child(3) {
+	animation-delay: calc(var(--d, 0s) + 0.30s);
+}
+
+.hunt-thumb {
+	flex: 0 0 auto;
+	width: 18px;
+	height: 18px;
+	background: var(--surface-3);
+	border-radius: 3px;
+}
+
+.hunt-bar-wrap {
+	flex: 1;
+	min-width: 0;
+}
+
+.hunt-bar {
+	display: block;
+	height: 6px;
+	background: var(--surface-3);
+	border-radius: 3px;
+}
+
+.hunt-margin {
+	flex: 0 0 auto;
 	font-family: var(--mono);
 	font-size: 11px;
-	fill: var(--text-3);
-	letter-spacing: 0.04em;
+	color: var(--brand);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.005em;
 }
 
-.dist-pmark-label {
-	font-family: var(--mono);
-	font-size: 10px;
-	fill: var(--text-4);
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	opacity: 0;
-	animation: dist-fade 0.5s ease-out 1.8s forwards;
+/* hunt-cycle (text bubble): visible during the slot's 4s window of a
+   12s loop. Held from ~0.48s to ~3.84s of the slot. */
+@keyframes hunt-cycle {
+	0%        { opacity: 0; transform: translateY(3px); }
+	4%, 30%   { opacity: 1; transform: translateY(0); }
+	33%, 100% { opacity: 0; transform: translateY(-3px); }
 }
 
-@keyframes dist-fade { to { opacity: 1; } }
-
-@keyframes dist-pop {
-	from { opacity: 0; transform: scale(0); }
-	to   { opacity: 1; transform: scale(1); }
+/* Each result row enters (with a small lift) AFTER the spinner phase
+   and exits with the slot. Per-row stagger comes from animation-delay
+   rules on .hunt-result:nth-child(*), not from the keyframe itself. */
+@keyframes hunt-result-pop {
+	0%, 17%   { opacity: 0; transform: translateY(4px); }
+	20%, 28%  { opacity: 1; transform: translateY(0); }
+	31%, 100% { opacity: 0; transform: translateY(-4px); }
 }
+
+/* === Card 2 — evaluate: chart is the real PriceHistogram from the
+ * playground (see EvalChartDemo.tsx). Styles live in Playground.css
+ * (`.pg-result-chart` and friends). No card-local overrides here —
+ * the marketing card matches what users see in-product. */
 
 /* === Card 2 — forwarder route diagram ============================ */
 
@@ -352,140 +490,28 @@
 }
 
 
-/* === Card 3 — morning approval queue ============================= */
-
-.queue-head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 12px;
-	padding: 0 0 14px;
-	border-bottom: 1px solid var(--border-faint);
-	font-family: var(--mono);
-	font-size: 11px;
-	letter-spacing: 0.1em;
-	text-transform: uppercase;
-}
-
-.queue-head-label {
-	color: var(--text-2);
-}
-
-.queue-head-stats {
-	color: var(--text-3);
-	letter-spacing: 0.04em;
-	font-variant-numeric: tabular-nums;
-}
-
-.queue-head-stats strong {
-	color: var(--text);
-	font-weight: 500;
-}
-
-.queue-head-dim {
-	color: var(--text-4);
-	margin: 0 4px;
-}
-
-.queue-list {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
-}
-
-.queue-row {
-	display: grid;
-	grid-template-columns: auto 1fr auto;
-	column-gap: 18px;
-	align-items: center;
-	padding: 14px 0;
-	border-bottom: 1px dashed var(--border-faint);
-	opacity: 0;
-	animation: queue-row-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.queue-row:last-child {
-	border-bottom: none;
-}
-
-@keyframes queue-row-in {
-	from { opacity: 0; transform: translateY(4px); }
-	to   { opacity: 1; transform: translateY(0); }
-}
-
-.queue-id {
-	font-family: var(--mono);
-	font-size: 12px;
-	letter-spacing: 0.06em;
-	color: var(--text-2);
-	text-transform: uppercase;
-}
-
-.queue-stats {
-	display: flex;
-	gap: 8px;
-	font-family: var(--mono);
-	font-size: 12px;
-	color: var(--text-3);
-	font-variant-numeric: tabular-nums;
-}
-
-.queue-stats strong {
-	color: var(--text);
-	font-weight: 500;
-}
-
-.queue-stats-dim {
-	color: var(--text-4);
-}
-
-.queue-actions {
-	display: inline-flex;
-	gap: 6px;
-}
-
-.queue-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 26px;
-	height: 26px;
-	border: 1px solid var(--border);
-	font-family: var(--mono);
-	font-size: 11.5px;
-	line-height: 1;
-	color: var(--text-3);
-	user-select: none;
-}
-
-.queue-btn--ok {
-	color: var(--brand);
-	border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
-}
-
 /* === Reduced motion ============================================== */
 
 @media (prefers-reduced-motion: reduce) {
-	.dist-hist-bar,
-	.dist-curve-stroke,
-	.dist-pmark,
-	.dist-median-line,
-	.dist-median-dot,
-	.dist-median-label,
-	.dist-pmark-label,
-	.queue-row,
+	.hunt-text-item,
+	.hunt-result,
+	.hunt-cursor,
+	.hunt-spinner,
 	.route-pkg,
 	.route-dot--brand {
 		animation: none;
-		opacity: 1;
+		opacity: 0;
 		transform: none;
 	}
-	.dist-hist-bar { opacity: 0.18; }
-	.dist-curve-stroke { stroke-dashoffset: 0; }
-	.dist-median-dot { transform: scale(1); }
 	.route-pkg { left: 46%; opacity: 0.7; }
+	/* Sourcing stage: pin first slot's text + result rows visible,
+	   restore the first item's cursor at rest. */
+	.hunt-text-item:first-child,
+	.hunt-results:first-child .hunt-result { opacity: 1; }
+	.hunt-text-item:first-child .hunt-cursor {
+		opacity: 1;
+		transform: translateY(-50%);
+	}
 }
 
 /* === Mobile ====================================================== */
@@ -515,13 +541,14 @@
 	.main-feature:not(.main-feature--lead) .feat-lede {
 		font-size: 17px;
 	}
-	.queue-row {
-		grid-template-columns: auto 1fr auto;
-		column-gap: 12px;
+	.hunt-stage {
+		gap: 28px;
 	}
-	.queue-stats {
-		font-size: 11.5px;
-		gap: 6px;
+	.hunt-text {
+		font-size: 14.5px;
+	}
+	.hunt-result {
+		width: 280px;
 	}
 }
 

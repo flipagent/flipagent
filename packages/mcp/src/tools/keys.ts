@@ -12,7 +12,7 @@ import type { Config } from "../config.js";
 export const keysMeInput = Type.Object({});
 
 export const keysMeDescription =
-	"Self-introspection on the configured api key. Calls GET /v1/keys/me. **When to use** — call once at session start (alongside `flipagent_get_capabilities`) so you can short-circuit if the key is revoked, expired, or out of monthly quota before queueing real work. **Inputs** — none. **Output** — `{ id, prefix, tier, role, owner, monthlyQuota, monthlyUsed, expiresAt, createdAt }`. Compare `monthlyUsed` to `monthlyQuota` to decide whether to budget; check `tier` for entitlements. **Prereqs** — `FLIPAGENT_API_KEY` set. **Example** — call with `{}` and read `monthlyQuota - monthlyUsed` to see remaining usage events for the calendar month.";
+	"Self-introspection on the configured api key. Calls GET /v1/keys/me. **When to use** — call once at session start (alongside `flipagent_get_capabilities`) so you can short-circuit if the key is revoked or out of credits before queueing real work. **Inputs** — none. **Output** — `{ id, tier, prefix, suffix, name, ownerEmail, createdAt, lastUsedAt, usage: { creditsUsed, creditsLimit, creditsRemaining, bonusCredits, resetAt, effectiveTier } }`. Compare `usage.creditsUsed` to `usage.creditsLimit` to decide whether to budget; check `tier` for entitlements; if `usage.effectiveTier` differs from `tier`, the billing tier was downgraded (paid sub past_due past the grace window). **Prereqs** — `FLIPAGENT_API_KEY` set. **Example** — call with `{}` and read `usage.creditsRemaining` for the credits left this period.";
 
 export async function keysMeExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {

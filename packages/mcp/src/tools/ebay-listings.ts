@@ -8,11 +8,12 @@ import { ListingCreate, ListingUpdate } from "@flipagent/types";
 import { Type } from "@sinclair/typebox";
 import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
+import { uiResource } from "../ui-resource.js";
 
 export const ebayCreateInventoryItemInput = ListingCreate;
 
 export const ebayCreateInventoryItemDescription =
-	"Publish a brand-new listing on eBay (one-shot). Calls POST /v1/listings — flipagent collapses eBay's three-step `inventory_item → offer → publish` flow into a single call. **When to use** — after acquiring an item (forwarder receipt, photographs, condition assessment) you're ready to put it up for sale. **Inputs** — `title`, `description`, `price` (cents-int Money), `condition` (e.g. `new | used_excellent | used_very_good`), `categoryId` (from `flipagent_suggest_category` or `flipagent_list_categories`), `images[]` (URLs — from `flipagent_create_media_upload` or any public host), `aspects` (from `flipagent_list_category_aspects`; required ones at minimum, e.g. Brand/Model/Storage Capacity/Color for cell phones), `policies: { fulfillmentPolicyId, paymentPolicyId, returnPolicyId }` (omit and the server resolves from your existing seller policies), `merchantLocationKey` (from `flipagent_list_locations` or `flipagent_upsert_location`). For physical goods also include `package: { weight, dimensions, packageType }` — eBay rejects offers without it (LSAS error LOGISTICS_INFO_IS_MISSING). **Output** — `{ id, sku, status: \"active\", url }`. **Failure modes**: (1) 412 `missing_seller_policies` with `next_action.kind: setup_seller_policies` — the seller account has no return/fulfillment policy. Ask the user 5 quick questions and call `flipagent_create_seller_policies` (DO NOT invent silent defaults — earlier hidden auto-create cost sellers real money). (2) 412 `missing_listing_prereqs` — no merchant location; create one with `flipagent_upsert_location` (PE warehouse from `flipagent_get_forwarder_address` is the typical answer for international resellers). (3) 502 `publish_failed` — inventory item + offer were created but eBay rejected the publish; the response includes `upstream.errors[]` with the eBay error code. Common causes: condition not valid for category (cell phones 9355 require `used_excellent` or refurbished tiers — not `used_good`), MPN aspect required, package dimensions wrong for chosen `packageType`. **Prereqs** — eBay seller account connected, plus existing seller policies (or call `flipagent_create_seller_policies` first) + a merchant location. **Example** — `{ title: \"Apple iPhone 12 mini 128GB White\", description: \"...\", price: { value: 79900, currency: \"USD\" }, condition: \"used_excellent\", categoryId: \"9355\", images: [\"https://…\"], aspects: { Brand: [\"Apple\"], Model: [\"iPhone 12 mini\"], \"Storage Capacity\": [\"128 GB\"], Color: [\"White\"], MPN: [\"MGDM3LL/A\"] }, merchantLocationKey: \"PE_TOR\", brand: \"Apple\", mpn: \"MGDM3LL/A\", quantity: 1, format: \"fixed_price\", marketplace: \"ebay\", package: { weight: { value: 1, unit: \"pound\" }, dimensions: { length: 8, width: 6, height: 3, unit: \"inch\" }, packageType: \"PACKAGE_THICK_ENVELOPE\" } }`.";
+	'Publish a brand-new listing on eBay (one-shot). Calls POST /v1/listings — flipagent collapses eBay\'s three-step `inventory_item → offer → publish` flow into a single call. **When to use** — after acquiring an item (forwarder receipt, photographs, condition assessment) you\'re ready to put it up for sale. **Inputs** — `title`, `description`, `price` (cents-int Money), `condition` (e.g. `new | used_excellent | used_very_good`), `categoryId` (from `flipagent_suggest_category` or `flipagent_list_categories`), `images[]` (URLs — from `flipagent_create_media_upload` or any public host), `aspects` (from `flipagent_list_category_aspects`; required ones at minimum, e.g. Brand/Model/Storage Capacity/Color for cell phones), `policies: { fulfillmentPolicyId, paymentPolicyId, returnPolicyId }` (omit and the server resolves from your existing seller policies), `merchantLocationKey` (from `flipagent_list_locations` or `flipagent_upsert_location`). For physical goods also include `package: { weight, dimensions, packageType }` — eBay rejects offers without it (LSAS error LOGISTICS_INFO_IS_MISSING). **Output** — `{ id, sku, status: "active", url }`. **Failure modes**: (1) 412 `missing_seller_policies` with `next_action.kind: setup_seller_policies` — the seller account has no return/fulfillment policy. Ask the user 5 quick questions and call `flipagent_create_seller_policies` (DO NOT invent silent defaults — earlier hidden auto-create cost sellers real money). (2) 412 `missing_listing_prereqs` — no merchant location; create one with `flipagent_upsert_location` (PE warehouse from `flipagent_get_forwarder_address` is the typical answer for international resellers). (3) 502 `publish_failed` — inventory item + offer were created but eBay rejected the publish; the response includes `upstream.errors[]` with the eBay error code. Common causes: condition not valid for category (cell phones 9355 require `used_excellent` or refurbished tiers — not `used_good`), MPN aspect required, package dimensions wrong for chosen `packageType`. **Prereqs** — eBay seller account connected, plus existing seller policies (or call `flipagent_create_seller_policies` first) + a merchant location. **Example** — `{ title: "Apple iPhone 12 mini 128GB White", description: "...", price: { value: 79900, currency: "USD" }, condition: "used_excellent", categoryId: "9355", images: ["https://…"], aspects: { Brand: ["Apple"], Model: ["iPhone 12 mini"], "Storage Capacity": ["128 GB"], Color: ["White"], MPN: ["MGDM3LL/A"] }, merchantLocationKey: "PE_TOR", brand: "Apple", mpn: "MGDM3LL/A", quantity: 1, format: "fixed_price", marketplace: "ebay", package: { weight: { value: 1, unit: "pound" }, dimensions: { length: 8, width: 6, height: 3, unit: "inch" }, packageType: "PACKAGE_THICK_ENVELOPE" } }`.';
 
 export async function ebayCreateInventoryItemExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
@@ -98,7 +99,25 @@ export const listingsListDescription =
 export async function listingsListExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
-		return await client.listings.list(args as Parameters<typeof client.listings.list>[0]);
+		const result = await client.listings.list(args as Parameters<typeof client.listings.list>[0]);
+		const listings = (result as { listings?: unknown[] }).listings ?? [];
+		const total = (result as { total?: number }).total;
+		const status = typeof args.status === "string" ? args.status : undefined;
+		const summary =
+			listings.length === 0
+				? status
+					? `No ${status} listings.`
+					: "No listings yet."
+				: `${listings.length}${total != null && total > listings.length ? ` of ${total}` : ""} listing${listings.length === 1 ? "" : "s"}${status ? ` (${status})` : ""}. Each row has Reprice, End (when active), and Evaluate.`;
+		return uiResource({
+			uri: "ui://flipagent/listings",
+			structuredContent: {
+				listings,
+				...(total != null ? { total } : {}),
+				args,
+			},
+			summary,
+		});
 	} catch (err) {
 		return toolErrorEnvelope(err, "listings_list_failed", "/v1/listings");
 	}
@@ -124,16 +143,19 @@ export async function listingsEndExecute(config: Config, args: Record<string, un
 
 /* ----------------------------- create draft ----------------------------- */
 
-export const listingsCreateDraftInput = Type.Object({
-	title: Type.String(),
-	categoryId: Type.Optional(Type.String()),
-	condition: Type.Optional(Type.String()),
-	price: Type.Optional(Type.Object({ value: Type.Integer(), currency: Type.String() })),
-	images: Type.Optional(Type.Array(Type.String())),
-}, { additionalProperties: true });
+export const listingsCreateDraftInput = Type.Object(
+	{
+		title: Type.String(),
+		categoryId: Type.Optional(Type.String()),
+		condition: Type.Optional(Type.String()),
+		price: Type.Optional(Type.Object({ value: Type.Integer(), currency: Type.String() })),
+		images: Type.Optional(Type.Array(Type.String())),
+	},
+	{ additionalProperties: true },
+);
 
 export const listingsCreateDraftDescription =
-	"Create a draft listing without publishing. Calls POST /v1/listings/draft. **When to use** — partial data ready (title + category) but you want to round-trip aspects / photos / final price with the user before going live. Skips eBay's `publish` step entirely; the inventory_item + offer exist but no eBay item id yet (`status: draft`). Promote to live later with `flipagent_relist_listing` (or `flipagent_update_listing` + `flipagent_relist_listing` after edits). **Inputs** — same shape as `flipagent_create_listing` but every field is optional (you can save what you've gathered so far and fill the rest later via `flipagent_update_listing`). **Output** — `{ sku, status: \"draft\" }`. **Prereqs** — eBay seller account connected. **Example** — `{ title: \"Apple iPhone 12 mini\", categoryId: \"9355\" }` to start a draft you'll fill in later.";
+	'Create a draft listing without publishing. Calls POST /v1/listings/draft. **When to use** — partial data ready (title + category) but you want to round-trip aspects / photos / final price with the user before going live. Skips eBay\'s `publish` step entirely; the inventory_item + offer exist but no eBay item id yet (`status: draft`). Promote to live later with `flipagent_relist_listing` (or `flipagent_update_listing` + `flipagent_relist_listing` after edits). **Inputs** — same shape as `flipagent_create_listing` but every field is optional (you can save what you\'ve gathered so far and fill the rest later via `flipagent_update_listing`). **Output** — `{ sku, status: "draft" }`. **Prereqs** — eBay seller account connected. **Example** — `{ title: "Apple iPhone 12 mini", categoryId: "9355" }` to start a draft you\'ll fill in later.';
 
 export async function listingsCreateDraftExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
@@ -158,7 +180,7 @@ export const listingsBulkUpdatePricesInput = Type.Object({
 });
 
 export const listingsBulkUpdatePricesDescription =
-	"Update price and/or quantity on up to 25 listings in one call. Calls POST /v1/listings/bulk/price (eBay's `bulk_update_price_quantity` endpoint). **When to use** — markdowns across multiple SKUs, restock after intake, end-of-week repricing. For changing fields beyond price/qty (title, aspects, images), use `flipagent_update_listing` per-SKU. **Inputs** — `updates: [{ sku, price?, quantity? }, ...]` (1-25 entries). **Output** — `{ results: [{ sku, status, errors? }] }` — per-SKU success/failure so you can react to partial failures. **Prereqs** — eBay seller account connected. **Example** — `{ updates: [{ sku: \"A\", price: { value: 4500, currency: \"USD\" } }, { sku: \"B\", quantity: 3 }] }`.";
+	'Update price and/or quantity on up to 25 listings in one call. Calls POST /v1/listings/bulk/price (eBay\'s `bulk_update_price_quantity` endpoint). **When to use** — markdowns across multiple SKUs, restock after intake, end-of-week repricing. For changing fields beyond price/qty (title, aspects, images), use `flipagent_update_listing` per-SKU. **Inputs** — `updates: [{ sku, price?, quantity? }, ...]` (1-25 entries). **Output** — `{ results: [{ sku, status, errors? }] }` — per-SKU success/failure so you can react to partial failures. **Prereqs** — eBay seller account connected. **Example** — `{ updates: [{ sku: "A", price: { value: 4500, currency: "USD" } }, { sku: "B", quantity: 3 }] }`.';
 
 export async function listingsBulkUpdatePricesExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
@@ -176,7 +198,7 @@ export const listingsBulkPublishInput = Type.Object({
 });
 
 export const listingsBulkPublishDescription =
-	"Publish up to 25 draft listings in one call. Calls POST /v1/listings/bulk/publish (eBay's `bulk_publish_offer`). **When to use** — promote a batch of drafts to live in one shot (saves N×500ms HTTP per SKU vs N separate `flipagent_relist_listing` calls). **Inputs** — `skus: string[]` (1-25 SKUs from drafts created via `flipagent_create_listing` that publish-failed or `flipagent_create_draft_listing`). **Output** — `{ results: [{ sku, status, listingId?, errors? }] }`. **Prereqs** — eBay seller account connected. Each draft must already have inventory + offer (created by `flipagent_create_listing` or draft variant). **Example** — `{ skus: [\"A\", \"B\", \"C\"] }`.";
+	'Publish up to 25 draft listings in one call. Calls POST /v1/listings/bulk/publish (eBay\'s `bulk_publish_offer`). **When to use** — promote a batch of drafts to live in one shot (saves N×500ms HTTP per SKU vs N separate `flipagent_relist_listing` calls). **Inputs** — `skus: string[]` (1-25 SKUs from drafts created via `flipagent_create_listing` that publish-failed or `flipagent_create_draft_listing`). **Output** — `{ results: [{ sku, status, listingId?, errors? }] }`. **Prereqs** — eBay seller account connected. Each draft must already have inventory + offer (created by `flipagent_create_listing` or draft variant). **Example** — `{ skus: ["A", "B", "C"] }`.';
 
 export async function listingsBulkPublishExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
