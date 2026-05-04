@@ -9,7 +9,7 @@
 	],
 	"scripts": {
 		"clean": "npm run clean --workspaces --if-present",
-		"build": "cd packages/types && npm run build && cd ../ebay-scraper && npm run build && cd ../sdk && npm run build && cd ../api && npm run build && cd ../mcp && npm run build && cd ../cli && npm run build && cd ../extension && npm run build && cd ../../apps/docs && npm run build",
+		"build": "cd packages/types && npm run build && cd ../ebay-scraper && npm run build && cd ../sdk && npm run build && cd ../mcp && npm run build && cd ../api && npm run build && cd ../cli && npm run build && cd ../extension && npm run build && cd ../../apps/docs && npm run build",
 		"dev": "concurrently --names \"types,scraper,sdk,api,mcp\" --prefix-colors \"gray,magenta,cyan,green,white\" \"cd packages/types && npm run dev\" \"cd packages/ebay-scraper && npm run dev\" \"cd packages/sdk && npm run dev\" \"cd packages/api && npm run dev\" \"cd packages/mcp && npm run dev\"",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"check": "biome check --write --error-on-warnings . && npm run typecheck",

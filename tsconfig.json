@@ -14,7 +14,12 @@
 			"@flipagent/sdk": ["./packages/sdk/src/index.ts"],
 			"@flipagent/sdk/*": ["./packages/sdk/src/*"],
 			"@flipagent/api": ["./packages/api/src/server.ts"],
-			"@flipagent/api/*": ["./packages/api/src/*"]
+			"@flipagent/api/*": ["./packages/api/src/*"],
+			"flipagent-mcp": ["./packages/mcp/src/index.ts"],
+			"flipagent-mcp/http": ["./packages/mcp/src/http.ts"],
+			"flipagent-mcp/server-factory": ["./packages/mcp/src/server-factory.ts"],
+			"flipagent-mcp/tools": ["./packages/mcp/src/tools/index.ts"],
+			"flipagent-mcp/config": ["./packages/mcp/src/config.ts"]
 		}
 	},
 	"include": ["packages/*/src/**/*", "packages/*/test/**/*"],
