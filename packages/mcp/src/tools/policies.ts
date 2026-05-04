@@ -8,7 +8,7 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import { getClient, toApiCallError } from "../client.js";
+import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 
 /* ------------------------- flipagent_policies_list ------------------------- */
@@ -16,15 +16,14 @@ import type { Config } from "../config.js";
 export const policiesListInput = Type.Object({});
 
 export const policiesListDescription =
-	"List all selling policies (return + payment + fulfillment) bound to the connected seller. GET /v1/policies. Each policy carries an `id` you pass to `flipagent_listings_create` under `policies.{return,payment,fulfillment}Id`.";
+	"List the connected seller's selling policies — return, payment, and fulfillment — in one call. Calls GET /v1/policies. **When to use** — required step before `flipagent_create_listing`: every listing needs three policy ids. **Inputs** — none. **Output** — `{ return: ReturnPolicy[], payment: PaymentPolicy[], fulfillment: FulfillmentPolicy[] }`. Take one `id` from each list (typically the seller's default) and pass them to `flipagent_create_listing` under `policies: { returnPolicyId, paymentPolicyId, fulfillmentPolicyId }`. **Prereqs** — eBay seller account connected, *plus* the seller must already have created policies in eBay's seller hub — flipagent reads policies but doesn't create them. If a list is empty, send the user to `seller.ebay.com/sh/policies` to create one. On 401 the response carries `next_action` with the connect URL. **Example** — call with `{}` and use `result.return[0].id` etc.";
 
 export async function policiesListExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.policies.list();
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/policies");
-		return { error: "policies_list_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "policies_list_failed", "/v1/policies");
 	}
 }
 
@@ -35,7 +34,7 @@ export const policiesListByTypeInput = Type.Object({
 });
 
 export const policiesListByTypeDescription =
-	"List one policy type only — return | payment | fulfillment. GET /v1/policies/{type}. Use when you already know the policy you need (e.g. picking a fulfillment policy by carrier).";
+	'List one policy type — `return`, `payment`, or `fulfillment` — without paying for the other two. Calls GET /v1/policies/{type}. **When to use** — narrow alternative to `flipagent_list_policies` when you only need one type (e.g. picking a fulfillment policy by carrier). For setting up a new listing, prefer `flipagent_list_policies` (one call, all three). **Inputs** — `type` (`"return" | "payment" | "fulfillment"`). **Output** — `{ policies: Policy[] }` of the requested type. **Prereqs** — eBay seller account connected. On 401 the response carries `next_action` with the connect URL. **Example** — `{ type: "fulfillment" }`.';
 
 export async function policiesListByTypeExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const type = args.type as "return" | "payment" | "fulfillment";
@@ -43,7 +42,56 @@ export async function policiesListByTypeExecute(config: Config, args: Record<str
 		const client = getClient(config);
 		return await client.policies.listByType(type);
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/policies/${type}`);
-		return { error: "policies_list_by_type_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "policies_list_by_type_failed", `/v1/policies/${type}`);
+	}
+}
+
+/* ---------------------- flipagent_create_seller_policies -------------------- */
+
+export const sellerPoliciesSetupInput = Type.Object({
+	returns: Type.Object({
+		accepted: Type.Boolean({ description: "Does the seller accept returns?" }),
+		periodDays: Type.Optional(
+			Type.Union([Type.Literal(14), Type.Literal(30), Type.Literal(60)], {
+				description: "Required if accepted=true. eBay accepts 14/30/60.",
+			}),
+		),
+		shippingPayer: Type.Optional(
+			Type.Union([Type.Literal("buyer"), Type.Literal("seller")], {
+				description: "Required if accepted=true. Who pays for return shipping?",
+			}),
+		),
+	}),
+	fulfillment: Type.Object({
+		handlingTimeDays: Type.Integer({
+			minimum: 0,
+			maximum: 30,
+			description: "Business days between sale and shipment. Typical: 1-3.",
+		}),
+		shipping: Type.Object({
+			mode: Type.Union([Type.Literal("free"), Type.Literal("flat"), Type.Literal("calculated")], {
+				description: "free = seller eats cost. flat = fixed $X charged at checkout. calculated = carrier rate (needs package weight on each listing).",
+			}),
+			serviceCode: Type.String({
+				minLength: 2,
+				maxLength: 60,
+				description: "eBay shipping service code. Safe defaults: USPSPriority. Common: USPSGroundAdvantage, UPSGround, FedExGround.",
+			}),
+			flatRateCents: Type.Optional(
+				Type.Integer({ minimum: 0, description: "Required when mode=flat. Amount in cents." }),
+			),
+		}),
+	}),
+});
+
+export const sellerPoliciesSetupDescription =
+	"One-shot create-all of the three eBay seller policies a listing requires. Calls POST /v1/policies/setup. **When to use** — when `flipagent_create_listing` (or `flipagent_list_policies`) returned `missing_seller_policies` (412 with `next_action.kind: setup_seller_policies`). The agent should ASK the user 5 quick questions and pass the answers here, NOT invent silent defaults — earlier `flipagent_create_listing` invented free-shipping defaults that lost the seller real money on every listing. **Inputs** — `returns: { accepted, periodDays?, shippingPayer? }` (periodDays + shippingPayer required only when accepted=true) and `fulfillment: { handlingTimeDays, shipping: { mode, serviceCode, flatRateCents? } }`. Payment policy auto-creates (eBay's managed-payments program is uniform across sellers). **Output** — `{ returnPolicyId, paymentPolicyId, fulfillmentPolicyId, created: { return, payment, fulfillment: 'created' | 'existing' } }`. Idempotent — re-uses existing policies on the account when present. **Acceptable defaults to suggest** (always show explicitly): 30-day buyer-pays returns, 1-day handling, free USPSPriority. **Prereqs** — eBay seller account connected. **Example** — `{ returns: { accepted: true, periodDays: 30, shippingPayer: 'buyer' }, fulfillment: { handlingTimeDays: 1, shipping: { mode: 'free', serviceCode: 'USPSPriority' } } }`.";
+
+export async function sellerPoliciesSetupExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
+	try {
+		const client = getClient(config);
+		return await client.policies.setup(args as Parameters<typeof client.policies.setup>[0]);
+	} catch (err) {
+		return toolErrorEnvelope(err, "policies_setup_failed", "/v1/policies/setup");
 	}
 }

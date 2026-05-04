@@ -25,6 +25,7 @@
  * violations, watching. Reach them through `client.http` until promoted.
  */
 
+import { type AgentClient, createAgentClient } from "./agent.js";
 import { type AnalyticsClient, createAnalyticsClient } from "./analytics.js";
 import { type BidsClient, createBidsClient } from "./bids.js";
 import { type BillingClient, createBillingClient } from "./billing.js";
@@ -113,6 +114,9 @@ export interface FlipagentClient {
 	capabilities: CapabilitiesClient;
 	browser: BrowserClient;
 
+	// Agent (preview)
+	agent: AgentClient;
+
 	// Escape hatch
 	http: FlipagentHttp;
 }
@@ -166,10 +170,13 @@ export function createFlipagentClient(opts: FlipagentClientOptions): FlipagentCl
 		capabilities: createCapabilitiesClient(http),
 		browser: createBrowserClient(http),
 
+		agent: createAgentClient(http),
+
 		http,
 	};
 }
 
+export type { AgentClient } from "./agent.js";
 export type { AnalyticsClient } from "./analytics.js";
 export type { BidsClient } from "./bids.js";
 export type { BillingClient } from "./billing.js";

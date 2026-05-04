@@ -10,13 +10,13 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import { getClient, toApiCallError } from "../client.js";
+import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 
 export const flipagentConnectStatusInput = Type.Object({});
 
 export const flipagentConnectStatusDescription =
-	"Check whether the configured FLIPAGENT_API_KEY has connected an eBay account. Calls GET /v1/connect/ebay/status. Returns { connected, ebayUserId?, scopes?, expiresAt? }. Use before sell-side tools (`flipagent_listings_*`, `flipagent_sales_*`, `flipagent_payouts_*`) to detect missing OAuth and prompt the user to run the handshake.";
+	'Check whether the configured api key has an eBay seller account connected. Calls GET /v1/connect/ebay/status. **When to use** — narrow alternative to `flipagent_get_capabilities` when you only need to know "is eBay OAuth done?" — e.g. before a sell-side action. Most agents should prefer `flipagent_get_capabilities` (richer per-marketplace state). **Inputs** — none. **Output** — `{ connected: boolean, ebayUserId?, scopes?: string[], expiresAt?: ISO }`. When `connected: false`, ask the user to visit `/v1/connect/ebay/start` (any sell-side tool\'s `next_action.url` will carry the absolute URL on 401). **Prereqs** — `FLIPAGENT_API_KEY`. **Example** — call with `{}` before queueing `flipagent_create_listing`.';
 
 export async function flipagentConnectStatusExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	if (!config.authToken) {
@@ -26,7 +26,6 @@ export async function flipagentConnectStatusExecute(config: Config, _args: Recor
 		const client = getClient(config);
 		return await client.connect.ebay.status();
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/connect/ebay/status");
-		return { error: "connect_ebay_status_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "connect_ebay_status_failed", "/v1/connect/ebay/status");
 	}
 }

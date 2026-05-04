@@ -54,6 +54,30 @@ import {
 	ebayPublishOfferDescription,
 	ebayPublishOfferExecute,
 	ebayPublishOfferInput,
+	listingsBulkPublishDescription,
+	listingsBulkPublishExecute,
+	listingsBulkPublishInput,
+	listingsBulkUpdatePricesDescription,
+	listingsBulkUpdatePricesExecute,
+	listingsBulkUpdatePricesInput,
+	listingsCreateDraftDescription,
+	listingsCreateDraftExecute,
+	listingsCreateDraftInput,
+	listingsEndDescription,
+	listingsEndExecute,
+	listingsEndInput,
+	listingsGetDescription,
+	listingsGetExecute,
+	listingsGetInput,
+	listingsGroupPublishDescription,
+	listingsGroupPublishExecute,
+	listingsGroupPublishInput,
+	listingsGroupWithdrawDescription,
+	listingsGroupWithdrawExecute,
+	listingsGroupWithdrawInput,
+	listingsListDescription,
+	listingsListExecute,
+	listingsListInput,
 } from "./ebay-listings.js";
 import { ebayListPayoutsDescription, ebayListPayoutsExecute, ebayListPayoutsInput } from "./ebay-payouts.js";
 import {
@@ -110,6 +134,9 @@ import {
 	flipagentConnectStatusInput,
 } from "./flipagent-connect.js";
 import {
+	planetExpressGetAddressDescription,
+	planetExpressGetAddressExecute,
+	planetExpressGetAddressInput,
 	planetExpressInventoryDescription,
 	planetExpressInventoryExecute,
 	planetExpressInventoryInput,
@@ -170,6 +197,9 @@ import {
 	meQuotaInput,
 } from "./me-account.js";
 import {
+	ebayPictureUploadDescription,
+	ebayPictureUploadExecute,
+	ebayPictureUploadInput,
 	mediaCreateUploadDescription,
 	mediaCreateUploadExecute,
 	mediaCreateUploadInput,
@@ -256,6 +286,9 @@ import {
 	policiesListDescription,
 	policiesListExecute,
 	policiesListInput,
+	sellerPoliciesSetupDescription,
+	sellerPoliciesSetupExecute,
+	sellerPoliciesSetupInput,
 } from "./policies.js";
 import {
 	recommendationsListDescription,
@@ -511,6 +544,13 @@ export const tools: Tool[] = [
 
 	// Listing prereqs + listing CRUD (sell-side, eBay OAuth required)
 	{
+		name: "flipagent_upload_image_to_ebay",
+		description: ebayPictureUploadDescription,
+		inputSchema: ebayPictureUploadInput,
+		execute: ebayPictureUploadExecute,
+		toolset: "core",
+	},
+	{
 		name: "flipagent_create_media_upload",
 		description: mediaCreateUploadDescription,
 		inputSchema: mediaCreateUploadInput,
@@ -539,6 +579,13 @@ export const tools: Tool[] = [
 		toolset: "core",
 	},
 	{
+		name: "flipagent_create_seller_policies",
+		description: sellerPoliciesSetupDescription,
+		inputSchema: sellerPoliciesSetupInput,
+		execute: sellerPoliciesSetupExecute,
+		toolset: "core",
+	},
+	{
 		name: "flipagent_list_locations",
 		description: locationsListDescription,
 		inputSchema: locationsListInput,
@@ -553,10 +600,31 @@ export const tools: Tool[] = [
 		toolset: "core",
 	},
 	{
+		name: "flipagent_list_listings",
+		description: listingsListDescription,
+		inputSchema: listingsListInput,
+		execute: listingsListExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_get_listing",
+		description: listingsGetDescription,
+		inputSchema: listingsGetInput,
+		execute: listingsGetExecute,
+		toolset: "core",
+	},
+	{
 		name: "flipagent_create_listing",
 		description: ebayCreateInventoryItemDescription,
 		inputSchema: ebayCreateInventoryItemInput,
 		execute: ebayCreateInventoryItemExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_create_draft_listing",
+		description: listingsCreateDraftDescription,
+		inputSchema: listingsCreateDraftInput,
+		execute: listingsCreateDraftExecute,
 		toolset: "core",
 	},
 	{
@@ -567,10 +635,45 @@ export const tools: Tool[] = [
 		toolset: "core",
 	},
 	{
+		name: "flipagent_bulk_update_listing_prices",
+		description: listingsBulkUpdatePricesDescription,
+		inputSchema: listingsBulkUpdatePricesInput,
+		execute: listingsBulkUpdatePricesExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_end_listing",
+		description: listingsEndDescription,
+		inputSchema: listingsEndInput,
+		execute: listingsEndExecute,
+		toolset: "core",
+	},
+	{
 		name: "flipagent_relist_listing",
 		description: ebayPublishOfferDescription,
 		inputSchema: ebayPublishOfferInput,
 		execute: ebayPublishOfferExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_bulk_publish_listings",
+		description: listingsBulkPublishDescription,
+		inputSchema: listingsBulkPublishInput,
+		execute: listingsBulkPublishExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_publish_listing_group",
+		description: listingsGroupPublishDescription,
+		inputSchema: listingsGroupPublishInput,
+		execute: listingsGroupPublishExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_withdraw_listing_group",
+		description: listingsGroupWithdrawDescription,
+		inputSchema: listingsGroupWithdrawInput,
+		execute: listingsGroupWithdrawExecute,
 		toolset: "core",
 	},
 	{
@@ -826,6 +929,13 @@ export const tools: Tool[] = [
 		description: planetExpressJobStatusDescription,
 		inputSchema: planetExpressJobStatusInput,
 		execute: planetExpressJobStatusExecute,
+		toolset: "forwarder",
+	},
+	{
+		name: "flipagent_get_forwarder_address",
+		description: planetExpressGetAddressDescription,
+		inputSchema: planetExpressGetAddressInput,
+		execute: planetExpressGetAddressExecute,
 		toolset: "forwarder",
 	},
 

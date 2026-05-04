@@ -205,9 +205,8 @@ export type KeyCreateResponse = Static<typeof KeyCreateResponse>;
 
 const Usage = Type.Object({
 	// One unified credit budget. Each call charges N credits depending on
-	// what it does (1 for search/marketplace mirror, 50 for evaluate, 5
-	// for browser ops, 0 for cache hits). See /docs/rate-limits for the
-	// full table.
+	// what it does (1 rest / 2 scrape / 50 evaluate / 0 passthrough — see
+	// /docs/rate-limits). See /docs/rate-limits for the full table.
 	creditsUsed: Type.Integer(),
 	creditsLimit: Type.Integer(),
 	creditsRemaining: Type.Integer(),
@@ -220,6 +219,14 @@ const Usage = Type.Object({
 	// one-time grant, not a monthly allotment. Paid tiers refill on the
 	// 1st of each month (UTC).
 	resetAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+	// Tier the rate-limit middleware *enforces against* — equal to the
+	// caller's `tier` 99% of the time, but downgrades to `free` after
+	// PAST_DUE_GRACE_DAYS of continuous past_due. The user's `tier`
+	// stays truthful (so billing copy doesn't lie); only this view
+	// shifts. Agents should plan against `effectiveTier` for budget
+	// math and surface a "card declined — fix in dashboard" hint when
+	// it disagrees with `tier`.
+	effectiveTier: Tier,
 });
 
 export const KeyInfo = Type.Object(
@@ -338,6 +345,80 @@ export const MeKeyRevealResponse = Type.Object(
 );
 export type MeKeyRevealResponse = Static<typeof MeKeyRevealResponse>;
 
+/* -------------------------- /v1/me/devices -------------------------- */
+
+/**
+ * A device-facing view of a bridge token. The plaintext token is *only*
+ * returned by `POST /v1/me/devices` (one-shot at issue time); the list
+ * + revoke endpoints return metadata only. `apiKeyId` is omitted from
+ * the wire because devices don't need to know which underlying key they
+ * inherit from — the token alone is sufficient credential.
+ */
+export const MeDevice = Type.Object(
+	{
+		id: Type.String(),
+		deviceName: Type.Union([Type.String(), Type.Null()]),
+		tokenPrefix: Type.String(),
+		ebayLoggedIn: Type.Boolean(),
+		ebayUserName: Type.Union([Type.String(), Type.Null()]),
+		createdAt: Type.String({ format: "date-time" }),
+		lastSeenAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+	},
+	{ $id: "MeDevice" },
+);
+export type MeDevice = Static<typeof MeDevice>;
+
+export const MeDeviceList = Type.Object({ devices: Type.Array(MeDevice) }, { $id: "MeDeviceList" });
+export type MeDeviceList = Static<typeof MeDeviceList>;
+
+export const MeDeviceConnectRequest = Type.Object(
+	{
+		/** Free-text label so the user can recognise this device on the
+		 * dashboard's "Connected devices" list — e.g. "macbook", "work
+		 * chrome". The extension passes a UA-derived default. */
+		deviceName: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+	},
+	{ $id: "MeDeviceConnectRequest" },
+);
+export type MeDeviceConnectRequest = Static<typeof MeDeviceConnectRequest>;
+
+/**
+ * One-shot bundle returned from `POST /v1/me/devices`: a usable
+ * `apiKey` plaintext + a `bridgeToken` plaintext bound to it. Both
+ * values are shown exactly once; the caller (today: the
+ * `/extension/connect` page) hands them off to the Chrome extension
+ * via `chrome.runtime.sendMessage` and discards them.
+ *
+ * If the user already has an active API key, that one is reused — the
+ * device dashboard remains a list of bridge tokens, not a list of keys.
+ */
+export const MeDeviceConnectResponse = Type.Object(
+	{
+		device: MeDevice,
+		apiKey: Type.Object({
+			id: Type.String(),
+			plaintext: Type.String(),
+			tier: Tier,
+		}),
+		bridgeToken: Type.Object({
+			id: Type.String(),
+			plaintext: Type.String(),
+			prefix: Type.String(),
+		}),
+	},
+	{ $id: "MeDeviceConnectResponse" },
+);
+export type MeDeviceConnectResponse = Static<typeof MeDeviceConnectResponse>;
+
+export const MeDeviceRevokeResponse = Type.Object(
+	{
+		id: Type.String(),
+		revoked: Type.Boolean(),
+	},
+	{ $id: "MeDeviceRevokeResponse" },
+);
+export type MeDeviceRevokeResponse = Static<typeof MeDeviceRevokeResponse>;
+
 /* -------------------------------- /v1/billing ------------------------------ */
 
 export const BillingCheckoutRequest = Type.Object(
@@ -365,6 +446,137 @@ export const BillingWebhookResponse = Type.Object(
 	{ $id: "BillingWebhookResponse" },
 );
 export type BillingWebhookResponse = Static<typeof BillingWebhookResponse>;
+
+/* ------------------------ /v1/billing — history --------------------------- */
+
+/**
+ * One row of the unified billing history — a Stripe invoice
+ * (subscription bill) OR a top-up charge (off-session PaymentIntent
+ * for auto-recharge). Both kinds carry a downloadable receipt; the
+ * row itself is uniform so the dashboard renders a single table.
+ */
+export const BillingTransaction = Type.Object(
+	{
+		id: Type.String(),
+		// Discriminator. `subscription` rows have a Stripe invoice
+		// number and `hostedInvoiceUrl`; `top_up` rows are standalone
+		// charges (no invoice number) and link to the receipt URL.
+		type: Type.Union([Type.Literal("subscription"), Type.Literal("top_up")]),
+		// Stripe invoice number (e.g. "1A2B3C4D-0001") for subscription
+		// rows; null for top-up charges (Stripe doesn't issue invoice
+		// numbers for standalone charges).
+		number: Type.Union([Type.String(), Type.Null()]),
+		createdAt: Type.String({ format: "date-time" }),
+		amountCents: Type.Integer(),
+		amountDisplay: Type.String(),
+		// Subset of Stripe's invoice + charge statuses we surface.
+		// `failed` covers a declined top-up; `void` covers admin-voided
+		// invoices; the others map 1:1 from Stripe.
+		status: Type.Union([
+			Type.Literal("paid"),
+			Type.Literal("open"),
+			Type.Literal("failed"),
+			Type.Literal("refunded"),
+			Type.Literal("void"),
+		]),
+		// Hosted invoice URL or top-up receipt URL. Null when Stripe
+		// hasn't generated one yet (rare, but possible for very fresh
+		// rows the webhook just landed).
+		downloadUrl: Type.Union([Type.String({ format: "uri" }), Type.Null()]),
+	},
+	{ $id: "BillingTransaction" },
+);
+export type BillingTransaction = Static<typeof BillingTransaction>;
+
+export const BillingHistoryResponse = Type.Object(
+	{
+		transactions: Type.Array(BillingTransaction),
+	},
+	{ $id: "BillingHistoryResponse" },
+);
+export type BillingHistoryResponse = Static<typeof BillingHistoryResponse>;
+
+/* --------------------- /v1/billing — auto-recharge ------------------------ */
+
+/**
+ * Selectable top-up amounts. Same set across all paid tiers — only the
+ * per-credit unit price varies. Auto-recharge fires one of these every
+ * time the user's `creditsRemaining` drops below their configured
+ * threshold (the only top-up entry point — there's no manual fire).
+ *
+ * Off-session PaymentIntent against the customer's saved card (the
+ * one Stripe stored at subscription checkout). Free-tier users have
+ * no card on file → 403 on the config endpoints; they need to
+ * subscribe first.
+ */
+export const BillingTopUpCredits = Type.Union(
+	[Type.Literal(5_000), Type.Literal(25_000), Type.Literal(100_000)],
+	{ $id: "BillingTopUpCredits", description: "One of the catalogued top-up amounts (5k / 25k / 100k)." },
+);
+export type BillingTopUpCredits = Static<typeof BillingTopUpCredits>;
+
+/**
+ * Quote for one top-up amount, at the caller's current tier. The
+ * dashboard renders "$X for N credits" off this without doing tier
+ * math on the frontend. Free callers get 403.
+ */
+export const BillingTopUpQuote = Type.Object(
+	{
+		credits: Type.Integer(),
+		priceCents: Type.Integer(),
+		// Pre-formatted USD ("$10.00") so JS doesn't need a currency
+		// formatter just to render the catalog.
+		priceDisplay: Type.String(),
+		perCreditUsd: Type.Number(),
+	},
+	{ $id: "BillingTopUpQuote" },
+);
+export type BillingTopUpQuote = Static<typeof BillingTopUpQuote>;
+
+export const BillingTopUpQuotesResponse = Type.Object(
+	{
+		tier: Type.Union([Type.Literal("hobby"), Type.Literal("standard"), Type.Literal("growth")]),
+		quotes: Type.Array(BillingTopUpQuote),
+	},
+	{ $id: "BillingTopUpQuotesResponse" },
+);
+export type BillingTopUpQuotesResponse = Static<typeof BillingTopUpQuotesResponse>;
+
+export const BillingAutoRechargeConfig = Type.Object(
+	{
+		enabled: Type.Boolean(),
+		// Trigger threshold in credits — when creditsRemaining drops
+		// below this, the next request fires the off-session top-up.
+		// Null when enabled is false.
+		thresholdCredits: Type.Union([Type.Integer({ minimum: 100, maximum: 50_000 }), Type.Null()]),
+		// Top-up amount per fire — must be one of `BillingTopUpCredits`.
+		topUpCredits: Type.Union([BillingTopUpCredits, Type.Null()]),
+		// Last successful auto-recharge. Null when disabled or never fired.
+		// Dashboard renders "Last recharged: 3h ago" off this.
+		lastRechargedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+	},
+	{ $id: "BillingAutoRechargeConfig" },
+);
+export type BillingAutoRechargeConfig = Static<typeof BillingAutoRechargeConfig>;
+
+/**
+ * Request body for `PUT /v1/billing/auto-recharge`. Client supplies
+ * just `thresholdCredits` — the server picks `topUpCredits` from the
+ * tier default (`defaultTopUpForTier`), keeping the dashboard form to
+ * a single number. Disabling carries no fields.
+ */
+export const BillingAutoRechargeUpdateRequest = Type.Union(
+	[
+		Type.Object({ enabled: Type.Literal(false) }),
+		Type.Object({
+			enabled: Type.Literal(true),
+			thresholdCredits: Type.Integer({ minimum: 100, maximum: 50_000 }),
+		}),
+	],
+	{ $id: "BillingAutoRechargeUpdateRequest" },
+);
+export type BillingAutoRechargeUpdateRequest = Static<typeof BillingAutoRechargeUpdateRequest>;
+
 
 /* ------------------------------- /v1/takedown ------------------------------ */
 

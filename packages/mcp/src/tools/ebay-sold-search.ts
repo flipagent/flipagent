@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { getClient, toApiCallError } from "../client.js";
+import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 import { mockSoldSearch } from "../mock.js";
 
@@ -11,7 +11,7 @@ export const ebaySoldSearchInput = Type.Object({
 });
 
 export const ebaySoldSearchDescription =
-	"Search recently-sold listings (price proof). Calls GET /v1/items/search?status=sold. Returns normalized `Item` records — cents-int Money, ISO `soldAt`/`soldPrice`/`soldQuantity`.";
+	'Search recently-sold listings — the price-proof side of sourcing. Calls GET /v1/items/search?status=sold. **When to use** — sanity-check what a similar item *actually* sold for before quoting a buy/list price; complement to `flipagent_search_items` (which is active inventory only). For a full statistical comp set with same-product filtering, use `flipagent_evaluate_item` instead — this tool is the raw feed. **Inputs** — `q` free-text, optional `categoryId`, pagination `limit` (1–200, default 50) + `offset`. **Output** — `{ itemSales: Item[] }` with cents-int `soldPrice`, ISO `soldAt`, and `soldQuantity` per row. **Prereqs** — `FLIPAGENT_API_KEY`; no eBay OAuth needed. **Example** — `{ q: "canon ef 50mm 1.8 stm", limit: 30 }`.';
 
 export async function ebaySoldSearchExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	if (config.mock) return mockSoldSearch();
@@ -25,7 +25,6 @@ export async function ebaySoldSearchExecute(config: Config, args: Record<string,
 			categoryId: args.categoryId as string | undefined,
 		});
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/items/search");
-		return { error: "items_search_sold_failed", status: e.status, message: e.message, url: e.url };
+		return toolErrorEnvelope(err, "items_search_sold_failed", "/v1/items/search");
 	}
 }

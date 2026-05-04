@@ -7,7 +7,7 @@
 
 import { LocationCreate } from "@flipagent/types";
 import { Type } from "@sinclair/typebox";
-import { getClient, toApiCallError } from "../client.js";
+import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 
 /* ------------------------- flipagent_locations_list ------------------------ */
@@ -15,15 +15,14 @@ import type { Config } from "../config.js";
 export const locationsListInput = Type.Object({});
 
 export const locationsListDescription =
-	"List the connected seller's fulfillment locations. GET /v1/locations. Each row has `id` (= eBay `merchantLocationKey`), `address`, `status`. Pick one for `flipagent_listings_create.merchantLocationKey`.";
+	'List the connected seller\'s fulfillment locations (warehouses, home addresses, forwarder hubs). Calls GET /v1/locations. **When to use** — required step before `flipagent_create_listing`: every listing needs `merchantLocationKey` pointing at one of these. **Inputs** — none. **Output** — `{ locations: [{ id, address, status: "enabled" | "disabled", types }] }`. The `id` is eBay\'s `merchantLocationKey`. **Prereqs** — eBay seller account connected. If empty, create one via `flipagent_upsert_location`. On 401 the response carries `next_action`. **Example** — call with `{}`, pick the first enabled `id`.';
 
 export async function locationsListExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.locations.list();
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/locations");
-		return { error: "locations_list_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "locations_list_failed", "/v1/locations");
 	}
 }
 
@@ -31,7 +30,8 @@ export async function locationsListExecute(config: Config, _args: Record<string,
 
 export const locationsGetInput = Type.Object({ id: Type.String({ minLength: 1 }) });
 
-export const locationsGetDescription = "Fetch one location by id. GET /v1/locations/{id}.";
+export const locationsGetDescription =
+	'Fetch one fulfillment location by id. Calls GET /v1/locations/{id}. **When to use** — read a single location\'s full address + status (rare; usually `flipagent_list_locations` is enough). **Inputs** — `id`. **Output** — full Location object: `{ id, address, status, types, geoCoordinates? }`. **Prereqs** — eBay seller account connected. **Example** — `{ id: "WAREHOUSE_NY" }`.';
 
 export async function locationsGetExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const id = String(args.id);
@@ -39,8 +39,7 @@ export async function locationsGetExecute(config: Config, args: Record<string, u
 		const client = getClient(config);
 		return await client.locations.get(id);
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/locations/${id}`);
-		return { error: "locations_get_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "locations_get_failed", `/v1/locations/${id}`);
 	}
 }
 
@@ -52,7 +51,7 @@ export const locationsUpsertInput = Type.Composite([
 ]);
 
 export const locationsUpsertDescription =
-	"Create or replace a fulfillment location. PUT /v1/locations/{id}. Idempotent on `id`. Use this once before listing — `flipagent_listings_create.merchantLocationKey` must reference an existing location id.";
+	'Create or replace a fulfillment location. Calls PUT /v1/locations/{id}. **When to use** — first-time listing setup (no locations exist yet) or restructuring (new warehouse / forwarder switch). Idempotent on `id` — re-upsert with same id replaces. **Inputs** — `id` (your stable key, becomes eBay\'s `merchantLocationKey`), `address: { line1, line2?, city, state, postalCode, country }` (ISO codes), optional `types: ["warehouse" | "store" | "home"]`, optional `geoCoordinates`. **Output** — full Location object. **Prereqs** — eBay seller account connected. **Example** — `{ id: "HOME", address: { line1: "123 Main St", city: "New York", state: "NY", postalCode: "10001", country: "US" } }`.';
 
 export async function locationsUpsertExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const { id, ...body } = args as { id: string } & Record<string, unknown>;
@@ -60,8 +59,7 @@ export async function locationsUpsertExecute(config: Config, args: Record<string
 		const client = getClient(config);
 		return await client.locations.upsert(id, body as Parameters<typeof client.locations.upsert>[1]);
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/locations/${id}`);
-		return { error: "locations_upsert_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "locations_upsert_failed", `/v1/locations/${id}`);
 	}
 }
 
@@ -70,7 +68,7 @@ export async function locationsUpsertExecute(config: Config, args: Record<string
 export const locationsDeleteInput = Type.Object({ id: Type.String({ minLength: 1 }) });
 
 export const locationsDeleteDescription =
-	"Delete a fulfillment location. DELETE /v1/locations/{id}. Fails if any active listing still references it.";
+	'Delete a fulfillment location. Calls DELETE /v1/locations/{id}. **When to use** — permanently remove a location no longer in use. To temporarily stop using one (without deleting), prefer `flipagent_disable_location` so existing listings keep working. **Inputs** — `id`. **Output** — `{ id, removed: true }`. **Fails 412** if any active listing still references this `merchantLocationKey` — end / migrate those listings first. **Prereqs** — eBay seller account connected. **Example** — `{ id: "OLD_WAREHOUSE" }`.';
 
 export async function locationsDeleteExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const id = String(args.id);
@@ -78,8 +76,7 @@ export async function locationsDeleteExecute(config: Config, args: Record<string
 		const client = getClient(config);
 		return await client.locations.delete(id);
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/locations/${id}`);
-		return { error: "locations_delete_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "locations_delete_failed", `/v1/locations/${id}`);
 	}
 }
 
@@ -88,7 +85,7 @@ export async function locationsDeleteExecute(config: Config, args: Record<string
 export const locationsEnableInput = Type.Object({ id: Type.String({ minLength: 1 }) });
 
 export const locationsEnableDescription =
-	"Enable a previously-disabled location. POST /v1/locations/{id}/enable. Disabled locations can't be referenced by new listings.";
+	'Enable a previously-disabled location so new listings can reference it. Calls POST /v1/locations/{id}/enable. **When to use** — bring a paused warehouse / address back online. **Inputs** — `id`. **Output** — `{ id, status: "enabled" }`. **Prereqs** — eBay seller account connected. **Example** — `{ id: "WAREHOUSE_NY" }`.';
 
 export async function locationsEnableExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const id = String(args.id);
@@ -96,8 +93,7 @@ export async function locationsEnableExecute(config: Config, args: Record<string
 		const client = getClient(config);
 		return await client.locations.enable(id);
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/locations/${id}/enable`);
-		return { error: "locations_enable_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "locations_enable_failed", `/v1/locations/${id}/enable`);
 	}
 }
 
@@ -106,7 +102,7 @@ export async function locationsEnableExecute(config: Config, args: Record<string
 export const locationsDisableInput = Type.Object({ id: Type.String({ minLength: 1 }) });
 
 export const locationsDisableDescription =
-	"Disable a location without deleting it. POST /v1/locations/{id}/disable. Existing listings stay live; new listings can't reference it.";
+	'Disable a location without deleting it. Calls POST /v1/locations/{id}/disable. **When to use** — temporarily stop new listings from referencing a warehouse (out for repairs, on vacation, etc.) while existing listings continue to ship from there. Reverse with `flipagent_enable_location`. **Inputs** — `id`. **Output** — `{ id, status: "disabled" }`. **Prereqs** — eBay seller account connected. **Example** — `{ id: "WAREHOUSE_NY" }`.';
 
 export async function locationsDisableExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const id = String(args.id);
@@ -114,7 +110,6 @@ export async function locationsDisableExecute(config: Config, args: Record<strin
 		const client = getClient(config);
 		return await client.locations.disable(id);
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/locations/${id}/disable`);
-		return { error: "locations_disable_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "locations_disable_failed", `/v1/locations/${id}/disable`);
 	}
 }

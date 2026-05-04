@@ -22,7 +22,11 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import { getClient, toApiCallError } from "../client.js";
+import { getClient, toolErrorEnvelope } from "../client.js";
+
+const PE_LOGIN_HINT =
+	"Make sure the user is signed into planetexpress.com in the Chrome profile their flipagent extension is paired with — the bridge job runs in that session.";
+
 import type { Config } from "../config.js";
 
 /* --------------------------- packages refresh --------------------------- */
@@ -30,21 +34,14 @@ import type { Config } from "../config.js";
 export const planetExpressPackagesInput = Type.Object({});
 
 export const planetExpressPackagesDescription =
-	"Read the user's Planet Express forwarder inbox (packages awaiting consolidation, on-hand, or shipped). Calls POST /v1/forwarder/planetexpress/refresh — the bridge queues a `pull_packages` job and the user's flipagent Chrome extension reads the inbox from their logged-in PE session, then reports the package list back. Returns a `jobId` immediately; poll `flipagent_forwarder_jobs_get` until terminal. Requires the user to be signed into planetexpress.com in the same Chrome profile the extension is paired with.";
+	'Refresh the user\'s Planet Express forwarder inbox via the Chrome extension. Calls POST /v1/forwarder/planetexpress/refresh. **When to use** — pull the latest list of packages on hand (newly arrived, awaiting consolidation, shipped) so subsequent steps (`flipagent_request_package_photos`, `flipagent_dispatch_package`) have fresh ids. **Inputs** — none. **Output** — `{ jobId, status: "queued", poll_with: "flipagent_get_forwarder_job", terminal_states: ["completed", "failed"] }`. Once terminal, the job\'s result carries `packages`. **Prereqs** — flipagent Chrome extension installed + paired; user signed into planetexpress.com in that profile. On bridge timeouts the response carries a hint pointing at the install/pair docs. **Example** — call with `{}`.';
 
 export async function planetExpressPackagesExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.forwarder.refresh({ provider: "planetexpress" });
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/forwarder/planetexpress/refresh");
-		return {
-			error: "forwarder_refresh_failed",
-			status: e.status,
-			url: e.url,
-			message: e.message,
-			hint: "Sign into planetexpress.com in the Chrome profile your flipagent extension is paired with.",
-		};
+		return toolErrorEnvelope(err, "refresh_forwarder_failed", "/v1/forwarder/planetexpress/refresh", PE_LOGIN_HINT);
 	}
 }
 
@@ -56,7 +53,7 @@ export const planetExpressPackagePhotosInput = Type.Object(
 );
 
 export const planetExpressPackagePhotosDescription =
-	"Fetch the intake photos PE captured for one inbound package. Calls POST /v1/forwarder/planetexpress/packages/{packageId}/photos. The extension opens the package detail page in the user's logged-in PE session, scrapes image URLs (front / back / condition / contents), and reports them back. Returns a `jobId`; poll `flipagent_forwarder_jobs_get` until terminal, then read `photos` off the response. Use these images directly in `flipagent_listings_create` (`product.imageUrls`).";
+	'Fetch the intake photos Planet Express captured for one inbound package. Calls POST /v1/forwarder/planetexpress/packages/{packageId}/photos. **When to use** — when listing an item shipped to a forwarder, you typically don\'t have your own photos — use PE\'s intake shots (front / back / condition / contents). **Inputs** — `packageId` (from `flipagent_list_forwarder_inventory` or `flipagent_refresh_forwarder`). **Output** — `{ jobId, status: "queued", poll_with: "flipagent_get_forwarder_job", terminal_states: ["completed", "failed"] }`. Once terminal, the job result carries `photos: [{ kind, url }]`; pass these urls to `flipagent_create_listing.images[]`. **Prereqs** — extension paired, user signed into planetexpress.com. **Example** — `{ packageId: "PE-12345" }`.';
 
 export async function planetExpressPackagePhotosExecute(
 	config: Config,
@@ -67,14 +64,12 @@ export async function planetExpressPackagePhotosExecute(
 		const client = getClient(config);
 		return await client.forwarder.packages.photos({ provider: "planetexpress", packageId });
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/forwarder/planetexpress/packages/${packageId}/photos`);
-		return {
-			error: "forwarder_packages_photos_failed",
-			status: e.status,
-			url: e.url,
-			message: e.message,
-			hint: "Sign into planetexpress.com in the Chrome profile your flipagent extension is paired with.",
-		};
+		return toolErrorEnvelope(
+			err,
+			"request_package_photos_failed",
+			`/v1/forwarder/planetexpress/packages/${packageId}/photos`,
+			PE_LOGIN_HINT,
+		);
 	}
 }
 
@@ -112,7 +107,7 @@ export const planetExpressPackageDispatchInput = Type.Object(
 );
 
 export const planetExpressPackageDispatchDescription =
-	"Instruct Planet Express to ship a held package to the supplied address (sell-side ship-out). Calls POST /v1/forwarder/planetexpress/packages/{packageId}/dispatch. The extension drives PE's outbound flow inside the user's logged-in session: enters the recipient address, picks the requested service tier, generates the label, returns shipment id + carrier + tracking. Idempotent on `(packageId, ebayOrderId)` so a retried sold-event webhook can't book two shipments. Returns a `jobId`; poll `flipagent_forwarder_jobs_get` until terminal, then read `shipment` off the response.";
+	'Instruct Planet Express to ship a held package out to the buyer. Calls POST /v1/forwarder/planetexpress/packages/{packageId}/dispatch. **When to use** — sell-side fulfillment after a sale: the extension drives PE\'s outbound flow (enters recipient address, picks service tier, generates label) inside the user\'s logged-in session. **Inputs** — `packageId`, `toAddress` (recipient: name, line1, city, state, postalCode, country in ISO codes), optional `service` (`usps_priority | usps_ground_advantage | ups_ground | fedex_home`), optional `declaredValueCents`, optional `ebayOrderId` (for idempotency + traceability), optional `notes`. **Output** — `{ jobId, status: "queued", poll_with: "flipagent_get_forwarder_job", terminal_states: ["completed", "failed"] }`. Once terminal, the job result carries `shipment: { carrier, trackingNumber, labelUrl }` — feed these to `flipagent_ship_sale` to close the loop. **Idempotent on** `(packageId, ebayOrderId)` so a retried webhook can\'t double-book. **Prereqs** — extension paired, user signed into planetexpress.com. **Example** — `{ packageId: "PE-12345", toAddress: { name: "...", line1: "...", city: "NY", state: "NY", postalCode: "10001", country: "US" }, ebayOrderId: "O-1" }`.';
 
 export async function planetExpressPackageDispatchExecute(
 	config: Config,
@@ -151,14 +146,28 @@ export async function planetExpressPackageDispatchExecute(
 			},
 		});
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/forwarder/planetexpress/packages/${packageId}/dispatch`);
-		return {
-			error: "forwarder_packages_dispatch_failed",
-			status: e.status,
-			url: e.url,
-			message: e.message,
-			hint: "Sign into planetexpress.com in the Chrome profile your flipagent extension is paired with.",
-		};
+		return toolErrorEnvelope(
+			err,
+			"dispatch_package_failed",
+			`/v1/forwarder/planetexpress/packages/${packageId}/dispatch`,
+			PE_LOGIN_HINT,
+		);
+	}
+}
+
+/* ------------------------------ get address ------------------------------- */
+
+export const planetExpressGetAddressInput = Type.Object({});
+
+export const planetExpressGetAddressDescription =
+	'One-time onboarding: read the user\'s assigned suite + warehouse address from Planet Express via the Chrome extension, so the agent can seed an eBay merchant location (POST /v1/locations) for ship-from. Calls POST /v1/forwarder/planetexpress/address. **When to use** — first time the agent needs a US ship-from for a sell-side flow (`flipagent_create_listing`) and `flipagent_list_locations` returns empty. **Inputs** — none. **Output** — `{ jobId, status: "queued", poll_with: "flipagent_get_forwarder_job", terminal_states: ["completed", "failed"] }`. Poll the job; once `completed`, the result carries `address: { name, line1, line2 (suite), city, region, postalCode, country, phone? }`. Pass that to `flipagent_upsert_location`. **Prereqs** — extension installed + paired; user signed into planetexpress.com in that profile. If the user has no PE account yet, surface https://planetexpress.com/signup before calling this. **Example** — call with `{}`.';
+
+export async function planetExpressGetAddressExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
+	try {
+		const client = getClient(config);
+		return await client.forwarder.getAddress({ provider: "planetexpress" });
+	} catch (err) {
+		return toolErrorEnvelope(err, "get_forwarder_address_failed", "/v1/forwarder/planetexpress/address", PE_LOGIN_HINT);
 	}
 }
 
@@ -167,15 +176,14 @@ export async function planetExpressPackageDispatchExecute(
 export const planetExpressInventoryInput = Type.Object({});
 
 export const planetExpressInventoryDescription =
-	"List Planet Express inventory rows for the current api key (every package the bridge has reconciled). Calls GET /v1/forwarder/planetexpress/inventory. Each row carries the lifecycle state — `received`, `photographed`, `listed`, `sold`, `dispatched`, `shipped` — plus any inbound + outbound shipment fields that have been reported. Use this to find a package's id from its sku before queueing a dispatch. Newest first.";
+	'List the Planet Express inventory the bridge has reconciled for this api key. Calls GET /v1/forwarder/planetexpress/inventory. **When to use** — find a package\'s id from its marketplace sku before queueing `flipagent_dispatch_package`; track lifecycle progress across the receive → photograph → list → sell → dispatch → ship pipeline. **Inputs** — none. **Output** — `{ inventory: [{ packageId, sku?, ebayOrderId?, state: "received" | "photographed" | "listed" | "sold" | "dispatched" | "shipped", inbound?, outbound?, lastUpdatedAt }] }`, newest first. **Prereqs** — flipagent extension paired (no live PE login needed for this read — it\'s served from the reconciled state in flipagent\'s db). **Example** — call with `{}`.';
 
 export async function planetExpressInventoryExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.forwarder.inventory.list({ provider: "planetexpress" });
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/forwarder/planetexpress/inventory");
-		return { error: "forwarder_inventory_list_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "forwarder_inventory_list_failed", "/v1/forwarder/planetexpress/inventory");
 	}
 }
 
@@ -193,7 +201,7 @@ export const planetExpressLinkInput = Type.Object(
 );
 
 export const planetExpressLinkDescription =
-	"Link a PE package to a marketplace sku (and optional ebay offer id). Calls POST /v1/forwarder/planetexpress/packages/{packageId}/link. Run this after `flipagent_listings_relist` succeeds — the sold-event handler uses the sku to find the package automatically and queue a dispatch when the item sells, so the agent never has to re-thread the linkage. Idempotent on (packageId, sku); re-linking a different sku overwrites.";
+	'Bind a Planet Express package to a marketplace sku (and optional eBay offer id). Calls POST /v1/forwarder/planetexpress/packages/{packageId}/link. **When to use** — call this once after `flipagent_create_listing` (or `flipagent_relist_listing`) succeeds. The sold-event handler then uses the sku to find the package automatically and queue `flipagent_dispatch_package` when the listing sells — so the agent never has to thread the linkage by hand. **Inputs** — `packageId`, `sku`, optional `ebayOfferId` (returned by `flipagent_update_listing`). **Output** — `{ packageId, sku, ebayOfferId? }`. **Idempotent on** `(packageId, sku)`; re-linking a different sku overwrites. **Prereqs** — extension paired (no live PE login needed). **Example** — `{ packageId: "PE-12345", sku: "CANON-50-USED" }`.';
 
 export async function planetExpressLinkExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const packageId = String(args.packageId);
@@ -207,8 +215,11 @@ export async function planetExpressLinkExecute(config: Config, args: Record<stri
 			request: { sku, ebayOfferId },
 		});
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/forwarder/planetexpress/packages/${packageId}/link`);
-		return { error: "forwarder_packages_link_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(
+			err,
+			"forwarder_packages_link_failed",
+			`/v1/forwarder/planetexpress/packages/${packageId}/link`,
+		);
 	}
 }
 
@@ -220,7 +231,7 @@ export const planetExpressJobStatusInput = Type.Object(
 );
 
 export const planetExpressJobStatusDescription =
-	"Poll a previously-queued Planet Express job. Calls GET /v1/forwarder/planetexpress/jobs/{jobId}. Returns `status` plus exactly one task-specific payload depending on which tool queued the job: `packages` (refresh), `photos` (package_photos), or `shipment` (package_dispatch). Non-terminal statuses (`queued`, `running`) return only timestamps + status — keep polling.";
+	'Poll a previously-queued Planet Express bridge job until terminal. Calls GET /v1/forwarder/planetexpress/jobs/{jobId}. **When to use** — every async forwarder tool (`flipagent_refresh_forwarder`, `flipagent_request_package_photos`, `flipagent_dispatch_package`) returns a `jobId` and `poll_with: "flipagent_get_forwarder_job"`. Loop with backoff until `status` is terminal. **Inputs** — `jobId` (UUID). **Output** — `{ jobId, status: "queued" | "running" | "completed" | "failed", queuedAt, completedAt?, packages?, photos?, shipment?, failureReason? }`. The task-specific payload key (`packages` / `photos` / `shipment`) depends on which tool queued the job. **Prereqs** — `FLIPAGENT_API_KEY`. **Example** — `{ jobId: "abcd1234-..." }`.';
 
 export async function planetExpressJobStatusExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const jobId = String(args.jobId);
@@ -228,7 +239,6 @@ export async function planetExpressJobStatusExecute(config: Config, args: Record
 		const client = getClient(config);
 		return await client.forwarder.jobs.get({ provider: "planetexpress", jobId });
 	} catch (err) {
-		const e = toApiCallError(err, `/v1/forwarder/planetexpress/jobs/${jobId}`);
-		return { error: "forwarder_jobs_get_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "forwarder_jobs_get_failed", `/v1/forwarder/planetexpress/jobs/${jobId}`);
 	}
 }

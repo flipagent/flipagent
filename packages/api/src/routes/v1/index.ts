@@ -28,6 +28,7 @@
 
 import { Hono } from "hono";
 import { adminRoute } from "./admin.js";
+import { agentRoute } from "./agent.js";
 import { analyticsRoute } from "./analytics.js";
 import { bidsRoute } from "./bids.js";
 import { billingRoute } from "./billing.js";
@@ -125,6 +126,14 @@ v1Routes.route("/billing", billingRoute);
 v1Routes.route("/health", v1HealthRoute);
 v1Routes.route("/capabilities", capabilitiesRoute);
 v1Routes.route("/admin", adminRoute);
+
+// ---- Agent (preview) ---------------------------------------------------
+// `/agent/*` is the chat surface backed by OpenAI's Responses API.
+// Stateful threads (server-side history via `previous_response_id`) +
+// user-stated rules folded into instructions + an activity-feed log of
+// every run. Tool use lands in a follow-up — for now it's a "talk to
+// the LLM and feel the persistent thread" preview.
+v1Routes.route("/agent", agentRoute);
 
 // ---- Agent plumbing ----------------------------------------------------
 // `/bridge/*` is the wire protocol the Chrome extension uses to talk to

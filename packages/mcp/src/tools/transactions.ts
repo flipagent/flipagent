@@ -6,20 +6,19 @@
  */
 
 import { TransactionsListQuery } from "@flipagent/types";
-import { getClient, toApiCallError } from "../client.js";
+import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 
 export { TransactionsListQuery as transactionsListInput };
 
 export const transactionsListDescription =
-	"List finance line items for the connected seller. GET /v1/transactions. Filter by `type` (sale|refund|fee|adjustment|reserve), `payoutId`, `from`/`to` ISO dates, `limit`, `offset`. cents-int Money. Use to reconcile a payout to its underlying events or to surface fees for `flipagent_expenses_record`.";
+	'List per-event finance line items for the connected seller — the granular layer behind payouts. Calls GET /v1/transactions. **When to use** — reconcile a payout (`{ payoutId }`) into its underlying sales / fees / refunds; surface final-value fees so they can be checked against your own books; build a P&L statement combined with `flipagent_get_expense_summary`. **Inputs** — optional `type` (`sale | refund | fee | adjustment | reserve`), optional `payoutId`, optional `orderId`, optional `from`/`to` ISO dates, pagination `limit` (default 50) + `offset`. **Output** — `{ transactions: Transaction[], limit, offset }` with cents-int `amountCents`. **Prereqs** — eBay seller account connected. On 401 the response carries `next_action` with the connect URL. **Example** — `{ payoutId: "PAY-1234" }` to break down one payout.';
 
 export async function transactionsListExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.transactions.list(args as Parameters<typeof client.transactions.list>[0]);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/transactions");
-		return { error: "transactions_list_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "transactions_list_failed", "/v1/transactions");
 	}
 }

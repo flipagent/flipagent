@@ -6,21 +6,20 @@
 
 import { BidCreate } from "@flipagent/types";
 import { Type } from "@sinclair/typebox";
-import { getClient, toApiCallError } from "../client.js";
+import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 
 /* ---------------------------- flipagent_bids_list -------------------------- */
 
 export const bidsListInput = Type.Object({});
 export const bidsListDescription =
-	"List active + completed bids the api key has placed. GET /v1/bids. Each row carries auction status (winning|outbid|won|lost), max bid, current high.";
+	'List active and completed bids the api key has placed on auctions. Calls GET /v1/bids. **When to use** — review which auctions you\'re competing in, who\'s winning, what your max bid was. Pair with `flipagent_place_bid` to raise a bid that\'s been outbid. **Inputs** — none. **Output** — `{ bids: [{ id, itemId, maxPriceCents, currentHighCents, status: "winning" | "outbid" | "won" | "lost", endsAt }] }`. **Prereqs** — eBay account connected. On 401 the response carries `next_action`. **Example** — call with `{}`.';
 export async function bidsListExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.bids.list();
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/bids");
-		return { error: "bids_list_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "bids_list_failed", "/v1/bids");
 	}
 }
 
@@ -28,14 +27,13 @@ export async function bidsListExecute(config: Config, _args: Record<string, unkn
 
 export { BidCreate as bidsPlaceInput };
 export const bidsPlaceDescription =
-	"Place a bid on an auction. POST /v1/bids. Required: `itemId`, `maxPriceCents`. eBay handles the increment ladder automatically — `maxPriceCents` is your ceiling, not the placed amount.";
+	"Place a proxy bid on an auction. Calls POST /v1/bids. **When to use** — items only available at auction (not Buy-It-Now). For BIN, use `flipagent_create_purchase` instead — it's the default flipagent flow. eBay's proxy system handles the increment ladder for you: `maxPriceCents` is your ceiling, the system places the smallest bid needed to be high. **Inputs** — `itemId` (auction listing), `maxPriceCents` (your ceiling, cents-int). For safe ceilings, use `evaluation.bidCeilingCents` from `flipagent_evaluate_item`. **Output** — `{ id, itemId, maxPriceCents, currentHighCents, status }`. **Prereqs** — eBay account connected, plus auction-buyer eligibility (region, KYC) — check `flipagent_list_biddable_listings` first if unsure. **Example** — `{ itemId: \"234567890123\", maxPriceCents: 4500 }` (cap at $45).";
 export async function bidsPlaceExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.bids.place(args as Parameters<typeof client.bids.place>[0]);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/bids");
-		return { error: "bids_place_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "bids_place_failed", "/v1/bids");
 	}
 }
 
@@ -43,13 +41,12 @@ export async function bidsPlaceExecute(config: Config, args: Record<string, unkn
 
 export const bidsEligibleListingsInput = Type.Object({});
 export const bidsEligibleListingsDescription =
-	"List auctions the buyer is eligible to bid on (region/category restrictions, kyc status). GET /v1/bids/eligible-listings.";
+	'List auctions the buyer is currently eligible to bid on, given region / category / KYC restrictions. Calls GET /v1/bids/eligible-listings. **When to use** — diagnose "why can\'t I bid on this auction?" or pre-filter a watch-list to only items where bidding is actually possible. **Inputs** — none. **Output** — `{ listings: [{ itemId, eligible: true, restrictions?: string[] }] }`. **Prereqs** — eBay account connected. **Example** — call with `{}`.';
 export async function bidsEligibleListingsExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.bids.eligibleListings();
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/bids/eligible-listings");
-		return { error: "bids_eligible_listings_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "bids_eligible_listings_failed", "/v1/bids/eligible-listings");
 	}
 }

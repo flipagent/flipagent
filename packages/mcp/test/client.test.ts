@@ -7,9 +7,22 @@ describe("toApiCallError", () => {
 		expect(toApiCallError(original)).toBe(original);
 	});
 
-	it("extracts status + path from a FlipagentApiError-shaped error", () => {
+	it("prefers the api's `message` body over the SDK's status-string fallback", () => {
 		// Shape from the new @flipagent/sdk; we duck-type so the test
 		// doesn't depend on the SDK build artifact at vitest runtime.
+		const err = {
+			message: "flipagent /v1/items/search failed with status 401",
+			status: 401,
+			path: "/v1/items/search",
+			detail: { error: "ebay_account_not_connected", message: "Connect an eBay seller account first." },
+		};
+		const e = toApiCallError(err);
+		expect(e.status).toBe(401);
+		expect(e.url).toBe("/v1/items/search");
+		expect(e.message).toBe("Connect an eBay seller account first.");
+	});
+
+	it("falls back to the api's `error` code when no `message` body is present", () => {
 		const err = {
 			message: "flipagent /v1/items/search failed with status 401",
 			status: 401,
@@ -17,9 +30,27 @@ describe("toApiCallError", () => {
 			detail: { error: "unauthenticated" },
 		};
 		const e = toApiCallError(err);
-		expect(e.status).toBe(401);
-		expect(e.url).toBe("/v1/items/search");
-		expect(e.message).toContain("401");
+		expect(e.message).toBe("unauthenticated");
+	});
+
+	it("surfaces next_action when present in the api response body", () => {
+		const err = {
+			status: 401,
+			path: "/v1/listings",
+			detail: {
+				error: "ebay_account_not_connected",
+				message: "Connect an eBay seller account first.",
+				next_action: {
+					kind: "ebay_oauth",
+					url: "https://api.flipagent.dev/v1/connect/ebay/start",
+					instructions: "Send the user to this URL to authorize.",
+				},
+			},
+		};
+		const e = toApiCallError(err);
+		expect(e.nextAction?.kind).toBe("ebay_oauth");
+		expect(e.nextAction?.url).toBe("https://api.flipagent.dev/v1/connect/ebay/start");
+		expect(e.nextAction?.instructions).toBe("Send the user to this URL to authorize.");
 	});
 
 	it("uses fallbackPath when no url is on the error", () => {

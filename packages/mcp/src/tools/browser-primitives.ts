@@ -18,7 +18,7 @@
  */
 
 import { BrowserQueryRequest } from "@flipagent/types";
-import { getClient, toApiCallError } from "../client.js";
+import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 
 export const browserQueryInput = BrowserQueryRequest;
@@ -31,16 +31,11 @@ export async function browserQueryExecute(config: Config, args: Record<string, u
 		const client = getClient(config);
 		return await client.browser.query(args as unknown as Parameters<typeof client.browser.query>[0]);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/browser/query");
-		return {
-			error: "browser_query_failed",
-			status: e.status,
-			url: e.url,
-			message: e.message,
-			hint:
-				e.status === 504
-					? "The extension's content script didn't respond. Make sure the target page is open + active and the extension is paired."
-					: undefined,
-		};
+		return toolErrorEnvelope(
+			err,
+			"query_browser_failed",
+			"/v1/browser/query",
+			"If 504, make sure the target page is open and active in the Chrome profile your flipagent extension is paired with.",
+		);
 	}
 }

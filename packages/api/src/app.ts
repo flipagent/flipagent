@@ -6,8 +6,13 @@ import { getAuth } from "./auth/better-auth.js";
 import { config } from "./config.js";
 import { registerOpenApi } from "./openapi-spec.js";
 import { healthRoute } from "./routes/health.js";
+import { mcpRoute } from "./routes/mcp.js";
 import { rootRoute } from "./routes/root.js";
 import { v1Routes } from "./routes/v1/index.js";
+import { EbayApiError } from "./services/ebay/rest/user-client.js";
+import { TradingApiError } from "./services/ebay/trading/client.js";
+import { PurchaseError } from "./services/purchases/orchestrate.js";
+import { nextAction } from "./services/shared/next-action.js";
 
 // Register TypeBox formats used in @flipagent/types schemas.
 // Without this, `Type.String({ format: "<x>" })` validation passes any string —
@@ -31,7 +36,7 @@ app.use(
 	cors({
 		origin: (origin) => origin ?? config.APP_URL,
 		credentials: true,
-		allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+		allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
 		allowHeaders: ["Content-Type", "Authorization", "X-API-Key"],
 		exposeHeaders: [
 			"X-RateLimit-Limit",
@@ -57,6 +62,11 @@ app.all("/api/auth/*", async (c) => {
 
 app.route("/", rootRoute);
 app.route("/healthz", healthRoute);
+// `/mcp` — same tool catalog as the stdio binary, served over the MCP
+// streamable HTTP transport. Mounted at root (not `/v1/mcp`) to match
+// the Model Context Protocol spec. Used by OpenAI's Responses API
+// native MCP integration to drive the agent surface.
+app.route("/mcp", mcpRoute);
 app.route("/v1", v1Routes);
 
 registerOpenApi(app);
@@ -64,6 +74,27 @@ registerOpenApi(app);
 app.notFound((c) => c.json({ error: "not_found", path: c.req.path }, 404));
 
 app.onError((err, c) => {
+	// Known typed errors map to typed responses with optional next_action.
+	// Routes that catch these manually (purchases, sales, listings) return
+	// their own c.json before reaching here; the rest fall through and we
+	// avoid the 500 internal_error fallback for OAuth/config misses.
+	if (err instanceof EbayApiError) {
+		const next_action = err.nextActionKind ? nextAction(c, err.nextActionKind) : undefined;
+		return c.json(
+			{ error: err.code, message: err.message, ...(next_action ? { next_action } : {}) },
+			err.status as 401 | 403 | 404 | 412 | 502 | 503,
+		);
+	}
+	if (err instanceof PurchaseError) {
+		const next_action = err.nextActionKind ? nextAction(c, err.nextActionKind) : undefined;
+		return c.json(
+			{ error: err.code, message: err.message, ...(next_action ? { next_action } : {}) },
+			err.status as 400 | 401 | 404 | 412 | 502,
+		);
+	}
+	if (err instanceof TradingApiError) {
+		return c.json({ error: "trading_call_failed", callName: err.callName, errors: err.errors }, 502);
+	}
 	console.error("[api]", err);
 	return c.json({ error: "internal_error", message: err.message }, 500);
 });

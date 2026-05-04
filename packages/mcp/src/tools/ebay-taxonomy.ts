@@ -5,7 +5,7 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import { getClient, toApiCallError } from "../client.js";
+import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 
 export const ebayTaxonomyDefaultIdInput = Type.Object({
@@ -19,7 +19,7 @@ export const ebayTaxonomyDefaultIdInput = Type.Object({
 });
 
 export const ebayTaxonomyDefaultIdDescription =
-	"List categories for the marketplace. Calls GET /v1/categories. Without `parentId` returns top-level nodes; with `parentId` returns its children — call repeatedly to walk the tree until you hit `isLeaf=true`. flipagent auto-resolves the underlying eBay tree id.";
+	"Walk the marketplace category tree by parent. Calls GET /v1/categories. **When to use** — explore the tree manually when `flipagent_suggest_category` doesn't pick a confident leaf (or when you want to confirm what categories *exist* under a node). For a known title, prefer `flipagent_suggest_category` — it's one call instead of N. **Inputs** — optional `marketplace` (default `ebay`), optional `parentId` (omit for top level; pass a node id to drill in). **Output** — `{ categories: [{ id, name, parentId, isLeaf }] }`. Repeat with each non-leaf id until you hit `isLeaf: true` — only leaves are valid for `flipagent_create_listing.categoryId`. **Prereqs** — `FLIPAGENT_API_KEY`; no eBay OAuth needed. **Example** — call with `{}` for roots, then `{ parentId: \"625\" }` for Cameras & Photo's children.";
 
 export async function ebayTaxonomyDefaultIdExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
@@ -29,8 +29,7 @@ export async function ebayTaxonomyDefaultIdExecute(config: Config, args: Record<
 			parentId: args.parentId as string | undefined,
 		});
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/categories");
-		return { error: "categories_list_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "categories_list_failed", "/v1/categories");
 	}
 }
 
@@ -40,7 +39,7 @@ export const ebayTaxonomySuggestInput = Type.Object({
 });
 
 export const ebayTaxonomySuggestDescription =
-	"Suggest the most likely category for a free-text title. Calls GET /v1/categories/suggest. Use to pick a leaf category before creating a listing.";
+	'Suggest the most likely leaf category for a free-text title. Calls GET /v1/categories/suggest. **When to use** — first step before `flipagent_create_listing` to pick `categoryId`; one call instead of walking the tree manually. **Inputs** — `title` (item title or free-text description), optional `marketplace` (default `ebay`). **Output** — `{ suggestions: [{ categoryId, categoryName, ancestorIds, confidence }] }`, sorted by confidence desc. Take `[0].categoryId` if confidence is high (typically >0.7); fall back to `flipagent_list_categories` if none feel right. **Prereqs** — `FLIPAGENT_API_KEY`; no eBay OAuth needed. **Example** — `{ title: "canon ef 50mm f/1.8 stm autofocus lens" }`.';
 
 export async function ebayTaxonomySuggestExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
@@ -50,8 +49,7 @@ export async function ebayTaxonomySuggestExecute(config: Config, args: Record<st
 			marketplace: args.marketplace as never,
 		});
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/categories/suggest");
-		return { error: "categories_suggest_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "categories_suggest_failed", "/v1/categories/suggest");
 	}
 }
 
@@ -60,14 +58,13 @@ export const ebayTaxonomyAspectsInput = Type.Object({
 });
 
 export const ebayTaxonomyAspectsDescription =
-	"Get required + recommended aspects (item specifics) for a leaf category. Calls GET /v1/categories/{id}/aspects. Needed before creating a listing.";
+	'Fetch required + recommended aspects ("item specifics") for a leaf category. Calls GET /v1/categories/{id}/aspects. **When to use** — required step before `flipagent_create_listing`: every leaf category demands a specific set of aspects (Brand, Model, Material…) and the api will reject a publish with `MissingPrereqError` if you skip required ones. **Inputs** — `categoryId` (a leaf — verify with `flipagent_list_categories` `isLeaf: true`). **Output** — `{ aspects: [{ name, dataType, required, allowedValues?: string[], cardinality }] }`. Map names → values for `flipagent_create_listing.aspects`. **Prereqs** — `FLIPAGENT_API_KEY`; no eBay OAuth needed. **Example** — `{ categoryId: "31388" }` for Camera Lenses → returns `Brand`, `Focal Length`, `Mount`, etc.';
 
 export async function ebayTaxonomyAspectsExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
 		return await client.categories.aspects(args.categoryId as string);
 	} catch (err) {
-		const e = toApiCallError(err, "/v1/categories/{id}/aspects");
-		return { error: "categories_aspects_failed", status: e.status, url: e.url, message: e.message };
+		return toolErrorEnvelope(err, "categories_aspects_failed", "/v1/categories/{id}/aspects");
 	}
 }
