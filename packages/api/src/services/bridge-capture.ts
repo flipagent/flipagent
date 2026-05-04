@@ -20,9 +20,9 @@
  * push from a misbehaving extension.
  */
 
-import { sql } from "drizzle-orm";
 import type { EbayItemDetail } from "@flipagent/ebay-scraper";
 import type { ItemDetail } from "@flipagent/types/ebay";
+import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { ebayDetailToBrowse } from "./ebay/scrape/normalize.js";
 import { DETAIL_PATH, DETAIL_TTL_SEC } from "./items/detail.js";
@@ -39,14 +39,14 @@ const ALLOWED_URL_PATTERNS = [
 ];
 
 const FORBIDDEN_URL_PATTERNS = [
-	/\/mye\//i,           // My eBay
-	/\/myb\//i,           // Buying activity
-	/\/myb_summary/i,     // Account summary
+	/\/mye\//i, // My eBay
+	/\/myb\//i, // Buying activity
+	/\/myb_summary/i, // Account summary
 	/\/signin/i,
-	/\/vod\//i,           // Checkout / view-or-defer
-	/\/chk\//i,           // Checkout
-	/\/sl\//i,            // Sell flow
-	/\/bsh\//i,           // Seller hub
+	/\/vod\//i, // Checkout / view-or-defer
+	/\/chk\//i, // Checkout
+	/\/sl\//i, // Sell flow
+	/\/bsh\//i, // Seller hub
 	/account\.ebay/i,
 ];
 

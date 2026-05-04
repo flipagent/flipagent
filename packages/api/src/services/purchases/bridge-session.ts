@@ -1,7 +1,7 @@
 /**
  * Bridge-mode primitive for eBay's Buy Order flow. Used internally by
  * `services/purchases/orchestrate.ts` when REST transport isn't
- * approved (`EBAY_ORDER_API_APPROVED=0`) — the actual buy is driven by
+ * approved (`EBAY_ORDER_APPROVED=0`) — the actual buy is driven by
  * our Chrome extension via the bridge protocol.
  *
  *   initiateCheckoutSession()   → inserts a `buy_checkout_sessions` row
@@ -98,7 +98,7 @@ export async function placeOrder(
 		throw new BridgeCheckoutError(
 			"multi_item_unsupported_in_bridge_mode",
 			412,
-			"bridge mode places one line item per call; submit a separate session per item or set EBAY_ORDER_API_APPROVED=1",
+			"bridge mode places one line item per call; submit a separate session per item or set EBAY_ORDER_APPROVED=1",
 		);
 	}
 	const first = items[0];

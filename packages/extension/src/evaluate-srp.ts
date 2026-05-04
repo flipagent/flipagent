@@ -145,7 +145,7 @@ function extractItemIdFromHref(href: string): string | null {
  * homepage carousels, "recently viewed" rails. */
 function findCardBoundary(anchor: HTMLElement): HTMLElement | null {
 	let el: HTMLElement | null = anchor;
-	while (el && el.parentElement && el !== document.body) {
+	while (el?.parentElement && el !== document.body) {
 		const parent: HTMLElement = el.parentElement;
 		for (const child of Array.from(parent.children) as HTMLElement[]) {
 			if (child !== el && child.querySelector('a[href*="/itm/"]')) return el;

@@ -1,7 +1,7 @@
 /**
  * Integration tests for the bridge-client (Chrome extension) surface:
  *   /v1/purchases   — buy orders; bridge mode when
- *                     EBAY_ORDER_API_APPROVED=0 (default in tests)
+ *                     EBAY_ORDER_APPROVED=0 (default in tests)
  *   /v1/bridge/*    — bridge client issues token + longpolls + reports
  *   /v1/webhooks/*  — caller registers + lists + revokes; signed delivery
  *

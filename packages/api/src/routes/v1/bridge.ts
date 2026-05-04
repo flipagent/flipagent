@@ -29,7 +29,6 @@ import {
 	IssueBridgeTokenResponse,
 } from "@flipagent/types";
 import { Type } from "@sinclair/typebox";
-import { CaptureRateLimitError, captureDetail } from "../../services/bridge-capture.js";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
@@ -38,6 +37,7 @@ import { db } from "../../db/client.js";
 import { bridgeTokens } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { requireBridgeToken } from "../../middleware/bridge-auth.js";
+import { CaptureRateLimitError, captureDetail } from "../../services/bridge-capture.js";
 import { claimNextForApiKey, getJobForApiKey, transition } from "../../services/bridge-jobs.js";
 import { bridgeTaskForOrder } from "../../services/ebay/bridge/tasks.js";
 import { reconcileBridgeResult } from "../../services/forwarder/reconcile.js";

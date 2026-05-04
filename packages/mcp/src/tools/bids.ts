@@ -1,6 +1,6 @@
 /**
  * Auction bidding tools — backed by `/v1/bids`. Use sparingly: BIN
- * via `flipagent_purchases_create` is the default flipagent flow;
+ * via `flipagent_create_purchase` is the default flipagent flow;
  * bidding is for items only available at auction.
  */
 
