@@ -1,0 +1,624 @@
+{
+  "ranAt": "2026-05-03T18:57:43.548Z",
+  "summary": {
+    "specCount": 56,
+    "specEndpointCount": 456,
+    "wrapperCallSites": 217,
+    "matched": 178,
+    "unmatched": 39,
+    "diffsWithMismatch": 17
+  },
+  "diffs": [
+    {
+      "method": "GET",
+      "path": "/commerce/catalog/v1_beta/change_request/{X}",
+      "source": "packages/api/src/services/catalog-change.ts:47",
+      "specFile": "references/ebay-mcp/docs/_mirror/commerce_catalog_v1_beta_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "status",
+        "createdDate"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/commerce/feedback/v1/feedback",
+      "source": "packages/api/src/services/ebay/rest/feedback.ts:123",
+      "specFile": "references/ebay-mcp/docs/sell-apps/communication/commerce_feedback_v1_beta_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "feedback"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/commerce/message/v1/conversation/{X}",
+      "source": "packages/api/src/services/ebay/rest/messages.ts:157",
+      "specFile": "references/ebay-mcp/docs/_mirror/commerce_message_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "conversationId",
+        "referenceId",
+        "referenceType",
+        "unreadCount"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/commerce/message/v1/send_message",
+      "source": "packages/api/src/services/ebay/rest/messages.ts:216",
+      "specFile": "references/ebay-mcp/docs/_mirror/commerce_message_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "conversationId"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/commerce/notification/v1/subscription/{X}",
+      "source": "packages/api/src/services/notification-subs.ts:45",
+      "specFile": "references/ebay-mcp/docs/_mirror/commerce_notification_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "filterExpression"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/commerce/notification/v1/subscription/{X}/filter/{X}",
+      "source": "packages/api/src/services/notification-subs.ts:267",
+      "specFile": "references/ebay-mcp/docs/sell-apps/communication/commerce_notification_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "filterExpression"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/commerce/vero/v1/vero_reason_code/{X}",
+      "source": "packages/api/src/services/vero.ts:69",
+      "specFile": "references/ebay-mcp/docs/sell-apps/other-apis/commerce_vero_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "description"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/commerce/vero/v1/vero_report_items",
+      "source": "packages/api/src/services/vero.ts:106",
+      "specFile": "references/ebay-mcp/docs/sell-apps/other-apis/commerce_vero_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "veroReportItems"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/commerce/vero/v1/vero_report/{X}",
+      "source": "packages/api/src/services/vero.ts:84",
+      "specFile": "references/ebay-mcp/docs/sell-apps/other-apis/commerce_vero_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "veroReportItems",
+        "createdAt"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/developer/key_management/v1/signing_key/{X}",
+      "source": "packages/api/src/services/signing-keys.ts:55",
+      "specFile": "references/ebay-mcp/docs/_mirror/developer_key_management_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "createdAt",
+        "expiresAt"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/sell/account/v1/bulk_create_or_replace_sales_tax",
+      "source": "packages/api/src/services/seller-account.ts:148",
+      "specFile": "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "responses"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sell/analytics/v1/customer_service_metric/{X}/{X}",
+      "source": "packages/api/src/services/analytics.ts:125",
+      "specFile": "references/ebay-mcp/docs/_mirror/sell_analytics_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "metricKey",
+        "cycle",
+        "serviceMetrics"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/sell/logistics/v1_beta/shipment/create_from_shipping_quote",
+      "source": "packages/api/src/services/labels.ts:51",
+      "specFile": "references/ebay-mcp/docs/_mirror/sell_logistics_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "trackingNumber"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sell/marketing/v1/ad_report_metadata",
+      "source": "packages/api/src/services/marketing/reports.ts:137",
+      "specFile": "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "dimensions",
+        "metrics"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sell/marketing/v1/item_promotion/{X}",
+      "source": "packages/api/src/services/marketing/promotions.ts:191",
+      "specFile": "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "discountAmount",
+        "discountPercent",
+        "categoryIds",
+        "minOrderValue",
+        "maxDiscountValue"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sell/marketing/v1/promotion/{X}/get_listing_set",
+      "source": "packages/api/src/services/marketing/promotions.ts:271",
+      "specFile": "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "listingIds"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/sell/negotiation/v1/send_offer_to_interested_buyers",
+      "source": "packages/api/src/services/offers.ts:53",
+      "specFile": "references/ebay-mcp/docs/_mirror/sell_negotiation_v1_oas3.json",
+      "missingRequired": [],
+      "sendUnknown": [],
+      "respUnknown": [
+        "offerSequenceId",
+        "offerCreationStatus"
+      ]
+    }
+  ],
+  "unmatched": [
+    {
+      "source": "packages/api/src/services/charities.ts:80",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "charityOrgId",
+        "ein",
+        "name",
+        "mission",
+        "description",
+        "logo",
+        "websiteUrl"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/disputes/operations.ts:56",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/disputes/operations.ts:88",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/disputes/operations.ts:128",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "revision",
+        "paymentDisputeId"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/marketing/reports.ts:59",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "tasks"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/marketing/reports.ts:83",
+      "method": "POST",
+      "path": "",
+      "requestBodyKeys": [
+        "reportStartDate",
+        "reportEndDate",
+        "dimensions",
+        "reportMetrics"
+      ],
+      "responseKeys": [
+        "reportTaskId"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/marketplace-meta/operations.ts:101",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/media.ts:26",
+      "method": "POST",
+      "path": "",
+      "requestBodyKeys": [
+        "type"
+      ],
+      "responseKeys": [
+        "mediaId",
+        "uploadUrl",
+        "uploadHeaders",
+        "expirationDate"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/policies.ts:120",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "returnPolicies"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/policies.ts:127",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "paymentPolicies"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/policies.ts:134",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "fulfillmentPolicies"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/policies.ts:154",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "returnPolicyId",
+        "name",
+        "description",
+        "marketplaceId",
+        "returnsAccepted",
+        "returnPeriod",
+        "refundMethod",
+        "returnShippingCostPayer"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/policies.ts:160",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "paymentPolicyId",
+        "name",
+        "description",
+        "marketplaceId",
+        "immediatePay",
+        "paymentMethods"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/policies.ts:165",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "fulfillmentPolicyId",
+        "name",
+        "description",
+        "marketplaceId",
+        "handlingTime",
+        "freightShipping",
+        "shippingOptions"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/products.ts:107",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "epid",
+        "title",
+        "description",
+        "brand",
+        "mpn",
+        "gtin",
+        "ean",
+        "upc",
+        "image",
+        "additionalImages",
+        "aspects",
+        "primaryCategoryId",
+        "productWebUrl"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/products.ts:117",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "epid",
+        "title",
+        "description",
+        "brand",
+        "mpn",
+        "gtin",
+        "ean",
+        "upc",
+        "image",
+        "additionalImages",
+        "aspects",
+        "primaryCategoryId",
+        "productWebUrl"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/products.ts:195",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/products.ts:201",
+      "method": "GET",
+      "path": "",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/disputes/operations.ts:141",
+      "method": "POST",
+      "path": "{X}/{X}",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/disputes/operations.ts:158",
+      "method": "POST",
+      "path": "{X}/{X}",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/feeds.ts:79",
+      "method": "GET",
+      "path": "{X}/{X}",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "tasks"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/feeds.ts:101",
+      "method": "POST",
+      "path": "{X}/{X}",
+      "requestBodyKeys": [
+        "feedType",
+        "schemaVersion"
+      ],
+      "responseKeys": [
+        "taskId"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/marketing/reports.ts:73",
+      "method": "GET",
+      "path": "{X}/{X}",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "reportTaskId",
+        "status",
+        "reportStartDate",
+        "reportEndDate",
+        "reportName",
+        "dimensions",
+        "reportMetrics",
+        "reportTaskCreationDate",
+        "reportTaskCompletionDate",
+        "reportHref"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/policies-write.ts:112",
+      "method": "PUT",
+      "path": "{X}/{X}",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/policies-write.ts:123",
+      "method": "DELETE",
+      "path": "{X}/{X}",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/feeds.ts:91",
+      "method": "GET",
+      "path": "{X}/{X}/{X}",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "taskId",
+        "feedType",
+        "schemaVersion",
+        "status",
+        "uploadUrl",
+        "downloadUrl",
+        "creationDate",
+        "completionDate"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/disputes/operations.ts:216",
+      "method": "GET",
+      "path": "{X}/activity",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "activity"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/purchases/orchestrate.ts:205",
+      "method": "POST",
+      "path": "/buy/order/v1/checkout_session/{X}/coupon",
+      "requestBodyKeys": [
+        "couponCode"
+      ],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/purchases/orchestrate.ts:212",
+      "method": "DELETE",
+      "path": "/buy/order/v1/checkout_session/{X}/coupon",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/purchases/orchestrate.ts:183",
+      "method": "POST",
+      "path": "/buy/order/v1/checkout_session/{X}/payment_instrument",
+      "requestBodyKeys": [
+        "paymentInstruments"
+      ],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/purchases/orchestrate.ts:168",
+      "method": "POST",
+      "path": "/buy/order/v1/checkout_session/{X}/shipping_address",
+      "requestBodyKeys": [
+        "shippingAddress"
+      ],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/media.ts:41",
+      "method": "GET",
+      "path": "/commerce/media/v1_beta/{X}/{X}",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "status",
+        "url"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/seller-account.ts:304",
+      "method": "POST",
+      "path": "/sell/account/v1/fulfillment_policy/{X}/transfer",
+      "requestBodyKeys": [
+        "targetSellerUsername"
+      ],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/seller-account.ts:75",
+      "method": "GET",
+      "path": "/sell/account/v1/payments_program/{X}/EBAY_PAYMENTS",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "status",
+        "programType"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/money/operations.ts:127",
+      "method": "GET",
+      "path": "/sell/finances/v1/transfer",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "transfers",
+        "total"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/locations.ts:115",
+      "method": "POST",
+      "path": "/sell/inventory/v1/location/{X}/{X}",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/marketing/ads.ts:163",
+      "method": "POST",
+      "path": "/sell/marketing/v1/ad_campaign/{X}/{X}",
+      "requestBodyKeys": [],
+      "responseKeys": []
+    },
+    {
+      "source": "packages/api/src/services/store.ts:32",
+      "method": "GET",
+      "path": "/sell/stores/v2/store-categories",
+      "requestBodyKeys": [],
+      "responseKeys": [
+        "storeCategories"
+      ]
+    },
+    {
+      "source": "packages/api/src/services/store.ts:47",
+      "method": "POST",
+      "path": "/sell/stores/v2/store-categories",
+      "requestBodyKeys": [
+        "storeCategories"
+      ],
+      "responseKeys": []
+    }
+  ]
+}

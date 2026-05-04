@@ -1,0 +1,1696 @@
+{
+  "matched": [
+    "DELETE /commerce/notification/v1/destination/{X}",
+    "DELETE /commerce/notification/v1/subscription/{X}",
+    "DELETE /commerce/notification/v1/subscription/{X}/filter/{X}",
+    "DELETE /sell/account/v1/sales_tax/{X}/{X}",
+    "DELETE /sell/feed/v1/schedule/{X}",
+    "DELETE /sell/inventory/v1/inventory_item/{X}",
+    "DELETE /sell/inventory/v1/inventory_item/{X}/product_compatibility",
+    "DELETE /sell/inventory/v1/inventory_item_group/{X}",
+    "DELETE /sell/inventory/v1/listing/{X}/sku/{X}/locations",
+    "DELETE /sell/inventory/v1/location/{X}",
+    "DELETE /sell/marketing/v1/item_price_markdown/{X}",
+    "DELETE /sell/marketing/v1/item_promotion/{X}",
+    "GET /buy/browse/v1/shopping_cart",
+    "GET /buy/deal/v1/deal_item",
+    "GET /buy/deal/v1/event/{X}",
+    "GET /buy/deal/v1/event_item",
+    "GET /buy/feed/v1_beta/item",
+    "GET /buy/feed/v1_beta/item_group",
+    "GET /buy/feed/v1_beta/item_snapshot",
+    "GET /buy/marketing/v1_beta/merchandised_product",
+    "GET /buy/marketing/v1_beta/merchandised_product/get_also_bought_products",
+    "GET /buy/marketing/v1_beta/merchandised_product/get_also_viewed_products",
+    "GET /buy/offer/v1_beta/bidding/{X}",
+    "GET /buy/order/v1/checkout_session/{X}",
+    "GET /buy/order/v1/guest_purchase_order/{X}",
+    "GET /buy/order/v1/purchase_order/{X}",
+    "GET /commerce/catalog/v1_beta/change_request",
+    "GET /commerce/catalog/v1_beta/change_request/{X}",
+    "GET /commerce/catalog/v1_beta/get_product_metadata",
+    "GET /commerce/catalog/v1_beta/get_product_metadata_for_categories",
+    "GET /commerce/charity/v1/charity_org",
+    "GET /commerce/feedback/v1/awaiting_feedback",
+    "GET /commerce/feedback/v1/feedback",
+    "GET /commerce/feedback/v1/feedback_rating_summary",
+    "GET /commerce/media/v1_beta/video/{X}",
+    "GET /commerce/message/v1/conversation",
+    "GET /commerce/message/v1/conversation/{X}",
+    "GET /commerce/notification/v1/config",
+    "GET /commerce/notification/v1/destination",
+    "GET /commerce/notification/v1/destination/{X}",
+    "GET /commerce/notification/v1/public_key/{X}",
+    "GET /commerce/notification/v1/subscription",
+    "GET /commerce/notification/v1/subscription/{X}",
+    "GET /commerce/notification/v1/subscription/{X}/filter/{X}",
+    "GET /commerce/notification/v1/topic",
+    "GET /commerce/notification/v1/topic/{X}",
+    "GET /commerce/taxonomy/v1/category_tree/{X}",
+    "GET /commerce/taxonomy/v1/category_tree/{X}/fetch_item_aspects",
+    "GET /commerce/taxonomy/v1/category_tree/{X}/get_category_subtree",
+    "GET /commerce/taxonomy/v1/category_tree/{X}/get_category_suggestions",
+    "GET /commerce/taxonomy/v1/category_tree/{X}/get_compatibility_properties",
+    "GET /commerce/taxonomy/v1/category_tree/{X}/get_item_aspects_for_category",
+    "GET /commerce/taxonomy/v1/get_default_category_tree_id",
+    "GET /commerce/vero/v1/vero_reason_code",
+    "GET /commerce/vero/v1/vero_reason_code/{X}",
+    "GET /commerce/vero/v1/vero_report/{X}",
+    "GET /commerce/vero/v1/vero_report_items",
+    "GET /developer/analytics/v1_beta/rate_limit",
+    "GET /developer/analytics/v1_beta/user_rate_limit",
+    "GET /developer/key_management/v1/signing_key",
+    "GET /developer/key_management/v1/signing_key/{X}",
+    "GET /post-order/v2/return/preference",
+    "GET /post-order/v2/return/{X}/check_label_print_eligibility",
+    "GET /post-order/v2/return/{X}/files",
+    "GET /post-order/v2/return/{X}/get_shipping_label",
+    "GET /post-order/v2/return/{X}/tracking",
+    "GET /sell/account/v1/advertising_eligibility",
+    "GET /sell/account/v1/custom_policy",
+    "GET /sell/account/v1/fulfillment_policy",
+    "GET /sell/account/v1/kyc",
+    "GET /sell/account/v1/payment_policy",
+    "GET /sell/account/v1/privilege",
+    "GET /sell/account/v1/program/get_opted_in_programs",
+    "GET /sell/account/v1/rate_table",
+    "GET /sell/account/v1/return_policy",
+    "GET /sell/account/v1/sales_tax",
+    "GET /sell/account/v1/subscription",
+    "GET /sell/account/v2/payout_settings",
+    "GET /sell/account/v2/rate_table/{X}",
+    "GET /sell/analytics/v1/customer_service_metric/{X}/{X}",
+    "GET /sell/analytics/v1/seller_standards_profile/{X}/{X}",
+    "GET /sell/analytics/v1/traffic_report",
+    "GET /sell/compliance/v1/listing_violation",
+    "GET /sell/compliance/v1/listing_violation_summary",
+    "GET /sell/feed/v1/customer_service_metric_task",
+    "GET /sell/feed/v1/customer_service_metric_task/{X}",
+    "GET /sell/feed/v1/inventory_task",
+    "GET /sell/feed/v1/inventory_task/{X}",
+    "GET /sell/feed/v1/order_task",
+    "GET /sell/feed/v1/order_task/{X}",
+    "GET /sell/feed/v1/schedule",
+    "GET /sell/feed/v1/schedule/{X}",
+    "GET /sell/feed/v1/schedule_template",
+    "GET /sell/feed/v1/schedule_template/{X}",
+    "GET /sell/feed/v1/task",
+    "GET /sell/feed/v1/task/{X}",
+    "GET /sell/feed/v1/task/{X}/download_input_file",
+    "GET /sell/feed/v1/task/{X}/download_result_file",
+    "GET /sell/finances/v1/payout",
+    "GET /sell/finances/v1/payout_summary",
+    "GET /sell/finances/v1/seller_funds_summary",
+    "GET /sell/finances/v1/transaction",
+    "GET /sell/finances/v1/transaction_summary",
+    "GET /sell/fulfillment/v1/order",
+    "GET /sell/fulfillment/v1/order/{X}",
+    "GET /sell/fulfillment/v1/payment_dispute_summary",
+    "GET /sell/inventory/v1/inventory_item",
+    "GET /sell/inventory/v1/inventory_item/{X}",
+    "GET /sell/inventory/v1/inventory_item/{X}/product_compatibility",
+    "GET /sell/inventory/v1/inventory_item_group/{X}",
+    "GET /sell/inventory/v1/listing/{X}/sku/{X}/locations",
+    "GET /sell/inventory/v1/location",
+    "GET /sell/inventory/v1/location/{X}",
+    "GET /sell/inventory/v1/offer",
+    "GET /sell/inventory/v1/offer/{X}",
+    "GET /sell/logistics/v1_beta/shipment/{X}",
+    "GET /sell/logistics/v1_beta/shipment/{X}/download_label_file",
+    "GET /sell/logistics/v1_beta/shipping_quote/{X}",
+    "GET /sell/marketing/v1/ad_campaign",
+    "GET /sell/marketing/v1/ad_campaign/get_campaign_by_name",
+    "GET /sell/marketing/v1/ad_campaign/{X}/ad",
+    "GET /sell/marketing/v1/ad_campaign/{X}/ad_group",
+    "GET /sell/marketing/v1/ad_report_metadata",
+    "GET /sell/marketing/v1/item_price_markdown/{X}",
+    "GET /sell/marketing/v1/item_promotion/{X}",
+    "GET /sell/marketing/v1/promotion",
+    "GET /sell/marketing/v1/promotion/{X}/get_listing_set",
+    "GET /sell/metadata/v1/country/{X}/sales_tax_jurisdiction",
+    "GET /sell/metadata/v1/marketplace/{X}/get_return_policies",
+    "GET /sell/negotiation/v1/find_eligible_items",
+    "POST /buy/browse/v1/item/{X}/check_compatibility",
+    "POST /buy/browse/v1/item_summary/search_by_image",
+    "POST /buy/browse/v1/shopping_cart/add_item",
+    "POST /buy/browse/v1/shopping_cart/remove_item",
+    "POST /buy/browse/v1/shopping_cart/update_quantity",
+    "POST /buy/offer/v1_beta/bidding/{X}/place_proxy_bid",
+    "POST /buy/order/v1/checkout_session/initiate",
+    "POST /buy/order/v1/checkout_session/{X}/apply_coupon",
+    "POST /buy/order/v1/checkout_session/{X}/place_order",
+    "POST /buy/order/v1/checkout_session/{X}/remove_coupon",
+    "POST /buy/order/v1/checkout_session/{X}/update_payment_info",
+    "POST /buy/order/v1/checkout_session/{X}/update_quantity",
+    "POST /buy/order/v1/checkout_session/{X}/update_shipping_address",
+    "POST /buy/order/v1/checkout_session/{X}/update_shipping_option",
+    "POST /commerce/catalog/v1_beta/change_request",
+    "POST /commerce/feedback/v1/feedback",
+    "POST /commerce/feedback/v1/respond_to_feedback",
+    "POST /commerce/media/v1_beta/video",
+    "POST /commerce/media/v1_beta/video/{X}/upload",
+    "POST /commerce/message/v1/bulk_update_conversation",
+    "POST /commerce/message/v1/send_message",
+    "POST /commerce/message/v1/update_conversation",
+    "POST /commerce/notification/v1/destination",
+    "POST /commerce/notification/v1/subscription",
+    "POST /commerce/notification/v1/subscription/{X}/disable",
+    "POST /commerce/notification/v1/subscription/{X}/enable",
+    "POST /commerce/notification/v1/subscription/{X}/filter",
+    "POST /commerce/notification/v1/subscription/{X}/test",
+    "POST /commerce/vero/v1/vero_report",
+    "POST /developer/key_management/v1/signing_key",
+    "POST /developer/registration/v1/client/register",
+    "POST /post-order/v2/cancellation",
+    "POST /post-order/v2/cancellation/check_eligibility",
+    "POST /post-order/v2/cancellation/{X}/approve",
+    "POST /post-order/v2/cancellation/{X}/confirm",
+    "POST /post-order/v2/cancellation/{X}/reject",
+    "POST /post-order/v2/casemanagement/{X}/appeal",
+    "POST /post-order/v2/casemanagement/{X}/close",
+    "POST /post-order/v2/casemanagement/{X}/issue_refund",
+    "POST /post-order/v2/casemanagement/{X}/provide_return_address",
+    "POST /post-order/v2/casemanagement/{X}/provide_shipment_info",
+    "POST /post-order/v2/inquiry",
+    "POST /post-order/v2/inquiry/check_eligibility",
+    "POST /post-order/v2/inquiry/{X}/close",
+    "POST /post-order/v2/inquiry/{X}/confirm_refund",
+    "POST /post-order/v2/inquiry/{X}/escalate",
+    "POST /post-order/v2/inquiry/{X}/issue_refund",
+    "POST /post-order/v2/inquiry/{X}/provide_refund_info",
+    "POST /post-order/v2/inquiry/{X}/provide_shipment_info",
+    "POST /post-order/v2/inquiry/{X}/send_message",
+    "POST /post-order/v2/return",
+    "POST /post-order/v2/return/check_eligibility",
+    "POST /post-order/v2/return/estimate",
+    "POST /post-order/v2/return/preference",
+    "POST /post-order/v2/return/{X}/add_shipping_label",
+    "POST /post-order/v2/return/{X}/cancel",
+    "POST /post-order/v2/return/{X}/escalate",
+    "POST /post-order/v2/return/{X}/file/submit",
+    "POST /post-order/v2/return/{X}/file/upload",
+    "POST /post-order/v2/return/{X}/initiate_shipping_label",
+    "POST /post-order/v2/return/{X}/issue_refund",
+    "POST /post-order/v2/return/{X}/mark_as_received",
+    "POST /post-order/v2/return/{X}/mark_as_shipped",
+    "POST /post-order/v2/return/{X}/mark_refund_received",
+    "POST /post-order/v2/return/{X}/mark_refund_sent",
+    "POST /post-order/v2/return/{X}/send_message",
+    "POST /post-order/v2/return/{X}/send_shipping_label",
+    "POST /post-order/v2/return/{X}/void_shipping_label",
+    "POST /sell/account/v1/bulk_create_or_replace_sales_tax",
+    "POST /sell/account/v1/custom_policy",
+    "POST /sell/account/v1/program/opt_in",
+    "POST /sell/account/v1/program/opt_out",
+    "POST /sell/account/v2/payout_settings/update_percentage",
+    "POST /sell/account/v2/rate_table/{X}/update_shipping_cost",
+    "POST /sell/compliance/v1/suppress_listing_violation",
+    "POST /sell/feed/v1/customer_service_metric_task",
+    "POST /sell/feed/v1/inventory_task",
+    "POST /sell/feed/v1/order_task",
+    "POST /sell/feed/v1/schedule",
+    "POST /sell/feed/v1/task",
+    "POST /sell/feed/v1/task/{X}/upload_file",
+    "POST /sell/fulfillment/v1/order/{X}/issue_refund",
+    "POST /sell/fulfillment/v1/order/{X}/shipping_fulfillment",
+    "POST /sell/fulfillment/v1/payment_dispute/{X}/add_evidence",
+    "POST /sell/fulfillment/v1/payment_dispute/{X}/update_evidence",
+    "POST /sell/inventory/v1/bulk_create_or_replace_inventory_item",
+    "POST /sell/inventory/v1/bulk_get_inventory_item",
+    "POST /sell/inventory/v1/bulk_migrate_listing",
+    "POST /sell/inventory/v1/bulk_publish_offer",
+    "POST /sell/inventory/v1/bulk_update_price_quantity",
+    "POST /sell/inventory/v1/location/{X}",
+    "POST /sell/inventory/v1/location/{X}/update_location_details",
+    "POST /sell/inventory/v1/offer",
+    "POST /sell/inventory/v1/offer/get_listing_fees",
+    "POST /sell/inventory/v1/offer/publish_by_inventory_item_group",
+    "POST /sell/inventory/v1/offer/withdraw_by_inventory_item_group",
+    "POST /sell/inventory/v1/offer/{X}/publish",
+    "POST /sell/inventory/v1/offer/{X}/withdraw",
+    "POST /sell/listing/v1_beta/item_draft",
+    "POST /sell/logistics/v1_beta/shipment/create_from_shipping_quote",
+    "POST /sell/logistics/v1_beta/shipment/{X}/cancel",
+    "POST /sell/logistics/v1_beta/shipping_quote",
+    "POST /sell/marketing/v1/ad_campaign",
+    "POST /sell/marketing/v1/ad_campaign/{X}/ad/{X}/update_bid",
+    "POST /sell/marketing/v1/ad_campaign/{X}/ad_group",
+    "POST /sell/marketing/v1/ad_campaign/{X}/bulk_create_ads_by_inventory_reference",
+    "POST /sell/marketing/v1/ad_campaign/{X}/bulk_create_ads_by_listing_id",
+    "POST /sell/marketing/v1/ad_campaign/{X}/bulk_delete_ads_by_inventory_reference",
+    "POST /sell/marketing/v1/ad_campaign/{X}/bulk_delete_ads_by_listing_id",
+    "POST /sell/marketing/v1/ad_campaign/{X}/bulk_update_ads_bid_by_inventory_reference",
+    "POST /sell/marketing/v1/ad_campaign/{X}/bulk_update_ads_bid_by_listing_id",
+    "POST /sell/marketing/v1/ad_campaign/{X}/bulk_update_ads_status_by_listing_id",
+    "POST /sell/marketing/v1/ad_campaign/{X}/clone",
+    "POST /sell/marketing/v1/item_price_markdown",
+    "POST /sell/marketing/v1/item_promotion",
+    "POST /sell/marketing/v1/promotion/{X}/pause",
+    "POST /sell/marketing/v1/promotion/{X}/resume",
+    "POST /sell/metadata/v1/compatibilities/get_compatibilities_by_specification",
+    "POST /sell/metadata/v1/compatibilities/get_compatibility_property_names",
+    "POST /sell/metadata/v1/compatibilities/get_compatibility_property_values",
+    "POST /sell/metadata/v1/compatibilities/get_multi_compatibility_property_values",
+    "POST /sell/metadata/v1/compatibilities/get_product_compatibilities",
+    "POST /sell/negotiation/v1/send_offer_to_interested_buyers",
+    "POST /sell/recommendation/v1/find",
+    "PUT /commerce/notification/v1/config",
+    "PUT /commerce/notification/v1/destination/{X}",
+    "PUT /post-order/v2/return/{X}/update_tracking",
+    "PUT /sell/account/v1/sales_tax/{X}/{X}",
+    "PUT /sell/feed/v1/schedule/{X}",
+    "PUT /sell/inventory/v1/inventory_item/{X}",
+    "PUT /sell/inventory/v1/inventory_item/{X}/product_compatibility",
+    "PUT /sell/inventory/v1/inventory_item_group/{X}",
+    "PUT /sell/inventory/v1/listing/{X}/sku/{X}/locations",
+    "PUT /sell/inventory/v1/offer/{X}",
+    "PUT /sell/marketing/v1/item_price_markdown/{X}",
+    "PUT /sell/marketing/v1/item_promotion/{X}"
+  ],
+  "wrapperOnlyInsideSpec": [
+    {
+      "key": "DELETE /buy/order/v1/checkout_session/{X}/coupon",
+      "sources": [
+        "packages/api/src/services/purchases/orchestrate.ts:212"
+      ]
+    },
+    {
+      "key": "GET /buy/deal/v1/deal/{X}",
+      "sources": [
+        "packages/api/src/services/ebay/buy-aux.ts:66"
+      ]
+    },
+    {
+      "key": "GET /buy/feed/v1_beta/item_priority",
+      "sources": [
+        "packages/api/src/services/ebay/buy-aux.ts:48"
+      ]
+    },
+    {
+      "key": "GET /commerce/media/v1_beta/{X}/{X}",
+      "sources": [
+        "packages/api/src/services/media.ts:41"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/payments_program/{X}/EBAY_PAYMENTS",
+      "sources": [
+        "packages/api/src/services/seller-account.ts:75"
+      ]
+    },
+    {
+      "key": "GET /sell/feed/v1/schedule/get_template",
+      "sources": [
+        "packages/api/src/services/ebay/sell-feed.ts:229"
+      ]
+    },
+    {
+      "key": "GET /sell/finances/v1/transfer",
+      "sources": [
+        "packages/api/src/services/money/operations.ts:200"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/checkout_session/{X}/coupon",
+      "sources": [
+        "packages/api/src/services/purchases/orchestrate.ts:205"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/checkout_session/{X}/payment_instrument",
+      "sources": [
+        "packages/api/src/services/purchases/orchestrate.ts:183"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/checkout_session/{X}/shipping_address",
+      "sources": [
+        "packages/api/src/services/purchases/orchestrate.ts:168"
+      ]
+    },
+    {
+      "key": "POST /sell/account/v1/fulfillment_policy/{X}/transfer",
+      "sources": [
+        "packages/api/src/services/seller-account.ts:304"
+      ]
+    },
+    {
+      "key": "POST /sell/inventory/v1/location/{X}/{X}",
+      "sources": [
+        "packages/api/src/services/locations.ts:115"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/{X}",
+      "sources": [
+        "packages/api/src/services/marketing/ads.ts:163"
+      ]
+    }
+  ],
+  "wrapperOnlyNoSpec": [
+    {
+      "key": "GET /sell/stores/v2/store-categories",
+      "sources": [
+        "packages/api/src/services/store.ts:32"
+      ]
+    },
+    {
+      "key": "POST /sell/stores/v2/store-categories",
+      "sources": [
+        "packages/api/src/services/store.ts:47"
+      ]
+    }
+  ],
+  "specOnly": [
+    {
+      "key": "DELETE /post-order/v2/return/draft/{X}/file/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/return_oas3.json"
+      ]
+    },
+    {
+      "key": "DELETE /sell/account/v1/fulfillment_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "DELETE /sell/account/v1/location/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "DELETE /sell/account/v1/payment_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "DELETE /sell/account/v1/return_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "DELETE /sell/edelivery_international_shipping/v1/package/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "DELETE /sell/inventory/v1/offer/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_inventory_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/listing-management/sell_inventory_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "DELETE /sell/marketing/v1/ad_campaign/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "DELETE /sell/marketing/v1/ad_campaign/{X}/ad/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "DELETE /sell/marketing/v1/ad_report_task/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "DELETE /sell/marketing/v1/email_campaign/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /buy/browse/v1/item",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_browse_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /buy/browse/v1/item/get_item_by_legacy_id",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_browse_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /buy/browse/v1/item/get_items_by_item_group",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_browse_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /buy/browse/v1/item/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_browse_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /buy/browse/v1/item_summary/search",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_browse_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /buy/deal/v1/event",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_deal_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /buy/feed/v1_beta/product",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_feed_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /buy/marketplace_insights/v1_beta/item_sales/search",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_marketplace_insights_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /buy/order/v1/guest_checkout_session/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /buy/order/v1/proxy_guest_checkout_session/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /commerce/catalog/v1_beta/product/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/commerce_catalog_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /commerce/catalog/v1_beta/product_summary/search",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/commerce_catalog_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /commerce/charity/v1/charity_org/get_charity_org_by_legacy_id",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/commerce_charity_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /commerce/charity/v1/charity_org/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/commerce_charity_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /commerce/identity/v1/user",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/commerce_identity_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/commerce_identity_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /commerce/taxonomy/v1/category_tree/{X}/get_compatibility_property_values",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/commerce_taxonomy_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /post-order/v2/cancellation/search",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/cancellation_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /post-order/v2/cancellation/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/cancellation_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /post-order/v2/casemanagement/search",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/case_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /post-order/v2/casemanagement/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/case_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /post-order/v2/inquiry/search",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/inquiry_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /post-order/v2/inquiry/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/inquiry_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /post-order/v2/return/draft/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/return_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /post-order/v2/return/draft/{X}/files",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/return_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /post-order/v2/return/search",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/return_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /post-order/v2/return/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/return_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/country/{X}/sales_tax_jurisdiction",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/custom_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/fulfillment_policy/get_by_policy_name",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/fulfillment_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/location",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/location/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/payment_policy/get_by_policy_name",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/payment_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/payments_program/{X}/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/payments_program/{X}/{X}/onboarding",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/return_policy/get_by_policy_name",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/return_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/account/v1/sales_tax/{X}/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/analytics/v1/seller_standards_profile",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_analytics_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/analytics-and-report/sell_analytics_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/actual_costs",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/address_preference",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/agents",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/battery_qualifications",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/bundle/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/bundle/{X}/label",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/consign_preference",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/dropoff_sites",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/handover_sheet",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/labels",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/package/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/package/{X}/item",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/services",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/edelivery_international_shipping/v1/tracking",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/feed/v1/schedule/{X}/download_result_file",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_feed_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/finances/v1/payout/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_finances_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/finances/v1/transfer/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_finances_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/fulfillment/v1/order/{X}/shipping_fulfillment",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_fulfillment_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/order-management/sell_fulfillment_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/fulfillment/v1/order/{X}/shipping_fulfillment/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_fulfillment_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/order-management/sell_fulfillment_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/fulfillment/v1/payment_dispute/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_fulfillment_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/order-management/sell_fulfillment_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/fulfillment/v1/payment_dispute/{X}/activity",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_fulfillment_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/order-management/sell_fulfillment_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/fulfillment/v1/payment_dispute/{X}/fetch_evidence_content",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_fulfillment_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/order-management/sell_fulfillment_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_campaign/find_campaign_by_ad_reference",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_campaign/suggest_budget",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_campaign/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_campaign/{X}/ad/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_campaign/{X}/ad_group/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_campaign/{X}/get_ads_by_inventory_reference",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_campaign/{X}/keyword",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_campaign/{X}/keyword/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_campaign/{X}/suggest_items",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_report/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_report_metadata/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_report_task",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/ad_report_task/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/email_campaign",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/email_campaign/audience",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/email_campaign/report",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/email_campaign/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/email_campaign/{X}/email_preview",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/negative_keyword",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/negative_keyword/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/promotion_report",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/marketing/v1/promotion_summary_report",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_automotive_parts_compatibility_policies",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_metadata_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_category_policies",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_classified_ad_policies",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_currencies",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_extended_producer_responsibility_policies",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_metadata_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_hazardous_materials_labels",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_metadata_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_item_condition_policies",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_metadata_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_listing_structure_policies",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_metadata_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_listing_type_policies",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_motors_listing_policies",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_negotiated_price_policies",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_metadata_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_product_safety_labels",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_regulatory_policies",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_shipping_policies",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "GET /sell/metadata/v1/marketplace/{X}/get_site_visibility_policies",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/listing-metadata/sell_metadata_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/guest_checkout_session/initiate",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/guest_checkout_session/{X}/apply_coupon",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/guest_checkout_session/{X}/initiate_payment",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/guest_checkout_session/{X}/place_order",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/guest_checkout_session/{X}/remove_coupon",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/guest_checkout_session/{X}/update_payment_info",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/guest_checkout_session/{X}/update_quantity",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/guest_checkout_session/{X}/update_shipping_address",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/guest_checkout_session/{X}/update_shipping_option",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/proxy_guest_checkout_session/initiate",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/proxy_guest_checkout_session/{X}/apply_coupon",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/proxy_guest_checkout_session/{X}/place_order",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/proxy_guest_checkout_session/{X}/remove_coupon",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/proxy_guest_checkout_session/{X}/update_payment_info",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/proxy_guest_checkout_session/{X}/update_quantity",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/proxy_guest_checkout_session/{X}/update_shipping_address",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /buy/order/v1/proxy_guest_checkout_session/{X}/update_shipping_option",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/buy_order_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /commerce/translation/v1_beta/translate",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/commerce_translation_v1_beta_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/commerce_translation_v1_beta_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /post-order/v2/return/draft",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/return_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /post-order/v2/return/draft/{X}/file/upload",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/return_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /post-order/v2/return/{X}/decide",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/return_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/account/v1/fulfillment_policy",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/account/v1/location/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/account/v1/location/{X}/disable",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/account/v1/location/{X}/enable",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/account/v1/location/{X}/update_location_details",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/account/v1/payment_policy",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/account/v1/return_policy",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/address_preference",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/bundle",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/bundle/{X}/cancel",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/complaint",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/consign_preference",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/package",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/package/bulk_cancel_packages",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/package/bulk_confirm_packages",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/package/bulk_delete_packages",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/package/{X}/cancel",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/package/{X}/clone",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/edelivery_international_shipping/v1/package/{X}/confirm",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_edelivery_international_shipping_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/fulfillment/v1/payment_dispute/{X}/accept",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_fulfillment_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/order-management/sell_fulfillment_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/fulfillment/v1/payment_dispute/{X}/contest",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_fulfillment_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/order-management/sell_fulfillment_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/fulfillment/v1/payment_dispute/{X}/upload_evidence_file",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_fulfillment_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/order-management/sell_fulfillment_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/inventory/v1/bulk_create_offer",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_inventory_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/listing-management/sell_inventory_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/inventory/v1/location/{X}/disable",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_inventory_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/listing-management/sell_inventory_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/inventory/v1/location/{X}/enable",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_inventory_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/listing-management/sell_inventory_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/setup_quick_campaign",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/suggest_max_cpc",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/ad",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/ad_group/{X}/suggest_bids",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/ad_group/{X}/suggest_keywords",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/bulk_create_keyword",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/bulk_update_ads_status",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/bulk_update_keyword",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/create_ads_by_inventory_reference",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/delete_ads_by_inventory_reference",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/end",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/keyword",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/launch",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/pause",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/resume",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/update_ad_rate_strategy",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/update_bidding_strategy",
+      "specs": [
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/update_campaign_budget",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_campaign/{X}/update_campaign_identification",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/ad_report_task",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/bulk_create_negative_keyword",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/bulk_update_negative_keyword",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/email_campaign",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "POST /sell/marketing/v1/negative_keyword",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "PUT /commerce/notification/v1/subscription/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/commerce_notification_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/communication/commerce_notification_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "PUT /post-order/v2/return/draft/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/return_oas3.json"
+      ]
+    },
+    {
+      "key": "PUT /sell/account/v1/custom_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "PUT /sell/account/v1/fulfillment_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "PUT /sell/account/v1/payment_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "PUT /sell/account/v1/return_policy/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_account_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/account-management/sell_account_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "PUT /sell/marketing/v1/ad_campaign/{X}/ad_group/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "PUT /sell/marketing/v1/ad_campaign/{X}/keyword/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "PUT /sell/marketing/v1/email_campaign/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    },
+    {
+      "key": "PUT /sell/marketing/v1/negative_keyword/{X}",
+      "specs": [
+        "references/ebay-mcp/docs/_mirror/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/markeitng-and-promotions/sell_marketing_v1_oas3.json",
+        "references/ebay-mcp/docs/sell-apps/other-apis/sell_marketing_v1_oas3.json"
+      ]
+    }
+  ],
+  "havingSpec": [
+    "/buy/browse/v1",
+    "/buy/deal/v1",
+    "/buy/feed/v1_beta",
+    "/buy/marketing/v1_beta",
+    "/buy/marketplace_insights/v1_beta",
+    "/buy/offer/v1_beta",
+    "/buy/order/v1",
+    "/commerce/catalog/v1_beta",
+    "/commerce/charity/v1",
+    "/commerce/feedback/v1",
+    "/commerce/identity/v1",
+    "/commerce/media/v1_beta",
+    "/commerce/message/v1",
+    "/commerce/notification/v1",
+    "/commerce/taxonomy/v1",
+    "/commerce/translation/v1_beta",
+    "/commerce/vero/v1",
+    "/sell/account/v1",
+    "/sell/account/v2",
+    "/sell/analytics/v1",
+    "/sell/compliance/v1",
+    "/sell/edelivery_international_shipping/v1",
+    "/sell/feed/v1",
+    "/sell/finances/v1",
+    "/sell/fulfillment/v1",
+    "/sell/inventory/v1",
+    "/sell/listing/v1_beta",
+    "/sell/logistics/v1_beta",
+    "/sell/marketing/v1",
+    "/sell/metadata/v1",
+    "/sell/negotiation/v1",
+    "/sell/recommendation/v1"
+  ],
+  "summary": {
+    "specCount": 56,
+    "specEndpointCount": 752,
+    "wrapperPathCount": 286,
+    "matched": 266,
+    "wrapperOnlyInsideSpec": 13,
+    "wrapperOnlyNoSpec": 2,
+    "specOnly": 190
+  }
+}

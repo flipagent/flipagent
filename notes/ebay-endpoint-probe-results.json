@@ -1,0 +1,662 @@
+{
+  "probedAt": "2026-05-03T05:02:24.392Z",
+  "apiKeyId": "a3b8ec7b-9593-41c2-8979-957cc7317dd5",
+  "results": [
+    {
+      "tag": "account",
+      "method": "GET",
+      "path": "/sell/account/v1/privilege",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "sellingLimit": "<…>",
+        "sellerRegistrationCompleted": "<…>"
+      }
+    },
+    {
+      "tag": "account",
+      "method": "GET",
+      "path": "/sell/account/v1/kyc",
+      "host": "https://api.ebay.com",
+      "status": 204
+    },
+    {
+      "tag": "account",
+      "method": "GET",
+      "path": "/sell/account/v1/subscription",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "total": "<…>",
+        "subscriptions": "<…>"
+      }
+    },
+    {
+      "tag": "account",
+      "method": "GET",
+      "path": "/sell/account/v1/payments_program/EBAY_US/EBAY_PAYMENTS",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "paymentsProgramType": "<…>",
+        "marketplaceId": "<…>",
+        "status": "<…>",
+        "wasPreviouslyOptedIn": "<…>"
+      }
+    },
+    {
+      "tag": "account",
+      "method": "GET",
+      "path": "/sell/account/v1/advertising_eligibility",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "advertisingEligibility": "<…>"
+      }
+    },
+    {
+      "tag": "account",
+      "method": "GET",
+      "path": "/sell/account/v1/program/get_opted_in_programs",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "programs": "<…>"
+      }
+    },
+    {
+      "tag": "account",
+      "method": "GET",
+      "path": "/sell/account/v1/rate_table",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "rateTables": "<…>"
+      }
+    },
+    {
+      "tag": "account",
+      "method": "GET",
+      "path": "/sell/account/v1/custom_policy",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "total": "<…>",
+        "customPolicies": "<…>"
+      }
+    },
+    {
+      "tag": "account",
+      "method": "GET",
+      "path": "/sell/account/v1/sales_tax?country_code=US",
+      "host": "https://api.ebay.com",
+      "status": 204
+    },
+    {
+      "tag": "inventory",
+      "method": "GET",
+      "path": "/sell/inventory/v1/inventory_item?limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "total": "<…>",
+        "size": "<…>"
+      }
+    },
+    {
+      "tag": "inventory",
+      "method": "GET",
+      "path": "/sell/inventory/v1/location?limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "locations": "<…>"
+      }
+    },
+    {
+      "tag": "inventory",
+      "method": "GET",
+      "path": "/sell/inventory/v1/inventory_item_group?limit=1",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 2002,
+      "message": "A resource (URI) associated with the request could not be resolved.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "inventory",
+      "method": "GET",
+      "path": "/sell/inventory/v1/offer?sku=__no_such__",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 25713,
+      "message": "This Offer is not available.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "fulfillment",
+      "method": "GET",
+      "path": "/sell/fulfillment/v1/order?limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "href": "<…>",
+        "total": "<…>",
+        "limit": "<…>",
+        "offset": "<…>",
+        "orders": "<…>"
+      }
+    },
+    {
+      "tag": "fulfillment",
+      "method": "GET",
+      "path": "/sell/fulfillment/v1/payment_dispute_summary?look_back_days=30",
+      "host": "https://apiz.ebay.com",
+      "status": 200,
+      "body": {
+        "total": "<…>",
+        "href": "<…>",
+        "limit": "<…>",
+        "offset": "<…>"
+      }
+    },
+    {
+      "tag": "marketing",
+      "method": "GET",
+      "path": "/sell/marketing/v1/ad_campaign?limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "campaigns": "<…>",
+        "href": "<…>",
+        "limit": "<…>",
+        "offset": "<…>",
+        "total": "<…>"
+      }
+    },
+    {
+      "tag": "marketing",
+      "method": "GET",
+      "path": "/sell/marketing/v1/ad_report_metadata",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "reportMetadata": "<…>"
+      }
+    },
+    {
+      "tag": "marketing",
+      "method": "GET",
+      "path": "/sell/marketing/v1/promotion?marketplace_id=EBAY_US&limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "href": "<…>",
+        "total": "<…>"
+      }
+    },
+    {
+      "tag": "marketing",
+      "method": "GET",
+      "path": "/sell/marketing/v1/promotion?marketplace_id=EBAY_US&promotion_type=MARKDOWN_SALE&limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "href": "<…>",
+        "total": "<…>"
+      }
+    },
+    {
+      "tag": "marketing",
+      "method": "GET",
+      "path": "/sell/marketing/v1/promotion_summary_report?marketplace_id=EBAY_US",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "baseSale": "<…>",
+        "promotionSale": "<…>",
+        "totalSale": "<…>",
+        "percentageSalesLift": "<…>",
+        "lastUpdated": "<…>"
+      }
+    },
+    {
+      "tag": "compliance",
+      "method": "GET",
+      "path": "/sell/compliance/v1/listing_violation_summary",
+      "host": "https://api.ebay.com",
+      "status": 204
+    },
+    {
+      "tag": "metadata",
+      "method": "GET",
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_return_policies",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "returnPolicies": "<…>"
+      }
+    },
+    {
+      "tag": "metadata",
+      "method": "GET",
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_listing_structure_policies",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "listingStructurePolicies": "<…>"
+      }
+    },
+    {
+      "tag": "metadata",
+      "method": "GET",
+      "path": "/sell/metadata/v1/country/US/sales_tax_jurisdiction",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "salesTaxJurisdictions": "<…>"
+      }
+    },
+    {
+      "tag": "recommendations",
+      "method": "POST",
+      "path": "/sell/recommendation/v1/find?marketplace_id=EBAY-US&limit=1",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 145105,
+      "message": "Invalid listing IDs {listingIds}.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "negotiation",
+      "method": "GET",
+      "path": "/sell/negotiation/v1/find_eligible_items",
+      "host": "https://api.ebay.com",
+      "status": 204
+    },
+    {
+      "tag": "stores",
+      "method": "GET",
+      "path": "/sell/stores/v1/store",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "message": "Insufficient permissions to fulfill the request.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "finances",
+      "method": "GET",
+      "path": "/sell/finances/v1/payout?limit=1",
+      "host": "https://apiz.ebay.com",
+      "status": 204
+    },
+    {
+      "tag": "finances",
+      "method": "GET",
+      "path": "/sell/finances/v1/payout_summary?filter=payoutDate:[2025-01-01T00:00:00.000Z..2026-05-02T00:00:00.000Z]",
+      "host": "https://apiz.ebay.com",
+      "status": 200,
+      "body": {
+        "payoutCount": "<…>",
+        "transactionCount": "<…>"
+      }
+    },
+    {
+      "tag": "finances",
+      "method": "GET",
+      "path": "/sell/finances/v1/transaction?limit=1",
+      "host": "https://apiz.ebay.com",
+      "status": 200,
+      "body": {
+        "href": "<…>",
+        "next": "<…>",
+        "limit": "<…>",
+        "offset": "<…>",
+        "transactions": "<…>",
+        "total": "<…>"
+      }
+    },
+    {
+      "tag": "finances",
+      "method": "GET",
+      "path": "/sell/finances/v1/transfer?limit=1",
+      "host": "https://apiz.ebay.com",
+      "status": 404,
+      "errorId": 2002,
+      "message": "A resource (URI) associated with the request could not be resolved.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "logistics",
+      "method": "GET",
+      "path": "/sell/logistics/v1_beta/shipment/__no_such__",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "message": "Insufficient permissions to fulfill the request.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "buy-order",
+      "method": "GET",
+      "path": "/buy/order/v2/checkout_session/__no_such__",
+      "host": "https://api.ebay.com",
+      "status": 404
+    },
+    {
+      "tag": "buy-offer",
+      "method": "POST",
+      "path": "/buy/offer/v1_beta/bidding/v123/place_proxy_bid",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "message": "Insufficient permissions to fulfill the request.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "buy-offer",
+      "method": "GET",
+      "path": "/buy/offer/v1_beta/bidding/v123",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "message": "Insufficient permissions to fulfill the request.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "identity",
+      "method": "GET",
+      "path": "/commerce/identity/v1/user/",
+      "host": "https://apiz.ebay.com",
+      "status": 200,
+      "body": {
+        "userId": "<…>",
+        "username": "<…>",
+        "accountType": "<…>",
+        "registrationMarketplaceId": "<…>",
+        "businessAccount": "<…>"
+      }
+    },
+    {
+      "tag": "message",
+      "method": "GET",
+      "path": "/commerce/message/v1/conversation",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "limit": "<…>",
+        "offset": "<…>",
+        "total": "<…>",
+        "href": "<…>",
+        "next": "<…>",
+        "conversations": "<…>"
+      }
+    },
+    {
+      "tag": "feedback",
+      "method": "GET",
+      "path": "/commerce/feedback/v1/feedback?user_id=sprd-shop&feedback_type=FEEDBACK_RECEIVED&filter=role:SELLER&limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "pagination": "<…>",
+        "feedbackEntries": "<…>"
+      }
+    },
+    {
+      "tag": "feedback",
+      "method": "GET",
+      "path": "/commerce/feedback/v1/awaiting_feedback?limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "pagination": "<…>",
+        "itemsAwaitingFeedbackCount": "<…>",
+        "lineItems": "<…>"
+      }
+    },
+    {
+      "tag": "notification",
+      "method": "GET",
+      "path": "/commerce/notification/v1/topic",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "total": "<…>",
+        "href": "<…>",
+        "limit": "<…>",
+        "topics": "<…>"
+      }
+    },
+    {
+      "tag": "notification",
+      "method": "GET",
+      "path": "/commerce/notification/v1/destination",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "total": "<…>",
+        "href": "<…>",
+        "limit": "<…>",
+        "destinations": "<…>"
+      }
+    },
+    {
+      "tag": "notification",
+      "method": "GET",
+      "path": "/commerce/notification/v1/subscription",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "total": "<…>",
+        "href": "<…>",
+        "limit": "<…>"
+      }
+    },
+    {
+      "tag": "notification",
+      "method": "GET",
+      "path": "/commerce/notification/v1/config",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "alertEmail": "<…>"
+      }
+    },
+    {
+      "tag": "translation",
+      "method": "POST",
+      "path": "/commerce/translation/v1_beta/translate",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "from": "<…>",
+        "to": "<…>",
+        "translations": "<…>"
+      }
+    },
+    {
+      "tag": "charity",
+      "method": "GET",
+      "path": "/commerce/charity/v1/charity_org?q=red+cross&limit=2",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "charityOrgs": "<…>",
+        "total": "<…>",
+        "href": "<…>",
+        "next": "<…>",
+        "limit": "<…>",
+        "offset": "<…>"
+      }
+    },
+    {
+      "tag": "charity",
+      "method": "GET",
+      "path": "/commerce/charity/v1/charity_org?registration_ids=53-0196605&limit=2",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "charityOrgs": "<…>",
+        "total": "<…>",
+        "href": "<…>",
+        "limit": "<…>",
+        "offset": "<…>"
+      }
+    },
+    {
+      "tag": "taxonomy",
+      "method": "GET",
+      "path": "/commerce/taxonomy/v1/get_default_category_tree_id?marketplace_id=EBAY_US",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "categoryTreeId": "<…>",
+        "categoryTreeVersion": "<…>"
+      }
+    },
+    {
+      "tag": "browse",
+      "method": "GET",
+      "path": "/buy/browse/v1/item_summary/search?q=ipad&limit=1",
+      "host": "https://api.ebay.com",
+      "status": 429,
+      "errorId": 2001,
+      "message": "The request limit has been reached for the resource.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "post-order",
+      "method": "POST",
+      "path": "/post-order/v2/cancellation/check_eligibility",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "eligible": "<…>",
+        "failureReason": "<…>",
+        "itemEligibilityResult": "<…>",
+        "eligibleCancelReason": "<…>"
+      }
+    },
+    {
+      "tag": "post-order",
+      "method": "GET",
+      "path": "/post-order/v2/return/search?limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "total": "<…>",
+        "paginationOutput": "<…>",
+        "countSummary": "<…>"
+      }
+    },
+    {
+      "tag": "post-order",
+      "method": "GET",
+      "path": "/post-order/v2/inquiry/search?limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "totalNumberOfInquiries": "<…>",
+        "paginationOutput": "<…>"
+      }
+    },
+    {
+      "tag": "post-order",
+      "method": "GET",
+      "path": "/post-order/v2/casemanagement/search?limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "members": "<…>",
+        "totalNumberOfCases": "<…>",
+        "paginationOutput": "<…>"
+      }
+    },
+    {
+      "tag": "post-order",
+      "method": "GET",
+      "path": "/post-order/v2/cancellation/search?limit=1",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "cancellations": "<…>",
+        "total": "<…>",
+        "paginationOutput": "<…>"
+      }
+    },
+    {
+      "tag": "feed",
+      "method": "GET",
+      "path": "/sell/feed/v1/inventory_task?feed_type=LMS_ACTIVE_INVENTORY_REPORT",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 160022,
+      "message": "You are not allowed to access this resource. Contact eBay Developer Technical Support for assistance.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "buy-feed",
+      "method": "GET",
+      "path": "/buy/feed/v1_beta/item",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "message": "Insufficient permissions to fulfill the request.",
+      "body": {
+        "errors": "<…>"
+      }
+    },
+    {
+      "tag": "analytics",
+      "method": "GET",
+      "path": "/sell/analytics/v1/seller_standards_profile/PROGRAM_US/CURRENT",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "standardsLevel": "<…>",
+        "program": "<…>",
+        "cycle": "<…>",
+        "evaluationReason": "<…>",
+        "metrics": "<…>",
+        "defaultProgram": "<…>"
+      }
+    },
+    {
+      "tag": "analytics",
+      "method": "GET",
+      "path": "/sell/analytics/v1/traffic_report?dimension=DAY&metric=LISTING_IMPRESSION_TOTAL&filter=marketplace_ids:%7BEBAY_US%7D,date_range:%5B20260401..20260408%5D",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "body": {
+        "header": "<…>",
+        "records": "<…>",
+        "warnings": "<…>",
+        "startDate": "<…>",
+        "endDate": "<…>",
+        "lastUpdatedDate": "<…>"
+      }
+    }
+  ]
+}

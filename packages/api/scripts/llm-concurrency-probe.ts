@@ -16,8 +16,10 @@ import { createGoogleProvider } from "../src/services/match/llm/google.js";
 import type { LlmProvider, LlmRequest } from "../src/services/match/llm/index.js";
 import { createOpenAiProvider } from "../src/services/match/llm/openai.js";
 
-const SWEEP = [1, 2, 4, 8, 12, 16, 24, 32];
-const ROUNDS_PER_N = 2;
+const SWEEP = process.env.SWEEP
+	? process.env.SWEEP.split(",").map((s) => Number.parseInt(s, 10))
+	: [1, 2, 4, 8, 12, 16, 24, 32];
+const ROUNDS_PER_N = process.env.ROUNDS_PER_N ? Number.parseInt(process.env.ROUNDS_PER_N, 10) : 2;
 const PROMPT: LlmRequest = {
 	system: "Return a 1-word answer only.",
 	user: [{ type: "text", text: "What's the capital of France?" }],

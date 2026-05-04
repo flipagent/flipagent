@@ -1,0 +1,811 @@
+{
+  "probedAt": "2026-05-03T05:11:55.944Z",
+  "apiKeyId": "a3b8ec7b-9593-41c2-8979-957cc7317dd5",
+  "results": [
+    {
+      "path": "/buy/browse/v1/item/v1%7C0%7C0",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 429,
+      "errorId": 2001,
+      "classification": "RATE_LIMIT_429",
+      "note": "The request limit has been reached for the resource."
+    },
+    {
+      "path": "/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=000000000000",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 429,
+      "errorId": 2001,
+      "classification": "RATE_LIMIT_429",
+      "note": "The request limit has been reached for the resource."
+    },
+    {
+      "path": "/buy/browse/v1/item/get_items_by_item_group?item_group_id=000000000000",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 429,
+      "errorId": 2001,
+      "classification": "RATE_LIMIT_429",
+      "note": "The request limit has been reached for the resource."
+    },
+    {
+      "path": "/buy/browse/v1/item_summary/search?q=ipad&limit=1",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 429,
+      "errorId": 2001,
+      "classification": "RATE_LIMIT_429",
+      "note": "The request limit has been reached for the resource."
+    },
+    {
+      "path": "/buy/marketplace_insights/v1_beta/item_sales/search?q=ipad&limit=1",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "classification": "SCOPE_OR_LR_1100",
+      "note": "Insufficient permissions to fulfill the request."
+    },
+    {
+      "path": "/buy/deal/v1/deal_item?limit=1",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "classification": "SCOPE_OR_LR_1100",
+      "note": "Insufficient permissions to fulfill the request."
+    },
+    {
+      "path": "/buy/deal/v1/event_item?limit=1",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "classification": "SCOPE_OR_LR_1100",
+      "note": "Insufficient permissions to fulfill the request."
+    },
+    {
+      "path": "/commerce/catalog/v1_beta/product_summary/search?q=ipad&limit=1",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "classification": "SCOPE_OR_LR_1100",
+      "note": "Insufficient permissions to fulfill the request."
+    },
+    {
+      "path": "/commerce/charity/v1/charity_org?q=red&limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/charity/v1/charity_org/302",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/identity/v1/user/",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/taxonomy/v1/get_default_category_tree_id?marketplace_id=EBAY_US",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/taxonomy/v1/category_tree/0",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/feedback/v1/feedback?user_id=sprd-shop&feedback_type=FEEDBACK_RECEIVED&filter=role:SELLER&limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/feedback/v1/awaiting_feedback?limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/message/v1/conversation?limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/notification/v1/topic",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/notification/v1/destination",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/notification/v1/subscription",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/notification/v1/config",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/commerce/notification/v1/public_key/__no_such__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 195001,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "The specified key id does not exist."
+    },
+    {
+      "path": "/sell/account/v1/privilege",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/account/v1/kyc",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 204,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/account/v1/subscription",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/account/v1/rate_table",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/account/v1/custom_policy",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/account/v1/sales_tax?country_code=US",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 204,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/account/v1/advertising_eligibility",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/account/v1/payments_program/EBAY_US/EBAY_PAYMENTS",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/account/v1/payments_program/EBAY_US/EBAY_PAYMENTS/onboarding",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/account/v1/program/get_opted_in_programs",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/account/v1/return_policy?marketplace_id=EBAY_US",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 20403,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "User is not eligible for Business Policy."
+    },
+    {
+      "path": "/sell/account/v1/payment_policy?marketplace_id=EBAY_US",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 20403,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "User is not eligible for Business Policy."
+    },
+    {
+      "path": "/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_US",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 20403,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "User is not eligible for Business Policy."
+    },
+    {
+      "path": "/sell/account/v1/return_policy/get_by_policy_name?marketplace_id=EBAY_US&name=__none__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 20001,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "User is not eligible for Business Policy."
+    },
+    {
+      "path": "/sell/account/v1/payment_policy/get_by_policy_name?marketplace_id=EBAY_US&name=__none__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 20001,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "User is not eligible for Business Policy."
+    },
+    {
+      "path": "/sell/account/v1/fulfillment_policy/get_by_policy_name?marketplace_id=EBAY_US&name=__none__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 20001,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "User is not eligible for Business Policy."
+    },
+    {
+      "path": "/sell/stores/v1/store",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "classification": "SCOPE_OR_LR_1100",
+      "note": "Insufficient permissions to fulfill the request."
+    },
+    {
+      "path": "/sell/stores/v2/store-categories",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 404,
+      "errorId": 2002,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "A resource (URI) associated with the request could not be resolved."
+    },
+    {
+      "path": "/sell/inventory/v1/inventory_item?limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/inventory/v1/inventory_item/__no_sku__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 25710,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "We didn't find the resource/entity you are requesting. Please verify the request"
+    },
+    {
+      "path": "/sell/inventory/v1/inventory_item/__no_sku__/product_compatibility",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 25710,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "We didn't find the resource/entity you are requesting. Please verify the request"
+    },
+    {
+      "path": "/sell/inventory/v1/inventory_item_group/__no_group__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 25705,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "The Inventory Item Group named __no_group__ could not be found or is not available in the system"
+    },
+    {
+      "path": "/sell/inventory/v1/location?limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/inventory/v1/location/__no_loc__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 25805,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "merchantLocationKey not found."
+    },
+    {
+      "path": "/sell/inventory/v1/offer?sku=__no_sku__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 25713,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "This Offer is not available."
+    },
+    {
+      "path": "/sell/inventory/v1/offer/__no_offer__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 25709,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "Invalid value for ."
+    },
+    {
+      "path": "/sell/inventory/v1/listing/__no_id__/sku/__no_sku__/locations",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 25904,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "Invalid listing ID or the listing does not belong to the seller."
+    },
+    {
+      "path": "/sell/fulfillment/v1/order?limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/fulfillment/v1/order/__no_order__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 32100,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "Invalid Order Id: '__no_order__'"
+    },
+    {
+      "path": "/sell/fulfillment/v1/order/__no_order__/shipping_fulfillment",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 32100,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "Invalid Order Id: '__no_order__'"
+    },
+    {
+      "path": "/sell/fulfillment/v1/payment_dispute/__no_dispute__",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 404,
+      "errorId": 33001,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "Invalid Payment Dispute Id"
+    },
+    {
+      "path": "/sell/fulfillment/v1/payment_dispute_summary?look_back_days=30",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/marketing/v1/ad_campaign?limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/marketing/v1/ad_campaign/__no_camp__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 35045,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "No campaign found for campaign id __no_camp__."
+    },
+    {
+      "path": "/sell/marketing/v1/ad_campaign/__no_camp__/ad",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 35045,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "No campaign found for campaign id __no_camp__."
+    },
+    {
+      "path": "/sell/marketing/v1/ad_campaign/__no_camp__/ad_group",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 35045,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "No campaign found for campaign id __no_camp__."
+    },
+    {
+      "path": "/sell/marketing/v1/ad_campaign/get_campaign_by_name?name=__none__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 500,
+      "errorId": 35001,
+      "classification": "SERVER_5XX",
+      "note": "There was a problem with an eBay internal system or process. Contact eBay Developer Technical Support for assistance."
+    },
+    {
+      "path": "/sell/marketing/v1/ad_report_metadata",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/marketing/v1/ad_report_task?limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/marketing/v1/promotion?marketplace_id=EBAY_US&limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/marketing/v1/promotion?marketplace_id=EBAY_US&promotion_type=MARKDOWN_SALE&limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/marketing/v1/promotion_summary_report?marketplace_id=EBAY_US",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/compliance/v1/listing_violation_summary",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 204,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/compliance/v1/listing_violation?compliance_type=PRODUCT_ADOPTION&limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 204,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_return_policies",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_listing_structure_policies",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_currencies",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_extended_producer_responsibility_policies",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_hazardous_materials_labels",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_motors_listing_policies?filter=categoryIds:%7B33707%7D",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 204,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_negotiated_price_policies",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_payment_policies",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 2002,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "A resource (URI) associated with the request could not be resolved."
+    },
+    {
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_product_adoption_policies",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 404,
+      "errorId": 2002,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "A resource (URI) associated with the request could not be resolved."
+    },
+    {
+      "path": "/sell/metadata/v1/marketplace/EBAY_US/get_return_policies",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/metadata/v1/country/US/sales_tax_jurisdiction",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/negotiation/v1/find_eligible_items",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 204,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/finances/v1/payout?limit=1",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 204,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/finances/v1/payout/__no_payout__",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 404,
+      "errorId": 135001,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "The payout id was not found."
+    },
+    {
+      "path": "/sell/finances/v1/payout_summary",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/finances/v1/transaction?limit=1",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/finances/v1/transaction_summary",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 400,
+      "errorId": 135011,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "Transaction status filter is mandatory."
+    },
+    {
+      "path": "/sell/finances/v1/transfer?limit=1",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 404,
+      "errorId": 2002,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "A resource (URI) associated with the request could not be resolved."
+    },
+    {
+      "path": "/sell/finances/v1/transfer/__no_transfer__",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 404,
+      "classification": "OTHER"
+    },
+    {
+      "path": "/sell/logistics/v1_beta/shipment/__no_shipment__",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "classification": "SCOPE_OR_LR_1100",
+      "note": "Insufficient permissions to fulfill the request."
+    },
+    {
+      "path": "/sell/analytics/v1/seller_standards_profile/PROGRAM_US/CURRENT",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/analytics/v1/customer_service_metric/ITEM_NOT_AS_DESCRIBED/CURRENT",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 54402,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "The specified marketplace ID is not a supported marketplace. For a complete list of the supported marketplace IDs, see the documentation."
+    },
+    {
+      "path": "/sell/analytics/v1/traffic_report?dimension=DAY&metric=LISTING_IMPRESSION_TOTAL&filter=marketplace_ids:%7BEBAY_US%7D,date_range:%5B20260401..20260408%5D",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/sell/feed/v1/inventory_task?feed_type=LMS_ACTIVE_INVENTORY_REPORT&limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 160022,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "You are not allowed to access this resource. Contact eBay Developer Technical Support for assistance."
+    },
+    {
+      "path": "/sell/feed/v1/order_task?limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 160004,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "You must submit either a 'feed_type' or 'schedule_id'."
+    },
+    {
+      "path": "/sell/feed/v1/customer_service_metric_task?limit=1",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "errorId": 160006,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "The 'feed_type'  is invalid."
+    },
+    {
+      "path": "/buy/order/v1/checkout_session/__no_session__",
+      "auth": "user",
+      "host": "https://apiz.ebay.com",
+      "status": 404,
+      "errorId": 2002,
+      "classification": "REACHABLE_4XX_WITH_ENVELOPE",
+      "note": "A resource (URI) associated with the request could not be resolved."
+    },
+    {
+      "path": "/buy/offer/v1_beta/bidding/v123",
+      "auth": "user",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "classification": "SCOPE_OR_LR_1100",
+      "note": "Insufficient permissions to fulfill the request."
+    },
+    {
+      "path": "/buy/feed/v1_beta/item?feed_scope=NEWLY_LISTED&category_id=11116&date=20260101",
+      "auth": "app",
+      "host": "https://api.ebay.com",
+      "status": 403,
+      "errorId": 1100,
+      "classification": "SCOPE_OR_LR_1100",
+      "note": "Insufficient permissions to fulfill the request."
+    },
+    {
+      "path": "/post-order/v2/return/search?limit=1",
+      "auth": "user-iaf",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/post-order/v2/inquiry/search?limit=1",
+      "auth": "user-iaf",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/post-order/v2/casemanagement/search?limit=1",
+      "auth": "user-iaf",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/post-order/v2/cancellation/search?limit=1",
+      "auth": "user-iaf",
+      "host": "https://api.ebay.com",
+      "status": 200,
+      "classification": "OK"
+    },
+    {
+      "path": "/post-order/v2/return/__no_return__",
+      "auth": "user-iaf",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "classification": "OTHER"
+    },
+    {
+      "path": "/post-order/v2/inquiry/__no_inquiry__",
+      "auth": "user-iaf",
+      "host": "https://api.ebay.com",
+      "status": 500,
+      "classification": "SERVER_5XX"
+    },
+    {
+      "path": "/post-order/v2/cancellation/__no_cancel__",
+      "auth": "user-iaf",
+      "host": "https://api.ebay.com",
+      "status": 400,
+      "classification": "OTHER"
+    }
+  ],
+  "buckets": {
+    "OK": 53,
+    "REACHABLE_4XX_WITH_ENVELOPE": 31,
+    "WRONG_PATH_OR_HOST_EMPTY_404": 0,
+    "SCOPE_OR_LR_1100": 8,
+    "AUTH_401": 0,
+    "RATE_LIMIT_429": 4,
+    "SERVER_5XX": 2,
+    "OTHER": 3
+  }
+}
