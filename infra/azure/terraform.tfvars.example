@@ -103,3 +103,11 @@ postgres_sku = "B_Standard_B1ms"
 # openai_model      = "gpt-5.4-mini"
 # google_api_key    = "..."
 # google_model      = "gemini-2.5-flash"
+
+# Agent surface (`/v1/agent/chat`) + Streamable HTTP MCP (`/mcp`).
+# Reuses `openai_api_key` above; only the agent-specific model id +
+# the public MCP URL are split out. Without `mcp_public_url` the agent
+# still chats but cannot call tools — set it to this api's external
+# `/mcp` endpoint so OpenAI's Responses API can reach the tool catalog.
+# agent_openai_model = "gpt-5.5"
+# mcp_public_url     = "https://api.flipagent.dev/mcp"
