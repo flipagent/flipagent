@@ -1,20 +1,73 @@
 /**
- * Billing routes (session-cookie auth — dashboard only):
- *   POST /v1/billing/checkout    — create Stripe Checkout Session for the user
- *   POST /v1/billing/portal      — Stripe Customer Portal session (manage card / cancel)
- *   POST /v1/billing/webhook     — Stripe → us; signature verified, no auth
+ * Billing routes:
+ *
+ *   Subscription (Stripe Checkout — collects card on first run):
+ *     POST /v1/billing/checkout              — create Checkout Session for tier upgrade
+ *     POST /v1/billing/portal                — Stripe Customer Portal (manage card / cancel)
+ *
+ *   Auto-recharge (off-session against the saved card — no manual fire,
+ *   no separate "buy credits now" surface; threshold-driven only):
+ *     GET  /v1/billing/quote                 — per-amount prices at caller's tier
+ *     GET  /v1/billing/auto-recharge         — current auto-recharge config
+ *     PUT  /v1/billing/auto-recharge         — enable/disable + set threshold + amount
+ *
+ *   Stripe → us:
+ *     POST /v1/billing/webhook               — signature-verified webhook receiver
+ *
+ * The actual charge fires from `requireApiKey` middleware
+ * (`maybeFireAutoRecharge`) when `creditsRemaining` drops below the
+ * user's threshold; routes here only manage configuration.
  */
 
-import { BillingCheckoutRequest, BillingCheckoutResponse, BillingWebhookResponse } from "@flipagent/types";
-import { Hono } from "hono";
+import {
+	BillingAutoRechargeConfig,
+	BillingAutoRechargeUpdateRequest,
+	BillingCheckoutRequest,
+	BillingCheckoutResponse,
+	BillingHistoryResponse,
+	BillingTopUpQuotesResponse,
+	BillingWebhookResponse,
+} from "@flipagent/types";
+import { eq } from "drizzle-orm";
+import { type Context, Hono } from "hono";
 import { describeRoute } from "hono-openapi";
+import type Stripe from "stripe";
+import type { Tier } from "../../auth/keys.js";
+import { defaultTopUpForTier, PACK_DENOMINATIONS, pricePerCreditUsd, topUpPriceCents } from "../../auth/limits.js";
 import { createCheckoutSession, createPortalSession } from "../../billing/checkout.js";
+import { listBillingHistory } from "../../billing/history.js";
 import { readStripeConfig } from "../../billing/stripe.js";
 import { handleEvent, verifyAndConstructEvent } from "../../billing/webhook.js";
+import { db } from "../../db/client.js";
+import { type User, user as userTable } from "../../db/schema.js";
 import { requireSession } from "../../middleware/session.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const billingRoute = new Hono();
+
+/**
+ * Top-up gate — `/quote` and the `enabled=true` path of PUT
+ * `/auto-recharge` require (a) a paid tier and (b) a saved card on
+ * file. Returns the resolved paid tier on success, or a 403 Response
+ * the route can return verbatim. One source of truth so the two
+ * surfaces can't drift.
+ */
+function requirePaidWithCard(c: Context, user: User): { tier: Exclude<Tier, "free"> } | Response {
+	const tier = user.tier as Tier;
+	if (tier === "free") {
+		return c.json(
+			{ error: "free_tier_no_card" as const, message: "Subscribe to a paid tier first to enable top-ups." },
+			403,
+		);
+	}
+	if (!user.stripeCustomerId) {
+		return c.json(
+			{ error: "no_card_on_file" as const, message: "No saved card. Subscribe via Stripe checkout first." },
+			403,
+		);
+	}
+	return { tier };
+}
 
 billingRoute.post(
 	"/checkout",
@@ -85,6 +138,175 @@ billingRoute.post(
 	},
 );
 
+billingRoute.get(
+	"/invoices",
+	describeRoute({
+		tags: ["Billing"],
+		summary: "Billing history — subscription invoices + top-up receipts",
+		description:
+			"Unified, newest-first list of Stripe invoices (recurring subscription bills) and standalone charges (auto-recharge top-ups). Each row carries a download URL — hosted invoice page for subscriptions, receipt URL for top-ups. Returns an empty list (200) for users without a Stripe customer record.",
+		responses: {
+			200: jsonResponse("History.", BillingHistoryResponse),
+			401: errorResponse("Not signed in."),
+			503: errorResponse("Stripe env not configured."),
+		},
+	}),
+	requireSession,
+	async (c) => {
+		const cfg = readStripeConfig();
+		if (!cfg) return c.json({ error: "billing_not_configured" as const }, 503);
+		const user = c.var.user;
+		try {
+			const transactions = await listBillingHistory(cfg, user.stripeCustomerId);
+			return c.json({ transactions });
+		} catch (err) {
+			console.error("[billing] invoices list failed:", err);
+			return c.json(
+				{ error: "history_failed" as const, message: err instanceof Error ? err.message : String(err) },
+				500,
+			);
+		}
+	},
+);
+
+billingRoute.get(
+	"/quote",
+	describeRoute({
+		tags: ["Billing"],
+		summary: "Top-up price catalog for the caller's tier",
+		description:
+			"Lists each catalogued top-up amount (5k/25k/100k credits) with the price in cents at the caller's current tier. Use this to render the dashboard's \"Top up\" dropdown without doing tier math on the frontend.",
+		responses: {
+			200: jsonResponse("Quotes.", BillingTopUpQuotesResponse),
+			401: errorResponse("Not signed in."),
+			403: errorResponse("Free tier — upgrade first."),
+			503: errorResponse("Stripe env not configured."),
+		},
+	}),
+	requireSession,
+	async (c) => {
+		if (!readStripeConfig()) {
+			return c.json({ error: "billing_not_configured" as const }, 503);
+		}
+		const gate = requirePaidWithCard(c, c.var.user);
+		if (gate instanceof Response) return gate;
+		const { tier } = gate;
+		const perCredit = pricePerCreditUsd(tier);
+		return c.json({
+			tier,
+			quotes: PACK_DENOMINATIONS.map((credits) => {
+				const priceCents = topUpPriceCents(tier, credits);
+				return {
+					credits,
+					priceCents,
+					priceDisplay: `$${(priceCents / 100).toFixed(2)}`,
+					perCreditUsd: perCredit,
+				};
+			}),
+		});
+	},
+);
+
+billingRoute.get(
+	"/auto-recharge",
+	describeRoute({
+		tags: ["Billing"],
+		summary: "Current auto-recharge config",
+		responses: {
+			200: jsonResponse("Config.", BillingAutoRechargeConfig),
+			401: errorResponse("Not signed in."),
+		},
+	}),
+	requireSession,
+	async (c) => {
+		const u = c.var.user as typeof c.var.user & {
+			autoRechargeEnabled?: boolean | null;
+			autoRechargeThreshold?: number | null;
+			autoRechargeTopup?: number | null;
+			lastAutoRechargeAt?: Date | string | null;
+		};
+		const lastAt = u.lastAutoRechargeAt
+			? typeof u.lastAutoRechargeAt === "string"
+				? u.lastAutoRechargeAt
+				: u.lastAutoRechargeAt.toISOString()
+			: null;
+		return c.json({
+			enabled: Boolean(u.autoRechargeEnabled),
+			thresholdCredits: u.autoRechargeThreshold ?? null,
+			topUpCredits: (u.autoRechargeTopup ?? null) as 5_000 | 25_000 | 100_000 | null,
+			lastRechargedAt: lastAt,
+		});
+	},
+);
+
+billingRoute.put(
+	"/auto-recharge",
+	describeRoute({
+		tags: ["Billing"],
+		summary: "Enable/disable + configure auto-recharge",
+		description:
+			"Threshold range: 100–50,000 credits. Top-up amount: one of 5k/25k/100k. Free-tier callers and users with no Stripe customer (no card on file) get 403 — auto-recharge requires a saved card from a prior subscription checkout.",
+		responses: {
+			200: jsonResponse("Updated.", BillingAutoRechargeConfig),
+			400: errorResponse("Validation failed."),
+			401: errorResponse("Not signed in."),
+			403: errorResponse("Free tier or no card on file — subscribe first."),
+		},
+	}),
+	requireSession,
+	tbBody(BillingAutoRechargeUpdateRequest),
+	async (c) => {
+		const body = c.req.valid("json");
+		const user = c.var.user;
+
+		if (body.enabled) {
+			// `tbBody(BillingAutoRechargeUpdateRequest)` already enforces
+			// thresholdCredits ∈ [100, 50_000]. `topUpCredits` isn't
+			// client-supplied — the server picks the tier default
+			// (`defaultTopUpForTier`) so the dashboard stays at a single
+			// threshold input. Operators can override by writing
+			// `auto_recharge_topup` directly.
+			const gate = requirePaidWithCard(c, user);
+			if (gate instanceof Response) return gate;
+			const topUp = defaultTopUpForTier(gate.tier);
+			await db
+				.update(userTable)
+				.set({
+					autoRechargeEnabled: true,
+					autoRechargeThreshold: body.thresholdCredits,
+					autoRechargeTopup: topUp,
+					updatedAt: new Date(),
+				})
+				.where(eq(userTable.id, user.id));
+			return c.json({
+				enabled: true,
+				thresholdCredits: body.thresholdCredits,
+				topUpCredits: topUp as 5_000 | 25_000 | 100_000,
+				lastRechargedAt: null,
+			});
+		}
+
+		// Disable path. Keep the threshold + topup columns null so the
+		// next enable starts from a fresh, explicit choice rather than
+		// a stale prior config.
+		await db
+			.update(userTable)
+			.set({
+				autoRechargeEnabled: false,
+				autoRechargeThreshold: null,
+				autoRechargeTopup: null,
+				updatedAt: new Date(),
+			})
+			.where(eq(userTable.id, user.id));
+		return c.json({
+			enabled: false,
+			thresholdCredits: null,
+			topUpCredits: null,
+			lastRechargedAt: null,
+		});
+	},
+);
+
 billingRoute.post(
 	"/webhook",
 	describeRoute({
@@ -108,7 +330,7 @@ billingRoute.post(
 			return c.json({ error: "missing_signature" as const }, 400);
 		}
 		const rawBody = await c.req.text();
-		let event: Awaited<ReturnType<typeof verifyAndConstructEvent>>;
+		let event: Stripe.Event;
 		try {
 			event = await verifyAndConstructEvent(cfg, rawBody, sig);
 		} catch (err) {

@@ -1,13 +1,20 @@
 /**
- * Stripe singleton + tier ↔ price-id mapping. All five env vars must be set
- * for billing to work — when any are missing, the routes return 503 with
- * a clear "billing not configured" error so the rest of the api stays up.
+ * Stripe singleton + tier ↔ price-id mapping. All five env vars must be
+ * set for billing to work — when any are missing, the routes return 503
+ * with a clear "billing not configured" error so the rest of the api
+ * stays up.
  *
  *   STRIPE_SECRET_KEY         sk_live_... or sk_test_...
  *   STRIPE_WEBHOOK_SECRET     whsec_...
  *   STRIPE_PRICE_HOBBY        price_... (recurring monthly — Hobby $19)
  *   STRIPE_PRICE_STANDARD     price_... (recurring monthly — Standard $99)
  *   STRIPE_PRICE_GROWTH       price_... (recurring monthly — Growth $399)
+ *
+ * One-time top-up purchases (manual packs + auto-recharge) don't use
+ * pre-created Stripe Prices — pricing is tier-aware (per-credit unit
+ * price varies by tier, see `auth/limits.ts:PER_CREDIT_USD`) so we
+ * construct `price_data` at checkout time. One source of truth in
+ * code, no SKU sprawl.
  */
 
 import Stripe from "stripe";

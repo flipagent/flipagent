@@ -38,7 +38,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { sendOpsEmail } from "../../auth/email.js";
 import { issueKey, revokeKey, type Tier } from "../../auth/keys.js";
-import { snapshotUsage, sumActiveCreditGrants, TIER_LIMITS, usageToWire } from "../../auth/limits.js";
+import { effectiveTier, snapshotUsage, sumActiveCreditGrants, TIER_LIMITS, usageToWire } from "../../auth/limits.js";
 import { config } from "../../config.js";
 import { db } from "../../db/client.js";
 import {
@@ -577,11 +577,25 @@ async function loadUserDetail(id: string) {
 			role: userTable.role,
 			emailVerified: userTable.emailVerified,
 			createdAt: userTable.createdAt,
+			subscriptionStatus: userTable.subscriptionStatus,
+			pastDueSince: userTable.pastDueSince,
+			autoRechargeEnabled: userTable.autoRechargeEnabled,
+			autoRechargeThreshold: userTable.autoRechargeThreshold,
+			autoRechargeTopup: userTable.autoRechargeTopup,
+			lastAutoRechargeAt: userTable.lastAutoRechargeAt,
 		})
 		.from(userTable)
 		.where(eq(userTable.id, id))
 		.limit(1);
 	if (!row) return null;
+
+	// Snapshot enforcement against the *effective* tier so admin sees
+	// the same numbers the api middleware actually applies.
+	const enforcedTier = effectiveTier({
+		tier: row.tier as Tier,
+		subscriptionStatus: row.subscriptionStatus,
+		pastDueSince: row.pastDueSince,
+	});
 
 	const [keys, grants, usage, lastSeenRow, bonusForList] = await Promise.all([
 		db
@@ -615,7 +629,7 @@ async function loadUserDetail(id: string) {
 			.from(creditGrants)
 			.where(eq(creditGrants.userId, id))
 			.orderBy(desc(creditGrants.createdAt)),
-		snapshotUsage({ apiKeyId: "", userId: id }, row.tier as Tier),
+		snapshotUsage({ apiKeyId: "", userId: id }, enforcedTier),
 		db
 			.select({ lastAt: max(usageEvents.createdAt) })
 			.from(usageEvents)
@@ -663,8 +677,22 @@ async function loadUserDetail(id: string) {
 			name: row.name,
 			image: row.image,
 			tier: row.tier,
+			// Tier the api enforces against — diverges from `tier` when
+			// the user has been past_due longer than the grace window.
+			// Admins reading "tier=standard, effectiveTier=free" know
+			// instantly that this is a card-failure downgrade, not an
+			// inconsistent state.
+			effectiveTier: enforcedTier,
 			role: row.role,
 			emailVerified: row.emailVerified,
+			subscriptionStatus: row.subscriptionStatus,
+			pastDueSince: row.pastDueSince ? row.pastDueSince.toISOString() : null,
+			autoRecharge: {
+				enabled: row.autoRechargeEnabled,
+				thresholdCredits: row.autoRechargeThreshold,
+				topUpCredits: row.autoRechargeTopup,
+				lastRechargedAt: row.lastAutoRechargeAt ? row.lastAutoRechargeAt.toISOString() : null,
+			},
 			activeKeyCount: keys.filter((k) => !k.revokedAt).length,
 			bonusCredits: bonusForList,
 			creditsUsed: usage.creditsUsed,

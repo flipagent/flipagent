@@ -1,22 +1,33 @@
 /**
- * Per-tier monthly credit budget + burst rate limits.
+ * Per-tier credit budget + burst rate limits + transport-aware pricing.
  *
  * One unit, credits, covers every metered endpoint. Each call charges a
- * fixed number of credits depending on what it does — search/scrape reads
- * are 1 credit, evaluate is 50 (matching the COGS ratio each implies).
- * Cached responses cost 0 credits — those incur no Oxylabs/LLM cost on
- * our side.
+ * fixed number of credits depending on what runs on our infrastructure:
  *
- * The pricing page advertises in credits; the dashboard renders the
- * usage gauge in credits; agents budget in credits. Same unit end to end.
+ *   /v1/evaluate                = 50 (composite — multi-scrape + LLM)
+ *   /v1/{items,products,categories,trends}
+ *      via source=scrape        = 2  (Oxylabs $/req)
+ *      via source=rest          = 1  (eBay REST roundtrip)
+ *      via source=bridge        = 0  (runs in user's own browser)
+ *      via source=trading       = 0  (eBay Trading XML — passthrough)
+ *      cache hit (fromCache)    = same as source — caches amortise across
+ *                                 callers; per-call charge reflects what
+ *                                 the data was worth to fetch
+ *   sell-side / forwarder /
+ *   ship / bridge / browser /
+ *   purchases / messages / etc. = 0  (passthrough — burst-only)
+ *
+ * Pricing page + dashboard + SDK all read from the **same** catalog
+ * exported here. Drift between displayed and enforced pricing is a
+ * support nightmare; never let those copies diverge.
  *
  * Burst limits (per-min, per-hour) are checked against raw call counts —
- * abuse protection, not pricing.
+ * abuse protection, not pricing. Apply equally to 0-credit endpoints.
  *
- * Counts via `select sum(<credits CASE>)` against `usage_events`. The
- * row already records the endpoint string, so credit cost is derivable
- * without a schema migration. Add a `credits_charged` column when the
- * CASE expression starts showing up in slow-query logs.
+ * Reads SUM `usage_events.credits_charged` — a plain integer column
+ * written at request time, replacing the legacy SQL CASE expression.
+ * Free-tier aggregation filters by `tier='free'` so a user who upgrades
+ * to hobby and back doesn't get a fresh 500-credit lifetime window.
  */
 
 import { and, eq, gt, gte, isNull, or, sql } from "drizzle-orm";
@@ -47,42 +58,245 @@ export interface TierLimits {
  * upgrade when you outgrow it" rather than "small monthly stipend forever".
  */
 export const TIER_LIMITS: Record<Tier, TierLimits> = {
-	free: { credits: 500, oneTime: true, burstPerMin: 10, burstPerHour: 200 },
+	free: { credits: 500, oneTime: true, burstPerMin: 30, burstPerHour: 200 },
 	hobby: { credits: 3_000, oneTime: false, burstPerMin: 30, burstPerHour: 1_200 },
 	standard: { credits: 100_000, oneTime: false, burstPerMin: 120, burstPerHour: 6_000 },
 	growth: { credits: 500_000, oneTime: false, burstPerMin: 600, burstPerHour: 25_000 },
 };
 
 /**
- * Credit cost per call, by endpoint. Mirrored on the pricing page —
- * any change here ships with copy updates there. Cache-hit short-circuits
- * to 0 (the middleware skips the usage_events insert in that case anyway,
- * so this is just a defensive lookup for any future code that calls this
- * directly).
+ * Tier-aware per-credit pricing for one-time top-ups (manual packs +
+ * auto-recharge). Higher tiers get a lower per-credit rate — same
+ * principle as committed-use discounts on cloud platforms. Free tier
+ * isn't listed because top-ups require a card on file (which only
+ * arrives via subscription); the route layer 403s a free caller before
+ * looking up a rate.
  *
- * Pricing principle: charge for what runs on our infrastructure.
- *   - `/v1/evaluate` carries scrape + LLM cost (50 credits).
- *   - `/v1/items`, `/v1/products`, `/v1/categories`, `/v1/trends` are
- *     scrape-capable reads; we price them as scrape (1 credit) even
- *     when REST happens to satisfy the call, because callers can't
- *     predict transport selection and most volume falls back to
- *     scrape under load.
- *   - Everything else (sell-side resources, Trading XML wrappers,
- *     forwarder, ship, expenses, bridge, browser, purchases) is
- *     pure passthrough or runs in the user's own browser/account.
- *     Burst rate-limit handles abuse; the monthly credit budget does
- *     not apply.
+ * Reference points (so the structure stays defensible):
+ *   Hobby    $19 / 3k   = $0.00633/credit subscribed
+ *   Standard $99 / 100k = $0.00099/credit subscribed
+ *   Growth   $399 / 500k = $0.00080/credit subscribed
+ * Top-up rates sit *above* the subscribed rate (sustained use should
+ * upgrade tier, not stack packs) but cheaper than committing to the
+ * next tier for one busy month.
+ *
+ * Stripe charges using `price_data` constructed at checkout time —
+ * no pre-created Stripe Price SKUs to manage, no env vars, one source
+ * of truth here.
  */
-export function creditsForEndpoint(endpoint: string, fromCache = false): number {
-	if (fromCache) return 0;
-	// Discovery sub-routes — static curated lists, no pipeline run.
+export const PER_CREDIT_USD: Record<Extract<Tier, "hobby" | "standard" | "growth">, number> = {
+	hobby: 0.003,
+	standard: 0.002,
+	growth: 0.0015,
+};
+
+/**
+ * Selectable top-up amounts. Used by the price-quote endpoint and as
+ * the closed set of valid `auto_recharge_topup` column values.
+ *
+ * Capped at 100k because beyond that, a tier upgrade is almost always
+ * the right answer; we don't want to encourage indefinite top-up
+ * stacking that would otherwise mask a real tier-fit problem.
+ */
+export const PACK_DENOMINATIONS: ReadonlyArray<number> = [5_000, 25_000, 100_000];
+
+/**
+ * Default top-up amount per paid tier — what auto-recharge fires
+ * when triggered. Picked to feel "natural" relative to the tier's
+ * monthly base allotment: small bump for Hobby, standard size for
+ * Standard, large size for Growth. The dashboard doesn't expose a
+ * per-user picker — keeps the auto-recharge UI to a single threshold
+ * input. Operators can override by writing `auto_recharge_topup`
+ * directly if a customer needs something else.
+ */
+const DEFAULT_TOP_UP_CREDITS: Record<Extract<Tier, "hobby" | "standard" | "growth">, number> = {
+	hobby: 5_000,
+	standard: 25_000,
+	growth: 100_000,
+};
+
+/** Tier's default auto-recharge top-up amount. Throws on free — the
+ *  route layer must gate before calling this. */
+export function defaultTopUpForTier(tier: Tier): number {
+	if (tier === "free") {
+		throw new Error("Free tier has no top-up default — gate before calling.");
+	}
+	return DEFAULT_TOP_UP_CREDITS[tier];
+}
+
+/**
+ * Threshold + topup bounds for auto-recharge. The dashboard form
+ * enforces these and the route layer revalidates. Threshold lives in
+ * credits (not %) so a Standard user with 100k cap and a Hobby user
+ * with 3k cap both reason in the same units the rest of the API
+ * exposes.
+ */
+export const AUTO_RECHARGE_MIN_THRESHOLD = 100;
+export const AUTO_RECHARGE_MAX_THRESHOLD = 50_000;
+/**
+ * Cooldown between auto-recharge fires for the same user. Stops a
+ * flood of concurrent calls all triggering top-up between the moment
+ * the threshold is crossed and the moment the new credits hit
+ * credit_grants.
+ */
+export const AUTO_RECHARGE_COOLDOWN_MS = 60_000;
+
+/** Per-tier top-up unit price. Throws on `free` — callers must gate first. */
+export function pricePerCreditUsd(tier: Tier): number {
+	if (tier === "free") {
+		throw new Error("Free tier has no top-up pricing — upgrade to a paid tier first.");
+	}
+	return PER_CREDIT_USD[tier];
+}
+
+/** Whole-cents amount Stripe will charge for `credits` at the user's tier. */
+export function topUpPriceCents(tier: Tier, credits: number): number {
+	return Math.round(credits * pricePerCreditUsd(tier) * 100);
+}
+
+/**
+ * Validate a credits amount against the catalog. Returns the canonical
+ * value when valid, throws when not — used by both manual checkout
+ * and auto-recharge config persistence so the menu stays a closed set.
+ */
+export function ensureValidCreditAmount(credits: number): number {
+	if (!Number.isInteger(credits)) throw new Error("credits must be an integer");
+	if (!PACK_DENOMINATIONS.includes(credits)) {
+		throw new Error(`credits must be one of ${PACK_DENOMINATIONS.join(", ")}`);
+	}
+	return credits;
+}
+
+/**
+ * `subscription_status='past_due'` to effective-tier-downgrade window.
+ * Stripe's default dunning runs ~3 weeks before firing
+ * `customer.subscription.deleted`; without this we'd serve paid-tier
+ * capacity for the full window to a card that's already been failing.
+ *
+ * Seven days is the median customer-resolution window: long enough for
+ * a real "card got reissued, will update soon" customer to keep working,
+ * short enough that a stale card doesn't get free Standard for a month.
+ */
+export const PAST_DUE_GRACE_DAYS = 7;
+
+/** Internal tier discriminant — same as `Tier` but explicit for readability. */
+type EffectiveTierInput = {
+	tier: Tier;
+	subscriptionStatus: string | null;
+	pastDueSince: Date | null;
+};
+
+/**
+ * Tier the rate-limit middleware enforces against. Equal to `user.tier`
+ * 99% of the time; downgrades to `free` only when the subscription has
+ * been continuously past_due for `PAST_DUE_GRACE_DAYS`. The user row
+ * itself stays truthful so billing UI / admin views don't lie — only
+ * the enforcement *view* shifts.
+ */
+export function effectiveTier(input: EffectiveTierInput, now: Date = new Date()): Tier {
+	if (input.tier === "free") return "free";
+	if (input.subscriptionStatus !== "past_due") return input.tier;
+	if (!input.pastDueSince) return input.tier;
+	const ageMs = now.getTime() - input.pastDueSince.getTime();
+	const graceMs = PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000;
+	return ageMs > graceMs ? "free" : input.tier;
+}
+
+/**
+ * One-shot DB lookup that resolves the effective tier for a userId.
+ * Returns `fallbackTier` when the userId is null (legacy api-keys not
+ * bound to a user) or when the row can't be found. Shared between the
+ * api-key middleware and the session-auth /v1/me, /v1/keys routes so
+ * dashboard + agent both see the same enforcement view.
+ */
+export async function effectiveTierForUser(userId: string | null, fallbackTier: Tier): Promise<Tier> {
+	if (!userId) return fallbackTier;
+	const [row] = await db
+		.select({
+			tier: user.tier,
+			subscriptionStatus: user.subscriptionStatus,
+			pastDueSince: user.pastDueSince,
+		})
+		.from(user)
+		.where(eq(user.id, userId))
+		.limit(1);
+	if (!row) return fallbackTier;
+	return effectiveTier({
+		tier: row.tier as Tier,
+		subscriptionStatus: row.subscriptionStatus,
+		pastDueSince: row.pastDueSince,
+	});
+}
+
+/** Possible upstream/origin kinds recorded on a usage_events row. */
+export type SourceKindForBilling = "rest" | "scrape" | "bridge" | "trading" | "llm" | null;
+
+/**
+ * Worst-case credits for a given path. Used by the pre-charge gate —
+ * we don't know the resolved transport at request entry, so we charge
+ * the upper bound on entry and surface the actual `credits_charged`
+ * after the response. Prevents a 30-credit-remaining caller from
+ * stealth-executing a 50-credit evaluate.
+ */
+export function worstCaseCreditsForEndpoint(endpoint: string): number {
 	if (endpoint.startsWith("/v1/evaluate/featured")) return 0;
 	if (endpoint.startsWith("/v1/evaluate/scopes")) return 0;
+	// Job polling: GET `/v1/evaluate/jobs/<id>` and `/v1/evaluate/<id>/pool`
+	// are cache reads off `compute_jobs` — no LLM, no scrape, just a row
+	// fetch. Charging the same as the original evaluate (50¢) double-bills
+	// every legitimate poll. Stay free for read paths; the create POST
+	// (`/v1/evaluate/jobs`, no trailing slash) still hits the 50 below.
+	if (endpoint.startsWith("/v1/evaluate/jobs/")) return 0;
+	if (endpoint.includes("/pool")) return 0;
 	if (endpoint.startsWith("/v1/evaluate")) return 50;
-	if (endpoint.startsWith("/v1/items")) return 1;
-	if (endpoint.startsWith("/v1/products")) return 1;
-	if (endpoint.startsWith("/v1/categories")) return 1;
-	if (endpoint.startsWith("/v1/trends")) return 1;
+	// Items/products/categories/trends top out at scrape (2c).
+	if (endpoint.startsWith("/v1/items")) return 2;
+	if (endpoint.startsWith("/v1/products")) return 2;
+	if (endpoint.startsWith("/v1/categories")) return 2;
+	if (endpoint.startsWith("/v1/trends")) return 2;
+	return 0;
+}
+
+/**
+ * Credits to charge for a completed call, given its resolved transport.
+ * Cache hits charge the same as the underlying source — caches amortise
+ * across callers, but each user receives the full data so the per-call
+ * cost reflects the work that data took to fetch.
+ *
+ * Called at `recordUsage` time (post-handler) so `source` is known. Pre-
+ * flight, callers use `worstCaseCreditsForEndpoint` instead.
+ */
+export function creditsForCall(args: { endpoint: string; source: SourceKindForBilling }): number {
+	const { endpoint, source } = args;
+	if (endpoint.startsWith("/v1/evaluate/featured")) return 0;
+	if (endpoint.startsWith("/v1/evaluate/scopes")) return 0;
+	// Same exemptions as `worstCaseCreditsForEndpoint`: polling + pool
+	// drill-down are reads, not new compute.
+	if (endpoint.startsWith("/v1/evaluate/jobs/")) return 0;
+	if (endpoint.includes("/pool")) return 0;
+	if (endpoint.startsWith("/v1/evaluate")) return 50;
+	if (
+		endpoint.startsWith("/v1/items") ||
+		endpoint.startsWith("/v1/products") ||
+		endpoint.startsWith("/v1/categories") ||
+		endpoint.startsWith("/v1/trends")
+	) {
+		switch (source) {
+			case "scrape":
+				return 2;
+			case "rest":
+			case "llm":
+				return 1;
+			case "bridge":
+			case "trading":
+				return 0;
+			default:
+				// Unknown / not surfaced. Charge the conservative middle
+				// (1c) so we don't accidentally give scrape away free if a
+				// future route forgets to set source.
+				return 1;
+		}
+	}
 	return 0;
 }
 
@@ -100,6 +314,12 @@ export interface UsageSnapshot {
 	bonusCredits: number;
 	/** ISO timestamp of the next refill, or null for lifetime (Free) tiers. */
 	resetAt: string | null;
+	/**
+	 * Tier used for limit math. Equal to `user.tier` except when the user
+	 * is past_due-grace-expired; then this is `'free'` while `user.tier`
+	 * keeps its real value.
+	 */
+	effectiveTier: Tier;
 }
 
 /**
@@ -128,30 +348,14 @@ function nextMonthBoundary(): Date {
 }
 
 /**
- * SQL CASE expression that converts a `usage_events.endpoint` row into
- * its credit cost. Kept in sync with `creditsForEndpoint()` above —
- * if you change one, change the other.
- */
-const CREDITS_CASE = sql<number>`CASE
-	WHEN ${usageEvents.endpoint} LIKE '/v1/evaluate/featured%' THEN 0
-	WHEN ${usageEvents.endpoint} LIKE '/v1/evaluate/scopes%' THEN 0
-	WHEN ${usageEvents.endpoint} LIKE '/v1/evaluate%' THEN 50
-	WHEN ${usageEvents.endpoint} LIKE '/v1/items%' THEN 1
-	WHEN ${usageEvents.endpoint} LIKE '/v1/products%' THEN 1
-	WHEN ${usageEvents.endpoint} LIKE '/v1/categories%' THEN 1
-	WHEN ${usageEvents.endpoint} LIKE '/v1/trends%' THEN 1
-	ELSE 0
-END`;
-
-/**
  * Resolve the credit-counting epoch — the timestamp from which usage
  * events start counting against the current tier's budget. For session/
  * keys-bound users we read `user.creditsResetAt` (set on signup, bumped
- * by the Stripe webhook on every tier transition). For legacy api-key-
- * only callers (no userId) we fall back to the key's own `createdAt`
- * so a self-hosted tester still gets sensible accounting. Falls back
- * to the unix epoch when no row resolves — preserves pre-migration
- * behaviour for orphan rows.
+ * by the Stripe webhook on tier-up transitions only — downgrade-to-free
+ * does NOT bump, since free is now tier-filtered and any prior free
+ * usage stays counted regardless). For legacy api-key-only callers (no
+ * userId) we fall back to the key's own `createdAt`. Falls back to the
+ * unix epoch when no row resolves.
  */
 async function resolveCreditsResetAt(scope: { apiKeyId: string; userId: string | null }): Promise<Date> {
 	if (scope.userId) {
@@ -178,12 +382,12 @@ async function resolveCreditsResetAt(scope: { apiKeyId: string; userId: string |
  * same user** when `userId` is provided — multiple named keys share one
  * budget. Falls back to per-key counting for legacy keys with no userId.
  *
- * Counting window depends on the tier:
- *   - Free (oneTime) → events from `user.creditsResetAt` onwards.
- *                       Bumped on every tier transition, so a Standard
- *                       user who downgrades gets a fresh 500-credit
- *                       window from the cancel timestamp instead of
- *                       inheriting their pre-downgrade usage.
+ * Counting window depends on the (effective) tier:
+ *   - Free (oneTime) → events from `user.creditsResetAt` onwards,
+ *                       FILTERED to `tier='free'` rows. The tier filter
+ *                       is what kills the free→hobby→free cycle abuse:
+ *                       prior free usage stays counted regardless of
+ *                       intervening upgrade/downgrade cycles.
  *   - Paid (monthly) → events from `max(creditsResetAt, monthStart)` —
  *                       monthly refill, but never count events from a
  *                       prior tier (a mid-month upgrade only counts
@@ -193,6 +397,10 @@ async function resolveCreditsResetAt(scope: { apiKeyId: string; userId: string |
  * or negative clawback); `bonusCredits` surfaces the same total
  * separately so dashboards can render "+N admin bonus" without
  * recomputing.
+ *
+ * `tier` is the **effective** tier for enforcement — caller passes the
+ * output of `effectiveTier(user)`, which may be lower than `user.tier`
+ * during past-due grace expiry.
  */
 export async function snapshotUsage(
 	scope: { apiKeyId: string; userId: string | null },
@@ -211,11 +419,17 @@ export async function snapshotUsage(
 	const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 	const floor = cfg.oneTime ? epoch : epoch > monthStart ? epoch : monthStart;
 
+	// Free filters to tier='free' rows so a user who briefly subscribed
+	// to a paid tier and downgraded back doesn't reset their lifetime
+	// counter. Paid tiers don't filter by tier — the floor (which jumps
+	// forward on upgrade) already bounds prior-tier usage out.
+	const tierFilter = cfg.oneTime ? eq(usageEvents.tier, "free") : undefined;
+
 	const [usageRow, bonus] = await Promise.all([
 		db
-			.select({ credits: sql<number>`cast(coalesce(sum(${CREDITS_CASE}), 0) as int)` })
+			.select({ credits: sql<number>`cast(coalesce(sum(${usageEvents.creditsCharged}), 0) as int)` })
 			.from(usageEvents)
-			.where(and(ownerFilter, gte(usageEvents.createdAt, floor)))
+			.where(and(ownerFilter, gte(usageEvents.createdAt, floor), tierFilter))
 			.then((rows) => rows[0]),
 		scope.userId ? sumActiveCreditGrants(scope.userId) : Promise.resolve(0),
 	]);
@@ -228,6 +442,7 @@ export async function snapshotUsage(
 		overLimit: used >= limit,
 		bonusCredits: bonus,
 		resetAt: cfg.oneTime ? null : nextMonthBoundary().toISOString(),
+		effectiveTier: tier,
 	};
 }
 
@@ -235,6 +450,13 @@ export async function snapshotUsage(
  * Burst usage over a sliding window. Counts raw events (not credits) —
  * the goal is abuse protection, not pricing. A flood of cheap search
  * calls can still DOS the upstream just like a flood of expensive ones.
+ *
+ * Excludes transient infra failures (5xx, 429): when our upstream falls
+ * over or eBay rate-limits our app credential, the caller did nothing
+ * wrong; counting those toward the caller's burst would lock them out
+ * of legitimate retries during an outage that's our (or eBay's) fault.
+ * 4xx caller-error responses (401/404/etc.) DO count — those represent
+ * real upstream calls the caller initiated, even if the input was bad.
  */
 export async function snapshotBurst(
 	scope: { apiKeyId: string; userId: string | null },
@@ -242,13 +464,14 @@ export async function snapshotBurst(
 ): Promise<{ perMinute: number; perHour: number; minuteOver: boolean; hourOver: boolean }> {
 	const limits = TIER_LIMITS[tier];
 	const filter = scope.userId ? eq(usageEvents.userId, scope.userId) : eq(usageEvents.apiKeyId, scope.apiKeyId);
+	const transientExcluded = sql`(${usageEvents.statusCode} < 500 AND ${usageEvents.statusCode} <> 429)`;
 	const [row] = await db
 		.select({
 			minute: sql<number>`cast(count(*) filter (where ${usageEvents.createdAt} >= now() - interval '1 minute') as int)`,
 			hour: sql<number>`cast(count(*) filter (where ${usageEvents.createdAt} >= now() - interval '1 hour') as int)`,
 		})
 		.from(usageEvents)
-		.where(and(filter, gte(usageEvents.createdAt, sql`now() - interval '1 hour'`)));
+		.where(and(filter, gte(usageEvents.createdAt, sql`now() - interval '1 hour'`), transientExcluded));
 	const perMinute = row?.minute ?? 0;
 	const perHour = row?.hour ?? 0;
 	return {
@@ -270,6 +493,7 @@ export function usageToWire(snapshot: UsageSnapshot): {
 	creditsRemaining: number;
 	bonusCredits: number;
 	resetAt: string | null;
+	effectiveTier: Tier;
 } {
 	return {
 		creditsUsed: snapshot.creditsUsed,
@@ -277,6 +501,7 @@ export function usageToWire(snapshot: UsageSnapshot): {
 		creditsRemaining: snapshot.creditsRemaining,
 		bonusCredits: snapshot.bonusCredits,
 		resetAt: snapshot.resetAt,
+		effectiveTier: snapshot.effectiveTier,
 	};
 }
 
@@ -286,6 +511,18 @@ export async function recordUsage(input: {
 	endpoint: string;
 	statusCode: number;
 	latencyMs: number;
+	creditsCharged: number;
+	tier: Tier;
+	source: SourceKindForBilling;
 }): Promise<void> {
-	await db.insert(usageEvents).values(input);
+	await db.insert(usageEvents).values({
+		apiKeyId: input.apiKeyId,
+		userId: input.userId,
+		endpoint: input.endpoint,
+		statusCode: input.statusCode,
+		latencyMs: input.latencyMs,
+		creditsCharged: input.creditsCharged,
+		tier: input.tier,
+		source: input.source,
+	});
 }
