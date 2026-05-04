@@ -7,7 +7,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
-import { BidError, getBidStatus, listBids, placeBid } from "../../services/bids.js";
+import { BidError, cancelBid, getBidStatus, listBids, placeBid } from "../../services/bids.js";
 import { findEligibleAuctionItems } from "../../services/compatibility.js";
 import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
@@ -133,5 +133,29 @@ bidsRoute.get(
 			if (err instanceof BidError) return c.json(bidErrorBody(c, err), err.status as 412);
 			throw err;
 		}
+	},
+);
+
+bidsRoute.post(
+	"/:listingId/cancel",
+	describeRoute({
+		tags: ["Bids"],
+		summary: "Cancel an in-flight bridge bid for this listing",
+		description:
+			"Cancels the most recent bridge place-bid job that's still queued / claimed / placing for this listing. Cannot retract a bid that already landed on eBay (eBay's retraction rules are narrow and require a manual ebay.com flow). Returns the cancelled Bid, or 404 if there's no in-flight job.",
+		responses: {
+			200: { description: "Bid (now cancelled)." },
+			404: errorResponse("No in-flight bid for this listing."),
+			...COMMON,
+		},
+	}),
+	requireApiKey,
+	async (c) => {
+		const r = await cancelBid(c.req.param("listingId"), {
+			apiKeyId: c.var.apiKey.id,
+			userId: c.var.apiKey.userId,
+		});
+		if (!r) return c.json({ error: "no_inflight_bid" }, 404);
+		return c.json(r);
 	},
 );

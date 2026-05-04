@@ -9,6 +9,7 @@ export interface BidsClient {
 	list(): Promise<BidsListResponse>;
 	place(body: BidCreate): Promise<Bid>;
 	getStatus(listingId: string): Promise<Bid | null>;
+	cancel(listingId: string): Promise<Bid | null>;
 	eligibleListings(): Promise<unknown>;
 }
 
@@ -17,6 +18,7 @@ export function createBidsClient(http: FlipagentHttp): BidsClient {
 		list: () => http.get("/v1/bids"),
 		place: (body) => http.post("/v1/bids", body),
 		getStatus: (listingId) => http.get(`/v1/bids/${encodeURIComponent(listingId)}`),
+		cancel: (listingId) => http.post(`/v1/bids/${encodeURIComponent(listingId)}/cancel`),
 		eligibleListings: () => http.get("/v1/bids/eligible-listings"),
 	};
 }

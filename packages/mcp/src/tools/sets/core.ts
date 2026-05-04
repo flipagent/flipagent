@@ -1,4 +1,7 @@
 import {
+	bidsCancelDescription,
+	bidsCancelExecute,
+	bidsCancelInput,
 	bidsEligibleListingsDescription,
 	bidsEligibleListingsExecute,
 	bidsEligibleListingsInput,
@@ -22,6 +25,9 @@ import {
 	ebayOrderStatusDescription,
 	ebayOrderStatusExecute,
 	ebayOrderStatusInput,
+	purchasesListDescription,
+	purchasesListExecute,
+	purchasesListInput,
 } from "../ebay-buy.js";
 import { ebayItemDetailDescription, ebayItemDetailExecute, ebayItemDetailInput } from "../ebay-item-detail.js";
 import {
@@ -289,6 +295,13 @@ export const coreTools: Tool[] = [
 		toolset: "core",
 	},
 	{
+		name: "flipagent_list_purchases",
+		description: purchasesListDescription,
+		inputSchema: purchasesListInput,
+		execute: purchasesListExecute,
+		toolset: "core",
+	},
+	{
 		name: "flipagent_get_purchase",
 		description: ebayOrderStatusDescription,
 		inputSchema: ebayOrderStatusInput,
@@ -321,6 +334,13 @@ export const coreTools: Tool[] = [
 		description: bidsGetStatusDescription,
 		inputSchema: bidsGetStatusInput,
 		execute: bidsGetStatusExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_cancel_bid",
+		description: bidsCancelDescription,
+		inputSchema: bidsCancelInput,
+		execute: bidsCancelExecute,
 		toolset: "core",
 	},
 	{

@@ -31,7 +31,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { bridgeJobs, type BridgeJob as DbBridgeJob } from "../db/schema.js";
-import { createBridgeJob, getJobForApiKey, waitForTerminal } from "./bridge-jobs.js";
+import { cancelJob, createBridgeJob, getJobForApiKey, waitForTerminal } from "./bridge-jobs.js";
 import { captureMyEbaySnapshot, reconcileJob } from "./bridge-reconciler.js";
 import { BRIDGE_TASKS } from "./ebay/bridge/tasks.js";
 import { getUserAccessToken } from "./ebay/oauth.js";
@@ -322,6 +322,30 @@ function jobToBid(job: DbBridgeJob, listingId: string): Bid {
 		status,
 		placedAt: job.createdAt.toISOString(),
 	};
+}
+
+/**
+ * Cancel a bridge-transport bid that's still in flight in the user's
+ * browser (queued / claimed / placing / awaiting_user_confirm).
+ *
+ * Important: this CANNOT retract a bid that already landed on eBay's
+ * side — eBay's rules permit bid retraction only in narrow cases
+ * (typo, item description changed materially, end of auction unable
+ * to contact seller) and that's a manual eBay UI flow. What this
+ * does cancel is the bridge-job → tells the Chrome extension "stop
+ * waiting for the user's click on this listing". If the user has
+ * already clicked Place Bid in their tab, the bid is on eBay and
+ * this is a no-op.
+ *
+ * Returns the latest in-flight bid job mapped to a Bid (now with
+ * `status: "cancelled"`), or null if nothing was in flight to cancel.
+ */
+export async function cancelBid(itemId: string, ctx: BidsContext): Promise<Bid | null> {
+	const inflight = await findInflightPlaceBidJob(itemId, ctx.apiKeyId);
+	if (!inflight) return null;
+	const cancelled = await cancelJob(inflight.id, ctx.apiKeyId);
+	const row = cancelled ?? (await getJobForApiKey(inflight.id, ctx.apiKeyId));
+	return row ? jobToBid(row, itemId) : null;
 }
 
 export async function getBidStatus(itemId: string, ctx: BidsContext): Promise<Bid | null> {

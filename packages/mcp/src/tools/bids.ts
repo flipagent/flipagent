@@ -13,7 +13,7 @@ import type { Config } from "../config.js";
 
 export const bidsListInput = Type.Object({});
 export const bidsListDescription =
-	'List active and completed bids the api key has placed on auctions. Calls GET /v1/bids. **When to use** — review which auctions you\'re competing in, who\'s winning, what your max bid was. Pair with `flipagent_place_bid` to raise a bid that\'s been outbid. **Inputs** — none. **Output** — `{ bids: [{ id, listingId, amount, maxBid?, status: "active" | "outbid" | "won" | "lost" | "pending" | "cancelled", placedAt, auctionEndsAt? }] }`. **Prereqs** — eBay account connected. On 401 the response carries `next_action`. **Example** — call with `{}`.';
+	"List active bids the api key has placed on auctions. Calls GET /v1/bids. **When to use** — review which auctions you're competing in, who's winning, what your max bid was. Pair with `flipagent_place_bid` to raise a bid that's been outbid. **Inputs** — none. **Output** — `{ bids: [{ id, marketplace, listingId, amount, maxBid?, status, placedAt, auctionEndsAt? }], source }`. `status`: `active` (you're winning) | `outbid` (someone outbid you) | `pending` (bridge still in flight). Won/lost auctions move to other endpoints. **Prereqs** — eBay account connected. On 401 the response carries `next_action`. **Example** — call with `{}`.";
 export async function bidsListExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
@@ -27,7 +27,7 @@ export async function bidsListExecute(config: Config, _args: Record<string, unkn
 
 export { BidCreate as bidsPlaceInput };
 export const bidsPlaceDescription =
-	"Place a proxy bid on an auction. Calls POST /v1/bids. **When to use** — items only available at auction (not Buy-It-Now). For BIN, use `flipagent_create_purchase` instead — it's the default flipagent flow. eBay's proxy system handles the increment ladder: `maxBid` (or `amount` if `maxBid` omitted) is your ceiling, the system places the smallest bid needed to be high. **Inputs** — `listingId` (auction itemId), `amount` ({value: cents-int, currency}), optional `maxBid` (proxy ceiling, defaults to `amount`), `humanReviewedAt` (ISO timestamp ≤5 min old — required by eBay UA Feb-2026 unless EBAY_BIDDING_APPROVED REST flow), `transport` ('rest' | 'bridge'). For safe ceilings, use `evaluation.bidCeilingCents` from `flipagent_evaluate_item`. **Output** — `Bid { id, marketplace, listingId, amount, maxBid?, status, placedAt, auctionEndsAt? }`. **Async (bridge transport)** — bids placed via the Chrome extension return `status: 'pending'` immediately while the user clicks Place Bid in their browser; the server-side reconciler watches the user's eBay BidList and flips it to `active` (high bidder) or `outbid` once eBay confirms. Poll `flipagent_get_bid_status({listingId})` until `status !== 'pending'`. **DO NOT** call `flipagent_place_bid` again on a `pending` result — that double-bids. **Prereqs** — eBay account connected, plus auction-buyer eligibility (region, KYC) — check `flipagent_list_biddable_listings` first if unsure. **Example** — `{ listingId: \"234567890123\", amount: { value: 4500, currency: \"USD\" }, humanReviewedAt: \"2026-05-04T22:30:00.000Z\" }` (cap at $45).";
+	'Place a proxy bid on an auction. Calls POST /v1/bids. **When to use** — items only available at auction (not Buy-It-Now). For BIN, use `flipagent_create_purchase`. eBay\'s proxy system handles the increment ladder: your `maxBid` (or `amount` if `maxBid` omitted) is the ceiling; eBay places the minimum needed to be high bidder. For safe ceilings, use `evaluation.bidCeilingCents` from `flipagent_evaluate_item`. **Inputs** — `listingId` (auction itemId), `amount` (`{value: cents-int, currency}`), optional `maxBid` (proxy ceiling, defaults to `amount`), `humanReviewedAt` (ISO ≤5 min old), optional `transport` (`rest | bridge`, auto). **Output** — `Bid { id, marketplace, listingId, amount, maxBid?, status, placedAt, auctionEndsAt? }`. Initial `status` is `pending` for bridge or `active` for REST. When `pending`, response also carries `poll_with: "flipagent_get_bid_status"` + `poll_args` + `terminal_states`. **Async** (bridge) — bridge returns `pending` while the user clicks Place Bid in their open eBay tab; the Trading-API reconciler diffs BidList for the requested `maxBid` and flips to `active` (winning) or `outbid` once eBay confirms. **Polling cadence** — 2-5 s via `flipagent_get_bid_status` until `status !== \'pending\'`. **DO NOT** re-call `flipagent_place_bid` on a pending result — that double-bids. **Prereqs** — bridge: paired Chrome extension + eBay logged in; REST: `EBAY_BIDDING_APPROVED=1` on operator + eBay OAuth bound. eBay UA (Feb 20 2026) requires `humanReviewedAt` for bridge; missing/stale → 412 `human_review_required` / `human_review_stale`. **Example** — `{ listingId: "234567890123", amount: { value: 4500, currency: "USD" }, humanReviewedAt: "2026-05-04T22:30:00.000Z" }` (cap at $45).';
 export async function bidsPlaceExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
@@ -60,7 +60,7 @@ export const bidsGetStatusInput = Type.Object({
 	listingId: Type.String({ description: "eBay auction itemId (the same id you used in flipagent_place_bid)" }),
 });
 export const bidsGetStatusDescription =
-	"Read the current state of a bid you placed via `flipagent_place_bid`. Calls GET /v1/bids/{listingId}. **When to use** — poll after a `pending` response from `flipagent_place_bid` to see whether the user has finished clicking through eBay's confirmation flow. The endpoint runs the bid reconciler inline (one Trading API call, ~300-700 ms) so the very next read after the user clicks Place Bid sees the terminal state. **Inputs** — `listingId` (auction itemId). **Output** — `Bid | null` (null = no bid found for this listing under your api key). Possible `status` values: `pending` (bridge job still in flight, keep polling), `active` (live high bidder), `outbid` (bid landed but you're no longer winning), `won`/`lost` (auction ended), `cancelled`. **Polling cadence** — 2-5s while `pending`. Stop when status changes. **Example** — `{ listingId: \"234567890123\" }`.";
+	"Read the current state of a bid for one auction listing. Calls GET /v1/bids/{listingId}. **When to use** — poll after a `pending` response from `flipagent_place_bid` to see whether the user has finished clicking through eBay's confirmation flow. **Inputs** — `listingId` (auction itemId). **Output** — `Bid` or 404 `no_bid` if no bid found for this listing under your api key. `status`: `pending` (bridge in flight, keep polling) | `active` (live high bidder) | `outbid` (you're no longer winning) | `won` / `lost` (auction ended) | `cancelled`. **Polling cadence** — 2-5 s while `pending`. Each call runs the bid reconciler inline (~300-700 ms Trading round-trip) so the very next read after the user clicks Place Bid sees the terminal state — no waiting for the worker tick. **Prereqs** — eBay account connected. **Example** — `{ listingId: \"234567890123\" }`.";
 export async function bidsGetStatusExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
@@ -70,11 +70,27 @@ export async function bidsGetStatusExecute(config: Config, args: Record<string, 
 	}
 }
 
+/* ----------------------------- flipagent_cancel_bid ----------------------- */
+
+export const bidsCancelInput = Type.Object({
+	listingId: Type.String({ description: "eBay auction itemId of the bid to cancel." }),
+});
+export const bidsCancelDescription =
+	'Cancel an in-flight bridge place-bid for this listing. Calls POST /v1/bids/{listingId}/cancel. **When to use** — abort a `pending` bid that the user hasn\'t clicked through yet (agent changed its mind, user asked to back out before confirming). **Cannot retract a bid already landed on eBay** — eBay\'s retraction rules are narrow (typo / item changed materially / can\'t reach seller) and require a manual ebay.com flow. **Inputs** — `listingId` (auction itemId). **Output** — the cancelled `Bid` (`status: "cancelled"`), or 404 `no_inflight_bid` if nothing was queued for this listing. **Prereqs** — none beyond the api key. **Example** — `{ listingId: "234567890123" }`.';
+export async function bidsCancelExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
+	try {
+		const client = getClient(config);
+		return await client.bids.cancel(String(args.listingId));
+	} catch (err) {
+		return toolErrorEnvelope(err, "bids_cancel_failed", "/v1/bids/{listingId}/cancel");
+	}
+}
+
 /* ---------------------- flipagent_bids_eligible_listings ------------------- */
 
 export const bidsEligibleListingsInput = Type.Object({});
 export const bidsEligibleListingsDescription =
-	'List auctions the buyer is currently eligible to bid on, given region / category / KYC restrictions. Calls GET /v1/bids/eligible-listings. **When to use** — diagnose "why can\'t I bid on this auction?" or pre-filter a watch-list to only items where bidding is actually possible. **Inputs** — none. **Output** — `{ listings: [{ itemId, eligible: true, restrictions?: string[] }] }`. **Prereqs** — eBay account connected. **Example** — call with `{}`.';
+	'NOT IMPLEMENTED — eBay does not expose a "find eligible auctions" endpoint. Calls GET /v1/bids/eligible-listings, which always returns 501 with pointers to the right surfaces. **Use instead**: `flipagent_search_items` (filter by `auction` buying option) for live auctions, or `flipagent_list_bids` for auctions you\'ve already bid on. **Inputs** — none. **Output** — 501 error envelope. Kept in the surface only so agents discover the alternatives via the error message.';
 export async function bidsEligibleListingsExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);

@@ -1,22 +1,28 @@
 /**
- * `flipagent_create_purchase` / `flipagent_get_purchase` /
- * `flipagent_cancel_purchase` — buy-side tools backed by
- * `/v1/purchases`. Auto-picks the REST transport when
- * `EBAY_ORDER_APPROVED=1`; otherwise drives the user's paired
- * Chrome extension (the "bridge client") to BIN inside their real
- * Chrome session.
+ * Buy-side tools backed by `/v1/purchases`:
+ *   flipagent_create_purchase   POST   /v1/purchases
+ *   flipagent_list_purchases    GET    /v1/purchases
+ *   flipagent_get_purchase      GET    /v1/purchases/{id}
+ *   flipagent_cancel_purchase   POST   /v1/purchases/{id}/cancel
  *
- * `flipagent_create_purchase` queues a purchase and returns immediately
- * with the `purchaseOrderId`. The agent should poll
- * `flipagent_get_purchase` until it reports a terminal state —
- * `completed`, `failed`, `cancelled`.
- * That keeps the MCP tool bounded (no minute-long blocking calls)
- * while the underlying transport works asynchronously.
+ * Transport: REST when `EBAY_ORDER_APPROVED=1` is set on the api
+ * operator + the api key has eBay OAuth bound; otherwise bridge —
+ * which drives the user's paired Chrome extension to BIN inside
+ * their real Chrome session.
  *
- * Without the extension paired (no `fbt_…` bridge token issued) and
- * REST not approved, purchases sit `queued` until they expire and
- * flip to `cancelled` — surface that cleanly. Install + setup at
- * /docs/extension/.
+ * Async model (bridge): create returns immediately with `status:
+ * "queued"` (or `"processing"` if the extension claims it within
+ * the 5 s fast wait). The agent polls `flipagent_get_purchase`
+ * until terminal (`completed | failed | cancelled`); each poll
+ * runs the Trading-API reconciler inline (~300-700 ms) which
+ * diffs the user's WonList for a new OrderLineItemID — so polling
+ * IS what closes the loop, no need to wait for the 30 s worker
+ * tick. Bridge jobs the user never confirms expire after 30 min.
+ * Mirrors the bid pattern in `bids.ts` (BidList diff).
+ *
+ * Without the extension paired AND REST not approved, the api
+ * returns 412 `transport_unavailable` with `next_action.kind:
+ * "rest_or_extension"`. Install + setup at /docs/extension/.
  */
 
 import { Type } from "@sinclair/typebox";
@@ -45,7 +51,7 @@ export const ebayBuyItemInput = Type.Object(
 );
 
 export const ebayBuyItemDescription =
-	"Buy an item (one-shot). Calls POST /v1/purchases — flipagent's normalized buy surface, which compresses initiate + place_order into a single call. Returns a `Purchase` with `status` in `queued | processing | completed | failed | cancelled`; poll `flipagent_get_purchase` until terminal. **Transport**: auto-picks REST when the api operator has set `EBAY_ORDER_APPROVED=1` and the api key has eBay OAuth bound; otherwise the bridge transport opens the eBay item in the user's paired Chrome and waits for them to click Buy It Now → Confirm and pay. **Bridge async model**: the response returns immediately with `status: 'queued'` (or `'processing'` if the extension claimed it within ~5 s). The Trading-API reconciler in `bridge-reconciler.ts` is the completion oracle — it diffs the user's WonList against a snapshot captured at job creation, and transitions the job to `completed` once eBay shows a new OrderLineItemID. Inline reconcile runs on every `flipagent_get_purchase` call; the worker also reconciles every 30 s. Bridge jobs that the user never confirms expire after 30 min. **Required**: pass `humanReviewedAt` as an ISO-8601 timestamp from when a human in your interface confirmed THIS specific order, not older than 5 minutes. eBay's User Agreement (effective 2026-02-20) prohibits buy-bots without per-order human review; the orchestrator returns 412 `human_review_required` (missing) or `human_review_stale` (>5 min old). On transport failure the response carries `next_action` with the exact link to send the user to (extension install / OAuth start).";
+	'Buy an item (one-shot Buy-It-Now). Calls POST /v1/purchases. **When to use** — direct purchase of a fixed-price listing or auction\'s BIN ceiling; for auctions use `flipagent_place_bid` instead. Compresses eBay\'s initiate + place_order into one call. **Inputs** — `itemId` (legacy 12-digit / `v1|n|v` / full ebay.com/itm URL), optional `quantity` (default 1), optional `variationId` (multi-variant listings), `humanReviewedAt` (ISO-8601, ≤5 min old — human-review attestation). **Output** — `Purchase { id, marketplace, status, items, transport, createdAt, ebayOrderId?, totalCents?, receiptUrl? }` plus `poll_with: "flipagent_get_purchase"` + `terminal_states`. Initial `status` is `queued` or `processing`. **Async** — bridge transport opens the eBay tab and waits for the user to click Buy It Now → Confirm and pay. The Trading-API reconciler diffs the user\'s WonList for a new OrderLineItemID and transitions to `completed`. Bridge jobs the user never confirms expire after 30 min. **Polling cadence** — 2-5 s between `flipagent_get_purchase` calls (each runs the reconciler inline); stop on terminal status (`completed | failed | cancelled`). **Prereqs** — bridge: paired Chrome extension; REST: `EBAY_ORDER_APPROVED=1` on the operator + eBay OAuth bound to the api key. eBay UA (Feb 20 2026) requires `humanReviewedAt`; missing/stale → 412 `human_review_required` / `human_review_stale`. On transport failure the response carries `next_action` (extension install / OAuth start). **Example** — `{ itemId: "206252358068", humanReviewedAt: "2026-05-04T22:30:00.000Z" }`.';
 
 const LEGACY_ITEM_ID = /^\d{9,15}$/;
 const V1_ITEM_ID = /^v1\|(\d{9,15})\|(\d+)$/i;
@@ -104,15 +110,20 @@ export async function ebayBuyItemExecute(config: Config, args: Record<string, un
 /* -------------------------- flipagent_purchases_get -------------------------- */
 
 export const ebayOrderStatusInput = Type.Object(
-	{ purchaseOrderId: Type.String({ format: "uuid" }) },
+	{
+		id: Type.String({
+			format: "uuid",
+			description: "Purchase id (the `id` field returned by `flipagent_create_purchase`).",
+		}),
+	},
 	{ $id: "EbayOrderStatusInput" },
 );
 
 export const ebayOrderStatusDescription =
-	"Read status + result for a purchase order. Calls GET /v1/purchases/{id}. **Status lifecycle**: `queued` (job created) → `processing` (extension claimed, user clicking through eBay) → `completed` | `failed` | `cancelled`. **Inline reconciler**: every call to this endpoint runs one Trading API check (~300-700 ms) against the user's WonList — if a new OrderLineItemID has appeared since the job was queued, the row is transitioned to `completed` immediately. So polling this endpoint is what closes the loop; you don't have to wait for the worker's 30 s tick. **Polling cadence**: 2-5 s between calls while the bridge transport is in flight; stop on terminal status. **Inputs** — `purchaseOrderId` (UUID returned as `id` from `flipagent_create_purchase`).";
+	"Read status + result for one purchase. Calls GET /v1/purchases/{id}. **When to use** — poll after `flipagent_create_purchase` until `status` is terminal (`completed | failed | cancelled`); also useful to re-check an old order's `ebayOrderId` / `receiptUrl`. **Inputs** — `id` (the UUID returned as `id` from `flipagent_create_purchase`). **Output** — `Purchase { id, marketplace, status, items, transport, createdAt, ebayOrderId?, totalCents?, receiptUrl? }` or 404 if no such purchase under your api key. **Polling cadence** — 2-5 s while bridge transport is in flight. Each call runs the Trading-API reconciler inline (~300-700 ms): if a new OrderLineItemID has appeared in WonList since the job was queued, the row is transitioned to `completed` immediately — no need to wait for the worker's 30 s tick. **Prereqs** — none beyond the api key. **Example** — `{ id: \"db7bd2d5-1dc4-4596-a7a1-ec9ca28a47d1\" }`.";
 
 export async function ebayOrderStatusExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
-	const id = String(args.purchaseOrderId);
+	const id = String(args.id);
 	try {
 		const client = getClient(config);
 		return await client.purchases.get(id);
@@ -121,18 +132,63 @@ export async function ebayOrderStatusExecute(config: Config, args: Record<string
 	}
 }
 
+/* ------------------------- flipagent_list_purchases ------------------------ */
+
+export const purchasesListInput = Type.Object(
+	{
+		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+		offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+		status: Type.Optional(
+			Type.Union([
+				Type.Literal("queued"),
+				Type.Literal("processing"),
+				Type.Literal("completed"),
+				Type.Literal("failed"),
+				Type.Literal("cancelled"),
+			]),
+		),
+		marketplace: Type.Optional(Type.String()),
+	},
+	{ $id: "PurchasesListInput" },
+);
+
+export const purchasesListDescription =
+	'List purchases the api key has placed. Calls GET /v1/purchases. **When to use** — review past + in-flight orders, filter by status (e.g. find all `processing` orders to nudge the user). Pair with `flipagent_get_purchase` for one-row detail. **Inputs** — optional `limit` (1-200, default 50), `offset` (default 0), `status` (`queued | processing | completed | failed | cancelled`), `marketplace` (`ebay`, …). **Output** — `{ purchases: Purchase[], total, limit, offset, source }`. **Prereqs** — none beyond the api key. **Example** — `{ status: "processing" }` to find orders awaiting the user\'s confirmation click.';
+
+export async function purchasesListExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
+	try {
+		const client = getClient(config);
+		const params = {
+			...(args.limit != null ? { limit: args.limit as number } : {}),
+			...(args.offset != null ? { offset: args.offset as number } : {}),
+			...(args.status != null ? { status: args.status as string } : {}),
+			...(args.marketplace != null ? { marketplace: args.marketplace as string } : {}),
+		};
+		return await client.purchases.list(
+			(Object.keys(params).length ? params : undefined) as Parameters<typeof client.purchases.list>[0],
+		);
+	} catch (err) {
+		return toolErrorEnvelope(err, "list_purchases_failed", "/v1/purchases");
+	}
+}
+
 /* ------------------------ flipagent_purchases_cancel ------------------------ */
 
 export const ebayOrderCancelInput = Type.Object(
-	{ purchaseOrderId: Type.String({ format: "uuid" }) },
+	{
+		id: Type.String({
+			format: "uuid",
+			description: "Purchase id (the `id` field returned by `flipagent_create_purchase`).",
+		}),
+	},
 	{ $id: "EbayOrderCancelInput" },
 );
 
 export const ebayOrderCancelDescription =
-	'Cancel a non-terminal purchase order. Calls POST /v1/purchases/{id}/cancel. **When to use** — abort an order that\'s still `queued` or early `processing` before the extension hits the eBay review screen. Once the user is mid-place (clicked Buy It Now, on the Confirm-and-pay page) the cancel is a no-op — the agent should stop polling and let the human\'s click decide. **Inputs** — `purchaseOrderId` (UUID from `flipagent_create_purchase`). **Output** — `Purchase` row with `status: "cancelled"`. **Note** — eBay Buy Order REST does not expose a public cancel; flipagent\'s cancel hooks the bridge queue. **Example** — `{ purchaseOrderId: "..." }`.';
+	"Cancel a non-terminal purchase. Calls POST /v1/purchases/{id}/cancel. **When to use** — abort an order that's still `queued` / `awaiting_user_confirm` (extension hasn't opened the Confirm-and-pay page yet). Once the user is mid-place (status `placing`, on Confirm-and-pay) the cancel is a no-op — let the human's click decide. After `completed`, eBay Buy Order REST does not expose a public cancel; refund flow is `flipagent_create_cancellation`. **Inputs** — `id` (UUID from `flipagent_create_purchase`). **Output** — `Purchase` row, status now `cancelled` (or unchanged terminal if too late). **Prereqs** — none beyond the api key. **Example** — `{ id: \"db7bd2d5-1dc4-4596-a7a1-ec9ca28a47d1\" }`.";
 
 export async function ebayOrderCancelExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
-	const id = String(args.purchaseOrderId);
+	const id = String(args.id);
 	try {
 		const client = getClient(config);
 		return await client.purchases.cancel(id);
