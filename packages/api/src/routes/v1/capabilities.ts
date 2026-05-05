@@ -6,7 +6,7 @@
  *
  * Agents call this once at session start, decide which tools are even
  * worth attempting (e.g. don't fire `flipagent_create_purchase`
- * when `marketplaces.ebay.buy === "needs_signin"`), and surface clear
+ * when `marketplaces.ebay_us.buy === "needs_signin"`), and surface clear
  * remediation to the user when something is missing.
  */
 

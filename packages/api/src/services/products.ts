@@ -70,7 +70,7 @@ export class ProductsError extends Error {
 	}
 }
 
-export function ebayProductToProduct(p: EbayProduct, marketplace: Marketplace = "ebay"): Product {
+export function ebayProductToProduct(p: EbayProduct, marketplace: Marketplace = "ebay_us"): Product {
 	const images: string[] = [];
 	if (p.image?.imageUrl) images.push(p.image.imageUrl);
 	for (const i of p.additionalImages ?? []) if (i.imageUrl) images.push(i.imageUrl);
@@ -133,7 +133,7 @@ export async function getProductByEpid(
 ): Promise<FlipagentResult<Product> | null> {
 	// Lake-as-cache: latest fresh `product_observations` row short-circuits
 	// upstream. Same row that ML iteration reads from — single source of truth.
-	const cached = await getFreshProduct(epid, PRODUCT_TTL_MS, marketplace ?? "ebay");
+	const cached = await getFreshProduct(epid, PRODUCT_TTL_MS, marketplace ?? "ebay_us");
 	if (cached) {
 		return {
 			body: cached.body,
@@ -170,7 +170,7 @@ export async function getProductByEpid(
 	}
 	const body: Product = {
 		epid: scraped.epid ?? epid,
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		title: scraped.title ?? "",
 		images,
 		...(scraped.brand ? { brand: scraped.brand } : {}),
@@ -179,7 +179,7 @@ export async function getProductByEpid(
 		...(Object.keys(aspects).length ? { aspects } : {}),
 		...(scraped.primaryCategoryId ? { category: { id: scraped.primaryCategoryId } } : {}),
 	};
-	void recordProductObservation(body, "scrape", marketplace ?? "ebay");
+	void recordProductObservation(body, "scrape", marketplace ?? "ebay_us");
 	return { body, source: "scrape", fromCache: false };
 }
 

@@ -61,7 +61,7 @@ interface EbayPromotion {
 function ebayPromotionToFlipagent(p: EbayPromotion): Promotion {
 	const out: Promotion = {
 		id: p.promotionId,
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		type: PROMO_TYPE_FROM[p.promotionType] ?? "item_promotion",
 		status: PROMO_STATUS_FROM[p.promotionStatus] ?? "draft",
 		name: p.name,
@@ -172,7 +172,7 @@ export async function createPromotion(input: PromotionCreate, ctx: MarketingCont
 	});
 	return {
 		id: res?.promotionId ?? locationId ?? "",
-		marketplace: input.marketplace ?? "ebay",
+		marketplace: input.marketplace ?? "ebay_us",
 		type: input.type,
 		status: "scheduled",
 		name: input.name,

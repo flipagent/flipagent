@@ -28,6 +28,7 @@ import {
 	listRateTables,
 	transferFulfillmentPolicy,
 } from "../../services/seller-account.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const policiesRoute = new Hono();
@@ -46,7 +47,7 @@ policiesRoute.get(
 	async (c) => {
 		const r = await listPolicies(undefined, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ policies: r.policies, limit: r.limit, offset: r.offset, source: "rest" as const });
 	},
@@ -70,7 +71,7 @@ policiesRoute.get(
 		}
 		const r = await getPolicyByName(type as PolicyType, name, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "policy_not_found", message: `No ${type} policy named '${name}'.` }, 404);
 		return c.json({ ...r, source: "rest" as const });
@@ -91,7 +92,7 @@ policiesRoute.get(
 		c.json({
 			...(await listRateTables({
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),
@@ -112,7 +113,7 @@ policiesRoute.get(
 		return c.json({
 			...(await listCustomPolicies(type, {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		});
@@ -132,7 +133,7 @@ policiesRoute.post(
 		const body = c.req.valid("json");
 		const created = await createCustomPolicy(body, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json(created, 201);
 	},
@@ -153,7 +154,7 @@ policiesRoute.post(
 		const body = c.req.valid("json");
 		const r = await transferFulfillmentPolicy(c.req.param("id"), body.targetUsername, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json(r);
 	},
@@ -174,7 +175,7 @@ policiesRoute.post(
 		const body = c.req.valid("json");
 		const r = await createPolicy(body, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const }, 201);
 	},
@@ -195,7 +196,7 @@ policiesRoute.post(
 		const body = c.req.valid("json");
 		const r = await setupSellerPolicies(body, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json(r, 200);
 	},
@@ -221,7 +222,7 @@ policiesRoute.put(
 			{ ...body, type: type as PolicyType },
 			{
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			},
 		);
 		return c.json({ ...r, source: "rest" as const });
@@ -243,7 +244,7 @@ policiesRoute.delete(
 		}
 		await deletePolicy(c.req.param("id"), type as PolicyType, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ok: true, source: "rest" as const });
 	},

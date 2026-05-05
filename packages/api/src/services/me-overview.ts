@@ -11,7 +11,7 @@ import { toCents } from "./shared/money.js";
 function rowToItem(row: MyEbayItemRow): Item {
 	return {
 		id: row.itemId,
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		status: "active",
 		title: row.title,
 		url: row.url || `https://www.ebay.com/itm/${row.itemId}`,

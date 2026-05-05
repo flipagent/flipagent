@@ -171,7 +171,7 @@ function ebayBidToFlipagent(b: EbayBidding, fallbackItemId?: string): Bid {
 	const status: BidStatus = ended ? (b.highBidder ? "won" : "lost") : "active";
 	return {
 		id: b.currentProxyBid?.proxyBidId ?? "",
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		listingId: b.itemId ?? fallbackItemId ?? "",
 		amount: b.currentPrice
 			? { value: toCents(b.currentPrice.value), currency: b.currentPrice.currency }
@@ -222,7 +222,7 @@ function bridgeResultToFlipagent(input: BidCreate, result: BridgeBidResult): Bid
 	const status: BidStatus = ended ? (result.highBidder ? "won" : "lost") : "active";
 	return {
 		id: result.proxyBidId ?? "",
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		listingId: input.listingId,
 		amount,
 		...(maxBid ? { maxBid } : {}),
@@ -257,7 +257,7 @@ export async function listBids(ctx: BidsContext): Promise<{ bids: Bid[] }> {
 		const status: BidStatus = row.highBidder === false ? "outbid" : "active";
 		return {
 			id: row.itemId,
-			marketplace: "ebay",
+			marketplace: "ebay_us",
 			listingId: row.itemId,
 			amount,
 			...(maxBid ? { maxBid } : {}),
@@ -315,7 +315,7 @@ function jobToBid(job: DbBridgeJob, listingId: string): Bid {
 		job.status === "failed" || job.status === "cancelled" || job.status === "expired" ? "cancelled" : "pending";
 	return {
 		id: job.id,
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		listingId,
 		amount: { value: result.currentPriceCents ?? requestedMax, currency },
 		...(baseMaxBid ? { maxBid: baseMaxBid } : {}),
@@ -438,7 +438,7 @@ export async function placeBid(input: BidCreate, ctx: BidsContext): Promise<Bid>
 		});
 		return {
 			id: res?.proxyBidId ?? "",
-			marketplace: "ebay",
+			marketplace: "ebay_us",
 			listingId: input.listingId,
 			amount: input.amount,
 			...(input.maxBid ? { maxBid: input.maxBid } : {}),
@@ -500,7 +500,7 @@ export async function placeBid(input: BidCreate, ctx: BidsContext): Promise<Bid>
 	// reconciler inline; the worker also reconciles on a 30s tick.
 	return {
 		id: job.id,
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		listingId: input.listingId,
 		amount: input.amount,
 		...(input.maxBid ? { maxBid: input.maxBid } : {}),

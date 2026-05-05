@@ -43,7 +43,7 @@ offersRoute.get(
 		});
 		const offers: Offer[] = raw.map((row) => ({
 			id: row.bestOfferId,
-			marketplace: "ebay",
+			marketplace: "ebay_us",
 			direction: "incoming",
 			status:
 				row.status === "Pending"

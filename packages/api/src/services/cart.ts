@@ -52,7 +52,7 @@ function ebayCartToFlipagent(c: EbayCart): Cart {
 		...(moneyFrom(li.lineItemCost) ? { total: moneyFrom(li.lineItemCost)! } : {}),
 	}));
 	return {
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		lineItems,
 		...(moneyFrom(c.subtotal) ? { subtotal: moneyFrom(c.subtotal)! } : {}),
 	};

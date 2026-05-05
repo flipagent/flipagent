@@ -27,6 +27,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import * as edelivery from "../../services/edelivery/operations.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse } from "../../utils/openapi.js";
 
 export const edeliveryRoute = new Hono();
@@ -39,7 +40,7 @@ const COMMON = {
 const QUERY_KEYS_TO_RECORD = (c: { req: { query: () => Record<string, string> } }) => c.req.query();
 
 function ctx(c: { var: { apiKey: { id: string } }; req: { header: (k: string) => string | undefined } }) {
-	return { apiKeyId: c.var.apiKey.id, marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID") };
+	return { apiKeyId: c.var.apiKey.id, marketplace: ebayMarketplaceId() };
 }
 
 /* ---------- /packages ---------- */

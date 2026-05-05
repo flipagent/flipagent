@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { withTradingAuth } from "../../middleware/with-trading-auth.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { getStoreCategories, getStoreInfo, upsertStoreCategories } from "../../services/store.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
@@ -29,10 +30,7 @@ storeRoute.get(
 	}),
 	requireApiKey,
 	withTradingAuth(async (c, accessToken) => {
-		const r = await getStoreInfo(
-			{ apiKeyId: c.var.apiKey.id, marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID") },
-			accessToken,
-		);
+		const r = await getStoreInfo({ apiKeyId: c.var.apiKey.id, marketplace: ebayMarketplaceId() }, accessToken);
 		if (!r) return c.json({ error: "store_not_found", message: "No eBay Store on this account." }, 404);
 		return c.json({ ...r, source: "trading" as const });
 	}),
@@ -50,7 +48,7 @@ storeRoute.get(
 		c.json({
 			...(await getStoreCategories({
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),
@@ -69,7 +67,7 @@ storeRoute.put(
 		c.json({
 			...(await upsertStoreCategories(c.req.valid("json"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),

@@ -41,9 +41,6 @@ export const CapabilityStatus = Type.Union(
 );
 export type CapabilityStatus = Static<typeof CapabilityStatus>;
 
-export const MarketplaceId = Type.Union([Type.Literal("ebay")], { $id: "MarketplaceId" });
-export type MarketplaceId = Static<typeof MarketplaceId>;
-
 export const ForwarderId = Type.Union([Type.Literal("planetexpress")], { $id: "ForwarderId" });
 export type ForwarderId = Static<typeof ForwarderId>;
 
@@ -183,7 +180,7 @@ export const CapabilitiesResponse = Type.Object(
 			lastSeenAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
 		}),
 		marketplaces: Type.Object({
-			ebay: MarketplaceCapabilities,
+			ebay_us: MarketplaceCapabilities,
 		}),
 		forwarders: Type.Object({
 			planetexpress: ForwarderCapabilities,

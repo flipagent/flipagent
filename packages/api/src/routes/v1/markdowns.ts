@@ -13,6 +13,7 @@ import {
 	listMarkdowns,
 	updateMarkdown,
 } from "../../services/marketing/markdowns.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const markdownsRoute = new Hono();
@@ -33,7 +34,7 @@ markdownsRoute.get(
 				{ limit: Number(c.req.query("limit") ?? 50), offset: Number(c.req.query("offset") ?? 0) },
 				{
 					apiKeyId: c.var.apiKey.id,
-					marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+					marketplace: ebayMarketplaceId(),
 				},
 			)),
 			source: "rest" as const,
@@ -53,7 +54,7 @@ markdownsRoute.post(
 		c.json(
 			await createMarkdown(c.req.valid("json"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			}),
 			201,
 		),
@@ -70,7 +71,7 @@ markdownsRoute.get(
 	async (c) => {
 		const r = await getMarkdown(c.req.param("id"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "markdown_not_found" }, 404);
 		return c.json({ ...r, source: "rest" as const });
@@ -89,7 +90,7 @@ markdownsRoute.put(
 	async (c) => {
 		const r = await updateMarkdown(c.req.param("id"), c.req.valid("json"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -106,7 +107,7 @@ markdownsRoute.delete(
 	async (c) => {
 		await deleteMarkdown(c.req.param("id"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ok: true, source: "rest" as const });
 	},

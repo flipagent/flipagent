@@ -12,6 +12,7 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { listViolations, summarizeViolations, suppressListingViolation } from "../../services/violations.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
@@ -31,7 +32,7 @@ violationsRoute.get(
 	async (c) => {
 		const r = await summarizeViolations({
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -55,7 +56,7 @@ violationsRoute.post(
 		const body = c.req.valid("json");
 		await suppressListingViolation(body, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ok: true, source: "rest" as const } satisfies ViolationSuppressResponse);
 	},
@@ -78,7 +79,7 @@ violationsRoute.get(
 		const q = c.req.valid("query");
 		const r = await listViolations(q, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({
 			violations: r.violations,

@@ -12,6 +12,7 @@
 import type { Item, ItemSearchByImageRequest, ItemSearchResponse } from "@flipagent/types";
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import { appRequest } from "../ebay/rest/app-client.js";
+import { ebayMarketplaceId } from "../shared/marketplace.js";
 import { ebayItemToFlipagent } from "./transform.js";
 
 interface EbaySearchByImageResponse {
@@ -29,7 +30,7 @@ export async function searchItemsByImage(input: ItemSearchByImageRequest): Promi
 		method: "POST",
 		path: `/buy/browse/v1/item_summary/search_by_image?${params.toString()}`,
 		body: { image: input.image },
-		marketplace: input.marketplace?.toUpperCase() ?? "EBAY_US",
+		marketplace: ebayMarketplaceId(input.marketplace),
 	});
 	const items: Item[] = (res?.itemSummaries ?? []).map((s) => ebayItemToFlipagent(s));
 	return {

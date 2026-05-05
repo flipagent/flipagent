@@ -53,7 +53,7 @@ const TXN_TYPE: Record<string, TransactionType> = {
 	LOAN_REPAYMENT: "loan_repayment",
 };
 
-export function ebayPayoutToPayout(p: EbayPayout, marketplace: Marketplace = "ebay"): Payout {
+export function ebayPayoutToPayout(p: EbayPayout, marketplace: Marketplace = "ebay_us"): Payout {
 	return {
 		id: p.payoutId,
 		marketplace,
@@ -69,7 +69,7 @@ export function ebayPayoutToPayout(p: EbayPayout, marketplace: Marketplace = "eb
 	};
 }
 
-export function ebayTransactionToTransaction(t: EbayTransaction, marketplace: Marketplace = "ebay"): Transaction {
+export function ebayTransactionToTransaction(t: EbayTransaction, marketplace: Marketplace = "ebay_us"): Transaction {
 	return {
 		id: t.transactionId,
 		marketplace,

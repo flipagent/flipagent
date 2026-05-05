@@ -18,6 +18,7 @@
 
 import type { PolicyCreate, PolicyType } from "@flipagent/types";
 import { sellRequest, sellRequestWithLocation } from "./ebay/rest/user-client.js";
+import { ebayMarketplaceId } from "./shared/marketplace.js";
 import { toDollarString } from "./shared/money.js";
 
 export interface PoliciesWriteContext {
@@ -84,7 +85,7 @@ export async function createPolicy(
 	input: PolicyCreate,
 	ctx: PoliciesWriteContext,
 ): Promise<{ id: string; type: PolicyType }> {
-	const marketplace = ctx.marketplace ?? input.marketplace ?? "EBAY_US";
+	const marketplace = ctx.marketplace ?? ebayMarketplaceId(input.marketplace);
 	const body = buildBody(input, marketplace);
 	// All three policy POSTs return 201 with empty body + Location header.
 	// Verified live 2026-05-03 (see notes/ebay-endpoints.md Section 8).
@@ -113,7 +114,7 @@ export async function updatePolicy(
 	input: PolicyCreate,
 	ctx: PoliciesWriteContext,
 ): Promise<{ id: string; type: PolicyType }> {
-	const marketplace = ctx.marketplace ?? input.marketplace ?? "EBAY_US";
+	const marketplace = ctx.marketplace ?? ebayMarketplaceId(input.marketplace);
 	await sellRequest({
 		apiKeyId: ctx.apiKeyId,
 		method: "PUT",
@@ -161,7 +162,7 @@ export async function setupSellerPolicies(
 	input: PoliciesSetupRequest,
 	ctx: PoliciesWriteContext,
 ): Promise<PoliciesSetupResponse> {
-	const marketplace = ctx.marketplace ?? input.marketplace ?? "EBAY_US";
+	const marketplace = ctx.marketplace ?? ebayMarketplaceId(input.marketplace);
 	void eq; // re-use existing import set; suppress lint without changing imports
 
 	const [retList, payList, fulList] = await Promise.all([
@@ -197,7 +198,7 @@ export async function setupSellerPolicies(
 					{
 						type: "return",
 						name: r.accepted ? `${r.periodDays ?? 30}-day returns` : "No returns",
-						marketplace: "ebay",
+						marketplace: "ebay_us",
 						categoryType: "ALL_EXCLUDING_MOTORS_VEHICLES",
 						returnsAccepted: r.accepted,
 						...(r.accepted
@@ -222,7 +223,7 @@ export async function setupSellerPolicies(
 					{
 						type: "payment",
 						name: "Managed payments",
-						marketplace: "ebay",
+						marketplace: "ebay_us",
 						categoryType: "ALL_EXCLUDING_MOTORS_VEHICLES",
 						immediatePay: false,
 					},
@@ -244,7 +245,7 @@ export async function setupSellerPolicies(
 					{
 						type: "fulfillment",
 						name: `${f.handlingTimeDays}-day handling · ${f.shipping.mode} ${f.shipping.serviceCode}`,
-						marketplace: "ebay",
+						marketplace: "ebay_us",
 						categoryType: "ALL_EXCLUDING_MOTORS_VEHICLES",
 						handlingTimeDays: f.handlingTimeDays,
 						shippingOptions: [

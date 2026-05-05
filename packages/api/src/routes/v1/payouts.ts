@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { getPayoutSummary, listPayouts } from "../../services/money/operations.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, paramsFor, tbCoerce } from "../../utils/openapi.js";
 
 export const payoutsRoute = new Hono();
@@ -31,7 +32,7 @@ payoutsRoute.get(
 		return c.json({
 			...(await getPayoutSummary(from, to, {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		} satisfies PayoutSummary);
@@ -52,7 +53,7 @@ payoutsRoute.get(
 		const q = c.req.valid("query");
 		const r = await listPayouts(q, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({
 			payouts: r.payouts,

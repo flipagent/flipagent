@@ -53,6 +53,7 @@ import { endListing, relistListing, updateListing } from "../../services/listing
 import { previewListingFees } from "../../services/listings/preview-fees.js";
 import { deleteSkuLocations, getSkuLocations, setSkuLocations } from "../../services/listings/sku-locations.js";
 import { verifyListing } from "../../services/listings/verify.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
@@ -140,7 +141,7 @@ listingsRoute.post(
 		const body = c.req.valid("json");
 		const r = await createListingDraft(body, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const } satisfies ListingDraftResponse);
 	},
@@ -193,7 +194,7 @@ listingsRoute.get(
 		try {
 			const result = await listListings(
 				{ limit: query.limit, offset: query.offset },
-				{ apiKeyId: c.var.apiKey.id, marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID") },
+				{ apiKeyId: c.var.apiKey.id, marketplace: ebayMarketplaceId() },
 			);
 			const filtered = query.status ? result.listings.filter((l) => l.status === query.status) : result.listings;
 			const body: ListingsListResponse = {
@@ -229,7 +230,7 @@ listingsRoute.get(
 		try {
 			const listing = await getListing(sku, {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			});
 			if (!listing) {
 				return c.json({ error: "listing_not_found", message: `No listing for SKU '${sku}'.` }, 404);
@@ -263,7 +264,7 @@ listingsRoute.patch(
 		try {
 			const listing = await updateListing(sku, patch, {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			});
 			if (!listing) {
 				return c.json({ error: "listing_not_found", message: `No listing for SKU '${sku}'.` }, 404);
@@ -295,7 +296,7 @@ listingsRoute.delete(
 		try {
 			const listing = await endListing(sku, {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			});
 			if (!listing) {
 				return c.json({ error: "listing_not_found", message: `No listing for SKU '${sku}'.` }, 404);
@@ -561,7 +562,7 @@ listingsRoute.post(
 		try {
 			const listing = await relistListing(sku, {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			});
 			if (!listing) {
 				return c.json({ error: "listing_not_found", message: `No listing for SKU '${sku}'.` }, 404);

@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { deleteListingGroup, getListingGroup, upsertListingGroup } from "../../services/listings/bulk.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const listingGroupsRoute = new Hono();
@@ -26,7 +27,7 @@ listingGroupsRoute.put(
 		const id = c.req.param("id");
 		const r = await upsertListingGroup(id, c.req.valid("json"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "group_not_found" }, 404);
 		return c.json({ ...r, source: "rest" as const });
@@ -44,7 +45,7 @@ listingGroupsRoute.get(
 	async (c) => {
 		const r = await getListingGroup(c.req.param("id"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "group_not_found" }, 404);
 		return c.json({ ...r, source: "rest" as const });
@@ -62,7 +63,7 @@ listingGroupsRoute.delete(
 	async (c) => {
 		await deleteListingGroup(c.req.param("id"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.body(null, 204);
 	},

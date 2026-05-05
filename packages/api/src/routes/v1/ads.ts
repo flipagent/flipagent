@@ -48,6 +48,7 @@ import {
 	getReportTask,
 	listReportTasks,
 } from "../../services/marketing/reports.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const adsRoute = new Hono();
@@ -69,7 +70,7 @@ adsRoute.get(
 			{ limit: Number(c.req.query("limit") ?? 50), offset: Number(c.req.query("offset") ?? 0) },
 			{
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			},
 		);
 		return c.json(r);
@@ -88,7 +89,7 @@ adsRoute.post(
 	async (c) => {
 		const r = await createAdCampaign(c.req.valid("json"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json(r, 201);
 	},
@@ -107,7 +108,7 @@ adsRoute.get(
 		if (!name) return c.json({ error: "missing_name", message: "?name= is required." }, 400);
 		const r = await getCampaignByName(name, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "campaign_not_found" }, 404);
 		return c.json({ ...r, source: "rest" as const });
@@ -125,7 +126,7 @@ adsRoute.post(
 	async (c) => {
 		await pauseAdCampaign(c.req.param("campaignId"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.body(null, 204);
 	},
@@ -142,7 +143,7 @@ adsRoute.post(
 	async (c) => {
 		await resumeAdCampaign(c.req.param("campaignId"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.body(null, 204);
 	},
@@ -159,7 +160,7 @@ adsRoute.post(
 	async (c) => {
 		await endAdCampaign(c.req.param("campaignId"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.body(null, 204);
 	},
@@ -178,7 +179,7 @@ adsRoute.post(
 		const body = c.req.valid("json");
 		const r = await cloneAdCampaign(c.req.param("campaignId"), body.name, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const }, 201);
 	},
@@ -197,7 +198,7 @@ adsRoute.post(
 		const body = c.req.valid("json");
 		await updateAdBid(c.req.param("campaignId"), c.req.param("adId"), body.bidPercentage, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.body(null, 204);
 	},
@@ -216,7 +217,7 @@ adsRoute.post(
 		const body = c.req.valid("json");
 		const r = await bulkCreateAdsByListingId(c.req.param("campaignId"), body.requests, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -236,7 +237,7 @@ adsRoute.post(
 		const r = await bulkUpdateAdsBidByListingId(
 			c.req.param("campaignId"),
 			body.requests.map((row) => ({ listingId: row.listingId, bidPercentage: row.bidPercentage ?? "" })),
-			{ apiKeyId: c.var.apiKey.id, marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID") },
+			{ apiKeyId: c.var.apiKey.id, marketplace: ebayMarketplaceId() },
 		);
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -255,7 +256,7 @@ adsRoute.post(
 		const body = c.req.valid("json");
 		const r = await bulkDeleteAdsByListingId(c.req.param("campaignId"), body.listingIds, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -281,7 +282,7 @@ adsRoute.post(
 		};
 		const r = await bulkCreateAdsByInventoryReference(c.req.param("campaignId"), body.requests, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -305,7 +306,7 @@ adsRoute.post(
 		};
 		const r = await bulkUpdateAdsBidByInventoryReference(c.req.param("campaignId"), body.requests, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -328,7 +329,7 @@ adsRoute.post(
 		};
 		const r = await bulkDeleteAdsByInventoryReference(c.req.param("campaignId"), body.requests, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -347,7 +348,7 @@ adsRoute.get(
 	async (c) => {
 		const { data, contentType } = await downloadAdReport(c.req.param("reportId"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.body(new Uint8Array(data), 200, { "Content-Type": contentType });
 	},
@@ -366,7 +367,7 @@ adsRoute.post(
 		const body = c.req.valid("json");
 		const r = await bulkUpdateAdsStatus(c.req.param("campaignId"), body.requests, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -397,7 +398,7 @@ adsRoute.get(
 		c.json({
 			...(await listReportTasks("ad", {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),
@@ -418,7 +419,7 @@ adsRoute.post(
 				{ ...c.req.valid("json"), kind: "ad" },
 				{
 					apiKeyId: c.var.apiKey.id,
-					marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+					marketplace: ebayMarketplaceId(),
 				},
 			),
 			201,
@@ -453,7 +454,7 @@ adsRoute.get(
 	async (c) => {
 		const ads = await listAdsForCampaign(c.req.param("campaignId"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ads, source: "rest" as const });
 	},
@@ -471,7 +472,7 @@ adsRoute.get(
 		c.json({
 			...(await listAdGroups(c.req.param("campaignId"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),
@@ -490,7 +491,7 @@ adsRoute.post(
 		c.json(
 			await createAdGroup(c.req.param("campaignId"), c.req.valid("json"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			}),
 			201,
 		),

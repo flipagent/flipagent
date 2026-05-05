@@ -20,7 +20,7 @@ function markdownFrom(m: EbayMarkdown): PriceMarkdown {
 	const status = m.campaignStatus === "RUNNING" ? "running" : m.campaignStatus === "ENDED" ? "ended" : "scheduled";
 	return {
 		id: m.campaignId,
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		name: m.campaignName,
 		appliesToSkus: m.listingIds ?? [],
 		discountPercent: m.discountPercent,
@@ -173,7 +173,7 @@ export async function createMarkdown(input: PriceMarkdownCreate, ctx: MarketingC
 	});
 	return {
 		id: res?.promotionId ?? locationId ?? "",
-		marketplace: input.marketplace ?? "ebay",
+		marketplace: input.marketplace ?? "ebay_us",
 		name: input.name,
 		appliesToSkus: input.appliesToSkus,
 		discountPercent: input.discountPercent,

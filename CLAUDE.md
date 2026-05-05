@@ -56,9 +56,17 @@ get the same scoring without re-implementing it.
 - **Marketplace-agnostic, flipagent-native surface.** Endpoints live
   under `/v1/<resource>` only. Every route has a flipagent shape with
   cents-int Money, ISO timestamps, lowercase status enums, and a
-  `marketplace` discriminator on every record. New marketplaces
-  (Amazon, Mercari, …) reuse the same paths via the `marketplace`
-  parameter rather than path prefixes.
+  `marketplace` discriminator on every record. The `marketplace`
+  field is a `provider_region` literal — `ebay_us`, `ebay_gb`,
+  `stockx`, `amazon_us`, `mercari_jp`, etc. — declared in
+  `packages/types/src/_common.ts`. Today only `ebay_us` is wired;
+  expand the literal at adapter wire time, never pre-declare. New
+  marketplaces drop adapters at `services/<provider>/` and add their
+  literal; the route surface stays unchanged. Translation to provider-
+  native ids (e.g. eBay's `EBAY_US`) lives in
+  `services/shared/marketplace.ts` — `ebayMarketplaceId(literal)` is
+  the only place that knows the eBay naming. Public surface never
+  leaks `X-EBAY-C-MARKETPLACE-ID` or other provider headers.
 
   Resources, by group. Phase 1 = live mounts in `routes/v1/index.ts`;
   V2 = typed service + route wrappers ready, mount commented out until

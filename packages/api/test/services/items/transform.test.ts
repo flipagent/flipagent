@@ -18,7 +18,7 @@ describe("ebayItemToFlipagent", () => {
 		const out = ebayItemToFlipagent(baseSummary);
 		expect(out).toMatchObject({
 			id: "406338886641",
-			marketplace: "ebay",
+			marketplace: "ebay_us",
 			status: "active",
 			title: "Apple AirPods Pro 2nd gen",
 			url: "https://www.ebay.com/itm/406338886641",

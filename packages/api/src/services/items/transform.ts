@@ -245,7 +245,7 @@ export function ebayItemToFlipagent(item: ItemSummary | ItemDetail): Item {
 	const status = inferStatus(item);
 	const out: Item = {
 		id: bareId(item.itemId, item.legacyItemId),
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		status,
 		title: item.title,
 		url: item.itemWebUrl,

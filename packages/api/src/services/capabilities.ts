@@ -86,7 +86,7 @@ export async function computeCapabilities(apiKeyId: string): Promise<Capabilitie
 	const bridge = bridgeRows[0];
 	const sellerConnected = oauthRows.length > 0;
 
-	const ebay = ebayCapabilities({
+	const ebay_us = ebayCapabilities({
 		extensionPaired: !!bridge,
 		ebayLoggedIn: !!bridge?.ebayLoggedIn,
 		sellerConnected,
@@ -105,7 +105,7 @@ export async function computeCapabilities(apiKeyId: string): Promise<Capabilitie
 			deviceName: bridge?.deviceName ?? null,
 			lastSeenAt: bridge?.lastSeenAt ? bridge.lastSeenAt.toISOString() : null,
 		},
-		marketplaces: { ebay },
+		marketplaces: { ebay_us },
 		forwarders: { planetexpress },
 		setup: computeSetupHints(),
 		checklist,

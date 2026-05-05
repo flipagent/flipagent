@@ -46,7 +46,7 @@ function returnPolicyToFlipagent(p: EbayReturnPolicy): Policy {
 	return {
 		id: p.returnPolicyId,
 		type: "return",
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		name: p.name,
 		...(p.description ? { description: p.description } : {}),
 		returnsAccepted: p.returnsAccepted,
@@ -62,7 +62,7 @@ function paymentPolicyToFlipagent(p: EbayPaymentPolicy): Policy {
 	return {
 		id: p.paymentPolicyId,
 		type: "payment",
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		name: p.name,
 		...(p.description ? { description: p.description } : {}),
 		...(p.immediatePay !== undefined ? { immediatePay: p.immediatePay } : {}),
@@ -94,7 +94,7 @@ function fulfillmentPolicyToFlipagent(p: EbayFulfillmentPolicy): Policy {
 	return {
 		id: p.fulfillmentPolicyId,
 		type: "fulfillment",
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		name: p.name,
 		...(p.description ? { description: p.description } : {}),
 		...(p.handlingTime ? { handlingTimeDays: p.handlingTime.value } : {}),

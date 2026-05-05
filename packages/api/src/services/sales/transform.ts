@@ -78,7 +78,7 @@ function inferStatus(o: EbayOrder): SaleStatus {
 	return "paid";
 }
 
-export function ebayOrderToSale(order: EbayOrder, marketplace: Marketplace = "ebay"): Sale {
+export function ebayOrderToSale(order: EbayOrder, marketplace: Marketplace = "ebay_us"): Sale {
 	const items: SaleLineItem[] = (order.lineItems ?? []).map((li) => ({
 		lineItemId: li.lineItemId,
 		itemId: li.legacyItemId ?? li.lineItemId,

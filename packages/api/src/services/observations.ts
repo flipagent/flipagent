@@ -47,7 +47,7 @@ import { toLegacyId } from "../utils/item-id.js";
 import { toCentsOrNull } from "./shared/money.js";
 
 export interface ObservationContext {
-	marketplace?: string; // default "ebay"
+	marketplace?: string; // default "ebay_us"
 	queryHash?: string;
 }
 
@@ -117,7 +117,7 @@ export async function getFreshDetailObservation(
 	try {
 		const cutoff = new Date(Date.now() - ttlMs);
 		const filters = [
-			eq(listingObservations.marketplace, options.marketplace ?? "ebay"),
+			eq(listingObservations.marketplace, options.marketplace ?? "ebay_us"),
 			eq(listingObservations.legacyItemId, legacyId),
 			isNotNull(listingObservations.rawResponse),
 			isNull(listingObservations.takedownAt),
@@ -157,7 +157,7 @@ export async function getFreshDetailObservation(
 export async function getFreshProduct(
 	epid: string,
 	ttlMs: number,
-	marketplace = "ebay",
+	marketplace = "ebay_us",
 ): Promise<{ body: Product; source: string; observedAt: Date } | null> {
 	try {
 		const cutoff = new Date(Date.now() - ttlMs);
@@ -229,7 +229,7 @@ type ObservableItem = {
 export async function recordProductObservation(
 	product: Product,
 	source: "rest" | "scrape",
-	marketplace = "ebay",
+	marketplace = "ebay_us",
 ): Promise<void> {
 	if (!product.epid) return;
 	try {
@@ -258,7 +258,7 @@ export async function recordProductObservation(
 export async function recordCategorySnapshot(
 	root: string,
 	snapshot: unknown,
-	marketplace = "ebay",
+	marketplace = "ebay_us",
 ): Promise<{ inserted: boolean }> {
 	if (!config.OBSERVATION_ENABLED) return { inserted: false };
 	const canonical = JSON.stringify(snapshot);
@@ -292,7 +292,7 @@ function buildRow(item: ObservableItem, ctx: ObservationContext): NewListingObse
 	const aspects = item.localizedAspects;
 
 	return {
-		marketplace: ctx.marketplace ?? "ebay",
+		marketplace: ctx.marketplace ?? "ebay_us",
 		legacyItemId: legacyId,
 		itemId: item.itemId,
 		sourceQueryHash: ctx.queryHash,

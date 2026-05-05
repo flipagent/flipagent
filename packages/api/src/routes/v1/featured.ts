@@ -24,6 +24,7 @@ import {
 	listFeatured,
 	listMerchandisedProducts,
 } from "../../services/featured.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, paramsFor, tbCoerce } from "../../utils/openapi.js";
 
 export const featuredRoute = new Hono();
@@ -61,7 +62,7 @@ featuredRoute.get(
 	tbCoerce("query", MerchandisedProductsQuery),
 	async (c) => {
 		const q = c.req.valid("query");
-		const r = await listMerchandisedProducts(q, c.req.header("X-EBAY-C-MARKETPLACE-ID"));
+		const r = await listMerchandisedProducts(q, ebayMarketplaceId());
 		return c.json({ ...r, source: "rest" as const } satisfies MerchandisedProductsResponse);
 	},
 );
@@ -78,7 +79,7 @@ featuredRoute.get(
 	tbCoerce("query", RelatedByProductQuery),
 	async (c) => {
 		const q = c.req.valid("query");
-		const r = await listAlsoBoughtByProduct(q, c.req.header("X-EBAY-C-MARKETPLACE-ID"));
+		const r = await listAlsoBoughtByProduct(q, ebayMarketplaceId());
 		return c.json({ ...r, source: "rest" as const } satisfies RelatedByProductResponse);
 	},
 );
@@ -95,7 +96,7 @@ featuredRoute.get(
 	tbCoerce("query", RelatedByProductQuery),
 	async (c) => {
 		const q = c.req.valid("query");
-		const r = await listAlsoViewedByProduct(q, c.req.header("X-EBAY-C-MARKETPLACE-ID"));
+		const r = await listAlsoViewedByProduct(q, ebayMarketplaceId());
 		return c.json({ ...r, source: "rest" as const } satisfies RelatedByProductResponse);
 	},
 );

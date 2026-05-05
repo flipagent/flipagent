@@ -10,15 +10,25 @@
 import { type Static, Type } from "@sinclair/typebox";
 
 /**
- * Marketplace identifier. eBay only today; Amazon / Mercari / Poshmark
- * land here when their adapters ship. The string union (not an enum)
- * keeps it forward-compatible: a self-hoster can add a custom value
- * without forking types.
+ * Marketplace identifier — provider+region combined into one literal.
+ *
+ * Convention: snake_case `provider_region` (`ebay_us`, `ebay_gb`,
+ * `amazon_us`, `mercari_jp`, …). Globally-unregioned providers use the
+ * provider name alone (`stockx`).
+ *
+ * Today only `ebay_us` is wired. The literal expands here when a new
+ * adapter+region combo ships. Don't pre-declare literals for combos
+ * that aren't supported — silent failure modes (validation accepts,
+ * dispatcher routes nowhere) are worse than a compile error when the
+ * new literal lands.
+ *
+ * Used as both the public dispatch knob (input on every list/search/
+ * create that targets a marketplace) and the response discriminator
+ * (every flipagent record carries its source marketplace). Routes
+ * translate to provider-native ids (eBay's `EBAY_US`, etc.) at the
+ * adapter boundary via `services/shared/marketplace.ts`.
  */
-export const Marketplace = Type.Union(
-	[Type.Literal("ebay"), Type.Literal("amazon"), Type.Literal("mercari"), Type.Literal("poshmark")],
-	{ $id: "Marketplace" },
-);
+export const Marketplace = Type.Literal("ebay_us", { $id: "Marketplace" });
 export type Marketplace = Static<typeof Marketplace>;
 
 /**

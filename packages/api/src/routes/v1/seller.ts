@@ -34,6 +34,7 @@ import {
 	updateRateTableShippingCost,
 	upsertSalesTax,
 } from "../../services/seller-account.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const sellerRoute = new Hono();
@@ -91,7 +92,7 @@ sellerRoute.get(
 		c.json({
 			...(await getSellerPaymentsProgram({
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),
@@ -109,7 +110,7 @@ sellerRoute.get(
 		c.json({
 			...(await getSellerAdvertisingEligibility({
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),

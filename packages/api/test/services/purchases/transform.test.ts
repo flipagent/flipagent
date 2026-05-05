@@ -20,7 +20,7 @@ describe("ebayToPurchase", () => {
 		const out = ebayToPurchase({ order: baseOrder });
 		expect(out).toMatchObject({
 			id: "PO-12345",
-			marketplace: "ebay",
+			marketplace: "ebay_us",
 			status: "completed",
 			items: [{ itemId: "v1|123|0", quantity: 2 }],
 			pricing: {

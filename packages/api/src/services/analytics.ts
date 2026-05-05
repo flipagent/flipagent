@@ -64,7 +64,7 @@ export async function getTrafficReport(
 			...(m.has("SALES_CONVERSION_RATE") ? { salesConversionRate: m.get("SALES_CONVERSION_RATE") } : {}),
 		};
 	});
-	return { marketplace: "ebay", from, to, rows };
+	return { marketplace: "ebay_us", from, to, rows };
 }
 
 export async function getSellerStandards(
@@ -93,7 +93,7 @@ export async function getSellerStandards(
 		path: `/sell/analytics/v1/seller_standards_profile/${programId}/${cycle}`,
 	}).catch(swallowEbay404);
 	return {
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		program: programId,
 		cycle,
 		level: LEVEL_FROM[res?.standardsLevel ?? "ABOVE_STANDARD"] ?? "above_standard",
@@ -164,5 +164,5 @@ export async function getServiceMetrics(ctx: AnalyticsContext): Promise<ServiceM
 			});
 		}
 	}
-	return { marketplace: "ebay", metrics: all };
+	return { marketplace: "ebay_us", metrics: all };
 }

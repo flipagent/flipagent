@@ -88,7 +88,7 @@ function toConversation(c: UpstreamConversationDetail): Conversation {
 	const status: Conversation["status"] = c.conversationStatus === "ARCHIVE" ? "archived" : "active";
 	return {
 		id: c.conversationId ?? "",
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		type: normalizeType(c.conversationType),
 		status,
 		...(c.conversationTitle ? { title: c.conversationTitle } : {}),

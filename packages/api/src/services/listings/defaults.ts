@@ -85,7 +85,7 @@ async function ensurePaymentPolicy(apiKeyId: string, marketplace: string): Promi
 		{
 			type: "payment",
 			name: "flipagent default — managed payments",
-			marketplace: "ebay",
+			marketplace: "ebay_us",
 			categoryType: "ALL_EXCLUDING_MOTORS_VEHICLES",
 			immediatePay: false,
 		},

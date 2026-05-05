@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { createFeedTask, getFeedTask, listFeedTasks } from "../../services/feeds.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const feedsRoute = new Hono();
@@ -26,7 +27,7 @@ feedsRoute.get(
 		return c.json({
 			...(await listFeedTasks(kind, {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		});
@@ -46,7 +47,7 @@ feedsRoute.post(
 		c.json(
 			await createFeedTask(c.req.valid("json"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			}),
 			201,
 		),
@@ -64,7 +65,7 @@ feedsRoute.get(
 		const kind = (c.req.query("kind") as FeedTaskCreate["kind"] | undefined) ?? "listing";
 		const t = await getFeedTask(c.req.param("id"), kind, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		if (!t) return c.json({ error: "feed_task_not_found" }, 404);
 		return c.json(t);

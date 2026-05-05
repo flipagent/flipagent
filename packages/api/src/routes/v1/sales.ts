@@ -10,6 +10,7 @@ import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { EbayApiError } from "../../services/ebay/rest/user-client.js";
 import { getSale, listSales, refundSale, shipSale } from "../../services/sales/operations.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
@@ -49,7 +50,7 @@ salesRoute.get(
 				{ limit: q.limit, offset: q.offset },
 				{
 					apiKeyId: c.var.apiKey.id,
-					marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+					marketplace: ebayMarketplaceId(),
 				},
 			);
 			const filtered = q.status ? r.sales.filter((s) => s.status === q.status) : r.sales;
@@ -80,7 +81,7 @@ salesRoute.get(
 		try {
 			const sale = await getSale(c.req.param("id"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			});
 			if (!sale) return c.json({ error: "sale_not_found", message: "No sale" }, 404);
 			return c.json(sale);
@@ -105,7 +106,7 @@ salesRoute.post(
 		try {
 			const sale = await shipSale(c.req.param("id"), c.req.valid("json"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			});
 			if (!sale) return c.json({ error: "sale_not_found", message: "No sale" }, 404);
 			return c.json(sale);
@@ -130,7 +131,7 @@ salesRoute.post(
 		try {
 			const sale = await refundSale(c.req.param("id"), c.req.valid("json"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			});
 			if (!sale) return c.json({ error: "sale_not_found", message: "No sale" }, 404);
 			return c.json(sale);

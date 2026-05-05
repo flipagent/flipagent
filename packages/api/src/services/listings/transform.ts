@@ -28,16 +28,8 @@ import type {
 	OfferDetails,
 	PackageWeightAndSize,
 } from "@flipagent/types/ebay/sell";
+import { ebayMarketplaceId } from "../shared/marketplace.js";
 import { toCents, toDollarString } from "../shared/money.js";
-
-const DEFAULT_MARKETPLACE_ID = "EBAY_US";
-
-const MARKETPLACE_TO_EBAY: Record<Marketplace, string> = {
-	ebay: "EBAY_US",
-	amazon: "EBAY_US",
-	mercari: "EBAY_US",
-	poshmark: "EBAY_US",
-};
 
 const CONDITION_TO_EBAY: Record<ListingCondition, InventoryConditionEnum> = {
 	new: "NEW",
@@ -166,7 +158,7 @@ export function listingCreateToEbay(
 	const pkg = packageToEbay(input.package);
 	if (pkg) inventoryItem.packageWeightAndSize = pkg;
 
-	const marketplaceId = input.marketplace ? MARKETPLACE_TO_EBAY[input.marketplace] : DEFAULT_MARKETPLACE_ID;
+	const marketplaceId = ebayMarketplaceId(input.marketplace);
 	const offerDetails: OfferDetails = {
 		sku: resolved.sku,
 		marketplaceId,
@@ -269,7 +261,7 @@ export function ebayToListing(parts: InboundListing): Listing {
 	const out: Listing = {
 		id: listingId,
 		sku,
-		marketplace: parts.marketplace ?? "ebay",
+		marketplace: parts.marketplace ?? "ebay_us",
 		status,
 		title: inventoryItem.product?.title ?? "",
 		price: priceFromOffer(offer),

@@ -35,6 +35,7 @@ import {
 	listDisputes,
 	respondToDispute,
 } from "../../services/disputes/operations.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
 export const disputesRoute = new Hono();
@@ -55,7 +56,7 @@ disputesRoute.get(
 		const q = c.req.valid("query");
 		const r = await listDisputes(q, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({
 			disputes: r.disputes,
@@ -77,7 +78,7 @@ disputesRoute.get(
 	async (c) => {
 		const dispute = await getDispute(c.req.param("id"), undefined, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		if (!dispute) return c.json({ error: "dispute_not_found", message: "No dispute." }, 404);
 		return c.json(dispute);
@@ -164,7 +165,7 @@ disputesRoute.get(
 	async (c) => {
 		const result = await getDisputeActivity(c.req.param("id"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		if (!result) {
 			return c.json(
@@ -297,7 +298,7 @@ disputesRoute.post(
 	async (c) => {
 		const dispute = await respondToDispute(c.req.param("id"), c.req.valid("json"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		if (!dispute) return c.json({ error: "dispute_not_found", message: "No dispute." }, 404);
 		return c.json(dispute);

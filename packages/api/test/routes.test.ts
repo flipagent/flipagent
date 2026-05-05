@@ -202,7 +202,7 @@ describe("/v1/items (mocked scrape)", () => {
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { id: string; marketplace: string };
 		expect(body.id).toBe("987654321");
-		expect(body.marketplace).toBe("ebay");
+		expect(body.marketplace).toBe("ebay_us");
 	});
 });
 

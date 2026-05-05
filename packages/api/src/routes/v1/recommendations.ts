@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { listRecommendations } from "../../services/recommendations.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, paramsFor, tbCoerce } from "../../utils/openapi.js";
 
 export const recommendationsRoute = new Hono();
@@ -28,7 +29,7 @@ recommendationsRoute.get(
 		const q = c.req.valid("query");
 		const r = await listRecommendations(q, {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({
 			recommendations: r.recommendations,

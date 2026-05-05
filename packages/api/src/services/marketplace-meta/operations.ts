@@ -222,7 +222,7 @@ export async function getMarketplaceMetadata(
 	}));
 
 	return {
-		marketplaceId: "ebay",
+		marketplaceId: "ebay_us",
 		ebayMarketplaceId: ebayMarketplace,
 		returnPolicies,
 		salesTaxJurisdictions,

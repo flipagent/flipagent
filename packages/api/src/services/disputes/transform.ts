@@ -93,7 +93,7 @@ function cancellationStatus(s: string | undefined): DisputeStatus {
 	return "open";
 }
 
-export function ebayReturnToDispute(r: EbayReturnRecord, marketplace: Marketplace = "ebay"): Dispute {
+export function ebayReturnToDispute(r: EbayReturnRecord, marketplace: Marketplace = "ebay_us"): Dispute {
 	return {
 		id: r.returnId,
 		marketplace,
@@ -109,7 +109,7 @@ export function ebayReturnToDispute(r: EbayReturnRecord, marketplace: Marketplac
 	};
 }
 
-export function ebayCaseToDispute(c: EbayCaseRecord, marketplace: Marketplace = "ebay"): Dispute {
+export function ebayCaseToDispute(c: EbayCaseRecord, marketplace: Marketplace = "ebay_us"): Dispute {
 	return {
 		id: c.caseId,
 		marketplace,
@@ -126,7 +126,7 @@ export function ebayCaseToDispute(c: EbayCaseRecord, marketplace: Marketplace = 
 	};
 }
 
-export function ebayCancellationToDispute(c: EbayCancellationRecord, marketplace: Marketplace = "ebay"): Dispute {
+export function ebayCancellationToDispute(c: EbayCancellationRecord, marketplace: Marketplace = "ebay_us"): Dispute {
 	return {
 		id: c.cancelId,
 		marketplace,
@@ -141,7 +141,7 @@ export function ebayCancellationToDispute(c: EbayCancellationRecord, marketplace
 	};
 }
 
-export function ebayInquiryToDispute(i: EbayInquiryRecord, marketplace: Marketplace = "ebay"): Dispute {
+export function ebayInquiryToDispute(i: EbayInquiryRecord, marketplace: Marketplace = "ebay_us"): Dispute {
 	return {
 		id: i.inquiryId,
 		marketplace,

@@ -163,7 +163,7 @@ describe("ebayToListing (inbound)", () => {
 			id: "123456789012",
 			sku: "LV-501",
 			offerId: "OFR-99",
-			marketplace: "ebay",
+			marketplace: "ebay_us",
 			status: "active",
 			title: "Levi's 501",
 			description: "Classic fit",

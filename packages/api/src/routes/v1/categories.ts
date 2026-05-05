@@ -1,5 +1,10 @@
 /**
  * `/v1/categories` — taxonomy tree + suggestions + per-category aspects.
+ *
+ * Region selection: routes read the validated query's `marketplace`
+ * field (flipagent literal, e.g. `ebay_us`) and translate to the eBay
+ * marketplace_id at the adapter boundary. No eBay-internal headers leak
+ * through the public surface.
  */
 
 import {
@@ -21,6 +26,7 @@ import {
 	suggestCategory,
 } from "../../services/categories.js";
 import { getCompatibilityProperties } from "../../services/compatibility.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, paramsFor, tbCoerce } from "../../utils/openapi.js";
 
 export const categoriesRoute = new Hono();
@@ -39,7 +45,7 @@ categoriesRoute.get(
 	tbCoerce("query", CategorySuggestQuery),
 	async (c) => {
 		const q = c.req.valid("query");
-		const suggestions = await suggestCategory(q.title, q.marketplace);
+		const suggestions = await suggestCategory(q.title, ebayMarketplaceId(q.marketplace));
 		return c.json({ suggestions, source: "rest" as const } satisfies CategorySuggestResponse);
 	},
 );
@@ -72,7 +78,7 @@ categoriesRoute.get(
 	}),
 	requireApiKey,
 	async (c) => {
-		const r = await fetchItemAspects(c.req.query("marketplace"));
+		const r = await fetchItemAspects(ebayMarketplaceId());
 		return c.json({ ...r, source: "rest" as const } satisfies CategoryFetchItemAspectsResponse);
 	},
 );
@@ -87,7 +93,7 @@ categoriesRoute.get(
 	requireApiKey,
 	async (c) => {
 		const id = c.req.param("id");
-		const aspects = await getCategoryAspects(id);
+		const aspects = await getCategoryAspects(id, ebayMarketplaceId());
 		return c.json({ categoryId: id, aspects, source: "rest" as const } satisfies CategoryAspectsResponse);
 	},
 );
@@ -104,7 +110,7 @@ categoriesRoute.get(
 	tbCoerce("query", CategoriesListQuery),
 	async (c) => {
 		const q = c.req.valid("query");
-		const categories = await getCategoryChildren(q.parentId, q.marketplace);
+		const categories = await getCategoryChildren(q.parentId, ebayMarketplaceId(q.marketplace));
 		return c.json({ categories, source: "rest" as const } satisfies CategoriesListResponse);
 	},
 );

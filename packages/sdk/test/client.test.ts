@@ -33,7 +33,7 @@ const STUB_META = {
 
 const STUB_ITEM = {
 	id: "123",
-	marketplace: "ebay" as const,
+	marketplace: "ebay_us" as const,
 	status: "active" as const,
 	title: "test",
 	url: "https://www.ebay.com/itm/123",

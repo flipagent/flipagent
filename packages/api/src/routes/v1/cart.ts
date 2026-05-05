@@ -15,6 +15,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { addToCart, getCart, removeFromCart, updateCartQuantity } from "../../services/cart.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const cartRoute = new Hono();
@@ -36,7 +37,7 @@ cartRoute.get(
 		c.json({
 			...(await getCart({
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),
@@ -55,7 +56,7 @@ cartRoute.post(
 		c.json({
 			...(await addToCart(c.req.valid("json"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),
@@ -75,7 +76,7 @@ cartRoute.patch(
 		return c.json({
 			...(await updateCartQuantity(
 				{ cartItemId: c.req.param("cartItemId"), quantity: body.quantity },
-				{ apiKeyId: c.var.apiKey.id, marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID") },
+				{ apiKeyId: c.var.apiKey.id, marketplace: ebayMarketplaceId() },
 			)),
 			source: "rest" as const,
 		});
@@ -94,7 +95,7 @@ cartRoute.delete(
 		c.json({
 			...(await removeFromCart(
 				{ cartItemId: c.req.param("cartItemId") },
-				{ apiKeyId: c.var.apiKey.id, marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID") },
+				{ apiKeyId: c.var.apiKey.id, marketplace: ebayMarketplaceId() },
 			)),
 			source: "rest" as const,
 		}),

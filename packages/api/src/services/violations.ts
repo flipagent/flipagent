@@ -34,7 +34,7 @@ function ebayViolationToFlipagent(row: EbayViolation): Violation[] {
 	for (const v of row.violations ?? []) {
 		out.push({
 			id: v.violationId ?? `${row.listingId}:${v.title ?? "violation"}`,
-			marketplace: "ebay",
+			marketplace: "ebay_us",
 			listingId: row.listingId,
 			...(row.sku ? { sku: row.sku } : {}),
 			severity: SEVERITY_MAP[v.severity ?? "WARNING"] ?? "warning",

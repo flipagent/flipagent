@@ -57,7 +57,7 @@ export async function listRecommendations(
 	});
 	const recommendations = (res?.recommendations ?? []).map((r) => ({
 		listingId: r.listingId,
-		marketplace: "ebay" as const,
+		marketplace: "ebay_us" as const,
 		...(r.sku ? { sku: r.sku } : {}),
 		recommendations: (r.recommendations ?? []).flatMap((rec) => {
 			const out: Recommendation["recommendations"] = [];

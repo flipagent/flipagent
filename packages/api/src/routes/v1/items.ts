@@ -31,6 +31,7 @@ import { searchItemsByImage } from "../../services/items/search-by-image.js";
 import { ebayItemToFlipagent } from "../../services/items/transform.js";
 import { search } from "../../services/search.js";
 import { renderResultHeaders } from "../../services/shared/headers.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { parseItemId } from "../../utils/item-id.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
@@ -144,7 +145,7 @@ itemsRoute.get(
 						},
 						{
 							apiKey: c.var.apiKey,
-							marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID") ?? ebayMarketplaceForCountry(query.country),
+							marketplace: ebayMarketplaceForCountry(query.country) ?? ebayMarketplaceId(),
 							acceptLanguage: c.req.header("Accept-Language"),
 						},
 					),
@@ -206,7 +207,7 @@ itemsRoute.get(
 		try {
 			const result = await getItemDetail(parsed.legacyId, {
 				apiKey: c.var.apiKey,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 				acceptLanguage: c.req.header("Accept-Language"),
 				variationId: parsed.variationId,
 			});

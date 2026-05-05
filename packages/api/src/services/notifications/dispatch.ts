@@ -42,7 +42,7 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
 		.insert(marketplaceNotifications)
 		.values({
 			apiKeyId,
-			marketplace: "ebay",
+			marketplace: "ebay_us",
 			eventType: input.eventType,
 			recipientUserId: input.recipientUserId,
 			externalId: input.transactionId ?? input.itemId,

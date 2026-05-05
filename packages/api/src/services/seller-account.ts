@@ -78,7 +78,7 @@ export async function getSellerPaymentsProgram(ctx: SellerAccountContext): Promi
 		path: `/sell/account/v1/payments_program/${marketplace}/EBAY_PAYMENTS`,
 	}).catch(swallowEbay404);
 	return {
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		status: res?.status ?? "NOT_OPTED_IN",
 		programType: res?.programType ?? "EBAY_PAYMENTS",
 	};
@@ -102,7 +102,7 @@ export async function getSellerAdvertisingEligibility(
 	}).catch(swallowEbay404);
 	const row = res?.advertisingEligibility?.find((r) => r.marketplaceId === marketplace);
 	return {
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		eligible: !!row?.eligibility,
 		...(row?.programs ? { programs: row.programs } : {}),
 	};
@@ -234,7 +234,7 @@ export async function listRateTables(ctx: SellerAccountContext): Promise<RateTab
 	const rateTables: RateTable[] = (res?.rateTables ?? []).map((r) => ({
 		id: r.rateTableId,
 		name: r.name,
-		marketplace: "ebay" as const,
+		marketplace: "ebay_us" as const,
 		...(r.shippingOptionType ? { shippingOption: r.shippingOptionType } : {}),
 		...(r.countryCode ? { countryCode: r.countryCode } : {}),
 	}));
@@ -265,7 +265,7 @@ export async function listCustomPolicies(
 		id: p.customPolicyId,
 		name: p.name,
 		policyType: p.policyType,
-		marketplace: "ebay" as const,
+		marketplace: "ebay_us" as const,
 		...(p.description ? { description: p.description } : {}),
 		...(p.label ? { label: p.label } : {}),
 	}));
@@ -292,7 +292,7 @@ export async function createCustomPolicy(input: CustomPolicyCreate, ctx: SellerA
 		id: body?.customPolicyId ?? locationId ?? "",
 		name: input.name,
 		policyType: input.policyType,
-		marketplace: input.marketplace ?? "ebay",
+		marketplace: input.marketplace ?? "ebay_us",
 		...(input.description ? { description: input.description } : {}),
 		...(input.label ? { label: input.label } : {}),
 	};

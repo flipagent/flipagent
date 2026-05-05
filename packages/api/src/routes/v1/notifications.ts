@@ -72,7 +72,7 @@ notificationsRoute.post(
 			await db
 				.insert(marketplaceNotifications)
 				.values({
-					marketplace: "ebay",
+					marketplace: "ebay_us",
 					eventType: "unparseable",
 					signatureValid: false,
 					dedupeKey: dedupeKey(xml),

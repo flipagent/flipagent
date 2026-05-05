@@ -8,6 +8,7 @@
 
 import type { ListingDraftRequest, ListingDraftResponse } from "@flipagent/types";
 import { sellRequest } from "../ebay/rest/user-client.js";
+import { ebayMarketplaceId } from "../shared/marketplace.js";
 
 export interface ListingDraftContext {
 	apiKeyId: string;
@@ -23,7 +24,7 @@ export async function createListingDraft(
 		method: "POST",
 		path: "/sell/listing/v1_beta/item_draft",
 		body: (input.raw as Record<string, unknown>) ?? {},
-		marketplace: ctx.marketplace ?? input.marketplace?.toUpperCase(),
+		marketplace: ctx.marketplace ?? ebayMarketplaceId(input.marketplace),
 		contentLanguage: "en-US",
 	});
 	return {

@@ -24,6 +24,7 @@ import {
 	bulkUpsertInventory,
 	migrateListings,
 } from "../../services/listings/bulk.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const listingsBulkRoute = new Hono();
@@ -43,7 +44,7 @@ listingsBulkRoute.post(
 		c.json({
 			...(await bulkGetInventory(c.req.valid("json"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),
@@ -62,7 +63,7 @@ listingsBulkRoute.post(
 		c.json({
 			...(await bulkGetOffer(c.req.valid("json"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),
@@ -80,7 +81,7 @@ listingsBulkRoute.post(
 	async (c) => {
 		const r = await bulkUpdatePriceQuantity(c.req.valid("json"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -98,7 +99,7 @@ listingsBulkRoute.post(
 	async (c) => {
 		const r = await bulkUpsertInventory(c.req.valid("json"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -116,7 +117,7 @@ listingsBulkRoute.post(
 	async (c) => {
 		const r = await bulkPublishOffer(c.req.valid("json"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -134,7 +135,7 @@ listingsBulkRoute.post(
 	async (c) => {
 		const r = await migrateListings(c.req.valid("json"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},

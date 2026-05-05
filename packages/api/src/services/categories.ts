@@ -1,9 +1,14 @@
 /**
  * commerce/taxonomy reads — category tree + suggestions + per-category aspects.
  *
- *   getCategoryChildren(parentId?)  — top-level if no parentId, else children
- *   suggestCategory(title)          — title→category match
- *   getCategoryAspects(categoryId)  — required + recommended item-specifics
+ *   getCategoryChildren(parentId?, ebayMarketplaceId?)  — top-level if no parentId
+ *   suggestCategory(title, ebayMarketplaceId?)          — title→category match
+ *   getCategoryAspects(categoryId, ebayMarketplaceId?)  — required + recommended item-specifics
+ *   fetchItemAspects(ebayMarketplaceId?)                — bulk: every aspect for every category
+ *
+ * All four take eBay's native marketplace_id (`EBAY_US`, `EBAY_GB`, …) and
+ * default to `EBAY_US`. Routes are responsible for translating any
+ * caller-facing convention (header, country code) into that.
  *
  * Wraps eBay Commerce Taxonomy REST via the shared app-credential client.
  */
@@ -13,21 +18,22 @@ import { appRequest } from "./ebay/rest/app-client.js";
 import { hashQuery } from "./shared/cache.js";
 import { withCache } from "./shared/with-cache.js";
 
-const DEFAULT_MARKETPLACE_ID = "EBAY_US";
+const DEFAULT_EBAY_MARKETPLACE_ID = "EBAY_US";
 
 interface TreeIdResponse {
 	categoryTreeId: string;
 }
 
-let cachedTreeId: { id: string; expiresAt: number } | null = null;
+const TREE_ID_TTL_MS = 24 * 60 * 60 * 1000;
+const treeIdCache = new Map<string, { id: string; expiresAt: number }>();
 
-async function getCategoryTreeId(marketplace?: string): Promise<string> {
-	const ttlMs = 24 * 60 * 60 * 1000;
-	if (cachedTreeId && cachedTreeId.expiresAt > Date.now()) return cachedTreeId.id;
+async function getCategoryTreeId(ebayMarketplaceId: string): Promise<string> {
+	const cached = treeIdCache.get(ebayMarketplaceId);
+	if (cached && cached.expiresAt > Date.now()) return cached.id;
 	const res = await appRequest<TreeIdResponse>({
-		path: `/commerce/taxonomy/v1/get_default_category_tree_id?marketplace_id=${encodeURIComponent(marketplace ?? DEFAULT_MARKETPLACE_ID)}`,
+		path: `/commerce/taxonomy/v1/get_default_category_tree_id?marketplace_id=${encodeURIComponent(ebayMarketplaceId)}`,
 	});
-	cachedTreeId = { id: res.categoryTreeId, expiresAt: Date.now() + ttlMs };
+	treeIdCache.set(ebayMarketplaceId, { id: res.categoryTreeId, expiresAt: Date.now() + TREE_ID_TTL_MS });
 	return res.categoryTreeId;
 }
 
@@ -68,26 +74,33 @@ function flattenSubtree(
  */
 const CATEGORIES_CACHE_TTL_SEC = 24 * 60 * 60;
 
-export async function getCategoryChildren(parentId: string | undefined, marketplace?: string): Promise<CategoryNode[]> {
-	const mp = marketplace ?? DEFAULT_MARKETPLACE_ID;
-	const path = parentId ? `commerce.taxonomy:children:${mp}:${parentId}` : `commerce.taxonomy:roots:${mp}`;
+export async function getCategoryChildren(
+	parentId: string | undefined,
+	ebayMarketplaceId: string = DEFAULT_EBAY_MARKETPLACE_ID,
+): Promise<CategoryNode[]> {
+	const path = parentId
+		? `commerce.taxonomy:children:${ebayMarketplaceId}:${parentId}`
+		: `commerce.taxonomy:roots:${ebayMarketplaceId}`;
 	const result = await withCache<CategoryNode[]>(
 		{
 			scope: "categories",
 			ttlSec: CATEGORIES_CACHE_TTL_SEC,
 			path,
-			queryHash: hashQuery({ marketplace: mp, parentId: parentId ?? null }),
+			queryHash: hashQuery({ ebayMarketplaceId, parentId: parentId ?? null }),
 		},
-		async () => ({ body: await fetchCategoryChildrenUpstream(parentId, marketplace), source: "rest" as const }),
+		async () => ({
+			body: await fetchCategoryChildrenUpstream(parentId, ebayMarketplaceId),
+			source: "rest" as const,
+		}),
 	);
 	return result.body;
 }
 
 async function fetchCategoryChildrenUpstream(
 	parentId: string | undefined,
-	marketplace?: string,
+	ebayMarketplaceId: string,
 ): Promise<CategoryNode[]> {
-	const treeId = await getCategoryTreeId(marketplace);
+	const treeId = await getCategoryTreeId(ebayMarketplaceId);
 	if (!parentId) {
 		const tree = await appRequest<{ rootCategoryNode: EbayCategorySubtree }>({
 			path: `/commerce/taxonomy/v1/category_tree/${treeId}`,
@@ -126,8 +139,11 @@ interface SuggestResponse {
 	}>;
 }
 
-export async function suggestCategory(title: string, marketplace?: string): Promise<CategorySuggestion[]> {
-	const treeId = await getCategoryTreeId(marketplace);
+export async function suggestCategory(
+	title: string,
+	ebayMarketplaceId: string = DEFAULT_EBAY_MARKETPLACE_ID,
+): Promise<CategorySuggestion[]> {
+	const treeId = await getCategoryTreeId(ebayMarketplaceId);
 	const res = await appRequest<SuggestResponse>({
 		path: `/commerce/taxonomy/v1/category_tree/${treeId}/get_category_suggestions?q=${encodeURIComponent(title)}`,
 	});
@@ -158,8 +174,11 @@ interface AspectsResponse {
 	}>;
 }
 
-export async function getCategoryAspects(categoryId: string, marketplace?: string): Promise<CategoryAspect[]> {
-	const treeId = await getCategoryTreeId(marketplace);
+export async function getCategoryAspects(
+	categoryId: string,
+	ebayMarketplaceId: string = DEFAULT_EBAY_MARKETPLACE_ID,
+): Promise<CategoryAspect[]> {
+	const treeId = await getCategoryTreeId(ebayMarketplaceId);
 	const res = await appRequest<AspectsResponse>({
 		path: `/commerce/taxonomy/v1/category_tree/${treeId}/get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`,
 	});
@@ -185,9 +204,9 @@ interface FetchItemAspectsResponse {
  * single-category real-time UI calls.
  */
 export async function fetchItemAspects(
-	marketplace?: string,
+	ebayMarketplaceId: string = DEFAULT_EBAY_MARKETPLACE_ID,
 ): Promise<{ treeId: string; entries: Array<{ categoryId: string; aspects: CategoryAspect[] }> }> {
-	const treeId = await getCategoryTreeId(marketplace);
+	const treeId = await getCategoryTreeId(ebayMarketplaceId);
 	const res = await appRequest<FetchItemAspectsResponse>({
 		path: `/commerce/taxonomy/v1/category_tree/${treeId}/fetch_item_aspects`,
 	});

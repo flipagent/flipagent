@@ -29,7 +29,7 @@ function ebayCampaignToFlipagent(c: EbayCampaign): AdCampaign {
 	const status = c.campaignStatus.toLowerCase();
 	return {
 		id: c.campaignId,
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		name: c.campaignName,
 		status: status === "running" || status === "paused" || status === "ended" ? status : "draft",
 		fundingModel: FUNDING_FROM[c.fundingStrategy?.fundingModel ?? "PRIORITY"] ?? "priority",
@@ -87,7 +87,7 @@ export async function createAdCampaign(input: AdCampaignCreate, ctx: MarketingCo
 	});
 	return {
 		id: res?.campaignId ?? locationId ?? "",
-		marketplace: input.marketplace ?? "ebay",
+		marketplace: input.marketplace ?? "ebay_us",
 		name: input.name,
 		status: "draft",
 		fundingModel: input.fundingModel,

@@ -18,6 +18,14 @@ export const CategoryNode = Type.Object(
 );
 export type CategoryNode = Static<typeof CategoryNode>;
 
+/**
+ * Two distinct concepts on category routes:
+ *
+ * `marketplace` is the provider+region dispatch literal (`ebay_us`,
+ * `ebay_gb`, `stockx`, …). Today only `ebay_us` is wired. Routes
+ * translate to the eBay marketplace_id at the adapter boundary; no
+ * eBay-internal headers leak through this surface.
+ */
 export const CategoriesListQuery = Type.Object(
 	{
 		marketplace: Type.Optional(Marketplace),

@@ -23,6 +23,7 @@ import {
 	updatePromotion,
 } from "../../services/marketing/promotions.js";
 import { createReportTask, getReportTask, listReportTasks } from "../../services/marketing/reports.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const promotionsRoute = new Hono();
@@ -42,7 +43,7 @@ promotionsRoute.get(
 			{ limit: Number(c.req.query("limit") ?? 50), offset: Number(c.req.query("offset") ?? 0) },
 			{
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			},
 		);
 		return c.json({ ...r, source: "rest" as const });
@@ -61,7 +62,7 @@ promotionsRoute.post(
 	async (c) => {
 		const r = await createPromotion(c.req.valid("json"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json(r, 201);
 	},
@@ -78,7 +79,7 @@ promotionsRoute.get(
 	async (c) => {
 		const r = await getPromotion(c.req.param("id"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "promotion_not_found" }, 404);
 		return c.json({ ...r, source: "rest" as const });
@@ -97,7 +98,7 @@ promotionsRoute.put(
 	async (c) => {
 		const r = await updatePromotion(c.req.param("id"), c.req.valid("json"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ...r, source: "rest" as const });
 	},
@@ -114,7 +115,7 @@ promotionsRoute.delete(
 	async (c) => {
 		await deletePromotion(c.req.param("id"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ok: true, source: "rest" as const });
 	},
@@ -131,7 +132,7 @@ promotionsRoute.post(
 	async (c) => {
 		await pausePromotion(c.req.param("id"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ok: true, source: "rest" as const });
 	},
@@ -148,7 +149,7 @@ promotionsRoute.post(
 	async (c) => {
 		await resumePromotion(c.req.param("id"), {
 			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+			marketplace: ebayMarketplaceId(),
 		});
 		return c.json({ ok: true, source: "rest" as const });
 	},
@@ -166,7 +167,7 @@ promotionsRoute.get(
 		c.json({
 			...(await getPromotionListingSet(c.req.param("id"), {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),
@@ -204,7 +205,7 @@ promotionsRoute.post(
 				{ ...c.req.valid("json"), kind: "promotion_summary" },
 				{
 					apiKeyId: c.var.apiKey.id,
-					marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+					marketplace: ebayMarketplaceId(),
 				},
 			),
 			201,

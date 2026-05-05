@@ -1,5 +1,10 @@
 /**
  * `client.categories.*` — taxonomy reads, normalized.
+ *
+ * `marketplace` is the provider+region dispatch literal (`ebay_us`,
+ * `ebay_gb`, `stockx`, …). Today only `ebay_us` is wired; the literal
+ * expands when more adapters land. The server translates to the
+ * provider-native id at the adapter boundary.
  */
 
 import type {
@@ -9,6 +14,7 @@ import type {
 	CategoryFetchItemAspectsResponse,
 	CategorySuggestQuery,
 	CategorySuggestResponse,
+	Marketplace,
 } from "@flipagent/types";
 import type { FlipagentHttp } from "./http.js";
 
@@ -16,7 +22,7 @@ export interface CategoriesClient {
 	list(params?: CategoriesListQuery): Promise<CategoriesListResponse>;
 	suggest(params: CategorySuggestQuery): Promise<CategorySuggestResponse>;
 	aspects(categoryId: string): Promise<CategoryAspectsResponse>;
-	itemAspects(opts?: { marketplace?: string }): Promise<CategoryFetchItemAspectsResponse>;
+	itemAspects(opts?: { marketplace?: Marketplace }): Promise<CategoryFetchItemAspectsResponse>;
 }
 
 export function createCategoriesClient(http: FlipagentHttp): CategoriesClient {

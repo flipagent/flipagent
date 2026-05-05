@@ -390,7 +390,7 @@ export const listingObservations = pgTable(
 	"listing_observations",
 	{
 		id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
-		marketplace: text("marketplace").notNull().default("ebay"),
+		marketplace: text("marketplace").notNull().default("ebay_us"),
 		legacyItemId: text("legacy_item_id").notNull(),
 		itemId: text("item_id"),
 		observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
@@ -558,7 +558,7 @@ export const productObservations = pgTable(
 	"product_observations",
 	{
 		id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
-		marketplace: text("marketplace").notNull().default("ebay"),
+		marketplace: text("marketplace").notNull().default("ebay_us"),
 		epid: text("epid").notNull(),
 		observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
 		/** Full `Product` body. Schema-free for forward-compat. */
@@ -586,7 +586,7 @@ export const categorySnapshots = pgTable(
 	"category_snapshots",
 	{
 		id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
-		marketplace: text("marketplace").notNull().default("ebay"),
+		marketplace: text("marketplace").notNull().default("ebay_us"),
 		root: text("root").notNull(),
 		/** SHA-256 of canonical-JSON serialised snapshot. Insert dedup'd on this per (marketplace, root). */
 		hash: text("hash").notNull(),
@@ -698,7 +698,7 @@ export const marketplaceNotifications = pgTable(
 	{
 		id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
 		apiKeyId: uuid("api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
-		marketplace: text("marketplace").notNull().default("ebay"),
+		marketplace: text("marketplace").notNull().default("ebay_us"),
 		eventType: text("event_type").notNull(),
 		recipientUserId: text("recipient_user_id"),
 		externalId: text("external_id"),

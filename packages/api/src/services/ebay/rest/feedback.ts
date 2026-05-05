@@ -70,7 +70,7 @@ function toFeedback(f: UpstreamFeedbackDetail, viewerUsername: string): Feedback
 	const role: FeedbackRole = "seller"; // viewer's role; refined below if needed
 	return {
 		id: f.feedbackId ?? "",
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		role,
 		rating: RATING_FROM[f.commentType ?? "POSITIVE"] ?? "positive",
 		comment: f.feedbackComment?.commentText ?? "",

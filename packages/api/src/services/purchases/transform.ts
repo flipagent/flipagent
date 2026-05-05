@@ -47,7 +47,7 @@ export function ebayToPurchase(input: ToPurchaseInput): Purchase {
 	const status = STATUS_FROM_EBAY[order.purchaseOrderStatus];
 	const out: Purchase = {
 		id: order.purchaseOrderId,
-		marketplace: input.marketplace ?? "ebay",
+		marketplace: input.marketplace ?? "ebay_us",
 		status,
 		items: order.lineItems.map((li) => ({
 			itemId: li.itemId,

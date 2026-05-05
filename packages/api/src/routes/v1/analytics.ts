@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { getSellerStandards, getServiceMetrics, getTrafficReport } from "../../services/analytics.js";
+import { ebayMarketplaceId } from "../../services/shared/marketplace.js";
 import { errorResponse, jsonResponse } from "../../utils/openapi.js";
 
 export const analyticsRoute = new Hono();
@@ -28,7 +29,7 @@ analyticsRoute.get(
 		return c.json({
 			...(await getTrafficReport(from, to, dimension, {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		});
@@ -48,7 +49,7 @@ analyticsRoute.get(
 		return c.json({
 			...(await getSellerStandards(cycle, {
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		});
@@ -67,7 +68,7 @@ analyticsRoute.get(
 		c.json({
 			...(await getServiceMetrics({
 				apiKeyId: c.var.apiKey.id,
-				marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
+				marketplace: ebayMarketplaceId(),
 			})),
 			source: "rest" as const,
 		}),

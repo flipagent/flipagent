@@ -132,7 +132,7 @@ describe("toolset gating", () => {
 
 describe("taxonomy tool input schemas", () => {
 	it("default-id accepts an optional marketplace string", () => {
-		expect(Value.Check(ebayTaxonomyDefaultIdInput, { marketplace: "ebay" })).toBe(true);
+		expect(Value.Check(ebayTaxonomyDefaultIdInput, { marketplace: "ebay_us" })).toBe(true);
 		expect(Value.Check(ebayTaxonomyDefaultIdInput, {})).toBe(true);
 	});
 

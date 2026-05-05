@@ -30,7 +30,7 @@ interface EbayFeedTask {
 function ebayTaskToFlipagent(t: EbayFeedTask, kind: FeedKind): FeedTask {
 	return {
 		id: t.taskId,
-		marketplace: "ebay",
+		marketplace: "ebay_us",
 		kind,
 		status: STATUS_FROM[t.status] ?? "queued",
 		feedType: t.feedType,
@@ -107,7 +107,7 @@ export async function createFeedTask(input: FeedTaskCreate, ctx: FeedsContext): 
 	});
 	return {
 		id: res?.taskId ?? "",
-		marketplace: input.marketplace ?? "ebay",
+		marketplace: input.marketplace ?? "ebay_us",
 		kind: input.kind,
 		status: "queued",
 		feedType: input.feedType,
