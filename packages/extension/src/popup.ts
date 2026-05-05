@@ -212,7 +212,7 @@ function guessDeviceName(): string {
 
 interface InFlightSnapshot {
 	id: string;
-	marketplace: string;
+	source: string;
 	itemId?: string;
 	maxPriceCents?: number | null;
 	status: string;
@@ -258,7 +258,7 @@ function renderBuyRow(buy: InFlightSnapshot): HTMLLIElement {
 	body.className = "hp-now-body";
 	const title = document.createElement("div");
 	title.className = "hp-now-title";
-	title.textContent = `Buy · ${buy.itemId ?? buy.marketplace}`;
+	title.textContent = `Buy · ${buy.itemId ?? buy.source}`;
 	body.appendChild(title);
 	const sub = document.createElement("div");
 	sub.className = "hp-now-sub";

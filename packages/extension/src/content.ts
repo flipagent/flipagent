@@ -168,7 +168,7 @@ async function main(): Promise<void> {
 	// Per-service dispatch. Each service has its own observer flow.
 	// Buyer-state probe (eBay-specific) only runs on ebay.com.
 	if (location.hostname.endsWith("ebay.com")) {
-		if (job?.marketplace === "ebay") handleEbayJob(job);
+		if (job?.source === "ebay") handleEbayJob(job);
 		reportBuyerState();
 		// Per-page evaluate UX. Both surfaces share the per-itemId store
 		// in `evaluate-store.ts`, so a row evaluated on /sch/ shows up
@@ -193,7 +193,7 @@ async function main(): Promise<void> {
 			installEbayItemUrlWatcher();
 		}
 	} else if (location.hostname.endsWith("planetexpress.com")) {
-		if (job?.marketplace === "planetexpress") handlePlanetExpressJob(job);
+		if (job?.source === "planetexpress") handlePlanetExpressJob(job);
 		reportPlanetExpressState();
 	}
 

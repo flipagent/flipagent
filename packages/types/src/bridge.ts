@@ -14,7 +14,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { BridgeJobStatus } from "./bridge-jobs.js";
+import { BridgeJobSource, BridgeJobStatus } from "./bridge-jobs.js";
 
 /* --------------------------- bridge tokens --------------------------- */
 
@@ -84,25 +84,18 @@ export const BridgeJobTask = Type.Union(
 );
 export type BridgeJobTask = Static<typeof BridgeJobTask>;
 
-/** Service id the bridge job targets — eBay (buy), a forwarder, or the extension itself. */
-export const BridgeMarketplace = Type.Union(
-	[
-		Type.Literal("ebay"),
-		Type.Literal("planetexpress"),
-		Type.Literal("control"),
-		Type.Literal("browser"),
-		Type.Literal("ebay_data"),
-	],
-	{ $id: "BridgeMarketplace" },
-);
-export type BridgeMarketplace = Static<typeof BridgeMarketplace>;
-
 /**
  * Poll-protocol envelope: what the extension receives from `/v1/bridge/poll`.
  * Distinct from `BridgeJob` in `./bridge-jobs.js` (the persistent DB-row
  * shape used in webhook payloads). This one is the projection sent over
  * the longpoll wire — narrower, oriented to what the extension needs to
  * execute the task.
+ *
+ * `args.source` matches the `bridge_jobs.source` column and the
+ * `BridgeJobSource` enum: which service the job targets (`ebay`,
+ * `planetexpress`, `control`, `browser`, `ebay_data`) — distinct from
+ * the flipagent-record `marketplace` discriminator (`ebay_us`, …)
+ * carried on /v1/* responses.
  */
 export const BridgePollJob = Type.Object(
 	{
@@ -110,7 +103,7 @@ export const BridgePollJob = Type.Object(
 		task: BridgeJobTask,
 		args: Type.Object(
 			{
-				marketplace: BridgeMarketplace,
+				source: BridgeJobSource,
 				/** Required when `task = "ebay_buy_item"`; absent for other tasks. */
 				itemId: Type.Optional(Type.String()),
 				/** Required when `task = "ebay_buy_item"`. */

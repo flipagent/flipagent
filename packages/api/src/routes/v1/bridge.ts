@@ -19,6 +19,7 @@
  */
 
 import {
+	type BridgeJobSource,
 	BridgeLoginStatusRequest,
 	BridgeLoginStatusResponse,
 	BridgePeLoginStatusRequest,
@@ -110,7 +111,7 @@ bridgeRoute.get(
 					jobId: claimed.id,
 					task,
 					args: {
-						marketplace: claimed.source as "ebay" | "planetexpress" | "control" | "browser" | "ebay_data",
+						source: claimed.source as BridgeJobSource,
 						itemId: claimed.itemId,
 						quantity: claimed.quantity,
 						maxPriceCents: claimed.maxPriceCents,

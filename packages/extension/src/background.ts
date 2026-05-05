@@ -229,7 +229,7 @@ async function onOpenSidepanel(tabId: number, itemId: string): Promise<void> {
 async function onCancelAndClose(): Promise<{ ok: boolean; error?: string }> {
 	const cfg = await loadConfig();
 	const stored = await chrome.storage.local.get([STORAGE_KEYS.IN_FLIGHT_BUY]);
-	const inFlight = stored[STORAGE_KEYS.IN_FLIGHT_BUY] as { id: string; marketplace: string } | undefined;
+	const inFlight = stored[STORAGE_KEYS.IN_FLIGHT_BUY] as { id: string; source: string } | undefined;
 	if (!inFlight) return { ok: true }; // already gone
 	try {
 		// 1. cancel via API. eBay's Buy Order REST has no cancel endpoint;
@@ -242,7 +242,7 @@ async function onCancelAndClose(): Promise<{ ok: boolean; error?: string }> {
 		}).catch((err) => console.warn("[flipagent] cancel POST failed:", err));
 		// 2. close any tabs on the relevant marketplace so the user
 		//    can't accidentally complete the purchase.
-		const matchPattern = tabMatchPatternFor(inFlight.marketplace);
+		const matchPattern = tabMatchPatternFor(inFlight.source);
 		if (matchPattern) {
 			const tabs = await chrome.tabs.query({ url: matchPattern });
 			for (const t of tabs) {
@@ -261,9 +261,9 @@ async function onCancelAndClose(): Promise<{ ok: boolean; error?: string }> {
 	}
 }
 
-function tabMatchPatternFor(marketplace: string): string | null {
-	if (marketplace === "ebay") return "https://*.ebay.com/*";
-	if (marketplace === "planetexpress") return "https://*.planetexpress.com/*";
+function tabMatchPatternFor(source: string): string | null {
+	if (source === "ebay") return "https://*.ebay.com/*";
+	if (source === "planetexpress") return "https://*.planetexpress.com/*";
 	return null;
 }
 
@@ -385,11 +385,11 @@ async function tick(): Promise<void> {
 	// (ebay.com/itm/{id}); the content script's observer branches on
 	// metadata.task to run the bid-confirmation watcher instead of the
 	// checkout state machine.
-	console.log("[flipagent] picked up job", job.jobId, "item", job.args.itemId, job.args.marketplace);
+	console.log("[flipagent] picked up job", job.jobId, "item", job.args.itemId, job.args.source);
 	await chrome.storage.local.set({
 		[STORAGE_KEYS.IN_FLIGHT_BUY]: {
 			id: job.jobId,
-			marketplace: job.args.marketplace,
+			source: job.args.source,
 			itemId: job.args.itemId,
 			maxPriceCents: job.args.maxPriceCents,
 			status: "claimed",
@@ -397,7 +397,7 @@ async function tick(): Promise<void> {
 			metadata: job.args.metadata ?? null,
 		},
 	});
-	emit("info", `Picked up ${job.args.marketplace} buy for ${job.args.itemId}`, `jobId=${job.jobId}`);
+	emit("info", `Picked up ${job.args.source} buy for ${job.args.itemId}`, `jobId=${job.jobId}`);
 	try {
 		await dispatchJob(cfg, job);
 	} catch (err) {
@@ -573,7 +573,7 @@ function needsAttention(job: BridgePollJob): boolean {
 	const task = (job.args.metadata as { task?: string } | null)?.task;
 	if (task === "planetexpress_package_photos") return false;
 	if (task === "planetexpress_get_address") return false;
-	if (job.args.marketplace === "planetexpress" && (!task || task === "pull_packages")) return false;
+	if (job.args.source === "planetexpress" && (!task || task === "pull_packages")) return false;
 	return true;
 }
 
@@ -593,7 +593,7 @@ function copyForJob(job: BridgePollJob): AttentionCopy {
 			body: `Confirm bid${max} on item ${itemId}. Click "Place bid" in the open eBay tab.`,
 		};
 	}
-	if (job.args.marketplace === "planetexpress") {
+	if (job.args.source === "planetexpress") {
 		const pkg = meta.packageId ?? itemId;
 		if (meta.task === "planetexpress_package_dispatch") {
 			const to = meta.request?.toAddress;
@@ -707,12 +707,12 @@ async function dispatchJob(cfg: ExtensionConfig, job: BridgePollJob): Promise<vo
 		await reportResult(cfg, {
 			jobId: job.jobId,
 			outcome: "failed",
-			failureReason: `unsupported_marketplace: ${job.args.marketplace}`,
+			failureReason: `unsupported_source: ${job.args.source}`,
 		});
 		return;
 	}
-	const tab = await ensureMarketplaceTab(job.args.marketplace, url);
-	if (tab.id === undefined) throw new Error("could not open marketplace tab");
+	const tab = await ensureSourceTab(job.args.source, url);
+	if (tab.id === undefined) throw new Error("could not open source tab");
 	// Bridge transport requires a human click for money-commit tasks.
 	// Read-only scrapes (PE refresh / photos / address) finish in a few
 	// seconds without user input, so skip the OS-level dock-bounce +
@@ -728,7 +728,7 @@ async function dispatchJob(cfg: ExtensionConfig, job: BridgePollJob): Promise<vo
 }
 
 function itemUrlFor(job: BridgePollJob): string | null {
-	const m = job.args.marketplace;
+	const m = job.args.source;
 	if (m === "ebay") {
 		return job.args.itemId ? `https://www.ebay.com/itm/${encodeURIComponent(job.args.itemId)}` : null;
 	}
@@ -755,12 +755,12 @@ function itemUrlFor(job: BridgePollJob): string | null {
 	return null;
 }
 
-async function ensureMarketplaceTab(marketplace: string, url: string): Promise<chrome.tabs.Tab> {
-	// Re-use a tab whose URL is on the same marketplace's item path.
+async function ensureSourceTab(source: string, url: string): Promise<chrome.tabs.Tab> {
+	// Re-use a tab whose URL is on the same source's item path.
 	const matchPattern =
-		marketplace === "ebay"
+		source === "ebay"
 			? "https://www.ebay.com/itm/*"
-			: marketplace === "planetexpress"
+			: source === "planetexpress"
 				? "https://app.planetexpress.com/*"
 				: url;
 	const existing = await chrome.tabs.query({ url: matchPattern });
