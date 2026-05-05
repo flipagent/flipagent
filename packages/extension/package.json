@@ -6,10 +6,11 @@
 	"description": "flipagent Chrome extension — local executor for the bridge surfaces (`/v1/purchases`, `/v1/forwarder/*`, `/v1/browser/*`). Polls the hosted bridge protocol and runs jobs inside the user's existing Chrome — their cookies, their marketplace logins. The extension is a stateless observer, not an auto-clicker.",
 	"type": "module",
 	"scripts": {
-		"clean": "shx rm -rf dist *.tsbuildinfo",
+		"clean": "shx rm -rf dist *.tsbuildinfo *.zip",
 		"build": "node build.mjs",
 		"build:dev": "node build.mjs --dev",
 		"watch": "node build.mjs --dev --watch",
+		"zip": "npm run build && node -e \"const{readFileSync}=require('fs');const{execSync}=require('child_process');const v=JSON.parse(readFileSync('manifest.json','utf8')).version;execSync('cd dist && zip -qr ../flipagent-'+v+'.zip .',{stdio:'inherit'});console.log('[extension] zipped → flipagent-'+v+'.zip')\"",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

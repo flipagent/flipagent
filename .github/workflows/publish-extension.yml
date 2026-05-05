@@ -1,0 +1,129 @@
+name: Publish Chrome Extension
+
+# Triggered on:
+#   1. push to main when packages/extension/** changes — auto-publishes
+#      ONLY when packages/extension/manifest.json `version` differs from
+#      the previous commit. Bump the manifest version when you intend to
+#      ship; everything else (code-only edits, refactors) skips publish.
+#   2. workflow_dispatch — manual override. Use `force=true` to publish
+#      the current zipped build even when the manifest version is
+#      unchanged (useful for re-uploading an asset-only change).
+#
+# Auth: Chrome Web Store API via OAuth2 refresh token. Required GitHub
+# Repository Secrets (Settings → Secrets and variables → Actions):
+#
+#   CHROME_EXTENSION_ID    — the listing id from CWS Developer Dashboard
+#                            (visible in the listing URL after first
+#                            manual upload, e.g. `chrome.google.com/
+#                            webstore/devconsole/.../<id>`)
+#   CHROME_CLIENT_ID       — OAuth 2.0 client id (Google Cloud Console
+#                            → APIs & Services → Credentials → "Chrome
+#                            Web Store API" desktop client)
+#   CHROME_CLIENT_SECRET   — OAuth client secret (paired with above)
+#   CHROME_REFRESH_TOKEN   — long-lived refresh token, generated once
+#                            via the OAuth flow against scope
+#                            `https://www.googleapis.com/auth/chromewebstore`
+#
+# See packages/extension/SUBMISSION.md "Automation" section for the
+# step-by-step setup.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/extension/**"
+      - ".github/workflows/publish-extension.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish even if manifest version is unchanged"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+env:
+  EXTENSION_DIR: packages/extension
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need the parent commit so we can diff manifest.json on push.
+          fetch-depth: 2
+
+      - name: Detect manifest version bump
+        id: version
+        run: |
+          set -e
+          new=$(jq -r .version "$EXTENSION_DIR/manifest.json")
+          # On workflow_dispatch there's no "previous push" baseline —
+          # `git show HEAD~1:...` still works because we fetched depth=2,
+          # so the same diff logic applies. force=true bypasses entirely.
+          prev=$(git show HEAD~1:"$EXTENSION_DIR/manifest.json" 2>/dev/null | jq -r .version 2>/dev/null || echo "")
+          force="${{ github.event.inputs.force }}"
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+          echo "prev=$prev" >> "$GITHUB_OUTPUT"
+          if [ "$new" = "$prev" ] && [ "$force" != "true" ]; then
+            echo "manifest version unchanged ($new); skipping publish"
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publishing extension version $new (was: ${prev:-<none>})"
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.version.outputs.should_publish == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - if: steps.version.outputs.should_publish == 'true'
+        run: npm ci --no-audit --no-fund
+
+      - if: steps.version.outputs.should_publish == 'true'
+        name: Build workspace deps + extension
+        # Extension imports `@flipagent/ebay-scraper` and `@flipagent/types`
+        # from their `dist/` outputs, so we run the composite build to make
+        # sure those exist before esbuild bundles the extension.
+        run: npm run build
+
+      - if: steps.version.outputs.should_publish == 'true'
+        name: Zip dist/
+        run: |
+          cd "$EXTENSION_DIR/dist"
+          zip -qr "../flipagent-${{ steps.version.outputs.new }}.zip" .
+          ls -la "../flipagent-${{ steps.version.outputs.new }}.zip"
+
+      - if: steps.version.outputs.should_publish == 'true'
+        name: Upload + publish to Chrome Web Store
+        env:
+          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          if [ -z "$EXTENSION_ID" ] || [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ] || [ -z "$REFRESH_TOKEN" ]; then
+            echo "::error::Missing one of CHROME_EXTENSION_ID / CHROME_CLIENT_ID / CHROME_CLIENT_SECRET / CHROME_REFRESH_TOKEN. See packages/extension/SUBMISSION.md → Automation."
+            exit 1
+          fi
+          npx -y chrome-webstore-upload-cli@3 upload \
+            --source "$EXTENSION_DIR/flipagent-${{ steps.version.outputs.new }}.zip" \
+            --auto-publish
+
+      - if: steps.version.outputs.should_publish == 'true'
+        name: Summary
+        run: |
+          echo "## Chrome Web Store publish ✅" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** ${{ steps.version.outputs.new }} (was: ${{ steps.version.outputs.prev }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Mode:** uploaded + auto-publish requested" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Note: CWS still gates the published revision behind their" >> "$GITHUB_STEP_SUMMARY"
+          echo "review queue (typically minutes to a few days). Check status" >> "$GITHUB_STEP_SUMMARY"
+          echo "at https://chrome.google.com/webstore/devconsole/" >> "$GITHUB_STEP_SUMMARY"

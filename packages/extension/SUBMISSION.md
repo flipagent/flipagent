@@ -147,3 +147,58 @@ All other 7 boxes: leave UNCHECKED.
 |---|---|
 | Visibility | Public |
 | Regions | All regions |
+
+---
+
+## Automation (after the first manual upload)
+
+The first version (0.1.0) was submitted by hand through the CWS
+Developer Dashboard. From here on, `.github/workflows/publish-extension.yml`
+auto-uploads + auto-publishes when **`packages/extension/manifest.json`'s
+`version` field changes** on a push to `main`. Code-only changes that
+don't bump the manifest version skip the upload (so we don't burn
+through CWS review submissions for in-flight WIP).
+
+### Release flow
+
+1. Make whatever extension changes.
+2. Bump `packages/extension/manifest.json` → `version` (semver, e.g.
+   `0.1.0` → `0.1.1`).
+3. Commit + push to `main`. The workflow detects the bump, runs
+   `npm run build`, zips `packages/extension/dist/`, uploads via the
+   CWS API, and requests publish.
+4. CWS still gates the published revision behind their review queue
+   (typically minutes to a few days) — that part isn't automatable.
+
+To force a re-upload of the same version (rare — usually only for an
+asset-only change), use **Actions → Publish Chrome Extension → Run
+workflow** with `force=true`.
+
+### Local zip
+
+`npm run -w @flipagent/extension zip` produces
+`packages/extension/flipagent-<version>.zip` for sideloading or
+manual upload. Re-buildable; gitignored.
+
+### Required GitHub secrets
+
+Set these once in **Settings → Secrets and variables → Actions**:
+
+| Secret | What it is |
+|---|---|
+| `CHROME_EXTENSION_ID`  | Listing id from the CWS Dashboard URL after the first manual upload (32-char lowercase). |
+| `CHROME_CLIENT_ID`     | OAuth 2.0 client id, type **Desktop app**, from Google Cloud Console → APIs & Services → Credentials. The project must have the **Chrome Web Store API** enabled. |
+| `CHROME_CLIENT_SECRET` | OAuth client secret paired with the id above. |
+| `CHROME_REFRESH_TOKEN` | Long-lived refresh token for scope `https://www.googleapis.com/auth/chromewebstore`, generated once via the OAuth code flow (the `chrome-webstore-upload-cli` README and Google's [`Using Refresh Tokens`](https://developers.google.com/identity/protocols/oauth2/native-app) doc both walk through it). |
+
+The OAuth account that minted the refresh token must be a
+**publisher** (or co-publisher) on the CWS listing. Personal Google
+accounts work — no Workspace org needed.
+
+### Why version-bump-gated rather than every-push
+
+CWS rejects identical version uploads, and review queue throughput
+is a finite resource. Gating on the `manifest.json` version makes
+the publish a deliberate act ("I bumped → I meant to ship") instead
+of a side effect of any push. The sibling `release.yml` workflow
+uses the same pattern via Changesets for npm packages.
