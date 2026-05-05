@@ -7,7 +7,6 @@ import type { CompatibilityCheckRequest, CompatibilityCheckResponse, Compatibili
 import { config, isEbayAppConfigured } from "../config.js";
 import { fetchRetry } from "../utils/fetch-retry.js";
 import { getAppAccessToken } from "./ebay/oauth.js";
-import { EbayApiError } from "./ebay/rest/user-client.js";
 
 async function appRequest<T>(opts: { method?: "GET" | "POST"; path: string; body?: unknown }): Promise<T | null> {
 	if (!isEbayAppConfigured()) return null;
@@ -53,26 +52,4 @@ export async function getCompatibilityProperties(
 			...(p.localizedName ? { localizedName: p.localizedName } : {}),
 		})),
 	};
-}
-
-/**
- * `findEligibleAuctionItems` — there is no eBay REST endpoint for "find
- * auction items I'm eligible to bid on." The previous wrapper called
- * `/buy/offer/v1/find_eligible_items` (made-up path; verified live
- * 2026-05-03 — both `v1` and `v1_beta` 404). The closest equivalents
- * are: (a) Trading `GetMyeBayBuying.BiddingList` for bids already placed
- * (wrapped at `services/me-overview.ts`), (b) Browse search with
- * `filter=buyingOptions:{AUCTION}` to find live auctions
- * (`/v1/items?status=auction` calls this).
- *
- * The caller-facing route `/v1/bids/eligible-listings` therefore returns
- * an explanatory 501 rather than silently swallowing a 404 from a
- * phantom endpoint.
- */
-export async function findEligibleAuctionItems(): Promise<never> {
-	throw new EbayApiError(
-		501,
-		"endpoint_does_not_exist",
-		"eBay has no REST endpoint for 'find eligible auctions'. Use /v1/items?status=auction (Browse search) or /v1/me/buying (Trading GetMyeBayBuying.BiddingList) instead.",
-	);
 }

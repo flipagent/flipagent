@@ -85,17 +85,3 @@ export async function bidsCancelExecute(config: Config, args: Record<string, unk
 		return toolErrorEnvelope(err, "bids_cancel_failed", "/v1/bids/{listingId}/cancel");
 	}
 }
-
-/* ---------------------- flipagent_bids_eligible_listings ------------------- */
-
-export const bidsEligibleListingsInput = Type.Object({});
-export const bidsEligibleListingsDescription =
-	'NOT IMPLEMENTED — eBay does not expose a "find eligible auctions" endpoint. Calls GET /v1/bids/eligible-listings, which always returns 501 with pointers to the right surfaces. **Use instead**: `flipagent_search_items` (filter by `auction` buying option) for live auctions, or `flipagent_list_bids` for auctions you\'ve already bid on. **Inputs** — none. **Output** — 501 error envelope. Kept in the surface only so agents discover the alternatives via the error message.';
-export async function bidsEligibleListingsExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
-	try {
-		const client = getClient(config);
-		return await client.bids.eligibleListings();
-	} catch (err) {
-		return toolErrorEnvelope(err, "bids_eligible_listings_failed", "/v1/bids/eligible-listings");
-	}
-}
