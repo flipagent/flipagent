@@ -540,9 +540,7 @@ export async function snapshotBurst(
 			hour: sql<number>`cast(count(*) filter (where ${usageEvents.createdAt} >= now() - interval '1 hour') as int)`,
 		})
 		.from(usageEvents)
-		.where(
-			and(filter, gte(usageEvents.createdAt, sql`now() - interval '1 hour'`), transientExcluded, billableOnly),
-		);
+		.where(and(filter, gte(usageEvents.createdAt, sql`now() - interval '1 hour'`), transientExcluded, billableOnly));
 	const perMinute = row?.minute ?? 0;
 	const perHour = row?.hour ?? 0;
 	return {
