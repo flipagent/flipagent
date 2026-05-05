@@ -43,12 +43,13 @@ describe("TIER_LIMITS", () => {
 	});
 
 	it("burst caps escalate with tier", () => {
-		// Per-min caps allow short spikes; free + hobby intentionally share
-		// the same per-min ceiling — the per-hour cap is what separates them.
-		expect(TIER_LIMITS.free.burstPerMin).toBeLessThanOrEqual(TIER_LIMITS.hobby.burstPerMin);
+		// Strict ordering on both windows. Hobby used to share Free's
+		// per-min ceiling — that meant paying for Hobby got you no
+		// burst headroom for normal interactive use. Now every tier
+		// separates strictly on both dimensions.
+		expect(TIER_LIMITS.free.burstPerMin).toBeLessThan(TIER_LIMITS.hobby.burstPerMin);
 		expect(TIER_LIMITS.hobby.burstPerMin).toBeLessThan(TIER_LIMITS.standard.burstPerMin);
 		expect(TIER_LIMITS.standard.burstPerMin).toBeLessThan(TIER_LIMITS.growth.burstPerMin);
-		// Per-hour caps are strictly increasing across every tier.
 		expect(TIER_LIMITS.free.burstPerHour).toBeLessThan(TIER_LIMITS.hobby.burstPerHour);
 		expect(TIER_LIMITS.hobby.burstPerHour).toBeLessThan(TIER_LIMITS.standard.burstPerHour);
 		expect(TIER_LIMITS.standard.burstPerHour).toBeLessThan(TIER_LIMITS.growth.burstPerHour);

@@ -67,10 +67,10 @@ export interface TierLimits {
  *   Growth  120,000 / month     — ~1,500 evaluates (≈ 50/day)
  */
 export const TIER_LIMITS: Record<Tier, TierLimits> = {
-	free: { credits: 1_000, oneTime: true, burstPerMin: 30, burstPerHour: 200 },
-	hobby: { credits: 3_000, oneTime: false, burstPerMin: 30, burstPerHour: 1_200 },
-	standard: { credits: 25_000, oneTime: false, burstPerMin: 120, burstPerHour: 6_000 },
-	growth: { credits: 120_000, oneTime: false, burstPerMin: 600, burstPerHour: 25_000 },
+	free: { credits: 1_000, oneTime: true, burstPerMin: 60, burstPerHour: 600 },
+	hobby: { credits: 3_000, oneTime: false, burstPerMin: 120, burstPerHour: 2_400 },
+	standard: { credits: 25_000, oneTime: false, burstPerMin: 300, burstPerHour: 9_000 },
+	growth: { credits: 120_000, oneTime: false, burstPerMin: 1_200, burstPerHour: 36_000 },
 };
 
 /**
@@ -503,16 +503,28 @@ export async function snapshotUsage(
 }
 
 /**
- * Burst usage over a sliding window. Counts raw events (not credits) —
- * the goal is abuse protection, not pricing. A flood of cheap search
- * calls can still DOS the upstream just like a flood of expensive ones.
+ * Burst usage over a sliding window. Counts billable events (not credits) —
+ * the goal is abuse protection. A flood of cheap search calls can still
+ * DOS the upstream just like a flood of expensive ones; both burn a
+ * credit and both count.
  *
- * Excludes transient infra failures (5xx, 429): when our upstream falls
- * over or eBay rate-limits our app credential, the caller did nothing
- * wrong; counting those toward the caller's burst would lock them out
- * of legitimate retries during an outage that's our (or eBay's) fault.
- * 4xx caller-error responses (401/404/etc.) DO count — those represent
- * real upstream calls the caller initiated, even if the input was bad.
+ * **Excludes 0-credit calls.** Job polling (`/v1/evaluate/jobs/<id>`),
+ * activity-history reads (`/v1/jobs`), session list, capabilities,
+ * `/v1/me`, `/v1/keys/me`, etc. all return 0 credits — the route layer
+ * marks them as cheap reads off existing rows, no upstream cost. They
+ * must not gate the caller's burst either: an evaluate emits 5–30
+ * polls until it finishes, and a dashboard idle-tabbed in the
+ * background polls jobs/sessions every few seconds. Counting those
+ * toward burst made "I ran one evaluate and got 429" the default
+ * Free-tier experience until this filter landed.
+ *
+ * Also excludes transient infra failures (5xx, 429): when our upstream
+ * falls over or eBay rate-limits our app credential, the caller did
+ * nothing wrong; counting those toward the caller's burst would lock
+ * them out of legitimate retries during an outage that's our (or
+ * eBay's) fault. 4xx caller-error responses (401/404/etc.) DO count —
+ * those represent real upstream calls the caller initiated, even if
+ * the input was bad — provided they were credit-charged.
  */
 export async function snapshotBurst(
 	scope: { apiKeyId: string; userId: string | null },
@@ -521,13 +533,16 @@ export async function snapshotBurst(
 	const limits = TIER_LIMITS[tier];
 	const filter = scope.userId ? eq(usageEvents.userId, scope.userId) : eq(usageEvents.apiKeyId, scope.apiKeyId);
 	const transientExcluded = sql`(${usageEvents.statusCode} < 500 AND ${usageEvents.statusCode} <> 429)`;
+	const billableOnly = sql`${usageEvents.creditsCharged} > 0`;
 	const [row] = await db
 		.select({
 			minute: sql<number>`cast(count(*) filter (where ${usageEvents.createdAt} >= now() - interval '1 minute') as int)`,
 			hour: sql<number>`cast(count(*) filter (where ${usageEvents.createdAt} >= now() - interval '1 hour') as int)`,
 		})
 		.from(usageEvents)
-		.where(and(filter, gte(usageEvents.createdAt, sql`now() - interval '1 hour'`), transientExcluded));
+		.where(
+			and(filter, gte(usageEvents.createdAt, sql`now() - interval '1 hour'`), transientExcluded, billableOnly),
+		);
 	const perMinute = row?.minute ?? 0;
 	const perHour = row?.hour ?? 0;
 	return {
