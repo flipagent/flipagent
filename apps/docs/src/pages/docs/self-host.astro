@@ -164,7 +164,7 @@ LLM_PROVIDER=anthropic`}</code></pre>
 						<tr><td><code>/v1/categories/*</code>, <code>/v1/products/*</code></td><td>App</td><td>—</td></tr>
 						<tr><td><code>/v1/listings/*</code></td><td>User</td><td>Yes</td></tr>
 						<tr><td><code>/v1/sales/*</code> (orders, shipments)</td><td>User</td><td>Yes</td></tr>
-						<tr><td><code>/v1/payouts/*</code>, <code>/v1/transactions/*</code>, <code>/v1/transfers/*</code></td><td>User</td><td>Yes</td></tr>
+						<tr><td><code>/v1/payouts/*</code>, <code>/v1/transactions/*</code></td><td>User</td><td>Yes</td></tr>
 						<tr><td><code>/v1/policies/*</code>, <code>/v1/me/seller/*</code></td><td>User</td><td>Yes</td></tr>
 						<tr><td><code>/v1/purchases/*</code> (when REST transport approved)</td><td>User</td><td>Yes</td></tr>
 					</tbody>
@@ -186,7 +186,7 @@ https://api.ebay.com/oauth/api_scope/sell.analytics.readonly
 https://api.ebay.com/oauth/api_scope/sell.payment.dispute
 https://api.ebay.com/oauth/api_scope/sell.reputation`}</code></pre>
 				</div>
-				<p>The <code>sell.*</code> scopes ship standard with any production keyset; no extra opt-in in the developer portal. Trim the list to narrow what sellers grant (e.g. drop <code>sell.finances</code> if you don't surface payouts); the matching <code>/v1/payouts</code>, <code>/v1/transactions</code>, <code>/v1/transfers</code> calls will then 401 from eBay until the seller reconnects with the wider scope.</p>
+				<p>The <code>sell.*</code> scopes ship standard with any production keyset; no extra opt-in in the developer portal. Trim the list to narrow what sellers grant (e.g. drop <code>sell.finances</code> if you don't surface payouts); the matching <code>/v1/payouts</code> and <code>/v1/transactions</code> calls will then 401 from eBay until the seller reconnects with the wider scope.</p>
 
 				<h2>Marketplace Insights + Order API (eBay program approval)</h2>
 				<p>Two capabilities need additional eBay-side approval beyond the standard developer keyset:</p>

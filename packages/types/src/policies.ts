@@ -1,7 +1,8 @@
 /**
- * `/v1/policies/{type}` — selling policies (return / payment /
- * fulfillment). Wraps eBay's sell/account/{type}_policy with one
- * resource and a `type` discriminator.
+ * `/v1/policies` — selling policies (return / payment / fulfillment).
+ * Wraps eBay's sell/account/{type}_policy as one unified resource;
+ * each Policy carries a `type` discriminator. PUT/DELETE for a
+ * single policy live at `/v1/policies/{type}/{id}`.
  */
 
 import { type Static, Type } from "@sinclair/typebox";

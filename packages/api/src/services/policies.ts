@@ -1,6 +1,7 @@
 /**
  * sell/account/{return,payment,fulfillment}_policy unification.
- * `/v1/policies` (all) and `/v1/policies/{type}` (one type).
+ * `GET /v1/policies` returns all three policy types in one shape;
+ * filter by `Policy.type` client-side when only one type is needed.
  */
 
 import type { Policy, PolicyType } from "@flipagent/types";

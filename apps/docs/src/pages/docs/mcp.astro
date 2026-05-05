@@ -66,14 +66,14 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td><code>flipagent_quote_shipping</code></td><td><code>POST /v1/ship/quote</code></td></tr>
 
 						<tr><td colspan="2"><strong>Buy</strong></td></tr>
-						<tr><td><code>flipagent_create_purchase</code> / <code>flipagent_get_purchase</code> / <code>flipagent_cancel_purchase</code></td><td><code>/v1/purchases/*</code></td></tr>
-						<tr><td><code>flipagent_list_bids</code> / <code>flipagent_place_bid</code> / <code>flipagent_list_biddable_listings</code></td><td><code>/v1/bids/*</code></td></tr>
+						<tr><td><code>flipagent_create_purchase</code> / <code>flipagent_list_purchases</code> / <code>flipagent_get_purchase</code> / <code>flipagent_cancel_purchase</code></td><td><code>/v1/purchases/*</code></td></tr>
+						<tr><td><code>flipagent_list_bids</code> / <code>flipagent_place_bid</code> / <code>flipagent_get_bid_status</code> / <code>flipagent_cancel_bid</code></td><td><code>/v1/bids/*</code></td></tr>
 
 						<tr><td colspan="2"><strong>Listing prerequisites + CRUD</strong></td></tr>
 						<tr><td><code>flipagent_create_media_upload</code> / <code>flipagent_get_media</code></td><td><code>/v1/media/*</code></td></tr>
-						<tr><td><code>flipagent_list_policies</code> / <code>flipagent_list_policies_by_type</code></td><td><code>/v1/policies/*</code></td></tr>
+						<tr><td><code>flipagent_list_policies</code> / <code>flipagent_create_seller_policies</code></td><td><code>/v1/policies/*</code></td></tr>
 						<tr><td><code>flipagent_list_locations</code> / <code>flipagent_upsert_location</code></td><td><code>/v1/locations/*</code></td></tr>
-						<tr><td><code>flipagent_create_listing</code> / <code>flipagent_update_listing</code> / <code>flipagent_relist_listing</code> / <code>flipagent_preview_listing_fees</code></td><td><code>/v1/listings/*</code></td></tr>
+						<tr><td><code>flipagent_create_listing</code> / <code>flipagent_create_draft_listing</code> / <code>flipagent_update_listing</code> / <code>flipagent_relist_listing</code> / <code>flipagent_verify_listing</code> / <code>flipagent_end_listing</code></td><td><code>/v1/listings/*</code></td></tr>
 
 						<tr><td colspan="2"><strong>Sale fulfillment + finance</strong></td></tr>
 						<tr><td><code>flipagent_list_sales</code> / <code>flipagent_ship_sale</code></td><td><code>/v1/sales/*</code></td></tr>

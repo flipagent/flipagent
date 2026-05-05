@@ -80,7 +80,6 @@ rootRoute.get(
 				"POST /v1/policies/setup",
 				"POST /v1/policies/{id}/transfer",
 				"POST /v1/policies",
-				"GET /v1/policies/{type}",
 				"PUT|DELETE /v1/policies/{type}/{id}",
 				"GET /v1/sales",
 				"GET /v1/sales/{id}",

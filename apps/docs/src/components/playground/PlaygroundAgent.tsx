@@ -244,7 +244,6 @@ function toolStatusLabel(name: string): string {
 		case "flipagent_list_locations":
 			return "Loading locations";
 		case "flipagent_list_policies":
-		case "flipagent_list_policies_by_type":
 			return "Loading policies";
 		case "flipagent_list_categories":
 		case "flipagent_suggest_category":

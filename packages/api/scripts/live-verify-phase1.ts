@@ -68,7 +68,6 @@ const tierB: Probe[] = [
 	{ tier: "B", method: "GET", path: "/v1/sales?limit=3" },
 	{ tier: "B", method: "GET", path: "/v1/payouts?limit=3" },
 	{ tier: "B", method: "GET", path: "/v1/transactions?limit=3" },
-	{ tier: "B", method: "GET", path: "/v1/transfers?limit=3" },
 	{ tier: "B", method: "GET", path: "/v1/messages?limit=3" },
 	{ tier: "B", method: "GET", path: "/v1/feedback?limit=3" },
 	{ tier: "B", method: "GET", path: "/v1/feedback/awaiting?limit=3" },

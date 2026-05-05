@@ -111,7 +111,7 @@ Phase 1 surface — what's mounted in `routes/v1/index.ts`. Wrappers exist
 for additional surfaces (`charities`, `featured`, `edelivery`,
 `violations`, `marketplaces`, `expenses`, `trends`, `promotions`,
 `markdowns`, `ads`, `store`, `feeds`, `translate`, `watching`,
-`saved-searches`, `developer`, `cart`, `listings/bulk`, `listing-groups`)
+`developer`, `cart`, `listings/bulk`, `listing-groups`)
 that stay disabled at the route mount until V2; their service code is
 ready and re-enables with one uncomment.
 
@@ -130,7 +130,7 @@ ready and re-enables with one uncomment.
 | **Operations** | `POST /v1/ship/quote`, `GET /v1/ship/providers` | API key | forwarder math |
 | Buy-side | `/v1/purchases/*`, `/v1/bids/*`, `/v1/forwarder/*` | API key + (eBay OAuth or paired extension) | rest + bridge transports |
 | Sell-side write | `/v1/listings/*`, `/v1/locations/*`, `/v1/policies/*`, `/v1/sales/*`, `/v1/labels/*`, `/v1/offers/*` | API key + eBay OAuth | rest + Trading XML |
-| Money + comms | `/v1/payouts/*`, `/v1/transactions/*`, `/v1/transfers/*`, `/v1/messages`, `/v1/feedback`, `/v1/disputes/*`, `/v1/recommendations`, `/v1/me/seller/*`, `/v1/analytics/*` | API key + eBay OAuth | normalized — cents-int Money + lifecycle status |
+| Money + comms | `/v1/payouts/*`, `/v1/transactions/*`, `/v1/messages`, `/v1/feedback`, `/v1/disputes/*`, `/v1/recommendations`, `/v1/me/seller/*`, `/v1/analytics/*` | API key + eBay OAuth | normalized — cents-int Money + lifecycle status |
 | Notifications | `/v1/notifications/*`, `/v1/webhooks/*` | mixed | eBay platform notifications + outbound webhooks |
 | Agent plumbing | `/v1/bridge/*`, `/v1/browser/*`, `/v1/agent/*` | mixed | Extension wire protocol, DOM primitive escape hatch, OpenAI Responses preview |
 

@@ -495,8 +495,6 @@ export const COVERAGE_SECTIONS: CoverageSection[] = [
 			{ ebay: "GET /sell/finances/v1/payout_summary", flipagent: "GET /v1/payouts/summary" },
 			{ ebay: "GET /sell/finances/v1/transaction", flipagent: "GET /v1/transactions" },
 			{ ebay: "GET /sell/finances/v1/transaction_summary", flipagent: "GET /v1/transactions/summary" },
-			{ ebay: "GET /sell/finances/v1/transfer", flipagent: "GET /v1/transfers" },
-			{ ebay: "GET /sell/finances/v1/transfer/{id}", flipagent: "GET /v1/transfers/{id}" },
 			{ ebay: "GET /sell/finances/v1/seller_funds_summary", flipagent: "GET /v1/seller/funds-summary" },
 		],
 	},
