@@ -205,6 +205,11 @@ export type { MessagesClient } from "./messages.js";
 export type { PayoutsClient, TransactionsClient } from "./money.js";
 export type { NotificationsClient } from "./notifications.js";
 export type { OffersClient } from "./offers.js";
+// Stream consumer + phase labels — auth-agnostic helpers shared with
+// surfaces that don't go through the bearer-token client (dashboard
+// playground, embed iframe). Bearer-token consumers can also use the
+// convenience method on `client.evaluate.jobs.stream()`.
+export { describeEvaluatePhase } from "./phase.js";
 export type { PoliciesClient } from "./policies.js";
 export type { ProductsClient } from "./products.js";
 export type { PurchasesClient } from "./purchases.js";
@@ -212,4 +217,12 @@ export type { RecommendationsClient } from "./recommendations.js";
 export type { SalesClient } from "./sales.js";
 export type { SellerClient } from "./seller.js";
 export type { ShipClient, ShipProviderSummary, ShipProvidersResponse } from "./ship.js";
+export {
+	type EvaluateStep,
+	type EvaluateStreamError,
+	type EvaluateStreamEvent,
+	type EvaluateStreamOptions,
+	type StreamFetcher,
+	streamEvaluateJob,
+} from "./streams.js";
 export type { WebhooksClient } from "./webhooks.js";

@@ -78,12 +78,34 @@
 	left: 0;
 	z-index: 20;
 	width: 320px;
+	max-width: min(92vw, 320px);
 	background: var(--surface);
 	border: 1px solid var(--border);
 	border-radius: 10px;
 	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.06);
 	padding: 6px;
 	animation: conn-chip-pop-in 140ms ease-out;
+}
+
+/* The chip lives inside both the agent composer (left side) and the
+ * dashboard topbar (right side). On a narrow phone the popover may
+ * extend past the viewport's right edge when its anchor sits on the
+ * right. Width clamp above prevents the popover itself from exceeding
+ * the viewport, but a chip near the right edge still wants to anchor
+ * its right edge instead of left. STYLEGUIDE §12.6. */
+@media (max-width: 720px) {
+	.conn-chip {
+		max-width: 60vw;
+	}
+	.conn-chip-label {
+		max-width: 96px;
+	}
+	/* Anchor by right edge so the popover slides leftwards into the
+	 * viewport when its trigger sits on the right side of the row. */
+	.conn-chip-pop {
+		left: auto;
+		right: 0;
+	}
 }
 
 @keyframes conn-chip-pop-in {

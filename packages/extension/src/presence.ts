@@ -1,7 +1,7 @@
 /**
- * Presence beacon — content script injected only on flipagent.dev (and
- * localhost dev hosts). Lets the dashboard answer "is the extension
- * installed?" without needing the extension's Chrome ID.
+ * Presence beacon — content script injected only on `*.flipagent.dev`
+ * (covers prod + the dev tunnel host). Lets the dashboard answer "is
+ * the extension installed?" without needing the extension's Chrome ID.
  *
  * Protocol (window.postMessage between content script and page):
  *   ext → page : { type: "flipagent-extension-present", version, paired }

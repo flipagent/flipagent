@@ -11,6 +11,15 @@ body,
 	font-family: var(--font-sans, system-ui, sans-serif);
 }
 
+/* Global ::selection paints text white on brand-orange — invisible on
+ * embed cards which sit on light surfaces. Keep text color, soften the
+ * highlight band to a translucent orange tint so selection reads as a
+ * subtle highlighter pass. */
+::selection {
+	background: color-mix(in srgb, var(--brand) 28%, transparent);
+	color: var(--text);
+}
+
 .embed-card {
 	display: flex;
 	flex-direction: column;
@@ -337,4 +346,61 @@ body,
 	background: color-mix(in srgb, var(--brand) 8%, transparent);
 	color: var(--brand);
 	border-color: color-mix(in srgb, var(--brand) 45%, transparent);
+}
+
+/* ─── Mobile pass (≤480) ─────────────────────────────────────────────
+ *
+ * Embed iframes render inside the chrome-extension side panel
+ * (340–460 px wide), inside the agent inline embed (~360–420 px), and
+ * occasionally as standalone pages on a phone. The base layout is
+ * already narrow-friendly; this block tightens the sub-pixel rhythm
+ * so 320–360 px viewports don't truncate prematurely.
+ */
+@media (max-width: 480px) {
+	/* Thumbnail rail: drop from 56 to 48 so the title column gets
+	 * back ~16px on a narrow viewport. */
+	.embed-thumb-wrap,
+	.embed-skeleton .skel-thumb {
+		width: 48px;
+		height: 48px;
+	}
+	.embed-skeleton .skel-thumb-lg {
+		width: 56px;
+		height: 56px;
+	}
+
+	/* List item: matching gap shrink + padding so the row keeps the
+	 * same visual rhythm as the smaller thumb. */
+	.embed-item {
+		gap: 8px;
+		padding: 9px 10px;
+	}
+
+	/* Card header: shorter padding + smaller q so a long search query
+	 * doesn't push the count off the right edge. */
+	.embed-card-header {
+		padding: 7px 10px;
+	}
+	.embed-card-q {
+		font-size: 12px;
+	}
+
+	/* Footer pager — desktop pager is intentionally compact (22px
+	 * buttons). On a narrow embed we need a bit more breathing space
+	 * on the position label so it doesn't wrap. */
+	.embed-card-footer {
+		padding: 7px 10px;
+	}
+	.embed-pager-pos {
+		min-width: 32px;
+	}
+
+	/* Action button on a row — desktop pads it 0 10px and shows full
+	 * label. On a narrow embed the label wraps unfortunately. Fix the
+	 * height with shrink-friendly padding. */
+	.embed-action {
+		height: 24px;
+		padding: 0 8px;
+		font-size: 11px;
+	}
 }

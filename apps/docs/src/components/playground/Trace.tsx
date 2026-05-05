@@ -66,15 +66,19 @@ function TraceStep({ step, index, children }: { step: Step; index: number; child
 			>
 				<span className="pg-step-num">{String(index).padStart(2, "0")}</span>
 				<span className="pg-step-label">{step.label}</span>
-				{/* Always render the call slot — even empty — so grid auto-
-				    placement keeps the URL column anchored at col 3 (the 1fr
-				    flex column). Without this, hero-demo steps that skip
-				    `call` push the status pill into 1fr and it stretches.
-				    For parent rows that group K parallel children, show a
-				    live "X/K done · avg Yms" summary instead of an empty
-				    slot so the row carries information at a glance. */}
+				{/* Parent rows that group K parallel children render a
+				    live "X/K done" badge right next to the label so the
+				    progress is read at a glance — no wrap onto a second
+				    line on narrow viewports. */}
+				{hasChildren && (
+					<span className="pg-step-progress dash-mono">{formatChildSummary(children)}</span>
+				)}
+				{/* Call slot anchors col 3 (1fr flex). Always render — even
+				    empty — so grid auto-placement keeps later columns
+				    aligned. Holds the URL on leaf rows; empty on parent
+				    rows (their progress lives in `pg-step-progress`). */}
 				<span className="pg-step-call dash-mono">
-					{step.call ? `${step.call.method} ${step.call.path}` : hasChildren ? formatChildSummary(children) : null}
+					{step.call ? `${step.call.method} ${step.call.path}` : null}
 				</span>
 				{step.httpStatus != null && (
 					<span className="pg-step-http dash-mono" data-tone={httpTone(step.httpStatus)}>

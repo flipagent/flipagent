@@ -28,6 +28,7 @@
 import {
 	ComputeJobAck,
 	EvaluateJob,
+	type EvaluatePartial,
 	EvaluatePoolResponse,
 	EvaluateRequest,
 	EvaluateResponse,
@@ -303,7 +304,7 @@ evaluateRoute.get(
 		tags: ["Evaluate"],
 		summary: "Get current state + result (when complete) for an evaluate job",
 		description:
-			'Returns the full job row — `status`, `params`, and `result` (set iff `status === "completed"`). 7-day retention; older rows return 404. Polling cadence at the caller\'s discretion (1-2s is fine; the worker writes intermediate trace events to the `trace` column visible via /stream, not here).',
+			'Returns the full job row — `status`, `params`, `result` (set iff `status === "completed"`), and `partial` (the merged `EvaluatePartial` accumulated so far, non-null once the run starts emitting state). 7-day retention; older rows return 404. Polling cadence at the caller\'s discretion; for live updates without polling, use `/stream`.',
 		responses: {
 			200: jsonResponse("Job state.", EvaluateJob),
 			401: errorResponse("Missing or invalid API key."),
@@ -360,11 +361,11 @@ evaluateRoute.get(
 	"/jobs/:id/stream",
 	describeRoute({
 		tags: ["Evaluate"],
-		summary: "Live SSE stream of trace events for an evaluate job",
+		summary: "Live SSE stream of an evaluate job's events",
 		description:
-			"Replays accumulated step events from the job's `trace` column, then live-streams new events as the worker emits them, ending with a terminal `done` / `cancelled` / `error` event. Reconnect-safe: closing and reopening the stream replays the trace from the start and resumes live, so a tab that reloaded mid-run picks up exactly where it left off.",
+			"Replays accumulated step lifecycle (`started` / `succeeded` / `failed`) and `partial` state-hydration events from the job's `trace` column, then live-streams new events as the worker emits them, ending with a terminal `done` / `cancelled` / `error` event. Reconnect-safe: closing and reopening the stream replays everything from the start and resumes live, so a tab that reloaded mid-run picks up exactly where it left off.",
 		responses: {
-			200: { description: "SSE stream of step events." },
+			200: { description: "SSE stream of pipeline events." },
 			401: errorResponse("Missing or invalid API key."),
 			404: errorResponse("Job not found or expired."),
 		},
@@ -415,6 +416,7 @@ function toEvaluateJobShape(job: ComputeJob): EvaluateJob {
 		status: job.status,
 		params: job.params as EvaluateJob["params"],
 		result: (job.result as EvaluateJob["result"]) ?? null,
+		partial: mergePartialsFromEvents(job.events),
 		errorCode: job.errorCode ?? null,
 		errorMessage: job.errorMessage ?? null,
 		errorDetails: job.errorDetails ?? null,
@@ -424,4 +426,27 @@ function toEvaluateJobShape(job: ComputeJob): EvaluateJob {
 		completedAt: job.completedAt?.toISOString() ?? null,
 		expiresAt: job.expiresAt.toISOString(),
 	};
+}
+
+/**
+ * Merge every `partial` event in `compute_jobs.events` into one
+ * `EvaluatePartial` snapshot. Lets MCP / SDK polling consumers pick
+ * up progressive data from `GET /jobs/{id}` without subscribing to
+ * SSE — the same hydration the playground gets event-by-event,
+ * collapsed into one merged shape on each poll.
+ *
+ * Arrival order matters: the post-filter confirmed digest correctly
+ * overwrites the earlier preliminary one because we iterate in order.
+ * Returns null when no partial event has fired yet.
+ */
+function mergePartialsFromEvents(events: unknown): EvaluatePartial | null {
+	if (!Array.isArray(events) || events.length === 0) return null;
+	const merged: Partial<EvaluatePartial> = {};
+	for (const evt of events) {
+		if (!evt || typeof evt !== "object") continue;
+		const e = evt as { kind?: unknown; patch?: unknown };
+		if (e.kind !== "partial" || !e.patch || typeof e.patch !== "object") continue;
+		Object.assign(merged, e.patch);
+	}
+	return Object.keys(merged).length > 0 ? (merged as EvaluatePartial) : null;
 }

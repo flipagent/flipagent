@@ -132,7 +132,6 @@ function isTrustedConnectOrigin(url: string): boolean {
 		const u = new URL(url);
 		if (u.hostname === "flipagent.dev") return true;
 		if (u.hostname.endsWith(".flipagent.dev")) return true;
-		if (u.hostname === "localhost") return true;
 		return false;
 	} catch {
 		return false;

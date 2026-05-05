@@ -27,7 +27,7 @@ import {
 	parseResultCount,
 } from "@flipagent/ebay-scraper";
 import type { BridgeJobStatus } from "@flipagent/types";
-import { mountEvaluateChip } from "./evaluate-chip.js";
+import { mountEvaluateChip, unmountEvaluateChip } from "./evaluate-chip.js";
 import { mountEvaluateSrp } from "./evaluate-srp.js";
 import { MESSAGES } from "./messages.js";
 import { loadConfig, pushCapture } from "./shared.js";
@@ -175,7 +175,7 @@ async function main(): Promise<void> {
 		// pre-resolved on /itm/{id} (and vice versa). Suppressed while a
 		// buy is in flight — the banner owns the screen then.
 		if (!job) {
-			const browseItemId = parseItemIdFromItemPath(location.pathname);
+			const browseItemId = parseItemIdFromItemUrl(location.pathname, location.search);
 			if (browseItemId) {
 				void mountEvaluateChip(browseItemId);
 			} else if (!isCheckoutOrAccountPath(location.pathname)) {
@@ -185,6 +185,12 @@ async function main(): Promise<void> {
 				// auto-detects whichever card markup the page is using.
 				void mountEvaluateSrp();
 			}
+			// On /itm/ pages, picking a size/colour variant updates the
+			// URL via pushState (eBay doesn't reload), which would leave
+			// the chip bound to the parent legacy id and the server
+			// returning `variation_required` on evaluate. Watch for
+			// soft-nav and re-mount the chip with the new `?var=` id.
+			installEbayItemUrlWatcher();
 		}
 	} else if (location.hostname.endsWith("planetexpress.com")) {
 		if (job?.marketplace === "planetexpress") handlePlanetExpressJob(job);
@@ -263,12 +269,55 @@ async function autoCaptureIfEnabled(): Promise<void> {
 /**
  * Extract the legacy numeric eBay item id from an item-page pathname.
  * Handles both the canonical `/itm/123456789012` and the slugged
- * `/itm/some-product-title/123456789012` forms. Returns null on any
- * non-item path so the chip stays mounted only where it makes sense.
+ * `/itm/some-product-title/123456789012` forms. When eBay carries a
+ * `?var=<variationId>` (multi-SKU listings — sneakers, clothes,
+ * watches), splices it into the canonical `v1|<legacy>|<variation>`
+ * form the server's `parseItemId` accepts, so the chip evaluates the
+ * exact SKU the user is looking at instead of the parent group.
+ *
+ * Returns null on any non-item path so the chip stays mounted only
+ * where it makes sense.
  */
-function parseItemIdFromItemPath(pathname: string): string | null {
+function parseItemIdFromItemUrl(pathname: string, search: string): string | null {
 	const m = pathname.match(/^\/itm\/(?:[^/]+\/)?(\d{6,})/);
-	return m?.[1] ?? null;
+	const legacyId = m?.[1];
+	if (!legacyId) return null;
+	const variationId = new URLSearchParams(search).get("var");
+	return variationId ? `v1|${legacyId}|${variationId}` : legacyId;
+}
+
+/**
+ * Watch for SPA-style URL changes on ebay.com. Variant pickers (size,
+ * colour, …) update `?var=<variationId>` via pushState without
+ * reloading, so the chip mounted in `main()` would otherwise stay
+ * bound to the parent legacy id — and the server's evaluate pipeline
+ * returns `variation_required` for multi-SKU parents.
+ *
+ * `popstate` covers back/forward; pushState/replaceState don't fire
+ * any native event, so a 500 ms tick polls `location.href`. Cost is
+ * trivial (one string compare per tick) and the half-second lag is
+ * imperceptible — the user is still reading the variant they just
+ * picked when the chip remounts.
+ */
+let ebayUrlWatcherInstalled = false;
+function installEbayItemUrlWatcher(): void {
+	if (ebayUrlWatcherInstalled) return;
+	ebayUrlWatcherInstalled = true;
+	let lastHref = location.href;
+	const tick = (): void => {
+		if (location.href === lastHref) return;
+		lastHref = location.href;
+		const itemId = parseItemIdFromItemUrl(location.pathname, location.search);
+		if (itemId) {
+			// Same-id mount call is a no-op; different id triggers a
+			// clean unmount + remount inside mountEvaluateChip.
+			void mountEvaluateChip(itemId);
+		} else {
+			unmountEvaluateChip();
+		}
+	};
+	window.addEventListener("popstate", tick);
+	window.setInterval(tick, 500);
 }
 
 /** Paths where the SRP pill UI doesn't make sense — checkout flow,

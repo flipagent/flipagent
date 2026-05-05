@@ -12,17 +12,18 @@
  * pre-split shape so existing trace UIs render identically.
  */
 
+import type { EvaluatePartial } from "@flipagent/types";
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import { evaluateWithContext } from "./evaluate-with-context.js";
 import type { MarketDataDigest } from "./market-data.js";
-import { type StepListener, withStep } from "./pipeline.js";
+import { emitPartial, type PipelineListener, withStep } from "./pipeline.js";
 import type { EvaluateOptions } from "./types.js";
 
 export interface ScoreInput {
 	digest: MarketDataDigest;
 	opts?: EvaluateOptions;
 	itemId: string;
-	onStep?: StepListener;
+	onStep?: PipelineListener;
 	cancelCheck?: () => Promise<void>;
 }
 
@@ -43,6 +44,10 @@ export async function scoreFromDigest(input: ScoreInput): Promise<{ evaluation: 
 				sold: digest.matchedSold,
 				asks: digest.matchedActive,
 			});
+			// Hydrate the verdict card the moment scoring resolves —
+			// don't make the UI wait for the route's terminal `done`
+			// event to render BUY/HOLD/SKIP + expected net.
+			emitPartial(onStep, { evaluation: ev as EvaluatePartial["evaluation"] });
 			return { value: ev, result: { evaluation: ev, market: digest.market } };
 		},
 	);

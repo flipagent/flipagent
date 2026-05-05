@@ -2,8 +2,8 @@
  * On-page evaluate widget — a small floating chip on `/itm/{id}` pages
  * that the user clicks to run a flipagent evaluation against the item
  * they're already looking at. Same agentic value as MCP-driven evaluate
- * (sold-pool stats, BUY/HOLD/SKIP rating, expected net), surfaced where
- * sourcing decisions actually happen.
+ * (sold-pool stats, expected net profit), surfaced where sourcing
+ * decisions actually happen.
  *
  * Per-itemId state (idle / running / done / error) lives in
  * `evaluate-store.ts` so this chip and the per-row SRP buttons share
@@ -38,7 +38,7 @@ type ViewState =
 	| { kind: "idle" }
 	| { kind: "needs-setup" }
 	| { kind: "needs-ebay" }
-	| { kind: "running"; stepLabel: string; mirrored: boolean }
+	| { kind: "running"; phaseLabel: string; mirrored: boolean }
 	| { kind: "done"; cached: boolean }
 	| { kind: "error"; message: string; code: string | null; upgradeUrl: string | null };
 
@@ -50,7 +50,20 @@ interface ChipController {
 let mounted: { ctrl: ChipController; itemId: string; unsubStore: () => void } | null = null;
 
 export async function mountEvaluateChip(itemId: string): Promise<void> {
-	if (document.getElementById(HOST_ID)) return; // already mounted on this page
+	// Soft-nav remount: when the user picks a size/colour on /itm/, eBay
+	// updates the URL via pushState and our content-script URL watcher
+	// re-calls mountEvaluateChip with the new `v1|legacy|var` id. Same id
+	// → no-op; different id → tear down the old chip + state subscription
+	// and rebuild for the new SKU so evaluate runs against what the
+	// buybox is showing.
+	if (mounted) {
+		if (mounted.itemId === itemId) return;
+		unmount();
+	}
+	// Defensive: clear an orphan host left in the DOM if `mounted` was
+	// dropped without unmount() (shouldn't happen, but the host id is a
+	// hard idempotency key for createChip's insertBefore call).
+	document.getElementById(HOST_ID)?.remove();
 
 	const ctrl = createChip();
 
@@ -169,7 +182,7 @@ function viewFromStore(s: EvalState): ViewState {
 		case "idle":
 			return { kind: "idle" };
 		case "running":
-			return { kind: "running", stepLabel: s.stepLabel, mirrored: s.mirrored === true };
+			return { kind: "running", phaseLabel: s.phaseLabel, mirrored: s.mirrored === true };
 		case "done":
 			return { kind: "done", cached: s.cached };
 		case "error":
@@ -336,7 +349,7 @@ function chipConfigFor(state: ViewState): ChipConfig {
 				icon: "spinner",
 				event: CHIP_EVENTS.VIEW,
 				busy: true,
-				title: state.stepLabel || "Working…",
+				title: state.phaseLabel || "Working…",
 			};
 		case "done":
 			return {

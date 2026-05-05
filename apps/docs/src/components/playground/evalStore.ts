@@ -35,7 +35,6 @@ export type EvalState =
 	| {
 			status: "running";
 			controller: AbortController;
-			stepLabel: string;
 			outcome: Partial<EvaluateOutcome>;
 			steps: Step[];
 		}
@@ -136,7 +135,6 @@ export async function runEvalForItem(itemId: string, mockMode: boolean): Promise
 	setState(itemId, {
 		status: "running",
 		controller,
-		stepLabel: "",
 		outcome: {},
 		steps: initialSteps(EVALUATE_STEPS),
 	});
@@ -154,8 +152,7 @@ export async function runEvalForItem(itemId: string, mockMode: boolean): Promise
 							idx >= 0
 								? prev.steps.map((s, i) => (i === idx ? { ...s, ...p } : s))
 								: [...prev.steps, { key, label: p.label ?? key, status: p.status ?? "pending", ...p }];
-						const stepLabel = p.status === "running" && p.label ? p.label : prev.stepLabel;
-						return { ...prev, steps: newSteps, stepLabel };
+						return { ...prev, steps: newSteps };
 					});
 				},
 				onPartial: (patch) => {

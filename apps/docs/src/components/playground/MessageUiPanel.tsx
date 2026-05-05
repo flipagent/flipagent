@@ -14,8 +14,10 @@
  * The iframe surface picks it up automatically by importing the panel.
  */
 
+import { describeEvaluatePhase, streamEvaluateJob } from "@flipagent/sdk";
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import { useEffect, useRef, useState, type ReactElement } from "react";
+import { apiBase } from "../../lib/authClient";
 import { flipagentItemToSummary, playgroundApi, type FlipagentItem } from "./api";
 import { EvaluateResultBody } from "./EvaluateResult";
 import type { EvaluateOutcome } from "./pipelines";
@@ -296,26 +298,109 @@ export function EvaluatePanel({
 	if (props.errorCode === "rate_limited" && props.jobId) {
 		return <EvaluateRetry props={props} onAction={onAction} />;
 	}
-	const pending = !props.outcome || (props.status != null && props.status !== "completed");
-	const item = props.outcome?.item;
+	// Live partial — kicks in when the host gave us a jobId and the run
+	// hasn't terminated. Subscribes to the SDK's typed event stream
+	// (SSE with polling fallback baked in) so the eyebrow + body hydrate
+	// stage-by-stage. Same code path the playground + extension run on
+	// — one source of truth for live evaluate consumption.
+	const live = useLiveEvaluateJob(props.jobId, props.status);
+	const baseOutcome = props.outcome;
+	const liveOutcome = live.partial;
+	const merged: Partial<EvaluateOutcome> | undefined = liveOutcome
+		? { ...(baseOutcome ?? {}), ...(liveOutcome as Partial<EvaluateOutcome>) }
+		: baseOutcome;
+	const status = live.status ?? props.status;
+	const pending = !merged || (status != null && status !== "completed");
+	const item = merged?.item;
 	const itemId = item?.itemId;
 	const completed = !pending && itemId != null;
-	// Lazy-load the rejected sold/active pools straight from
-	// `/v1/evaluate/{itemId}/pool` so the agent's MCP tool result stays
-	// lean (kept-only). One server-cached GET per panel; merged into the
-	// outcome the same shape `EvaluateResultBody` already renders for the
-	// playground's full mode, so the View toggles light up with rejected
-	// rows + per-item reasons without any extra plumbing.
-	const enriched = useRejectedPool(itemId, completed, props.outcome);
+	const enriched = useRejectedPool(itemId, completed, merged);
 	return (
 		<div className="msg-ui-panel msg-ui-eval">
-			<div className="msg-ui-eyebrow">{pending ? "Evaluation · running" : "Evaluation"}</div>
+			<div className="msg-ui-eyebrow">{describeEvaluatePhase(merged, pending)}</div>
 			<div className="msg-ui-eval-body pg-result">
-				<EvaluateResultBody outcome={enriched ?? props.outcome ?? {}} pending={pending} />
+				<EvaluateResultBody outcome={enriched ?? merged ?? {}} pending={pending} />
 			</div>
 			{!pending && item && <EvalActions item={item} onAction={onAction} />}
 		</div>
 	);
+}
+
+/**
+ * Subscribe to a job's live event stream while the run is pending.
+ * Merges every `partial` patch into local state so the panel hydrates
+ * stage-by-stage even when the host (chat agent / MCP host) doesn't
+ * push intermediate UI updates. Terminates on `done` / `error` /
+ * `cancelled`. No-op when `jobId` isn't supplied — the panel falls
+ * back to whatever static `props.outcome` the host gave it.
+ *
+ * Uses cookie auth (the dashboard's session) so a logged-in user
+ * doesn't need an API key. Same pattern as the playground stream
+ * fetcher; the SDK's auth-agnostic `streamEvaluateJob` makes this a
+ * one-liner.
+ */
+function useLiveEvaluateJob(
+	jobId: string | undefined,
+	initialStatus: string | undefined,
+): { partial: Partial<EvaluateOutcome> | null; status: string | null } {
+	const [partial, setPartial] = useState<Partial<EvaluateOutcome> | null>(null);
+	const [status, setStatus] = useState<string | null>(initialStatus ?? null);
+	useEffect(() => {
+		if (!jobId) return;
+		// Already-terminal runs (host handed us the final result via
+		// `props.outcome`) don't need a stream — short-circuit so we
+		// don't open an SSE connection per panel mount.
+		if (initialStatus === "completed" || initialStatus === "failed" || initialStatus === "cancelled") {
+			setStatus(initialStatus);
+			return;
+		}
+		const ctl = new AbortController();
+		(async () => {
+			const stream = streamEvaluateJob({
+				jobId,
+				fetcher: (path, init) => fetch(`${apiBase}${path}`, { ...init, credentials: "include" }),
+				signal: ctl.signal,
+			});
+			setStatus("running");
+			try {
+				const merged: Partial<EvaluateOutcome> = {};
+				for await (const evt of stream) {
+					if (ctl.signal.aborted) return;
+					if (evt.kind === "partial") {
+						Object.assign(merged, evt.patch);
+						setPartial({ ...merged });
+					} else if (evt.kind === "done") {
+						Object.assign(merged, {
+							item: evt.result.item,
+							soldPool: evt.result.soldPool ?? [],
+							activePool: evt.result.activePool ?? [],
+							rejectedSoldPool: evt.result.rejectedSoldPool ?? [],
+							rejectedActivePool: evt.result.rejectedActivePool ?? [],
+							rejectionReasons: evt.result.rejectionReasons ?? {},
+							market: evt.result.market,
+							evaluation: evt.result.evaluation,
+							returns: evt.result.returns ?? null,
+							meta: evt.result.meta,
+							preliminary: false,
+						});
+						setPartial({ ...merged });
+						setStatus("completed");
+					} else if (evt.kind === "error") {
+						setStatus("failed");
+					} else if (evt.kind === "cancelled") {
+						setStatus("cancelled");
+					}
+				}
+			} catch {
+				// SSE failure → status stays where the last partial put it.
+				// The host's static outcome (if any) keeps the panel usable.
+			}
+		})();
+		return () => {
+			ctl.abort();
+		};
+	}, [jobId, initialStatus]);
+	return { partial, status };
 }
 
 /**

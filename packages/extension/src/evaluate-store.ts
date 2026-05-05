@@ -10,14 +10,9 @@
  * the request; bandwidth + credits are the user's gate.
  */
 
-import type { EvaluateResponse } from "@flipagent/types";
-import {
-	EvaluateApiError,
-	errorMessage,
-	type PartialOutcomePatch,
-	runEvaluate,
-	type TraceStep,
-} from "./evaluate-engine.js";
+import { describeEvaluatePhase } from "@flipagent/sdk/phase";
+import type { EvaluatePartial, EvaluateResponse } from "@flipagent/types";
+import { EvaluateApiError, errorMessage, runEvaluate, type TraceStep } from "./evaluate-engine.js";
 import { loadConfig } from "./shared.js";
 import {
 	clearPartialOutcome,
@@ -41,7 +36,7 @@ export interface EvalErrorDetails {
 
 export type EvalState =
 	| { kind: "idle" }
-	| { kind: "running"; abort: AbortController; jobId?: string; stepLabel: string; mirrored?: boolean }
+	| { kind: "running"; abort: AbortController; jobId?: string; phaseLabel: string; mirrored?: boolean }
 	| { kind: "done"; result: EvaluateResponse; cached: boolean; jobId?: string }
 	| ({ kind: "error" } & EvalErrorDetails);
 
@@ -82,7 +77,7 @@ function setState(itemId: string, next: EvalState): void {
  */
 function mirrorRunningToStorage(itemId: string, next: EvalState): void {
 	if (next.kind === "running") {
-		void setRunningEval(itemId, { stepLabel: next.stepLabel, jobId: next.jobId }).catch(() => {});
+		void setRunningEval(itemId, { phaseLabel: next.phaseLabel, jobId: next.jobId }).catch(() => {});
 	} else {
 		void clearRunningEval(itemId).catch(() => {});
 	}
@@ -114,7 +109,7 @@ export async function readVisibleState(itemId: string): Promise<EvalState> {
 				kind: "running",
 				abort: new AbortController(),
 				jobId: running.jobId,
-				stepLabel: running.stepLabel,
+				phaseLabel: running.phaseLabel,
 				mirrored: true,
 			};
 		}
@@ -172,15 +167,16 @@ export async function startEvaluate(itemId: string): Promise<void> {
 	}
 
 	const abort = new AbortController();
-	setState(itemId, { kind: "running", abort, stepLabel: "Queueing evaluate job…" });
+	const initialLabel = describeEvaluatePhase({}, true);
+	setState(itemId, { kind: "running", abort, phaseLabel: initialLabel });
 
 	// Reset the partial-outcome mirror — old hydration from a prior
 	// run for this item could otherwise paint the side panel with
 	// stale data while the new run is still warming up.
 	void clearPartialOutcome(itemId).catch(() => {});
 
-	const partial: Record<string, unknown> = {};
-	const trace: TraceStep[] = [];
+	const partial: Partial<EvaluatePartial> = {};
+	const steps: TraceStep[] = [];
 
 	try {
 		const result = await runEvaluate({
@@ -189,44 +185,32 @@ export async function startEvaluate(itemId: string): Promise<void> {
 			signal: abort.signal,
 			onJobId: (jobId) => {
 				const s = states.get(itemId);
-				if (s?.kind === "running") {
-					setState(itemId, { ...s, jobId });
-				}
+				if (s?.kind === "running") setState(itemId, { ...s, jobId });
 			},
-			onStep: (label) => {
+			onStep: (step) => {
+				// Merge into any earlier step with the same key (started →
+				// ok path), otherwise append. Keeps the array in
+				// chronological order with at most one entry per key.
+				const idx = steps.findIndex((s) => s.key === step.key);
+				if (idx >= 0) {
+					const prev = steps[idx];
+					steps[idx] = prev ? { ...prev, ...step } : step;
+				} else {
+					steps.push(step);
+				}
+				void writePartialOutcome(itemId, partial, steps).catch(() => {});
+			},
+			onPartial: (patch) => {
+				// Single source of truth for hydration: spread the patch
+				// into the accumulating outcome, persist for the side
+				// panel, and refresh the chip's phase label from the
+				// canonical `describeEvaluatePhase` derivation.
+				Object.assign(partial, patch);
 				const s = states.get(itemId);
 				if (s?.kind === "running") {
-					setState(itemId, { ...s, stepLabel: label });
+					setState(itemId, { ...s, phaseLabel: describeEvaluatePhase(partial, true) });
 				}
-			},
-			onTrace: (step) => {
-				// Merge into any earlier step with the same key (started →
-				// ok path), otherwise append. Keeps the trace array in
-				// chronological order with at most one entry per key.
-				// Merge — not replace — because the backend's `succeeded`
-				// event omits `label` / `parent` (they're carried by the
-				// prior `started` event); a naive replace blanks them.
-				const idx = trace.findIndex((s) => s.key === step.key);
-				if (idx >= 0) {
-					const prev = trace[idx];
-					if (!prev) {
-						trace[idx] = step;
-					} else {
-						const merged: TraceStep = { ...prev, ...step };
-						if (step.label === undefined && prev.label !== undefined) merged.label = prev.label;
-						if (step.parent === undefined && prev.parent !== undefined) merged.parent = prev.parent;
-						trace[idx] = merged;
-					}
-				} else {
-					trace.push(step);
-				}
-				void writePartialOutcome(itemId, partial, trace).catch(() => {});
-			},
-			onPartial: (patch: PartialOutcomePatch) => {
-				if (patch.item !== undefined) partial.item = patch.item;
-				if (patch.soldPool !== undefined) partial.soldPool = patch.soldPool;
-				if (patch.activePool !== undefined) partial.activePool = patch.activePool;
-				void writePartialOutcome(itemId, partial, trace).catch(() => {});
+				void writePartialOutcome(itemId, partial, steps).catch(() => {});
 			},
 		});
 		const s = states.get(itemId);
@@ -239,7 +223,7 @@ export async function startEvaluate(itemId: string): Promise<void> {
 		// run progresses; this is the panel's view-state, not a long-
 		// lived cache. The persistent cache lives server-side in
 		// `compute_jobs` (per the data-lake = cache architecture).
-		void writePartialOutcome(itemId, result as unknown as Record<string, unknown>, trace).catch(() => {});
+		void writePartialOutcome(itemId, result as unknown as Record<string, unknown>, steps).catch(() => {});
 		setState(itemId, { kind: "done", result, cached: false, jobId });
 	} catch (err) {
 		const apiErr = err instanceof EvaluateApiError ? err : null;
@@ -249,17 +233,17 @@ export async function startEvaluate(itemId: string): Promise<void> {
 			upgradeUrl: apiErr?.upgradeUrl ?? null,
 			details: apiErr?.details ?? null,
 		};
-		// Flip any still-running step in the trace to error so the side
-		// panel renders the failure visually (red pill on the failed
-		// step, not a stuck spinner). Mirrors the playground pattern.
-		for (const step of trace) {
+		// Flip any still-running step to error so the side panel renders
+		// the failure visually (red pill on the failed step, not a stuck
+		// spinner). Mirrors the playground pattern.
+		for (const step of steps) {
 			if (step.status === "running") step.status = "error";
 		}
-		// Persist the trace + the partial outcome we collected so far,
+		// Persist the steps + the partial outcome we collected so far,
 		// stamped with the error. Side panel keeps the full
 		// `<EvaluateResult>` + Trace visible so the user sees WHERE the
 		// pipeline failed, not just a generic message.
-		void writePartialOutcome(itemId, partial, trace).catch(() => {});
+		void writePartialOutcome(itemId, partial, steps).catch(() => {});
 		void writePartialError(itemId, errorInfo).catch(() => {});
 		setState(itemId, { kind: "error", ...errorInfo });
 	}

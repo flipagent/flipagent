@@ -7,12 +7,23 @@
 }
 .auth-page {
 	min-height: 100vh;
+	min-height: var(--vh-full, 100dvh);
 	display: flex;
 	flex-direction: column;
 	position: relative;
 	/* Symmetric breathing space above the first rule and below the last rule. */
 	padding-top: 56px;
 	padding-bottom: 56px;
+}
+
+@media (max-width: 720px) {
+	.auth-page {
+		/* Tighten the breathing space on a phone so the form sits in
+		 * the viewport without scrolling — the marketing-grade 56 px
+		 * top rule pushes the email field below the fold otherwise. */
+		padding-top: calc(28px + env(safe-area-inset-top));
+		padding-bottom: calc(28px + env(safe-area-inset-bottom));
+	}
 }
 
 /* Full-height vertical guides at the rail's left/right edges. They extend

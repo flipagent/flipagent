@@ -163,11 +163,18 @@ async function triageChunkWithRetry(
 	throw lastErr;
 }
 
+/** Cumulative chunk-completion checkpoint emitted during the triage phase. */
+export interface MatchProgress {
+	processed: number;
+	total: number;
+}
+
 async function triage(
 	provider: LlmProvider,
 	candidate: ItemSummary,
 	pool: ReadonlyArray<ItemSummary>,
 	useImages: boolean,
+	onProgress?: (p: MatchProgress) => void,
 ): Promise<Map<number, TriageItem>> {
 	// Split pool into TRIAGE_CHUNK-sized batches, run all chunks in
 	// parallel with per-chunk retries. After retries are exhausted, a
@@ -189,14 +196,33 @@ async function triage(
 	const triageStart = performance.now();
 	traceLog(`triage start: pool=${pool.length} chunks=${chunks.length} chunkSize=${TRIAGE_CHUNK}`);
 	const chunkStarts = chunks.map(() => performance.now());
+	let processed = 0;
+	const total = pool.length;
+	// Fire one initial checkpoint so the UI shows `0/N` immediately —
+	// otherwise the progress row only renders after the first chunk
+	// resolves, which can be ~5s in.
+	if (onProgress && total > 0) onProgress({ processed: 0, total });
 	const results = await Promise.allSettled(
 		chunks.map((chunk, i) =>
-			triageChunkWithRetry(provider, candidate, chunk, useImages).then((r) => {
-				traceLog(
-					`  triage chunk ${i} done in ${Math.round(performance.now() - chunkStarts[i]!)}ms (${chunk.length} items)`,
-				);
-				return r;
-			}),
+			triageChunkWithRetry(provider, candidate, chunk, useImages).then(
+				(r) => {
+					traceLog(
+						`  triage chunk ${i} done in ${Math.round(performance.now() - chunkStarts[i]!)}ms (${chunk.length} items)`,
+					);
+					processed += chunk.length;
+					if (onProgress) onProgress({ processed, total });
+					return r;
+				},
+				(err) => {
+					// Failed chunks still advance the progress counter — the
+					// UI's bar shouldn't stall just because one chunk errored
+					// past retries (those items pass through to verify
+					// regardless).
+					processed += chunk.length;
+					if (onProgress) onProgress({ processed, total });
+					throw err;
+				},
+			),
 		),
 	);
 	traceLog(`triage total: ${Math.round(performance.now() - triageStart)}ms`);
@@ -463,6 +489,7 @@ export async function matchPoolWithLlm(
 	pool: ReadonlyArray<ItemSummary>,
 	options: { useImages?: boolean; triageProvider?: LlmProvider; verifyProvider?: LlmProvider },
 	fetchDetail: DetailFetcher,
+	onProgress?: (p: MatchProgress) => void,
 ): Promise<MatchResponse> {
 	const useImages = options.useImages ?? true;
 
@@ -482,7 +509,7 @@ export async function matchPoolWithLlm(
 	// using only title + price hints. Cheap (no detail fetch). Chunk
 	// failures pass through to verify (declared behaviour: borderline
 	// cases get the rich detail in pass 2).
-	const triaged = await triage(triageProvider, candidate, pool, useImages);
+	const triaged = await triage(triageProvider, candidate, pool, useImages, onProgress);
 	const survivors: { idx: number; item: ItemSummary }[] = [];
 	const rejected: MatchedItem[] = [];
 	for (let i = 0; i < pool.length; i++) {

@@ -14,7 +14,7 @@
 
 import type { ComputeJob } from "../../db/schema.js";
 import {
-	appendTrace,
+	appendEvent,
 	isCancelRequested,
 	transitionToCancelled,
 	transitionToCompleted,
@@ -35,8 +35,8 @@ export interface RunJobOptions {
 	workerId: string;
 	/**
 	 * Pipeline runner — receives an `onStep` callback that persists each
-	 * trace event to the job's `trace` column, and a `cancelCheck` it
-	 * should call between steps.
+	 * pipeline event to the job's `events` column, and a `cancelCheck`
+	 * it should call between steps.
 	 */
 	run: (onStep: (event: unknown) => Promise<void> | void, cancelCheck: () => Promise<void>) => Promise<unknown>;
 }
@@ -50,8 +50,20 @@ export interface RunJobOptions {
  */
 export async function runJob(opts: RunJobOptions): Promise<ComputeJob | null> {
 	const { job, workerId } = opts;
-	const onStep: (event: unknown) => Promise<void> = async (event) => {
-		await appendTrace(job.id, event);
+	// Per-job FIFO queue for event writes. Pipeline code uses a sync
+	// `(event) => void` listener type, so callers like `emitCachedStep`
+	// fire `started` and `succeeded` back-to-back without awaiting the
+	// dispatcher's append. Without serialisation those two UPDATEs race
+	// to acquire the row lock; if `succeeded` wins, the SSE replay
+	// yields events in the wrong order and the SDK's StepTracker leaves
+	// the row stuck on `status: "running"` even though the result body
+	// landed (the `started` event arriving second resets status). Chain
+	// every append behind the previous one so JS-emit order is the
+	// DB-commit order, regardless of whether the caller awaits.
+	let writeChain: Promise<void> = Promise.resolve();
+	const onStep: (event: unknown) => Promise<void> = (event) => {
+		writeChain = writeChain.then(() => appendEvent(job.id, event));
+		return writeChain;
 	};
 	const cancelCheck: () => Promise<void> = async () => {
 		if (await isCancelRequested(job.id)) throw new CancelledError();
@@ -59,8 +71,14 @@ export async function runJob(opts: RunJobOptions): Promise<ComputeJob | null> {
 
 	try {
 		const result = await opts.run(onStep, cancelCheck);
+		// Drain queued event writes before flipping the row to terminal.
+		// SSE subscribers see `status: completed` and the `done` payload
+		// in the same poll tick they see new events, so any unflushed
+		// appends after the terminal flip would race with stream close.
+		await writeChain.catch(() => {});
 		return await transitionToCompleted(job.id, workerId, result);
 	} catch (err) {
+		await writeChain.catch(() => {});
 		if (err instanceof CancelledError) {
 			return await transitionToCancelled(job.id, workerId);
 		}

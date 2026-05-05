@@ -297,7 +297,7 @@ function renderEvalRow(itemId: string, entry: RunningEvalEntry): HTMLLIElement {
 	body.appendChild(title);
 	const sub = document.createElement("div");
 	sub.className = "hp-now-sub";
-	sub.textContent = entry.stepLabel || "running";
+	sub.textContent = entry.phaseLabel || "running";
 	body.appendChild(sub);
 	li.appendChild(body);
 

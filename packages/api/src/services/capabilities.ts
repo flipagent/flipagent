@@ -47,7 +47,7 @@ function computeSetupHints(): SetupHints {
 			dashboardUrl: dashboard,
 			extensionInstall: {
 				from: "chrome-web-store",
-				url: "https://chrome.google.com/webstore/detail/flipagent",
+				url: "https://chrome.google.com/webstore/detail/aimmkefiblmcjppnancgfejmbpcfnddf",
 			},
 			forwarderSignup,
 		};

@@ -46,7 +46,8 @@ export function CategoryFilterPicker({ value, onChange, icon }: CategoryFilterPi
 				<RxPopover.Content
 					align="start"
 					sideOffset={4}
-					className="z-50 w-[320px] max-h-[420px] overflow-y-auto bg-[var(--surface)] border border-[var(--border)] rounded-[6px] shadow-[0_8px_28px_rgba(0,0,0,0.10)] p-1"
+					collisionPadding={8}
+					className="z-50 w-[320px] max-w-[92vw] max-h-[420px] overflow-y-auto bg-[var(--surface)] border border-[var(--border)] rounded-[6px] shadow-[0_8px_28px_rgba(0,0,0,0.10)] p-1"
 				>
 					<button
 						type="button"

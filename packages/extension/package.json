@@ -14,7 +14,8 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@flipagent/ebay-scraper": "*"
+		"@flipagent/ebay-scraper": "*",
+		"@flipagent/sdk": "*"
 	},
 	"devDependencies": {
 		"@flipagent/types": "*",

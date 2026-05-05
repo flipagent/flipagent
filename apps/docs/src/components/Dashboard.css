@@ -4,6 +4,7 @@
 	display: grid;
 	grid-template-columns: 240px 1fr;
 	min-height: 100vh;
+	min-height: var(--vh-full, 100dvh);
 	background: var(--surface);
 	color: var(--text);
 	font-family: var(--font, system-ui, -apple-system, sans-serif);
@@ -31,6 +32,7 @@
 	position: sticky;
 	top: 0;
 	height: 100vh;
+	height: var(--vh-full, 100dvh);
 	box-sizing: border-box;
 }
 .dash-brand {
@@ -1381,7 +1383,13 @@
 		align-items: center;
 		gap: 10px;
 		padding: 10px 14px;
-		height: 52px;
+		/* Reserve room for the iPhone notch in landscape so the brand
+		 * doesn't slide under the sensor cluster. Portrait safe-area is
+		 * 0 here, so this is a no-op on flat devices. */
+		padding-top: calc(10px + env(safe-area-inset-top));
+		padding-left: calc(14px + env(safe-area-inset-left));
+		padding-right: calc(14px + env(safe-area-inset-right));
+		height: calc(52px + env(safe-area-inset-top));
 		box-sizing: border-box;
 		background: var(--surface);
 		border-bottom: 1px solid var(--border-faint);
@@ -1455,12 +1463,13 @@
 		width: 280px;
 		max-width: 86vw;
 		height: 100vh;
+		height: var(--vh-full, 100dvh);
 		z-index: 50;
 		border-right: 1px solid var(--border-faint);
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 		transform: translateX(-100%);
 		transition: transform 0.22s ease;
-		padding-top: 16px;
+		padding-top: calc(16px + env(safe-area-inset-top));
 	}
 	.dash-sidebar.dash-sidebar--mobile-open {
 		transform: translateX(0);

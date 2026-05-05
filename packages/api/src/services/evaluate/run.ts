@@ -28,11 +28,11 @@ import type { EvaluateMeta, EvaluateResponse, MarketStats } from "@flipagent/typ
 import type { ApiKey } from "../../db/schema.js";
 import { parseItemId } from "../../utils/item-id.js";
 import { fetchOrAwaitMarketData } from "./market-data.js";
-import { EvaluateError, type StepListener } from "./pipeline.js";
+import { EvaluateError, type PipelineListener } from "./pipeline.js";
 import { scoreFromDigest } from "./score.js";
 import type { EvaluateOptions } from "./types.js";
 
-export type { StepEvent, StepListener, StepRequestInfo } from "./pipeline.js";
+export type { PipelineEvent, PipelineListener, StepRequestInfo } from "./pipeline.js";
 export { EvaluateError, wasEmittedAsStep } from "./pipeline.js";
 
 /* --------------------------------- types --------------------------------- */
@@ -43,7 +43,7 @@ export interface RunEvaluateInput {
 	soldLimit?: number;
 	apiKey?: ApiKey;
 	opts?: EvaluateOptions;
-	onStep?: StepListener;
+	onStep?: PipelineListener;
 	/** Cooperative cancel — supplied by the compute-job dispatcher; throws `CancelledError` when the user cancelled. */
 	cancelCheck?: () => Promise<void>;
 	/**

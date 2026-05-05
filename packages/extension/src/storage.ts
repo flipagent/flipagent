@@ -55,7 +55,7 @@ export interface PeStateSnapshot {
 }
 
 export interface RunningEvalEntry {
-	stepLabel: string;
+	phaseLabel: string;
 	jobId?: string;
 	startedAt: string;
 }
@@ -117,7 +117,7 @@ export async function setRunningEval(itemId: string, patch: Partial<RunningEvalE
 	const had = itemId in map;
 	const existing = map[itemId];
 	map[itemId] = {
-		stepLabel: patch.stepLabel ?? existing?.stepLabel ?? "",
+		phaseLabel: patch.phaseLabel ?? existing?.phaseLabel ?? "",
 		jobId: patch.jobId ?? existing?.jobId,
 		startedAt: had ? (existing?.startedAt ?? new Date().toISOString()) : new Date().toISOString(),
 	};

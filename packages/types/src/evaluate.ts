@@ -505,14 +505,78 @@ export const EvaluatePoolResponse = Type.Object(
 );
 export type EvaluatePoolResponse = Static<typeof EvaluatePoolResponse>;
 
+/* ---------------------- progressive partial (stream mode) ---------------------- */
+
+/**
+ * Live progress of the LLM same-product matcher. `processed` items have
+ * been classified (kept or rejected); `total` is the dedup'd pool size.
+ * Updates roughly per-chunk (TRIAGE_CHUNK = 25) so the UI can render a
+ * meaningful progress bar during the slowest pipeline phase.
+ */
+export const FilterProgress = Type.Object(
+	{
+		processed: Type.Integer({ minimum: 0 }),
+		total: Type.Integer({ minimum: 0 }),
+	},
+	{ $id: "FilterProgress" },
+);
+export type FilterProgress = Static<typeof FilterProgress>;
+
+/**
+ * Incremental snapshot of an `EvaluateResponse` as it's being assembled
+ * by the worker. The server emits typed `partial` events with
+ * `Partial<EvaluatePartial>` patches as each pipeline phase produces
+ * usable state — `item` after detail, `soldPool` after `search.sold`,
+ * `market`/`sold`/`active` first as a *preliminary* pass computed from
+ * the raw pool (so the UI can render median/IQR before the LLM filter
+ * runs), then again post-filter as confirmed values that also carry
+ * `filter` + the rejected pools, and finally `evaluation` once scoring
+ * resolves. UIs merge each patch into a `Partial<EvaluatePartial>`
+ * state and fade in cards as their data hydrates, replacing the
+ * all-or-nothing skeleton.
+ */
+export const EvaluatePartial = Type.Object(
+	{
+		item: Type.Optional(ItemDetail),
+		soldPool: Type.Optional(Type.Array(ItemSummary)),
+		activePool: Type.Optional(Type.Array(ItemSummary)),
+		rejectedSoldPool: Type.Optional(Type.Array(ItemSummary)),
+		rejectedActivePool: Type.Optional(Type.Array(ItemSummary)),
+		rejectionReasons: Type.Optional(Type.Record(Type.String(), Type.String())),
+		rejectionCategories: Type.Optional(Type.Record(Type.String(), Type.String())),
+		market: Type.Optional(MarketStats),
+		sold: Type.Optional(SoldDigest),
+		active: Type.Optional(ActiveDigest),
+		filter: Type.Optional(FilterSummary),
+		filterProgress: Type.Optional(FilterProgress),
+		returns: Type.Optional(Type.Union([Returns, Type.Null()])),
+		meta: Type.Optional(EvaluateMeta),
+		evaluation: Type.Optional(Evaluation),
+		/**
+		 * True while `market` / `sold` / `active` are computed from the raw
+		 * pool (pre-LLM-filter). UIs render those values in a "verifying"
+		 * style so users know the numbers will sharpen once the filter
+		 * removes off-product comps.
+		 */
+		preliminary: Type.Optional(Type.Boolean()),
+	},
+	{ $id: "EvaluatePartial" },
+);
+export type EvaluatePartial = Static<typeof EvaluatePartial>;
+
 /* ---------------------- compute-job shape (async mode) ---------------------- */
 
 import { ComputeJobBase } from "./compute-jobs.js";
 
 /**
  * `GET /v1/evaluate/jobs/{id}` body. `params` echoes the request that
- * created the job so reload UI doesn't need separate state. `result` is
- * present iff `status === "completed"`.
+ * created the job so reload UI doesn't need separate state. `result`
+ * is present iff `status === "completed"`. `partial` is the merged
+ * `EvaluatePartial` accumulated from every `partial` event the worker
+ * has emitted so far — non-null once at least one phase has produced
+ * state (typically the `detail` step within ~1s of dispatch). Lets
+ * MCP / SDK polling consumers render progressive UI without
+ * subscribing to the SSE stream.
  */
 export const EvaluateJob = Type.Intersect(
 	[
@@ -521,6 +585,7 @@ export const EvaluateJob = Type.Intersect(
 			kind: Type.Literal("evaluate"),
 			params: EvaluateRequest,
 			result: Type.Union([EvaluateResponse, Type.Null()]),
+			partial: Type.Union([EvaluatePartial, Type.Null()]),
 		}),
 	],
 	{ $id: "EvaluateJob" },

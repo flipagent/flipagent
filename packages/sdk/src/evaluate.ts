@@ -29,11 +29,18 @@ import type {
 	EvaluateResponse,
 } from "@flipagent/types";
 import type { FlipagentHttp } from "./http.js";
+import { type EvaluateStreamEvent, streamEvaluateJob } from "./streams.js";
 
 export interface EvaluateJobsClient {
 	create(req: EvaluateRequest): Promise<ComputeJobAck>;
 	get(id: string): Promise<EvaluateJob>;
 	cancel(id: string): Promise<ComputeJobAck>;
+	/**
+	 * Subscribe to a job's live event stream. Yields trace, partial,
+	 * and terminal events in arrival order. Reuses the SDK's bearer
+	 * fetcher so callers don't have to wire auth themselves.
+	 */
+	stream(id: string, opts?: { signal?: AbortSignal }): AsyncGenerator<EvaluateStreamEvent, void, void>;
 }
 
 export interface EvaluateClient {
@@ -50,6 +57,12 @@ export function createEvaluateClient(http: FlipagentHttp): EvaluateClient {
 			create: (req) => http.post("/v1/evaluate/jobs", req),
 			get: (id) => http.get(`/v1/evaluate/jobs/${encodeURIComponent(id)}`),
 			cancel: (id) => http.post(`/v1/evaluate/jobs/${encodeURIComponent(id)}/cancel`, {}),
+			stream: (id, opts) =>
+				streamEvaluateJob({
+					jobId: id,
+					fetcher: (path, init) => http.fetchRaw(path, init),
+					...(opts?.signal ? { signal: opts.signal } : {}),
+				}),
 		},
 	};
 }

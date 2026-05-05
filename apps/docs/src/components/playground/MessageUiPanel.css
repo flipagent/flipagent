@@ -405,3 +405,76 @@
 	gap: 6px;
 	margin-top: 4px;
 }
+
+/* ─── Mobile pass for inline message-UI panels (≤720) ──────────────
+ *
+ * These panels render INSIDE a chat bubble whose own container is
+ * narrower than the message column would suggest (the bubble has
+ * border + radius + padding). Tighten the panels' internal padding
+ * so a 360 px phone still gives the panel content full bleed. Per
+ * STYLEGUIDE §12.10 the data stays — only the gutters shrink. */
+@media (max-width: 720px) {
+	/* Eyebrow band: 8px / 14px is comfortable on desktop; mobile
+	 * matches the bubble's tighter inner gutter. */
+	.msg-ui-eyebrow {
+		padding: 7px 12px;
+	}
+
+	/* Evaluate body padding tighter — the embedded eval result
+	 * already uses .pg-result-facts which collapses to 1fr at ≤480,
+	 * so we just need to give it less wasted gutter. */
+	.msg-ui-eval-body {
+		padding: 12px 12px 6px;
+	}
+
+	/* Offer + listing rows — tighten the gap between thumb and body
+	 * since the row grid is 56px / 1fr with 14px gap on desktop. The
+	 * thumb stays 56px (sized to the eBay listing thumb in agent
+	 * messages); we just claw back the padding + gap so the title +
+	 * meta line don't lose half the row to gutters. */
+	.msg-ui-offer-row,
+	.msg-ui-listing-row {
+		padding: 12px;
+		gap: 10px;
+	}
+
+	/* Action chip strip: ensure the ghost-eval chip still has room
+	 * to sit on its own when the row is narrow. flex-wrap is already
+	 * set; just push the gap down. */
+	.msg-ui-offer-actions,
+	.msg-ui-listing-actions {
+		gap: 5px;
+	}
+
+	/* Next-action panel — 32px icon + 1fr body is tight but readable
+	 * at 320 px. Tighten padding to match other inline panels. */
+	.msg-ui-na-body {
+		padding: 14px 14px;
+		gap: 12px;
+	}
+
+	/* Footer action band: same tighter inner gutter. */
+	.msg-ui-foot {
+		padding: 9px 12px;
+	}
+}
+
+/* Very small phones: the offer headline ("buyer offered $X · Y%
+ * below list") is the row's primary signal. Let it wrap without
+ * shrinking the meta below readability. */
+@media (max-width: 480px) {
+	.msg-ui-offer-thumb,
+	.msg-ui-listing-thumb {
+		width: 48px;
+		height: 48px;
+	}
+	.msg-ui-offer-row,
+	.msg-ui-listing-row {
+		grid-template-columns: 48px 1fr;
+		gap: 10px;
+		padding: 10px;
+	}
+	.msg-ui-listing-meta {
+		gap: 3px 8px;
+	}
+}

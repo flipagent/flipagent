@@ -13,10 +13,10 @@ import type {
 } from "@flipagent/types";
 
 /* Build-time constants — see build.mjs `define` + globals.d.ts. Prod
- * build bakes `https://api.flipagent.dev` + `https://flipagent.dev`;
- * dev build (`npm run build:dev`) bakes `http://localhost:4000` +
- * `http://localhost:4321`. The published Chrome Web Store build is
- * always the prod variant. */
+ * build (`npm run build`) bakes `https://api.flipagent.dev` +
+ * `https://flipagent.dev`; dev build (`npm run build:dev`) bakes
+ * `https://api-dev.flipagent.dev` + `https://dev.flipagent.dev`. The
+ * published Chrome Web Store build is always the prod variant. */
 export const DEFAULT_BASE_URL = __FLIPAGENT_API_BASE__;
 export const DEFAULT_DASHBOARD_BASE_URL = __FLIPAGENT_DASHBOARD_BASE__;
 

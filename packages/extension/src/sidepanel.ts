@@ -38,6 +38,13 @@ interface IframePayload {
 }
 
 let lastPosted: IframePayload | null = null;
+// Until the iframe announces `IFRAME_READY`, its `contentWindow.origin`
+// is still the side-panel's chrome-extension origin (navigation to
+// `flipagent.dev` hasn't committed yet). Posting before then with a
+// `https://flipagent.dev` target origin throws "target origin does not
+// match recipient window's origin". We buffer in `lastPosted` and
+// flush once the iframe handshakes.
+let iframeReady = false;
 
 async function compute(): Promise<IframePayload | null> {
 	const stored = await chrome.storage.local.get([
@@ -89,7 +96,7 @@ async function syncToIframe(): Promise<void> {
 	const next = await compute();
 	if (!next) return;
 	lastPosted = next;
-	post(next);
+	if (iframeReady) post(next);
 }
 
 function post(payload: IframePayload): void {
@@ -97,13 +104,12 @@ function post(payload: IframePayload): void {
 	frame.contentWindow.postMessage({ type: MESSAGES.IFRAME_RESULT, ...payload }, iframeOrigin);
 }
 
-// Iframe announces it's mounted — replay the latest state so we cover
-// the race where storage was set before the iframe's listener wired up.
 window.addEventListener("message", (e: MessageEvent) => {
 	if (e.origin !== iframeOrigin) return;
 	const msg = e.data as { type?: string } | undefined;
-	if (msg?.type === MESSAGES.IFRAME_READY && lastPosted) {
-		post(lastPosted);
+	if (msg?.type === MESSAGES.IFRAME_READY) {
+		iframeReady = true;
+		if (lastPosted) post(lastPosted);
 	}
 });
 
@@ -118,8 +124,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 	}
 });
 
-// Initial paint — fire as soon as the iframe loads, even if storage
-// onChanged doesn't fire until the next event.
-frame.addEventListener("load", () => {
-	void syncToIframe();
-});
+// Pre-warm `lastPosted` so the moment IFRAME_READY arrives we replay
+// the latest state. The iframe's `load` event fires before the inner
+// page's listener has wired up, so we can't post here directly — the
+// IFRAME_READY handshake is the only safe gate.
+void syncToIframe();

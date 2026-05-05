@@ -23,7 +23,7 @@
  * silent no-ops. Result is identical regardless (deterministic upstream).
  */
 
-import type { TransportSource } from "@flipagent/types";
+import type { EvaluatePartial, TransportSource } from "@flipagent/types";
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "../../db/client.js";
@@ -36,7 +36,7 @@ import { searchActiveListings } from "../items/search.js";
 import { searchSoldListings } from "../items/sold.js";
 import { marketFromSold } from "./adapter.js";
 import { buildActiveDigest, buildFilterSummary, buildSoldDigest } from "./digest.js";
-import { buildPath, EvaluateError, runMatchFilter, type StepListener, withStep } from "./pipeline.js";
+import { buildPath, EvaluateError, emitPartial, type PipelineListener, runMatchFilter, withStep } from "./pipeline.js";
 import { extractReturns } from "./returns.js";
 
 /* --------------------------------- types --------------------------------- */
@@ -71,7 +71,7 @@ export interface FetchMarketDataInput {
 	apiKey?: ApiKey;
 	/** compute_jobs row id of the caller. Used to exclude self from cross-user in-flight lookup. */
 	jobId?: string;
-	onStep?: StepListener;
+	onStep?: PipelineListener;
 	cancelCheck?: () => Promise<void>;
 }
 
@@ -154,7 +154,7 @@ async function readFreshCache(
 	}
 }
 
-function emitCachedStep(onStep: StepListener | undefined, expiresAt: Date): void {
+function emitCachedStep(onStep: PipelineListener | undefined, expiresAt: Date): void {
 	if (!onStep) return;
 	onStep({ kind: "started", key: "cached", label: LABELS.cached });
 	onStep({
@@ -180,7 +180,7 @@ async function tryAttach(
 	itemId: string,
 	lookbackDays: number,
 	soldLimit: number,
-	{ onStep, cancelCheck }: { onStep?: StepListener; cancelCheck?: () => Promise<void> },
+	{ onStep, cancelCheck }: { onStep?: PipelineListener; cancelCheck?: () => Promise<void> },
 ): Promise<MarketDataDigest | null> {
 	const start = performance.now();
 	onStep?.({ kind: "started", key: "attached", label: LABELS.attached });
@@ -290,6 +290,13 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 		},
 	);
 
+	// detail-derived state hydrates immediately. `item` lets the hero
+	// render before the matcher has even started; `returns` populates
+	// the trust chip on the Buy-at row in parallel — both are pure
+	// projections over the detail body, no extra IO.
+	const returnsValue = extractReturns(detail.body);
+	emitPartial(onStep, { item: detail.body as EvaluatePartial["item"], returns: returnsValue });
+
 	// search (parallel) -------------------------------------------------
 	const q = (detail.body as { title: string }).title.trim();
 	const DAY_MS = 86_400_000;
@@ -325,9 +332,14 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 			async () => {
 				const r = await searchSoldListings({ q, limit: soldLimit, filter: soldFilter }, { apiKey });
 				const items = r.body.itemSales ?? r.body.itemSummaries ?? [];
+				// Hydrate the UI's sold pool the moment the search returns.
+				// The trace step's `result` stays a count summary for
+				// observability — the heavy items array travels on the
+				// partial channel, single source of truth for state.
+				emitPartial(onStep, { soldPool: items });
 				return {
 					value: { items, source: r.source as TransportSource },
-					result: { count: items.length, items },
+					result: { count: items.length },
 					source: r.source as TransportSource,
 				};
 			},
@@ -347,9 +359,10 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 			async () => {
 				const r = await searchActiveListings({ q, limit: 50, filter: activeFilter }, { apiKey });
 				const items = r.body.itemSummaries ?? [];
+				emitPartial(onStep, { activePool: items });
 				return {
 					value: { items, source: r.source as TransportSource },
-					result: { count: items.length, items },
+					result: { count: items.length },
 					source: r.source as TransportSource,
 				};
 			},
@@ -376,13 +389,43 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 		durationMs: searchDurationMs,
 	});
 
+	// Preliminary stats — computed from the raw pool before the LLM
+	// filter runs. Carries `preliminary: true` so UI surfaces (the
+	// playground notice, the embed eyebrow) can mark them as "verifying"
+	// until the post-filter partial overwrites with confirmed numbers.
+	const prelimMarket = marketFromSold(soldPool, undefined, undefined, activePool);
+	const prelimSold = buildSoldDigest(
+		soldPool,
+		(prelimMarket as { windowDays: number }).windowDays,
+		(prelimMarket as { salesPerDay: number }).salesPerDay,
+		(prelimMarket as { meanDaysToSell: number | null }).meanDaysToSell ?? null,
+	);
+	const prelimActive = buildActiveDigest(activePool);
+	emitPartial(onStep, {
+		market: prelimMarket as EvaluatePartial["market"],
+		sold: prelimSold,
+		active: prelimActive,
+		preliminary: true,
+	});
+
 	// filter ------------------------------------------------------------
+	// One real step in the trace. Per-chunk progress streams as typed
+	// `partial` events (filterProgress) so the UI updates the bar /
+	// chip / eyebrow without polluting the trace with a row per chunk.
 	const filtered = await withStep({ key: "filter", label: LABELS.filter, onStep, cancelCheck }, async () => {
-		const f = await runMatchFilter(detail.body as ItemSummary, soldPool, activePool, apiKey, undefined, {
-			seed: detail.source ?? null,
-			sold: soldSource,
-			active: activeSource,
-		});
+		const f = await runMatchFilter(
+			detail.body as ItemSummary,
+			soldPool,
+			activePool,
+			apiKey,
+			undefined,
+			{ seed: detail.source ?? null, sold: soldSource, active: activeSource },
+			(progress) => {
+				emitPartial(onStep, {
+					filterProgress: { processed: progress.processed, total: progress.total },
+				});
+			},
+		);
 		return {
 			value: f,
 			result: {
@@ -412,7 +455,7 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 		filtered.rejectionReasons,
 		filtered.rejectionCategories,
 	);
-	const returns = extractReturns(detail.body);
+	const returns = returnsValue;
 	const meta = {
 		itemSource: detail.source as TransportSource,
 		soldCount: filtered.matchedSold.length,
@@ -440,6 +483,25 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 		rejectionReasons: filtered.rejectionReasons,
 		rejectionCategories: filtered.rejectionCategories,
 	};
+
+	// Confirmed digest. Replaces the preliminary partial in one merge —
+	// matched pools become the new soldPool/activePool, rejected pools
+	// land alongside, and `preliminary: false` flips the UI's verifying
+	// indicator off. Single typed patch, no synthetic step row.
+	emitPartial(onStep, {
+		market: market as EvaluatePartial["market"],
+		sold,
+		active,
+		filter,
+		meta: meta as EvaluatePartial["meta"],
+		soldPool: filtered.matchedSold,
+		activePool: filtered.matchedActive,
+		rejectedSoldPool: filtered.rejectedSold,
+		rejectedActivePool: filtered.rejectedActive,
+		rejectionReasons: filtered.rejectionReasons,
+		rejectionCategories: filtered.rejectionCategories,
+		preliminary: false,
+	});
 
 	// Persist for cross-user reuse. Race-tolerant: simultaneous fetchers
 	// both INSERT, the second silently no-ops on the unique-index conflict.

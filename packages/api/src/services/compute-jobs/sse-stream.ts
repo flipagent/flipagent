@@ -2,13 +2,13 @@
  * SSE streaming helper for compute_jobs. Owns the full client-facing
  * stream lifecycle for `/v1/evaluate/jobs/{id}/stream`:
  *
- *   1. Replay events accumulated in the row's `trace` column so a
+ *   1. Replay events accumulated in the row's `events` column so a
  *      late subscriber sees the full progress.
  *   2. Emit a synthesised terminal event when the row was already
  *      done at subscribe time.
- *   3. Cross-process polling — the API container forwards trace
- *      events written by the worker container. Re-reads
- *      `compute_jobs.trace + status` every POLL_INTERVAL_MS, emits
+ *   3. Cross-process polling — the API container forwards events
+ *      written by the worker container. Re-reads
+ *      `compute_jobs.events + status` every POLL_INTERVAL_MS, emits
  *      any new entries since last snapshot, closes when the row
  *      reaches a terminal status.
  *   4. Drop the polling loop cleanly on client disconnect (tab close /
@@ -31,9 +31,15 @@ import { getJob } from "./queue.js";
 
 const POLL_INTERVAL_MS = 500;
 
-function stepPayload(event: unknown): { event: string; data: string } {
-	const kind = (event as { kind?: string }).kind ?? "message";
-	return { event: kind, data: JSON.stringify(event) };
+function eventPayload(event: unknown): { event: string; data: string } {
+	const e = event as { kind?: string; patch?: unknown };
+	const kind = e.kind ?? "message";
+	// Partial events ship the patch as the bare wire payload — the
+	// schema IS `Partial<EvaluatePartial>`, no envelope. Step events
+	// (started/succeeded/failed) include their full record so the
+	// trace UI gets `key`, `label`, `result`, `durationMs`, etc.
+	const data = kind === "partial" ? JSON.stringify(e.patch ?? null) : JSON.stringify(event);
+	return { event: kind, data };
 }
 
 function terminalPayloadFromRow(row: ComputeJob): { event: string; data: string } | null {
@@ -69,10 +75,10 @@ function sleepOrAbort(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 export async function streamComputeJobEvents(c: Context, stream: SSEStreamingApi, job: ComputeJob): Promise<void> {
-	// 1. Replay accumulated trace.
-	const initialTrace = (job.trace as unknown[]) ?? [];
-	for (const event of initialTrace) {
-		await stream.writeSSE(stepPayload(event));
+	// 1. Replay accumulated events.
+	const initialEvents = (job.events as unknown[]) ?? [];
+	for (const event of initialEvents) {
+		await stream.writeSSE(eventPayload(event));
 	}
 
 	// 2. Already terminal? Emit + return; hono closes the response.
@@ -82,9 +88,9 @@ export async function streamComputeJobEvents(c: Context, stream: SSEStreamingApi
 		return;
 	}
 
-	// 3. Polling loop — re-read the row, forward any new trace entries,
+	// 3. Polling loop — re-read the row, forward any new entries,
 	// stop on terminal or client disconnect.
-	let lastSeenLen = initialTrace.length;
+	let lastSeenLen = initialEvents.length;
 	const signal = c.req.raw.signal;
 
 	while (!signal.aborted) {
@@ -102,13 +108,13 @@ export async function streamComputeJobEvents(c: Context, stream: SSEStreamingApi
 			return;
 		}
 
-		const traceArr = (fresh.trace as unknown[]) ?? [];
-		if (traceArr.length > lastSeenLen) {
-			const newEvents = traceArr.slice(lastSeenLen);
+		const eventsArr = (fresh.events as unknown[]) ?? [];
+		if (eventsArr.length > lastSeenLen) {
+			const newEvents = eventsArr.slice(lastSeenLen);
 			for (const event of newEvents) {
-				await stream.writeSSE(stepPayload(event));
+				await stream.writeSSE(eventPayload(event));
 			}
-			lastSeenLen = traceArr.length;
+			lastSeenLen = eventsArr.length;
 		}
 
 		const terminal = terminalPayloadFromRow(fresh);

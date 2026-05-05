@@ -613,19 +613,52 @@ function extractAttachmentMarkers(text: string): { text: string; attachments: At
 	return { text: stripped, attachments: atts };
 }
 
+/**
+ * Stored userMessage for inline-UI clicks is the raw prompt the model
+ * sees: `[ui-action] User clicked an inline UI control. Call the
+ * \`<name>\` tool with arguments <json>, then summarize…`. On reload
+ * we reconstruct the friendly label the live send produced (matches
+ * the `uiPlaceholderText` fallback in `onEmbedAction`) so the chat
+ * shows "evaluate item · 137283921976" with the arrow prefix instead
+ * of the raw sentence. Format must stay in sync with
+ * `userActionAsPrompt` in `packages/api/src/services/agent/operations.ts`.
+ */
+const UI_ACTION_RE =
+	/^\[ui-action\] User clicked an inline UI control\. Call the `([^`]+)` tool with arguments (.+), then summarize/;
+
+function parseUiActionPrompt(text: string): { content: string } | null {
+	const m = text.match(UI_ACTION_RE);
+	if (!m) return null;
+	const label = m[1].replace(/^flipagent_/, "").replace(/_/g, " ");
+	let suffix = "";
+	try {
+		const args = JSON.parse(m[2]) as Record<string, unknown>;
+		const firstVal = Object.values(args).find((v) => typeof v === "string" || typeof v === "number");
+		if (firstVal !== undefined) suffix = ` · ${firstVal}`;
+	} catch {
+		/* malformed args — fall back to label-only */
+	}
+	return { content: `${label}${suffix}` };
+}
+
 function runsToMessages(runs: AgentRun[]): ChatMessage[] {
 	// Server returns newest-first; replay oldest → newest so the chat reads top-down.
 	const out: ChatMessage[] = [];
 	for (const r of [...runs].reverse()) {
 		const t = new Date(r.startedAt).getTime();
 		if (r.userMessage) {
-			const { text, attachments } = extractAttachmentMarkers(r.userMessage);
-			out.push({
-				role: "user",
-				content: text,
-				...(attachments.length > 0 ? { attachments } : {}),
-				at: t,
-			});
+			const uiAction = parseUiActionPrompt(r.userMessage);
+			if (uiAction) {
+				out.push({ role: "user", content: uiAction.content, fromUi: true, at: t });
+			} else {
+				const { text, attachments } = extractAttachmentMarkers(r.userMessage);
+				out.push({
+					role: "user",
+					content: text,
+					...(attachments.length > 0 ? { attachments } : {}),
+					at: t,
+				});
+			}
 		}
 		if (r.errorMessage) out.push({ role: "error", content: r.errorMessage, at: t + 1 });
 		else if (r.reply || r.ui)

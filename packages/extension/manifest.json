@@ -38,9 +38,7 @@
 		{
 			"matches": [
 				"https://flipagent.dev/*",
-				"https://*.flipagent.dev/*",
-				"http://localhost:4321/*",
-				"http://localhost:3000/*"
+				"https://*.flipagent.dev/*"
 			],
 			"js": ["presence.js"],
 			"run_at": "document_start"
@@ -52,16 +50,12 @@
 		"https://*.ebay.com/*",
 		"https://app.planetexpress.com/*",
 		"https://www.planetexpress.com/*",
-		"https://*.flipagent.dev/*",
-		"http://localhost:4001/*",
-		"http://localhost:4000/*"
+		"https://*.flipagent.dev/*"
 	],
 	"externally_connectable": {
 		"matches": [
 			"https://flipagent.dev/*",
-			"https://*.flipagent.dev/*",
-			"http://localhost:4321/*",
-			"http://localhost:3000/*"
+			"https://*.flipagent.dev/*"
 		]
 	}
 }

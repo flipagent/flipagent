@@ -2,19 +2,25 @@
  * Shared building blocks for the composite intelligence pipeline
  * (`runEvaluatePipeline`):
  *
- *   - `StepEvent` / `StepRequestInfo`  — wire types for trace events
- *   - `EvaluateError`                  — typed throw for HTTP mapping
- *   - `withStep`                       — emit start, time the body,
- *                                         emit success or failure
- *   - `runMatchFilter`                 — LLM same-product filter
- *                                         (matchPool + partition +
- *                                         graceful fallback)
+ *   - `PipelineEvent` / `PipelineListener` — wire shape + listener
+ *     type for everything the pipeline emits (step lifecycle plus
+ *     state-hydration patches; the `kind` discriminator distinguishes)
+ *   - `withStep`                            — emit start, time the
+ *                                              body, emit success or
+ *                                              failure
+ *   - `emitPartial`                         — emit a typed state patch
+ *   - `runMatchFilter`                      — LLM same-product filter
+ *                                              (matchPool + partition
+ *                                              + graceful fallback)
+ *   - `EvaluateError`                       — typed throw for HTTP
+ *                                              mapping
  */
 
+import type { EvaluatePartial } from "@flipagent/types";
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import type { ApiKey } from "../../db/schema.js";
 import { detailFetcherFor } from "../items/detail.js";
-import { MatchUnavailableError, matchPool } from "../match/index.js";
+import { type MatchProgress, MatchUnavailableError, matchPool } from "../match/index.js";
 import { partitionMatched } from "../match/partition.js";
 import type { MatchOptions } from "../match/types.js";
 
@@ -27,13 +33,15 @@ export interface StepRequestInfo {
 }
 
 /**
- * Step keys are pipeline-specific strings, so the wire union takes
- * `string` instead of a closed enum. The evaluate pipeline uses
- * "detail" / "search.sold" / "search.active" / "filter" / "evaluate".
- * Keys are passed through to clients verbatim so trace UIs can group,
- * label, and order steps.
+ * Everything the pipeline emits. Four kinds in one discriminated
+ * union — three step lifecycle kinds (`started` / `succeeded` /
+ * `failed`) for trace observability, plus `partial` for state
+ * hydration (typed `Partial<EvaluatePartial>` patches the UI spreads
+ * into outcome state). All four travel together on the same trace
+ * JSON column + SSE replay path; the SSE event name comes straight
+ * from `kind`.
  */
-export type StepEvent =
+export type PipelineEvent =
 	| { kind: "started"; key: string; label: string; parent?: string; request?: StepRequestInfo }
 	| {
 			kind: "succeeded";
@@ -51,10 +59,21 @@ export type StepEvent =
 			/** Upstream response body when available — typically eBay's parsed error envelope. The trace UI renders it under Response so users see *what* failed, not just "eBay 429". */
 			errorBody?: unknown;
 			durationMs: number;
-	  };
+	  }
+	| { kind: "partial"; patch: Partial<EvaluatePartial> };
 
-/** Optional per-step listener supplied by the route layer (no-op for collapsed JSON, SSE-write for the streaming route). */
-export type StepListener = (event: StepEvent) => void;
+/** Optional listener supplied by the route layer (no-op for collapsed JSON, SSE-write for the streaming route). */
+export type PipelineListener = (event: PipelineEvent) => void;
+
+/**
+ * Convenience helper for pipeline code: emit a typed partial event
+ * through the same listener that ferries step events. Kept colocated
+ * with `withStep` so service code reads as `emitPartial(onStep, {…})`
+ * — symmetric with how steps are emitted.
+ */
+export function emitPartial(listener: PipelineListener | undefined, patch: Partial<EvaluatePartial>): void {
+	listener?.({ kind: "partial", patch });
+}
 
 /* ----------------------------- error mapping ----------------------------- */
 
@@ -95,7 +114,7 @@ interface WithStepOptions {
 	label: string;
 	parent?: string;
 	request?: StepRequestInfo;
-	onStep?: StepListener;
+	onStep?: PipelineListener;
 	/**
 	 * Cooperative cancellation hook — the dispatcher passes a checker
 	 * that throws `CancelledError` when the caller has flipped
@@ -216,6 +235,7 @@ export async function runMatchFilter(
 	// (e.g. categories where titles are sparse).
 	matchOptions: MatchOptions = { useImages: false },
 	sources: { seed?: string | null; sold?: string | null; active?: string | null } = {},
+	onProgress?: (p: MatchProgress) => void,
 ): Promise<MatchFilterResult> {
 	const soldIds = new Set(rawSold.map((s) => s.itemId));
 	const dedupedPool: ItemSummary[] = [...rawSold, ...rawActive.filter((a) => !soldIds.has(a.itemId))];
@@ -253,7 +273,7 @@ export async function runMatchFilter(
 		// Caller-bound detail fetcher = the `DetailFetcher` port the
 		// matcher expects. apiKey stays at this layer; the matcher
 		// stays decoupled from auth + tier-quota concerns.
-		const result = await matchPool(seed, dedupedPool, matchOptions, detailFetcherFor(apiKey));
+		const result = await matchPool(seed, dedupedPool, matchOptions, detailFetcherFor(apiKey), onProgress);
 		matched = result.body.match.map((m) => m.item);
 		rejected = result.body.reject.map((m) => m.item);
 		// Capture per-listing reject reasons so the UI can surface them

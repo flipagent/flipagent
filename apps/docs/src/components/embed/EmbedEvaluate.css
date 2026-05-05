@@ -116,6 +116,19 @@
 	border-bottom: 1px solid var(--border-faint);
 }
 
+/* ≤480: 3-column stats grid (sold / median / sell-through) gets too
+ * tight on narrow embeds. Drop to 2 cols so each stat keeps a
+ * readable label + tabular value without truncation. The 6th cell
+ * (3 stats × 2 rows when wrapped) just leaves an empty slot which
+ * grid auto-fills as a clean trailing gap. */
+@media (max-width: 480px) {
+	.embed-eval-stats {
+		grid-template-columns: repeat(2, 1fr);
+		gap: 8px 12px;
+		padding: 9px 10px;
+	}
+}
+
 .embed-eval-stats > div {
 	display: flex;
 	flex-direction: column;

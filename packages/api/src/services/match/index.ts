@@ -25,10 +25,10 @@ import { hashQuery } from "../shared/cache.js";
 import type { FlipagentResult } from "../shared/result.js";
 import { withCache } from "../shared/with-cache.js";
 import { isAnyLlmConfigured } from "./llm/index.js";
-import { type DetailFetcher, matchPoolWithLlm } from "./matcher.js";
+import { type DetailFetcher, type MatchProgress, matchPoolWithLlm } from "./matcher.js";
 import type { MatchOptions, MatchResponse } from "./types.js";
 
-export type { DetailFetcher } from "./matcher.js";
+export type { DetailFetcher, MatchProgress } from "./matcher.js";
 
 const MATCH_PATH = "internal:match";
 const MATCH_TTL_SEC = 60 * 60 * 2;
@@ -75,6 +75,7 @@ export async function matchPool(
 	pool: ReadonlyArray<ItemSummary>,
 	options: MatchOptions,
 	fetchDetail: DetailFetcher,
+	onProgress?: (p: MatchProgress) => void,
 ): Promise<MatchPoolResult> {
 	if (!isAnyLlmConfigured()) {
 		throw new MatchUnavailableError(
@@ -88,7 +89,11 @@ export async function matchPool(
 		// timeout would.
 		{ scope: "match:hosted", ttlSec: MATCH_TTL_SEC, path: MATCH_PATH, queryHash, timeoutMs: 90_000 },
 		async () => {
-			const body = await matchPoolWithLlm(candidate, pool, options, fetchDetail);
+			// `onProgress` only fires on cache miss (the inner closure).
+			// Cache hits return instantly, so the UI just sees the filter
+			// step transition started → succeeded with no progress events,
+			// which is the desired behavior.
+			const body = await matchPoolWithLlm(candidate, pool, options, fetchDetail, onProgress);
 			return { body, source: "llm" };
 		},
 	);

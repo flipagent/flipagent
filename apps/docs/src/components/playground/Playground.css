@@ -403,6 +403,93 @@
 	font-weight: 600;
 }
 
+/* ---------- analysis area ("still verifying") treatment ---------- */
+/* The "still verifying" signal lives on the individual values that
+   come from un-confirmed data: rows whose numbers are derived from
+   the raw pool (search returned but the same-product filter hasn't
+   confirmed yet) carry `data-tentative="true"`, and CSS shimmers
+   their value text. When the post-filter digest finally lands,
+   `data-just-confirmed` flickers on the wrapper for 700ms and every
+   value briefly tints for a "fresh number" flash. The chart updates
+   itself when the matched pools shrink — no separate animation
+   needed there. */
+
+.pg-result-analysis {
+	position: relative;
+}
+
+@keyframes pg-value-shimmer {
+	0% { background-position: 200% 0; }
+	100% { background-position: -200% 0; }
+}
+
+/* Per-value shimmer — monochrome gradient text-clip. Baseline is the
+   normal value color; a brief dim trough sweeps across so the digits
+   "wash" briefly. Strong enough to read at a glance, no extra accent
+   color (brand is reserved for the post-filter confirm flash so the
+   two states stay distinct). */
+.pg-result-facts-row[data-tentative="true"] .pg-result-facts-val {
+	background: linear-gradient(
+		90deg,
+		var(--text) 0%,
+		var(--text) 35%,
+		color-mix(in oklab, var(--text) 22%, transparent) 50%,
+		var(--text) 65%,
+		var(--text) 100%
+	);
+	background-size: 240% 100%;
+	background-clip: text;
+	-webkit-background-clip: text;
+	color: transparent;
+	-webkit-text-fill-color: transparent;
+	animation: pg-value-shimmer 1.6s ease-in-out infinite;
+}
+
+/* Confirm flash — when preliminary flips false, every value briefly
+   tints brand-orange before settling back to its normal color. */
+@keyframes pg-confirm-flash {
+	0% { color: var(--brand); -webkit-text-fill-color: var(--brand); }
+	100% { color: inherit; -webkit-text-fill-color: inherit; }
+}
+
+.pg-result-analysis[data-just-confirmed="true"] .pg-result-facts-val {
+	animation: pg-confirm-flash 0.6s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pg-result-facts-row[data-tentative="true"] .pg-result-facts-val,
+	.pg-result-analysis[data-just-confirmed="true"] .pg-result-facts-val {
+		animation: none;
+	}
+}
+
+/* ---------- entry stagger ---------- */
+/* Each facts row "settles in" with a small per-row delay so the panel
+   reads as composed in sequence, not all-at-once. Runs once on mount;
+   updates to row content don't re-trigger. Chart skeleton is excluded
+   so its intrinsic shimmer (.pg-result-skel) keeps animating. */
+
+@keyframes pg-card-in {
+	0% { opacity: 0; transform: translateY(4px); }
+	100% { opacity: 1; transform: translateY(0); }
+}
+
+.pg-result-facts > div {
+	animation: pg-card-in 0.35s cubic-bezier(0.22, 0.7, 0.34, 1) backwards;
+}
+.pg-result-facts > div:nth-child(1) { animation-delay: 0.05s; }
+.pg-result-facts > div:nth-child(2) { animation-delay: 0.1s; }
+.pg-result-facts > div:nth-child(3) { animation-delay: 0.15s; }
+.pg-result-facts > div:nth-child(4) { animation-delay: 0.2s; }
+.pg-result-facts > div:nth-child(5) { animation-delay: 0.25s; }
+.pg-result-facts > div:nth-child(n+6) { animation-delay: 0.3s; }
+
+@media (prefers-reduced-motion: reduce) {
+	.pg-result-facts > div {
+		animation: none;
+	}
+}
+
 /* ---------- facts (key-value rows) ---------- */
 
 .pg-result-facts {
@@ -508,6 +595,24 @@
 		line-height: 20px;
 	}
 
+	/* Same key/value stack treatment for the compare + recovery rows
+	 * so all three eval blocks read consistently at narrow widths.
+	 * Without this, only `.pg-result-facts` collapses and the rest
+	 * keep a 160px label column that eats half the row. */
+	.pg-result-compare > div,
+	.pg-result-recovery > div {
+		grid-template-columns: 1fr;
+		gap: 2px;
+	}
+	.pg-result-compare dt,
+	.pg-result-recovery dt {
+		font-family: var(--mono);
+		font-size: 10.5px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-3);
+	}
+
 	/* Item hero — drop the gallery thumbnail by 30% so the title
 	 * column gets more room before eliding. */
 	.pg-result-hero-thumb,
@@ -600,6 +705,12 @@
 }
 
 .pg-result-chart-skel {
+	/* Override `.pg-result-skel`'s `display: inline-block` (which has no
+	   width by default and collapses to 0px on a `<div>` with no content
+	   or inline width style). The chart placeholder needs to behave as
+	   a full-width block. */
+	display: block;
+	width: 100%;
 	height: 210px;
 	margin: 14px 0 6px;
 	border-radius: 4px;
@@ -1113,13 +1224,12 @@
 
 .pg-step-head {
 	display: grid;
-	/* Label sits on `max-content` so it always renders one line; URL takes
-	   the flexible 1fr column with min-width:0 so it ellipsizes when space
-	   is tight (live duration counter or "Running" pill on the right side
-	   used to squeeze the label to wrap during loading). Status / duration
-	   stay on auto. Six columns even though most rows only fill 4-5;
-	   trailing autos stay empty when their content is absent. */
-	grid-template-columns: 28px max-content minmax(0, 1fr) auto auto auto;
+	/* Columns: num · label · progress (parent only) · URL/call slot
+	   (1fr, ellipsizes) · http · pill · duration. Each child anchors
+	   to its column explicitly via `grid-column` below — without that,
+	   conditionally-rendered children would shift later siblings into
+	   the 1fr cell and stretch the status pill across the row. */
+	grid-template-columns: 28px max-content auto minmax(0, 1fr) auto auto auto;
 	align-items: center;
 	gap: 12px;
 	width: 100%;
@@ -1132,13 +1242,24 @@
 	font-size: 13px;
 }
 
-.pg-step-label { white-space: nowrap; }
-
-.pg-step-head:hover { background: var(--surface-2); }
-
-.pg-step-num { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
-
+.pg-step-num {
+	grid-column: 1;
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--text-3);
+}
+.pg-step-label {
+	grid-column: 2;
+	white-space: nowrap;
+}
+.pg-step-progress {
+	grid-column: 3;
+	font-size: 11px;
+	color: var(--text-3);
+	white-space: nowrap;
+}
 .pg-step-call {
+	grid-column: 4;
 	font-size: 11px;
 	color: var(--text-3);
 	min-width: 0;
@@ -1146,8 +1267,19 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+.pg-step-http {
+	grid-column: 5;
+}
+.pg-step-pill {
+	grid-column: 6;
+}
+.pg-step-duration {
+	grid-column: 7;
+	font-size: 11px;
+	color: var(--text-3);
+}
 
-.pg-step-duration { font-size: 11px; color: var(--text-3); }
+.pg-step-head:hover { background: var(--surface-2); }
 
 .pg-step-http {
 	font-size: 11px;
@@ -1331,6 +1463,23 @@
 	z-index: 5;
 }
 
+/* On mobile, dropping the pager on a long list eats screen real estate
+ * already needed for the row content. Per STYLEGUIDE §12.7, scroll
+ * naturally instead — the user reaches the pager at the bottom of the
+ * list. The 3-column grid also collapses since `range` and `controls`
+ * both fight for the narrow row width. */
+@media (max-width: 720px) {
+	.pg-result-search-pager {
+		position: static;
+		grid-template-columns: 1fr;
+		gap: 6px;
+		justify-items: center;
+	}
+	.pg-result-search-pager-range {
+		justify-self: center;
+	}
+}
+
 .pg-result-search-pager-controls {
 	display: flex;
 	align-items: center;
@@ -1428,7 +1577,21 @@
 	background: var(--surface);
 	box-shadow: -16px 0 48px rgba(0, 0, 0, 0.12), -2px 0 8px rgba(0, 0, 0, 0.04);
 	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
 	animation: row-drawer-slide-in 220ms cubic-bezier(0.2, 0.85, 0.3, 1);
+}
+
+@media (max-width: 720px) {
+	.row-drawer {
+		/* Phone: take the whole viewport. Sliding a 92vw drawer over a
+		 * 360px screen leaves a useless 28px gutter on the left that
+		 * just shows blurred backdrop — go full width and let the close
+		 * affordance be the entire backdrop tap-area. dvh prevents the
+		 * URL bar from pushing the bottom action row out of reach. */
+		width: 100%;
+		height: var(--vh-full, 100dvh);
+		padding: 14px 16px calc(20px + env(safe-area-inset-bottom));
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2104,4 +2267,109 @@
 
 .pg-variation:hover .pg-variation-price {
 	color: var(--brand);
+}
+
+/* ─── Mobile pass for search rows + drawer + trace (≤720) ───────────
+ *
+ * Per STYLEGUIDE §12 — restack info rather than hiding it. The desktop
+ * patterns below assume a generous reading column (700+ px); on mobile
+ * we trade horizontal density for vertical, but every field stays.
+ */
+@media (max-width: 720px) {
+	/* Search / matches row: desktop is `36px thumb / 1fr title / auto
+	 * actions`. On a 360 px phone the actions column squeezes the title
+	 * to ~120 px (≈16 chars) before ellipsis. Stack the actions BELOW
+	 * the body so the title gets the full row width. */
+	.pg-result-matches-row {
+		grid-template-columns: 36px 1fr;
+		row-gap: 6px;
+	}
+	.pg-search-row-actions {
+		grid-column: 1 / -1;
+		justify-content: flex-end;
+	}
+
+	/* Sticky search head sat fine on desktop; on mobile compress the
+	 * eyebrow padding so the row count + mode aren't pushed off the
+	 * right edge. */
+	.pg-result-search-head {
+		gap: 8px;
+		padding: 4px 4px 8px;
+	}
+
+	/* Recent runs row: desktop has 4 auto/flex columns; on mobile the
+	 * label needs the room. Drop the time column — the relative time
+	 * (`5m ago`) is nice-to-have, the status + arrow are enough.
+	 * Time is still readable when the user opens the run. */
+	.pg-recent-row {
+		grid-template-columns: 1fr auto auto;
+		gap: 10px;
+	}
+	.pg-recent-time {
+		display: none;
+	}
+
+	/* Trace steps: desktop packs num/label/url/http/pill/duration into
+	 * one grid row. On mobile the URL is the longest field and routinely
+	 * pushes everything off-screen. Switch to flex-wrap so children
+	 * flow naturally — num + label + status pill on row 1, the URL +
+	 * http + duration metadata wrap to row 2 if they don't fit.
+	 * Font sizes intentionally inherit from the desktop rules so the
+	 * trace reads the same on the playground and inside the extension's
+	 * narrow side panel — wrapping is the responsive strategy, not
+	 * shrinking. */
+	.pg-step-head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px 10px;
+		padding: 8px 12px;
+		grid-template-columns: none;
+	}
+	.pg-step-label {
+		flex: 0 1 auto;
+	}
+	.pg-step-progress {
+		/* Parent-row "X/K done" stays inline next to the label; it's
+		   short enough to never push the row over and reads as part of
+		   the label, not as metadata that should wrap. */
+		flex: 0 1 auto;
+	}
+	.pg-step-call {
+		flex: 1 1 100%;
+		min-width: 0;
+		order: 99;
+	}
+	.pg-step--child .pg-step-head {
+		padding-left: 32px;
+	}
+	.pg-step-body {
+		padding: 0 12px 12px 28px;
+	}
+}
+
+/* Row drawer at narrow widths — drawer is full-bleed on mobile (set
+ * elsewhere in this file), so its inner facts/specs grids share the
+ * same key/value collapse used in the eval result blocks. */
+@media (max-width: 480px) {
+	.row-drawer-facts > div,
+	.row-drawer-specs-row {
+		grid-template-columns: 1fr;
+		gap: 2px;
+	}
+	.row-drawer-facts dt,
+	.row-drawer-specs-row dt {
+		font-family: var(--mono);
+		font-size: 10.5px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-3);
+	}
+	/* Auction cells already use 1fr 1fr — that fits at 360 px (each
+	 * cell ~144 px). Below 360 px the cells get tight so stack them
+	 * for very small phones. */
+	.row-drawer-auction {
+		grid-template-columns: 1fr;
+		gap: 8px;
+	}
 }

@@ -18,7 +18,7 @@ import { db } from "../src/db/client.js";
 import { apiKeys } from "../src/db/schema.js";
 import type { ApiKey } from "../src/db/schema.js";
 import { runEvaluatePipeline } from "../src/services/evaluate/run.js";
-import type { StepEvent } from "../src/services/evaluate/run.js";
+import type { PipelineEvent } from "../src/services/evaluate/run.js";
 
 const ITEM_ID = process.env.ITEM_ID;
 const APIKEY_ID = process.env.APIKEY_ID;
@@ -40,16 +40,18 @@ async function main(): Promise<void> {
 		console.log(`[bench] api_key tier=${apiKey.tier} id=${apiKey.id}`);
 	}
 
-	const events: StepEvent[] = [];
-	const onStep = (e: StepEvent): void => {
+	const events: PipelineEvent[] = [];
+	const onStep = (e: PipelineEvent): void => {
 		events.push(e);
 		if (e.kind === "started") {
 			console.log(`  → ${e.key.padEnd(20)} start`);
 		} else if (e.kind === "succeeded") {
 			console.log(`  ✓ ${e.key.padEnd(20)} ${String(e.durationMs).padStart(6)}ms`);
-		} else {
+		} else if (e.kind === "failed") {
 			console.log(`  ✗ ${e.key.padEnd(20)} ${String(e.durationMs).padStart(6)}ms  ${e.error}`);
 		}
+		// `partial` events carry state hydration deltas, not step
+		// observability — skip them in the bench timeline.
 	};
 
 	console.log(`[bench] item=${ITEM_ID} provider=${process.env.LLM_PROVIDER ?? "auto"}`);

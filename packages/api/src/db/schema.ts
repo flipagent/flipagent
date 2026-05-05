@@ -1029,8 +1029,8 @@ export const webhookDeliveries = pgTable(
  * cooperatively. Distinct from `bridge_jobs`
  * (which targets the user's Chrome extension); these run inside a
  * dedicated worker container against eBay scrape + LLM filter, with
- * intermediate trace events accumulated in `trace` so a /stream
- * subscriber can replay.
+ * intermediate events accumulated in `events` so a /stream subscriber
+ * can replay.
  *
  * Status machine:
  *   queued ─► running ─► completed | failed | cancelled
@@ -1061,8 +1061,8 @@ export const computeJobs = pgTable(
 		status: computeJobStatusEnum("status").notNull().default("queued"),
 		/** Inputs (eBay item id, lookback, sample size, opts, …). Pipeline-specific shape. */
 		params: jsonb("params").notNull(),
-		/** Accumulated step events for SSE replay. Append-only across the run. */
-		trace: jsonb("trace").notNull().default(sql`'[]'::jsonb`),
+		/** Accumulated pipeline events (step lifecycle + partial state hydration) for SSE replay. Append-only across the run. */
+		events: jsonb("events").notNull().default(sql`'[]'::jsonb`),
 		/** Final pipeline output. Only set when status='completed'. */
 		result: jsonb("result"),
 		errorCode: text("error_code"),

@@ -257,6 +257,175 @@ Touch `global.css` only:
 3. Don't introduce a new color outside the existing scale unless
    it's a status color or a one-off needed by the brand.
 
+## 12. Mobile rules
+
+Mobile is not an afterthought. Every component must work on a 360 px
+phone before it ships. The rules below are non-negotiable — they
+exist because previous one-off solutions produced an inconsistent
+mess across files.
+
+### 12.1 Breakpoints (single source of truth)
+
+Three breakpoints. Pick one. **Do not invent new ones.**
+
+| Breakpoint                | Use                                              |
+| ------------------------- | ------------------------------------------------ |
+| `@media (max-width: 960px)` | Tablet — collapse sidebars, drop a column from N→N-1 grids |
+| `@media (max-width: 720px)` | **Mobile primary** — single-column, 16 px gutter, mobile chrome |
+| `@media (max-width: 480px)` | Small phone — tighten typography, drop chrome that doesn't fit |
+
+The legacy 520 / 560 / 640 / 800 / 880 / 1100 breakpoints in the
+codebase are being migrated to one of the three above. If you need
+a new one, justify it in the PR description.
+
+### 12.2 Page gutter + edge-flush panels
+
+`.cmw` defines the gutter. **Never hardcode 32 / 16 elsewhere.**
+
+```css
+/* Desktop */
+.cmw { padding: 0 32px; }
+/* Mobile */
+@media (max-width: 720px) {
+  .cmw { padding: 0 16px; }
+}
+```
+
+Edge-flush panels (panels that bleed past the cmw gutter to touch
+the page-frame's vertical lines) follow §6:
+
+```css
+.foo {
+  margin: 0 -32px;
+  /* never set border-left / border-right */
+}
+@media (max-width: 720px) {
+  .foo { margin: 0 -16px; }
+}
+```
+
+Always pair the two — every `margin: 0 -32px` needs a `-16px`
+override at ≤720, otherwise the panel collides with mobile body
+padding.
+
+### 12.3 Inputs, textareas, selects (iOS zoom protection)
+
+iOS Safari auto-zooms when an input with `font-size < 16px` is
+focused. This breaks the layout, scrolls the viewport, and is
+extremely jarring on every form on the site.
+
+**Rule:** every `<input>`, `<textarea>`, `<select>` must be
+`font-size: 16px` at ≤720 px, regardless of its desktop size.
+
+```css
+.foo-input {
+  font-size: 13px;        /* desktop density */
+}
+@media (max-width: 720px) {
+  .foo-input { font-size: 16px; }
+}
+```
+
+The desktop look (smaller text) is preserved above 720 px; on
+mobile, legibility + no-zoom wins.
+
+### 12.4 Viewport heights — `dvh` not `vh`
+
+iOS / Android mobile chrome (URL bar, bottom toolbar) is dynamic.
+`100vh` includes the chrome — content gets clipped when the bar is
+visible, then jumps when it hides. Use `100dvh` (dynamic viewport
+height) for any "fill the screen" surface.
+
+```css
+.agent-shell-active {
+  min-height: max(480px, calc(100dvh - 80px));
+}
+```
+
+Never `100vh`. The only exception: a backdrop overlay fixed-positioned
+inset:0 — that doesn't care about chrome, but even then `100dvh` is
+fine.
+
+### 12.5 Tap targets
+
+Every interactive element must be at least **36 × 36 px** at ≤720.
+Buttons that are smaller on desktop (e.g. 28 × 28 px icon buttons)
+must scale up on mobile or sit inside a larger hit area.
+
+The shared primitives already satisfy this:
+- `.btn` (36 px) and `.btn.sm` (32 px → bump to 36 on mobile if
+  used in primary CTA position).
+- `.dash-mobile-menu` (36 × 36) — the canonical mobile icon button.
+
+### 12.6 Floating menus / popovers
+
+Any absolutely-positioned popover (model picker, attach menu,
+connections menu, user menu) that anchors to a button on the right
+edge of the screen will overflow the viewport on mobile.
+
+**Rule:** every popover sets a `max-width` clamp at ≤720:
+
+```css
+.foo-menu {
+  position: absolute;
+  right: 0;
+  min-width: 260px;
+  max-width: min(92vw, 320px);
+}
+```
+
+If the popover's `min-width` ≥ `92vw`, drop `min-width` to `auto`
+on mobile.
+
+### 12.7 Sticky / fixed elements
+
+At most **one** sticky element at the top (the site header) and
+**one** at the bottom (mobile compose bar, if any) at any time. Do
+not stack a sticky topbar + sticky tabs + sticky pager — at 360 px
+viewport that eats the entire screen.
+
+Sticky pagers (`.pg-result-search-pager`) drop their `position:
+sticky` at ≤720 and let the page scroll naturally. The compose bar
+on the agent surface is the one mobile sticky we keep.
+
+### 12.8 Typography minima
+
+Body / paragraph text at ≤720: **never below 13 px**. Mono captions
+at ≤720: never below 11 px. Headings already use `clamp()` so they
+scale fine.
+
+`.agent-msg`, `.dash-card-row-text p`, `.feature p` — these all hit
+the 13 px floor on desktop, so they're fine; the rule is to stop
+new components going below that.
+
+### 12.9 Min-width 0 on flex children
+
+Long unbreakable text (URLs, eBay titles, mono code) inside a flex
+row will push the row past 100 % width on mobile, causing horizontal
+scroll. Every flex child that contains such text must declare
+`min-width: 0` (and the truncation rule, ellipsis or break-word, on
+the text itself).
+
+This is already common in the codebase (`min-width: 0` appears 80+
+times) — keep doing it.
+
+### 12.10 What "consistent info density" means
+
+The mobile layout shows **the same information** as desktop, just
+restacked. Don't:
+
+- Hide entire columns on mobile to "simplify" — restack them.
+- Drop secondary text on mobile — wrap it.
+- Replace a data table with a fewer-column variant — turn each row
+  into a stacked dt/dd block (see `.pg-result-facts` ≤480).
+
+Do:
+
+- Stack two-column grids into one.
+- Move sidebars into a drawer (see `.dash-sidebar` ≤720).
+- Convert `display: grid` of fixed columns into auto-fit
+  `repeat(auto-fit, minmax(...))` so cards reflow.
+
 ---
 
 When in doubt: `global.css` for shared, sibling `.css` for one-off,

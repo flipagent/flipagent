@@ -28,9 +28,14 @@
  * column so the chat doesn't stretch ridiculously wide on big monitors.
  * `margin-bottom: -64px` cancels dash-content's bottom padding so the
  * composer can sit near the viewport bottom (chat-feel), not in the
- * middle of a generously-padded card area. */
+ * middle of a generously-padded card area.
+ *
+ * Mobile chrome (URL bar, bottom toolbar) is dynamic, so we use `dvh`
+ * via the global `--vh-full` ladder. The 540px floor is desktop-only;
+ * mobile gets a tighter 420px floor so a short conversation doesn't
+ * leave a stadium of dead space below the composer. */
 .agent-shell-active {
-	min-height: max(540px, calc(100vh - 100px));
+	min-height: max(540px, calc(var(--vh-full) - 100px));
 	margin-bottom: -64px;
 	padding-bottom: 12px;
 	align-items: center;
@@ -51,9 +56,11 @@
 }
 
 /* Pre-chat hero: vertically centered on the dash background, just the
- * hero card + example prompts. */
+ * hero card + example prompts. `dvh` keeps the composer pinned the same
+ * distance below the hero text whether mobile chrome is showing or
+ * hidden — `100vh` snaps content around as the URL bar reveals. */
 .agent-shell-hero {
-	min-height: max(540px, calc(100vh - 200px));
+	min-height: max(540px, calc(var(--vh-full) - 200px));
 }
 
 .agent-shell-drop {
@@ -1476,4 +1483,156 @@
 	font-size: 11px;
 	color: var(--text-3);
 	line-height: 1.35;
+}
+
+/* ─── Mobile pass (≤720) ────────────────────────────────────────────
+ *
+ * Aggregated mobile rules per STYLEGUIDE §12. The chat surface is the
+ * single most-used mobile screen on the site, so it gets the tightest
+ * rules. Anything above 720 px keeps the dense desktop look.
+ */
+@media (max-width: 720px) {
+	/* Drop the desktop 540px floor so a fresh thread doesn't leave a
+	 * giant gap below the composer on a 360px phone. The composer +
+	 * one round of replies fits naturally inside the dynamic viewport. */
+	.agent-shell-hero {
+		min-height: calc(var(--vh-full) - 140px);
+	}
+	.agent-shell-active {
+		min-height: calc(var(--vh-full) - 64px);
+		/* dash-content's mobile padding is 16px; cancel it the same
+		 * way desktop cancels 64px so the composer pins to the bottom
+		 * of the viewport instead of floating above it. */
+		margin-bottom: -48px;
+	}
+
+	/* Composer textarea: bump to 16 px so iOS doesn't auto-zoom on
+	 * focus. Both the hero variant (pre-conversation) and the active
+	 * chat variant get the bump. Hero textarea also drops its left
+	 * padding a notch so the placeholder lines up with the actions
+	 * row's icon grid. */
+	.agent-hero-textarea {
+		font-size: 16px;
+		padding: 12px 14px;
+	}
+	.agent-input-textarea {
+		font-size: 16px;
+		line-height: 1.4;
+	}
+
+	/* Top thread-switcher bar: shrink the active-thread label so a
+	 * "Best Offers I should respond to?" thread title doesn't push
+	 * the new-thread / settings buttons off the right edge. */
+	.agent-bar {
+		padding: 6px 8px;
+	}
+	.agent-bar-btn {
+		max-width: 60vw;
+		font-size: 13px;
+	}
+
+	/* Threads popover anchored to the bar — clamp to the viewport so
+	 * a wide thread title doesn't blow it past the right edge. */
+	.agent-threads-pop {
+		max-width: min(92vw, 320px);
+	}
+
+	/* Model picker menu — desktop pins it 260px wide flush to the
+	 * right edge. On a 375px phone that overflows the viewport when
+	 * the composer sits inside a card with its own padding. Clamp
+	 * the menu width and let it slide left of its anchor if needed. */
+	.agent-model-menu {
+		min-width: 0;
+		width: min(92vw, 320px);
+		right: 0;
+	}
+	.agent-model-chip-label {
+		max-width: 96px;
+	}
+
+	/* Attach (+) menu — same overflow protection. The trigger sits at
+	 * the LEFT edge so right-overflow is rare, but clamp anyway in
+	 * case future actions widen the menu items. */
+	.agent-attach-menu {
+		max-width: min(92vw, 240px);
+	}
+
+	/* Message bubbles: desktop caps user bubbles at 88 % so a long
+	 * paragraph doesn't span the full reading column. Mobile is
+	 * already narrow — cap at 100 % so nothing wastes the right margin
+	 * on a 360px screen. The bubble's own padding still keeps text
+	 * off the edge. */
+	.agent-msg {
+		max-width: 100%;
+	}
+	.agent-msg-assistant .agent-msg-text {
+		max-width: 100%;
+	}
+
+	/* Reduce inner padding so messages don't lose half the row to
+	 * gutters. Composer gets the same treatment so the textarea sits
+	 * closer to the edge (still inside the bordered card). */
+	.agent-messages {
+		padding: 12px 12px;
+	}
+	.agent-compose {
+		padding: 8px 8px 10px;
+	}
+
+	/* Hero card padding tightening — same idea as messages. The card
+	 * border is the visual gutter; we don't need an inner gutter on
+	 * top of it on a narrow phone. */
+	.agent-hero {
+		padding: 0 12px;
+		gap: 12px;
+	}
+	.agent-hero-actions {
+		padding: 6px 8px 8px;
+	}
+
+	/* The action subject card (item thumbnail + title attached to a
+	 * user-action bubble) — let the title use both lines instead of
+	 * eliding to one. The desktop nowrap loses too much info on
+	 * mobile when the column is half as wide. */
+	.agent-action-subject-title {
+		white-space: normal;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+	}
+
+	/* Embed iframe (MCP Apps surface) — stretch full-bleed inside the
+	 * message column so the embed's own internal padding becomes the
+	 * only edge gap. Otherwise we're double-padding (parent gutter +
+	 * embed page padding). */
+	.agent-embed {
+		border-radius: 8px;
+	}
+
+	/* Sticky composer respect for the iPhone home indicator. Adding
+	 * the safe-area inset to the composer's bottom padding keeps the
+	 * send button clear of the home pill in landscape. */
+	.agent-shell-active > .agent-compose {
+		padding-bottom: calc(10px + env(safe-area-inset-bottom));
+	}
+}
+
+/* ─── Very small phone (≤480) ───────────────────────────────────────
+ * On 320–414 px viewports the action row gets crowded once the user
+ * has both an eBay connection chip and a model picker visible. Drop
+ * the model chip's tagline at this width — the cost-per-turn metadata
+ * is non-critical and shows in the menu anyway. */
+@media (max-width: 480px) {
+	.agent-model-chip-label {
+		max-width: 72px;
+	}
+	.agent-bar-btn {
+		max-width: 50vw;
+	}
+	/* Hero title scales with viewport via the existing 22px ≤720 rule;
+	 * at 360 px the lead p starts to compete for vertical space —
+	 * tighten the gap so the composer doesn't push below the fold. */
+	.agent-hero {
+		gap: 10px;
+	}
 }

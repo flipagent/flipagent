@@ -5,12 +5,30 @@
  *   src/background.ts → dist/background.js   (MV3 service worker)
  *   src/content.ts    → dist/content.js      (injected into ebay.com tabs)
  *   src/popup.ts      → dist/popup.js        (toolbar action popup UI)
+ *   src/sidepanel.ts  → dist/sidepanel.js    (side panel iframe host)
+ *   src/presence.ts   → dist/presence.js     (presence beacon on dashboard)
  *
  * Static assets (manifest, html, css, icons) are copied verbatim.
  *
+ * Two environments — both deployed, no localhost in either since dev is
+ * reached over a tunnel that resolves to *.flipagent.dev:
+ *
+ *   npm run build          → prod  (api.flipagent.dev / flipagent.dev)
+ *                            Manifest reads "flipagent". Chrome Web
+ *                            Store builds use this.
+ *   npm run build:dev      → dev   (api-dev.flipagent.dev / dev.flipagent.dev)
+ *                            Manifest reads "flipagent (dev)" so a
+ *                            sideloaded dev install + a Web Store prod
+ *                            install can coexist in one Chrome profile.
+ *
+ * Hostnames are baked in via esbuild `define`. Override per-build with
+ *   FLIPAGENT_API_BASE=… FLIPAGENT_DASHBOARD_BASE=… npm run build:dev
+ * (rare — used when working against an alternate tunnel host).
+ *
  * Usage:
- *   node build.mjs            — one-shot build
- *   node build.mjs --watch    — watch mode for dev
+ *   node build.mjs               — prod, one-shot
+ *   node build.mjs --dev         — dev, one-shot
+ *   node build.mjs --dev --watch — dev, watch mode
  */
 
 import { build, context } from "esbuild";
@@ -20,23 +38,24 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname);
 const outDir = resolve(root, "dist");
 const watch = process.argv.includes("--watch");
-
-/* `--dev` swaps the production hostnames for localhost so an unpacked
- * dev build talks to the api/docs servers running on the developer's
- * own machine. The published Chrome Web Store build (default — no
- * flag) bakes in the production hosts. Hosts are injected as
- * compile-time string constants via esbuild `define`; runtime config
- * overrides are still honoured (loadConfig.baseUrl wins).
- *
- *   npm run build                       → prod (api.flipagent.dev / flipagent.dev)
- *   npm run build:dev                   → dev  (localhost:4000   / localhost:4321)
- *   FLIPAGENT_API_BASE=http://localhost:4001 npm run build:dev
- *                                       → dev w/ custom api port (e.g. when
- *                                         your dev server isn't on the default 4000)
- */
 const isDev = process.argv.includes("--dev");
-const apiBase = process.env.FLIPAGENT_API_BASE ?? (isDev ? "http://localhost:4000" : "https://api.flipagent.dev");
-const dashboardBase = process.env.FLIPAGENT_DASHBOARD_BASE ?? (isDev ? "http://localhost:4321" : "https://flipagent.dev");
+
+const ENVIRONMENTS = {
+	prod: {
+		apiBase: "https://api.flipagent.dev",
+		dashboardBase: "https://flipagent.dev",
+		nameSuffix: null,
+	},
+	dev: {
+		apiBase: "https://api-dev.flipagent.dev",
+		dashboardBase: "https://dev.flipagent.dev",
+		nameSuffix: "dev",
+	},
+};
+
+const env = isDev ? ENVIRONMENTS.dev : ENVIRONMENTS.prod;
+const apiBase = process.env.FLIPAGENT_API_BASE ?? env.apiBase;
+const dashboardBase = process.env.FLIPAGENT_DASHBOARD_BASE ?? env.dashboardBase;
 
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
@@ -64,27 +83,14 @@ const targets = [
 ];
 
 function copyStatic() {
-	// Dev builds get a "(dev)" suffix on the extension name so both
-	// the Chrome Web Store install (prod) and an unpacked dev install
-	// can coexist in the same Chrome profile without colliding. Chrome
-	// keys each install by extension id, but a same-named action button
-	// is confusing to operate.
+	// Append a "(dev)" suffix on the dev install's display name so a
+	// sideloaded dev build and a Chrome Web Store prod install can sit
+	// side-by-side in the same Chrome profile without their action
+	// buttons being indistinguishable. Chrome already keys installs by
+	// extension id; the suffix just helps human eyes.
 	const manifest = JSON.parse(readFileSync(resolve(root, "manifest.json"), "utf8"));
-	if (isDev) {
-		manifest.name = `${manifest.name} (dev)`;
-	} else {
-		// Prod build (Chrome Web Store): strip localhost host_permissions and
-		// content_scripts / externally_connectable matches. Reviewers reject
-		// extensions that request hosts they don't actually use in production.
-		const isProdHost = (m) => !m.startsWith("http://localhost");
-		manifest.host_permissions = (manifest.host_permissions ?? []).filter(isProdHost);
-		manifest.content_scripts = (manifest.content_scripts ?? []).map((cs) => ({
-			...cs,
-			matches: (cs.matches ?? []).filter(isProdHost),
-		}));
-		if (manifest.externally_connectable?.matches) {
-			manifest.externally_connectable.matches = manifest.externally_connectable.matches.filter(isProdHost);
-		}
+	if (env.nameSuffix) {
+		manifest.name = `${manifest.name} (${env.nameSuffix})`;
 	}
 	writeFileSync(resolve(outDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 	cpSync(resolve(root, "src/popup.html"), resolve(outDir, "popup.html"));
@@ -95,13 +101,14 @@ function copyStatic() {
 	cpSync(resolve(root, "icons"), resolve(outDir, "icons"), { recursive: true });
 }
 
+const envLabel = isDev ? "dev" : "prod";
 if (watch) {
 	const ctxs = await Promise.all(targets.map((t) => context({ ...sharedOpts, ...t })));
 	await Promise.all(ctxs.map((c) => c.watch()));
 	copyStatic();
-	console.log(`[extension] watching… (${isDev ? "dev" : "prod"} hosts: api=${apiBase}, dashboard=${dashboardBase})`);
+	console.log(`[extension] watching… (${envLabel}: api=${apiBase}, dashboard=${dashboardBase})`);
 } else {
 	await Promise.all(targets.map((t) => build({ ...sharedOpts, ...t })));
 	copyStatic();
-	console.log(`[extension] built → ${outDir}  (${isDev ? "dev" : "prod"} hosts: api=${apiBase}, dashboard=${dashboardBase})`);
+	console.log(`[extension] built → ${outDir}  (${envLabel}: api=${apiBase}, dashboard=${dashboardBase})`);
 }

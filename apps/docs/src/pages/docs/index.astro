@@ -4,70 +4,31 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 ---
 <Layout
 	title="Docs · flipagent"
-	description="flipagent developer docs — quickstart, MCP setup, REST reference, authentication, rate limits, errors, and self-hosting guides."
+	description="flipagent helps your AI agent resell on eBay — sourcing, scoring, buying, listing, fulfillment. Try it in two minutes."
 >
 	<div class="cmw cmw-bordered">
 		<div class="docs-shell">
 			<DocsSidebar />
 			<article class="docs-content">
-				<h1>Docs</h1>
-				<p class="lead">
-					The API to resell on eBay for AI agents. Pick how you want to call it.
-				</p>
+				<h1>Hey, this is <span class="accent">flipagent</span></h1>
+				<p class="lead">It's the API for AI agents that resell on eBay. Sourcing, scoring, buying, listing, fulfillment — one key covers the whole thing.</p>
 
-				<div class="features" style="margin:32px 0 56px;">
-					<div class="feature">
-						<div class="ic">i.</div>
-						<h3>MCP server</h3>
-						<p><code>flipagent-mcp</code> for Claude Code (and any MCP-compatible host). Every reseller endpoint exposed as an MCP tool.</p>
-						<div style="margin-top:14px;"><a href="/docs/mcp/">MCP setup →</a></div>
-					</div>
-					<div class="feature">
-						<div class="ic">ii.</div>
-						<h3>REST API</h3>
-						<p>Unified <code>/v1/*</code> surface at <code>api.flipagent.dev</code>: items (active + sold), evaluate, ship, listings, sales, purchases, payouts, transactions, categories, products.</p>
-						<div style="margin-top:14px;"><a href="/docs/rest/">REST quickstart →</a></div>
-					</div>
-					<div class="feature">
-						<div class="ic">iii.</div>
-						<h3>TypeScript SDK</h3>
-						<p><code>@flipagent/sdk</code>. One client, every namespace. Auto-typed responses, server-side scoring.</p>
-						<div style="margin-top:14px;"><a href="/docs/quickstart/">Quickstart →</a></div>
-					</div>
-					<div class="feature">
-						<div class="ic">iv.</div>
-						<h3>Chrome extension</h3>
-						<p>Powers buying and package-forwarder ops (<code>/v1/purchases</code>, <code>/v1/forwarder/*</code>) inside your real Chrome session. eBay's checkout is human-only by policy; the extension keeps every click in your hands.</p>
-						<div style="margin-top:14px;"><a href="/docs/extension/">Extension setup →</a></div>
-					</div>
-					<div class="feature">
-						<div class="ic">v.</div>
-						<h3>Scraper</h3>
-						<p><code>@flipagent/ebay-scraper</code>. Standalone eBay HTML parsers + plain-HTTPS fetcher. BYO proxy for sustained volume.</p>
-						<div style="margin-top:14px;"><a href="https://github.com/flipagent/flipagent/tree/main/packages/ebay-scraper">Source →</a></div>
-					</div>
+				<p style="margin-top:24px;">Easiest way to feel it is to just try it. We'll ask flipagent one real question and watch the answer come back. Pick the path that fits.</p>
+
+				<div class="features" style="margin:18px 0 8px;">
+					<a class="feature" href="/docs/quickstart/#mcp">
+						<div class="ic">If you use Claude Code</div>
+						<h3>Take the MCP path</h3>
+						<p>One snippet in your config, one chat message, done.</p>
+						<div style="margin-top:14px; color:var(--brand); font-size:13.5px;">Go →</div>
+					</a>
+					<a class="feature" href="/docs/quickstart/#playground">
+						<div class="ic">If you don't</div>
+						<h3>Use the playground</h3>
+						<p>Open it in your browser, click run. Nothing to install.</p>
+						<div style="margin-top:14px; color:var(--brand); font-size:13.5px;">Go →</div>
+					</a>
 				</div>
-
-				<h2>Quickstart</h2>
-
-				<table class="api">
-					<thead>
-						<tr><th>Goal</th><th>Path</th><th>Time</th></tr>
-					</thead>
-					<tbody>
-						<tr><td>Try from Claude Code</td><td><a href="/docs/mcp/">MCP setup</a></td><td>30s</td></tr>
-						<tr><td>Call from your backend</td><td><a href="/docs/rest/">REST quickstart</a></td><td>1m</td></tr>
-						<tr><td>TypeScript SDK</td><td><a href="/docs/quickstart/">Quickstart</a></td><td>2m</td></tr>
-						<tr><td>Browse the API</td><td><a href="/docs/api/">API reference</a></td><td>any time</td></tr>
-					</tbody>
-				</table>
-
-				<h2>What you'll need</h2>
-				<ul>
-					<li>A free API key from <a href="/signup/">flipagent.dev/signup</a>.</li>
-					<li>For sell-side endpoints (<code>/v1/listings</code>, <code>/v1/sales</code>, <code>/v1/payouts</code>, <code>/v1/policies</code>, etc.): connect your regular eBay account once at <code>/v1/connect/ebay</code>. flipagent owns the eBay developer keyset, so you do not need an eBay developer account of your own.</li>
-					<li>For the buy-flow (<code>/v1/purchases</code> bridge mode): the <a href="/docs/extension/">Chrome extension</a> runs the BIN clicks inside your real Chrome session.</li>
-				</ul>
 			</article>
 		</div>
 	</div>

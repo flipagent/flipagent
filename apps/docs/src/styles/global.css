@@ -64,6 +64,9 @@
 
 * {
 	box-sizing: border-box;
+	/* Kill the gray flash iOS / Android paint over a tapped element.
+	   Ripple + hover affordances replace it where we want feedback. */
+	-webkit-tap-highlight-color: transparent;
 }
 
 /* Browsers default <button> cursor to `auto` (or arrow on some). Reset
@@ -74,10 +77,32 @@ button:not(:disabled) {
 	cursor: pointer;
 }
 
+/* Cancel iOS Safari's 300 ms tap delay + double-tap-zoom on every
+   primary interactive element. `manipulation` keeps pinch-zoom and
+   normal scrolling — only kills the artificial click latency. */
+a,
+button,
+[role="button"],
+input,
+select,
+textarea,
+label,
+summary {
+	touch-action: manipulation;
+}
+
 html,
 body {
 	margin: 0;
 	padding: 0;
+}
+
+html {
+	/* iOS Safari resizes text on landscape rotate by default — pin to
+	   100 % so our typography scale renders as designed at every
+	   orientation. Webkit prefix kept for older iOS. */
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
 }
 
 body {
@@ -91,6 +116,52 @@ body {
 	-moz-osx-font-smoothing: grayscale;
 	letter-spacing: -0.01em;
 	text-rendering: optimizeLegibility;
+}
+
+/* Mobile primitives ====================================================
+ *
+ * Every rule here is a code-level enforcement of the rules documented in
+ * STYLEGUIDE §12. Touching this block changes the entire site's mobile
+ * behaviour; do it deliberately.
+ *
+ *   1. Inputs ≥ 16px on mobile → no iOS auto-zoom on focus.
+ *   2. `100dvh` available as a primitive so child stylesheets can use it
+ *      via `min-height: var(--vh-full)` instead of remembering to ladder
+ *      `100vh → 100dvh` themselves.
+ *   3. Sticky headers respect the iPhone notch (safe-area-inset-top).
+ *   4. `overflow-wrap: anywhere` on prose so long URLs / mono tokens
+ *      don't push the row past 100 % width on a 360px phone.
+ */
+
+:root {
+	/* Ladder fallback: `100vh` first (older Safari), then `100dvh`
+	   (Safari 16.4+, all evergreen). When `dvh` is unsupported the
+	   browser falls back to the previous valid value automatically. */
+	--vh-full: 100vh;
+	--vh-full: 100dvh;
+}
+
+/* iOS / Android Safari zoom on input focus when font-size < 16px.
+   Apply at every input surface; desktop density (smaller text) is
+   restored above 720 px below in each component's own rules. The
+   `:where()` keeps specificity at 0 so component-level rules win. */
+@media (max-width: 720px) {
+	:where(input, textarea, select) {
+		font-size: 16px;
+	}
+}
+
+/* Long unbreakable strings (URLs, eBay item titles, mono ids) are the
+   single biggest cause of mobile horizontal scroll. Default body prose
+   wraps them anywhere; opt out per-component with `overflow-wrap:
+   normal` if a specific block wants to overflow on purpose. */
+@media (max-width: 720px) {
+	p,
+	li,
+	dd,
+	td {
+		overflow-wrap: anywhere;
+	}
 }
 
 a {
@@ -219,6 +290,11 @@ header.site {
 	top: 0;
 	z-index: 50;
 	background: var(--bg);
+	/* Notched iPhone landscape: keep the brand + nav clear of the
+	   physical sensor cluster. Portrait safe-area is 0 here so this
+	   only kicks in on devices that actually need it. */
+	padding-left: env(safe-area-inset-left);
+	padding-right: env(safe-area-inset-right);
 	transition: background 0.18s ease, backdrop-filter 0.18s ease, box-shadow 0.18s ease;
 }
 
@@ -1214,6 +1290,31 @@ table.api td code {
 	word-break: break-word;
 }
 
+/* Mobile: docs API tables are dense (3–5 columns of paths/methods/
+ * descriptions). Forcing them to fit a 360 px viewport mangles either
+ * column widths or content. Convert table to a horizontally scrolling
+ * block so the user sees one full row at a time and pans sideways for
+ * the rest — matches GitHub / Stripe / Vercel docs behaviour. */
+@media (max-width: 720px) {
+	table.api {
+		display: block;
+		max-width: 100%;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+	table.api th,
+	table.api td {
+		white-space: nowrap;
+	}
+	/* The description column (typically the LAST column) is the
+	 * exception — let it wrap so the row is mostly readable without
+	 * scrolling, only path/method overflow horizontally. */
+	table.api td:last-child {
+		white-space: normal;
+		min-width: 220px;
+	}
+}
+
 /* Docs sidebar ======================================================== */
 
 .docs-shell {
@@ -1319,6 +1420,92 @@ table.api td code {
 
 .docs-content table.api {
 	margin: 14px 0 8px;
+}
+
+.docs-figure {
+	margin: 18px 0 8px;
+}
+
+.docs-figure img {
+	max-width: 100%;
+	height: auto;
+	border: 1px solid var(--border-faint);
+	border-radius: 8px;
+}
+
+.docs-figure figcaption {
+	margin-top: 8px;
+	font-size: 12.5px;
+	color: var(--text-3);
+}
+
+.docs-reply {
+	margin: 18px 0;
+	border: 1px solid var(--border-faint);
+	border-radius: 10px;
+	background: var(--surface);
+	overflow: hidden;
+}
+
+.docs-reply-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 16px;
+	border-bottom: 1px solid var(--border-faint);
+	background: var(--bg-soft);
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--text-3);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.docs-reply-head::before {
+	content: "";
+	width: 6px;
+	height: 6px;
+	background: var(--brand);
+	border-radius: 50%;
+}
+
+.docs-reply-body {
+	padding: 18px 20px;
+	font-size: 14px;
+	line-height: 1.6;
+	color: var(--text);
+}
+
+.docs-reply-body table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 8px 0 14px;
+	font-size: 13px;
+}
+
+.docs-reply-body th {
+	text-align: left;
+	font-weight: 500;
+	color: var(--text-3);
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.docs-reply-body td {
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--border-faint);
+}
+
+.docs-reply-body tr:last-child td {
+	border-bottom: none;
+}
+
+.docs-reply-body p {
+	margin: 0 0 10px;
+}
+
+.docs-reply-body p:last-child {
+	margin-bottom: 0;
 }
 
 
@@ -1491,6 +1678,11 @@ footer.site {
 	color: var(--text-2);
 	font-size: 13px;
 	background: var(--bg);
+	/* Match header's safe-area inset on the side rails so the bottom
+	   strip doesn't kiss the notch corners on iPhone landscape. */
+	padding-left: env(safe-area-inset-left);
+	padding-right: env(safe-area-inset-right);
+	padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* Footer's page-frame inherits the global vertical-rail pseudos so the side
@@ -1501,15 +1693,26 @@ footer.site .page-frame {
 	position: relative;
 }
 
-/* Link grid — every cell sits inside one continuous boxed grid so vertical
-   and horizontal dividers always meet (per STYLEGUIDE §6). The grid's own
-   top + bottom borders meet the page-frame's vertical rails at the corners. */
+/* Link grid — three column sections sit inside one continuous boxed grid so
+   vertical and horizontal dividers always meet (per STYLEGUIDE §6). DOM is
+   grouped column-major (each <section.foot-col> is one category). On desktop
+   the wrapper sections use display:contents so their cells flow as direct
+   grid items, and grid-auto-flow:column with 6 explicit rows lays them out
+   column-by-column — visually identical to the original flat 3×6 table. On
+   mobile (≤560px below) the wrappers turn back into block containers and
+   the grid collapses to one column so each header stays with its own links. */
 .foot-grid {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-rows: repeat(6, auto);
+	grid-auto-flow: column;
 	margin: 0 -32px;
 	border-top: 1px solid var(--border-faint);
 	border-bottom: 1px solid var(--border-faint);
+}
+
+.foot-col {
+	display: contents;
 }
 
 .foot-cell {
@@ -1529,17 +1732,17 @@ footer.site .page-frame {
 	color: currentColor;
 }
 
-/* Last column of every row gets no right border — page-frame owns that line */
-.foot-cell:nth-child(3n) {
+/* Last column owns no right border — page-frame's vertical rail does */
+.foot-col:last-child > .foot-cell {
 	border-right: none;
 }
 
-/* First row (header row) sits flush under the footer's page-frame border-top */
-.foot-cell:nth-child(-n + 3) {
+/* First cell of each column (the header) sits flush under grid's border-top */
+.foot-col > .foot-cell:first-child {
 	border-top: none;
 }
 
-.foot-grid > .foot-h {
+.foot-h {
 	padding-top: 24px;
 	padding-bottom: 24px;
 	font-family: var(--mono);
@@ -1554,10 +1757,6 @@ footer.site .page-frame {
 a.foot-cell:hover {
 	background: var(--bg-soft);
 	color: var(--brand);
-}
-
-.foot-empty {
-	pointer-events: none;
 }
 
 /* Bottom strip — same column grid as foot-grid so cells line up vertically */
@@ -1603,12 +1802,21 @@ a.foot-cell:hover {
 @media (max-width: 560px) {
 	.foot-grid {
 		grid-template-columns: 1fr;
+		grid-template-rows: auto;
+		grid-auto-flow: row;
+	}
+	/* Stack each section as a real block; right-border on cells goes away
+	   and a top-border on the section divides one category from the next.
+	   Header-cell still has no top-border (handled by .foot-col > :first-child
+	   above) so the section's own border-top becomes the visible divider. */
+	.foot-col {
+		display: block;
+	}
+	.foot-col + .foot-col {
+		border-top: 1px solid var(--border-faint);
 	}
 	.foot-cell {
 		border-right: none;
-	}
-	.foot-empty {
-		display: none;
 	}
 	.foot-bottom {
 		grid-template-columns: 1fr;

@@ -309,6 +309,13 @@
       "when": 1779696000003,
       "tag": "0043_compute_job_search_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1779696000004,
+      "tag": "0044_rename_trace_to_events",
+      "breakpoints": true
     }
   ]
 }

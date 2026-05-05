@@ -4,25 +4,17 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 ---
 <Layout
 	title="Quickstart · flipagent docs"
-	description="Get an AI agent reselling on eBay in minutes. Get a key, install the MCP server or SDK, and run your first search → evaluate → list pipeline."
+	description="Three real flipagent examples you can run in two minutes — browse categories, find ending auctions, evaluate a listing."
 >
 	<div class="cmw cmw-bordered">
 		<div class="docs-shell">
 			<DocsSidebar />
 			<article class="docs-content">
-				<h1>Quickstart</h1>
-				<p class="lead">Five minutes from zero to your first listing score.</p>
+				<h1>Let's try it</h1>
+				<p class="lead">Three small examples, each one a real flipagent flow. Pick the one that sounds useful and follow it through.</p>
 
-				<h2>1. Get an API key</h2>
-				<p>
-					<a href="/signup/">Sign up</a>. The free tier is a one-time 1,000-credit grant — about 1,000 searches or 12 full listing evaluations. Mix as you like. Credits don't refill on Free; upgrade for monthly credits. No card required. Your dashboard issues a key in one click; copy it from the modal (it's only shown once).
-				</p>
-				<p>
-					Self-hosting? Run the API in your own infrastructure and your dashboard will be at <code>your-host/dashboard/</code> instead. See <a href="/docs/self-host/">self-host</a>.
-				</p>
-
-				<h2>2a. From Claude Code (MCP)</h2>
-				<p>Drop the snippet into your MCP host's config and restart it:</p>
+				<h2>Set it up first</h2>
+				<p>Drop this into your MCP host's config and restart it:</p>
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>mcp config</span></div>
 <pre><code>{`{
@@ -30,48 +22,127 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
     "flipagent": {
       "command": "npx",
       "args": ["-y", "flipagent-mcp"],
-      "env": { "FLIPAGENT_API_KEY": "fa_free_xxx" }
+      "env": { "FLIPAGENT_API_KEY": "fa_..." }
     }
   }
 }`}</code></pre>
 				</div>
+				<p style="font-size:13.5px;">No key? <a href="/signup/">Grab one</a>. No MCP host? Each example below has a button that opens the playground with the question pre-filled.</p>
 
-				<h2>2b. From any HTTP client</h2>
-				<div class="code">
-					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>shell</span></div>
-<pre><code>{`curl "https://api.flipagent.dev/v1/items/search?q=canon%2050mm&limit=10" \\
-  -H "Authorization: Bearer fa_free_xxx"`}</code></pre>
+				<h2>Pick what to try</h2>
+				<div class="features" style="margin:18px 0 8px;">
+					<a class="feature" href="#categories">
+						<div class="ic">Example 1</div>
+						<h3>Browse categories</h3>
+						<p>See what's available on eBay. Walk the category tree from the top.</p>
+					</a>
+					<a class="feature" href="#auctions">
+						<div class="ic">Example 2</div>
+						<h3>Find ending auctions</h3>
+						<p>Pull the auctions about to close in a category. Time-window sourcing.</p>
+					</a>
+					<a class="feature" href="#evaluate">
+						<div class="ic">Example 3</div>
+						<h3>Evaluate one listing</h3>
+						<p>Paste an eBay URL. Get back estimated profit, fees, and a buy/skip call.</p>
+					</a>
 				</div>
 
-				<h2>2c. From Node / TypeScript</h2>
-				<p><code>@flipagent/sdk</code> is a typed thin client. One namespace per resource, all under <code>/v1/*</code>:</p>
-				<div class="code">
-					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>node</span></div>
-<pre><code>{`import { createFlipagentClient } from "@flipagent/sdk";
+				<h2 id="categories">1. Browse categories</h2>
+				<p>Ask:</p>
+				<div class="code"><pre><code>Show me the top-level eBay categories I can use for sourcing.</code></pre></div>
+				<p style="margin-top:14px;">
+					<a class="btn heat" href="/dashboard/?view=agent&seed=Show%20me%20the%20top-level%20eBay%20categories%20I%20can%20use%20for%20sourcing.">
+						Open in playground
+					</a>
+				</p>
 
-const client = createFlipagentClient({ apiKey: "fa_free_xxx" });
-
-const { items } = await client.items.search({ q: "canon 50mm", limit: 10 });
-console.log(items.length, "active listings");`}</code></pre>
+				<div class="docs-reply" style="margin-top:18px;">
+					<div class="docs-reply-head">Agent reply</div>
+					<div class="docs-reply-body">
+						<p>Here are the top-level eBay categories. 34 roots in total. Drill in with <code>parentId</code> to reach listable leaves.</p>
+						<table>
+							<thead><tr><th>ID</th><th>Category</th></tr></thead>
+							<tbody>
+								<tr><td>220</td><td>Toys & Hobbies</td></tr>
+								<tr><td>625</td><td>Cameras & Photo</td></tr>
+								<tr><td>888</td><td>Sporting Goods</td></tr>
+								<tr><td>1249</td><td>Video Games & Consoles</td></tr>
+								<tr><td>11450</td><td>Clothing, Shoes & Accessories</td></tr>
+								<tr><td>15032</td><td>Cell Phones & Accessories</td></tr>
+								<tr><td>58058</td><td>Computers/Tablets & Networking</td></tr>
+								<tr><td>64482</td><td>Sports Mem, Cards & Fan Shop</td></tr>
+							</tbody>
+						</table>
+						<p style="color:var(--text-3); font-size:13px;">…and 26 more. Want me to drill into one?</p>
+					</div>
 				</div>
 
-				<h2>3. Should you flip it?</h2>
-				<p>One call to <code>evaluate.listing</code> answers that. Pass an itemId and the server pulls real recent sales of the same product, ignores listings that aren't actually the same item, and returns a buy/hold/skip verdict with profit and demand signals. The math runs server-side, so the answer is identical from every language:</p>
-				<div class="code">
-					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>node</span></div>
-<pre><code>{`const { evaluation } = await client.evaluate.listing({
-  itemId: items[0].id,
-  opts: { minNetCents: 2000 },
-});
+				<p style="font-size:13.5px; color:var(--text-3);">Called <code>flipagent_list_categories(&#123;&#125;)</code> with no args. Pass <code>parentId</code> to walk down a level.</p>
 
-if (evaluation.rating === "buy") console.log(evaluation);`}</code></pre>
+				<h2 id="auctions">2. Find ending auctions</h2>
+				<p>Ask:</p>
+				<div class="code"><pre><code>Find game console auctions ending in the next 10 minutes.</code></pre></div>
+				<p style="margin-top:14px;">
+					<a class="btn heat" href="/dashboard/?view=agent&seed=Find%20game%20console%20auctions%20ending%20in%20the%20next%2010%20minutes.">
+						Open in playground
+					</a>
+				</p>
+
+				<div class="docs-reply" style="margin-top:18px;">
+					<div class="docs-reply-head">Agent reply</div>
+					<div class="docs-reply-body">
+						<p>13 console auctions closing in the next 10 minutes. Sorted by ending time:</p>
+						<table>
+							<thead><tr><th>Ends (UTC)</th><th>Bid</th><th>Title</th></tr></thead>
+							<tbody>
+								<tr><td>17:16</td><td>$146.50</td><td>Nintendo 64 + Goldeneye, Tetris, cables</td></tr>
+								<tr><td>17:17</td><td>$76.00</td><td>Game Boy Advance SP Silver AGS-001</td></tr>
+								<tr><td>17:19</td><td>$800.00</td><td>Xbox Series X 1TB + controllers</td></tr>
+								<tr><td>17:21</td><td>$36.00</td><td>PS1 SCPH-9001 + 4 games + memory cards</td></tr>
+								<tr><td>17:21</td><td>$201.50</td><td>GameCube + 4 controllers, AV/component</td></tr>
+								<tr><td>17:24</td><td>$300.00</td><td>3DS XL Galaxy Edition Purple</td></tr>
+							</tbody>
+						</table>
+						<p>The PS1 bundle at $36 and N64 + games at $146.50 look soft. Want me to evaluate any of them for a profit estimate?</p>
+					</div>
 				</div>
 
-				<h2>Next</h2>
+				<p style="font-size:13.5px; color:var(--text-3);">Called <code>flipagent_search_items(&#123;q: "game console", buyingOption: "auction", sort: "ending_soonest", limit: 50&#125;)</code>.</p>
+
+				<h2 id="evaluate">3. Evaluate one listing</h2>
+				<p>Ask:</p>
+				<div class="code"><pre><code>Is https://www.ebay.com/itm/377151909505 worth flipping?</code></pre></div>
+				<p style="margin-top:14px;">
+					<a class="btn heat" href="/dashboard/?view=agent&seed=Is%20https%3A%2F%2Fwww.ebay.com%2Fitm%2F377151909505%20worth%20flipping%3F">
+						Open in playground
+					</a>
+				</p>
+
+				<div class="docs-reply" style="margin-top:18px;">
+					<div class="docs-reply-head">Agent reply</div>
+					<div class="docs-reply-body">
+						<p><strong>Canon EF 50mm f/1.8 STM Lens</strong> · listed at <strong>$89.95</strong> · Used</p>
+						<table>
+							<thead><tr><th>Metric</th><th>Value</th></tr></thead>
+							<tbody>
+								<tr><td>Sold p50 (30d, n=40)</td><td>$89.97</td></tr>
+								<tr><td>Sales velocity</td><td>1.35 / day · liquid</td></tr>
+								<tr><td>eBay fees + ship out</td><td>$12.75 + $10.00</td></tr>
+								<tr><td>Bid ceiling (break-even)</td><td>$71.24</td></tr>
+								<tr><td>Expected net at $89.95</td><td>−$22.53</td></tr>
+							</tbody>
+						</table>
+						<p><strong>Verdict: skip.</strong> Median sold price is essentially the asking price, and ~$23 of fees and shipping kill the spread. The math only works at ≤$71 landed. Best Offer is enabled — anchor any offer at $71 or walk.</p>
+					</div>
+				</div>
+
+				<p style="font-size:13.5px; color:var(--text-3);">Called <code>flipagent_evaluate_item(&#123;itemId: "377151909505"&#125;)</code>. The job ran server-side; the agent polled <code>flipagent_get_evaluate_job</code> until it was done.</p>
+
+				<h2>Where next</h2>
 				<ul>
-					<li><a href="/docs/api/">Full API reference</a>: every endpoint, every field.</li>
-					<li><a href="/docs/mcp/">MCP server</a>: agent tools for Claude Code (or any MCP-compatible host).</li>
-					<li><a href="/pricing/">Pricing</a>: when free runs out.</li>
+					<li>Place the bid your agent picked → <a href="/docs/extension/">Chrome extension</a></li>
+					<li>All the tools and endpoints → <a href="/docs/mcp/">MCP</a> · <a href="/docs/api/">API reference</a></li>
 				</ul>
 			</article>
 		</div>

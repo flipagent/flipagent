@@ -13,7 +13,7 @@
  */
 
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { InfoTooltip } from "../ui/InfoTooltip";
 import { PriceHistogram } from "./PriceHistogram";
 import { Trace } from "./Trace";
@@ -208,6 +208,21 @@ export function EvaluateResultBody({
 	pending?: boolean;
 	hideHero?: boolean;
 }) {
+	// Detect the moment `preliminary` flips false (the post-filter
+	// `digest` partial just landed). We hold a `data-just-confirmed`
+	// flag on the analysis wrapper for ~600ms so CSS can briefly tint
+	// every value brand-orange — a Bloomberg-style "fresh number" flash
+	// that signals the numbers are now sharpened.
+	const [justConfirmed, setJustConfirmed] = useState(false);
+	const prevPreliminary = useRef(outcome.preliminary);
+	useEffect(() => {
+		if (prevPreliminary.current === true && outcome.preliminary === false) {
+			setJustConfirmed(true);
+			const t = setTimeout(() => setJustConfirmed(false), 700);
+			return () => clearTimeout(t);
+		}
+		prevPreliminary.current = outcome.preliminary;
+	}, [outcome.preliminary]);
 	const candidatePriceCents = outcome.item?.price
 		? Math.round(Number.parseFloat(outcome.item.price.value) * 100)
 		: null;
@@ -240,24 +255,47 @@ export function EvaluateResultBody({
 
 			{noMatches && <NoMatchesBanner meta={outcome.meta!} />}
 
-			{outcome.soldPool && outcome.soldPool.length > 0 ? (
-				<PriceHistogram
-					sold={outcome.soldPool}
-					active={outcome.activePool ?? []}
-					candidatePriceCents={candidatePriceCents}
-				/>
-			) : pending ? (
-				<ChartSkeleton />
-			) : null}
+			{/* Analysis area — chart + facts. Wrapped so CSS can flash
+			    every value brand-orange for 700ms when the post-filter
+			    digest lands (`data-just-confirmed`). Per-value shimmer
+			    while data is still tentative is handled at the row
+			    level; this wrapper only carries the confirm-moment
+			    cue. */}
+			<div
+				className="pg-result-analysis"
+				data-just-confirmed={justConfirmed ? "true" : undefined}
+			>
+				{(() => {
+					// Histogram active series is BIN-only — auction `price`
+					// values are starting/current bids, unstable until
+					// close, so mixing them flattens the BIN distribution.
+					// Auctions get their own row (Active bids) below.
+					const binActive = (outcome.activePool ?? []).filter((a) =>
+						(a.buyingOptions ?? []).includes("FIXED_PRICE"),
+					);
+					const haveSold = (outcome.soldPool?.length ?? 0) > 0;
+					const haveBinActive = binActive.length > 0;
+					if (haveSold || haveBinActive) {
+						return (
+							<PriceHistogram
+								sold={outcome.soldPool ?? []}
+								active={binActive}
+								candidatePriceCents={candidatePriceCents}
+							/>
+						);
+					}
+					return pending ? <ChartSkeleton /> : null;
+				})()}
 
-			<Facts
-				outcome={outcome}
-				pending={pending}
-				returns={outcome.returns ?? null}
-				sellWithinDays={sellWithinDays}
-				noSoldMatched={noSoldMatched}
-				noActiveMatched={noActiveMatched}
-			/>
+				<Facts
+					outcome={outcome}
+					pending={pending}
+					returns={outcome.returns ?? null}
+					sellWithinDays={sellWithinDays}
+					noSoldMatched={noSoldMatched}
+					noActiveMatched={noActiveMatched}
+				/>
+			</div>
 		</>
 	);
 }
@@ -461,6 +499,15 @@ function Facts({
 	const evaluation = outcome.evaluation;
 	const market = outcome.market;
 	const meta = outcome.meta;
+	// `tentative` flag — true any time the row's value is derived from
+	// pool data that hasn't been filter-confirmed yet. Covers the early
+	// window (raw `soldPool` / `activePool` from search, no
+	// `preliminary` flag yet) AND the preliminary-digest window (where
+	// `outcome.preliminary === true`). Flips false only when the
+	// post-filter digest explicitly lands. Non-filter rows below (Buy
+	// at, Resells at, Costs, Est. profit) draw on detail / scoring so
+	// they stay normal regardless.
+	const tentative = outcome.preliminary !== false;
 	const [soldOpen, setSoldOpen] = useState(false);
 	const [activeOpen, setActiveOpen] = useState(false);
 	const [bidsOpen, setBidsOpen] = useState(false);
@@ -477,12 +524,26 @@ function Facts({
 	// anyone auditing the filter.
 	void meta;
 
-	// Active asks — lowest / highest current asking price across the
-	// matched-active pool. `price.value` is the asking price for FIXED_PRICE;
-	// for AUCTION it's the starting/current price (close enough for the
-	// asks distribution).
+	// Split the matched-active pool by buying option so each row tells
+	// a clean story:
+	//
+	//   - `binPool` — listings selling at a fixed price (BIN). Their
+	//     `price.value` is the actual ask, so the lowest BIN is the
+	//     real competitive floor for a reseller pricing their own BIN.
+	//   - `auctionItems` — listings up for auction. Their `price.value`
+	//     is a starting / current bid, which is unstable until close;
+	//     mixing those into "Active asks" produced a misleading "lowest
+	//     $1" read.
+	//   - Best-Offer count — how many of the BIN listings explicitly
+	//     accept offers. Useful negotiation signal.
+	//
+	// A listing can carry both `AUCTION` and `FIXED_PRICE` (auction
+	// with Buy-It-Now). It lands in BOTH pools intentionally — both
+	// views are valid signals for that listing.
 	const activePool = outcome.activePool ?? [];
-	const askCents = activePool
+	const binPool = activePool.filter((a) => (a.buyingOptions ?? []).includes("FIXED_PRICE"));
+	const offerCount = binPool.filter((a) => (a.buyingOptions ?? []).includes("BEST_OFFER")).length;
+	const askCents = binPool
 		.map((a) => (a.price ? Math.round(Number.parseFloat(a.price.value) * 100) : null))
 		.filter((c): c is number => c != null && Number.isFinite(c));
 	const lowestAskCents = askCents.length > 0 ? Math.min(...askCents) : null;
@@ -538,7 +599,7 @@ function Facts({
 			    the IQR-cleaned median — robust to outliers, which is what
 			    "average sold" colloquially means to resellers). Aside
 			    order: value · range · count · [View]. */}
-			<Row label="Avg. sold">
+			<Row label="Avg. sold" tentative={tentative}>
 				{noSoldMatched ? (
 					// Sold pool empty after the matcher — `market.medianCents` is 0 here,
 					// which would render as "$0.00 / $0–$0 range" and read as a real
@@ -596,7 +657,7 @@ function Facts({
 			    is the metric reseller communities already speak. The
 			    user-facing "how long would MY listing take" answer lives
 			    on the Resells at row below, where it's tied to a price. */}
-			<Row label="Market pace">
+			<Row label="Market pace" tentative={tentative}>
 				{market && market.nObservations > 0 ? (
 					(() => {
 						const sold = market.nObservations;
@@ -621,17 +682,18 @@ function Facts({
 				)}
 			</Row>
 
-			{/* Active asks — what competitors are charging right now. Sold gives
-			    past transaction price; this row gives the current competitive
-			    floor a reseller would have to undercut (or beat on speed) to
-			    win the next sale. */}
-			<Row label="Active asks">
+			{/* Active asks — BIN-only competitive floor. Auctions are
+			    excluded here because their `price` is a starting / current
+			    bid, not what the seller will accept now; mixing them in
+			    used to surface a misleading "lowest $1" read. The
+			    auction view lives in the Active bids row below. */}
+			<Row label="Active asks" tentative={tentative}>
 				{noActiveMatched ? (
 					// Active pool empty after the matcher — symmetric to Avg. sold's
 					// `noSoldMatched` branch. View attaches below and opens the
 					// rejected active pool with per-listing reasons.
 					<span className="pg-result-facts-aside">no comparable listings</span>
-				) : activePool.length === 0 && (outcome.rejectedActivePool?.length ?? 0) === 0 ? (
+				) : binPool.length === 0 && (outcome.rejectedActivePool?.length ?? 0) === 0 ? (
 					pending ? (
 						<Skel w={140} />
 					) : (
@@ -652,8 +714,15 @@ function Facts({
 						) : (
 							<span className="pg-result-facts-aside">no priced listings</span>
 						)}
-						{activePool.length > 0 && (
-							<span className="pg-result-facts-aside">· {activePool.length} listings</span>
+						{binPool.length > 0 && (
+							<span className="pg-result-facts-aside">
+								· {binPool.length} {binPool.length === 1 ? "listing" : "listings"}
+							</span>
+						)}
+						{offerCount > 0 && (
+							<span className="pg-result-facts-aside">
+								· {offerCount} accept{offerCount === 1 ? "s" : ""} offers
+							</span>
 						)}
 					</>
 				)}
@@ -679,7 +748,7 @@ function Facts({
 			    matched-active pool. Reads as live demand pressure: a high bid
 			    count + climbing price means the SKU is attracting buyers in
 			    real time, separate from the historical sold pool above. */}
-			<Row label="Active bids">
+			<Row label="Active bids" tentative={tentative}>
 				{(() => {
 					if (auctionItems.length === 0) {
 						return pending ? (
@@ -688,18 +757,24 @@ function Facts({
 							<span className="pg-result-facts-aside">no auctions</span>
 						);
 					}
+					const total = auctionItems.length;
+					const withBids = auctionBidCents.length;
+					const auctionLabel = `${total} ${total === 1 ? "auction" : "auctions"}`;
 					return (
 						<>
 							{highestBidCents != null ? (
 								<>
 									<span className="pg-result-facts-val">{fmtUsdRound(highestBidCents)}</span>
 									<span className="pg-result-facts-aside">highest</span>
-									<span className="pg-result-facts-aside">· {auctionBidCents.length} auctions</span>
+									<span className="pg-result-facts-aside">
+										· {auctionLabel}
+										{withBids < total ? ` (${withBids} with bids)` : ""}
+									</span>
 								</>
 							) : (
 								<>
 									<span className="pg-result-facts-aside">no bids yet</span>
-									<span className="pg-result-facts-aside">· {auctionItems.length} auctions</span>
+									<span className="pg-result-facts-aside">· {auctionLabel}</span>
 								</>
 							)}
 							<button
@@ -994,6 +1069,7 @@ export function Row({
 	children,
 	decisionStart,
 	info,
+	tentative,
 }: {
 	label: string;
 	children: React.ReactNode;
@@ -1006,9 +1082,18 @@ export function Row({
 	 *  obvious from the column name alone (e.g. model-picked exit
 	 *  price). Pass plain text or rich JSX. */
 	info?: React.ReactNode;
+	/** True when the row's value is computed from the raw (pre-filter)
+	 *  pool — CSS targets values inside via
+	 *  `.pg-result-facts-row[data-tentative="true"] .pg-result-facts-val`
+	 *  and shimmers them so the user sees the digits will sharpen once
+	 *  the same-product filter confirms. */
+	tentative?: boolean;
 }) {
 	return (
-		<div className={decisionStart ? "pg-result-facts-decision-start" : undefined}>
+		<div
+			className={`pg-result-facts-row${decisionStart ? " pg-result-facts-decision-start" : ""}`}
+			data-tentative={tentative ? "true" : undefined}
+		>
 			<dt>
 				{label}
 				{info && <InfoTooltip>{info}</InfoTooltip>}

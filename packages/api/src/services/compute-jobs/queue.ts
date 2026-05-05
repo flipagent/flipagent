@@ -16,8 +16,8 @@
  * lease falls in the past and `recoverExpiredLeases` either requeues
  * (if `attempts < max`) or fails the row with `worker_lease_expired`.
  *
- * Trace events are appended to a JSONB array as the worker emits them.
- * SSE subscribers in the API container poll `compute_jobs.trace` +
+ * Pipeline events are appended to a JSONB array as the worker emits them.
+ * SSE subscribers in the API container poll `compute_jobs.events` +
  * `status` to forward live progress — see `sse-stream.ts`.
  */
 
@@ -446,15 +446,16 @@ export async function transitionToCancelled(id: string, workerId: string): Promi
 }
 
 /**
- * Append a single trace event to the job's `trace` JSONB array. We use a
- * SQL-level append (`||`) instead of read-modify-write to avoid lost
- * updates if the worker emits steps in parallel (search.sold + search.active).
+ * Append a single pipeline event to the job's `events` JSONB array.
+ * SQL-level append (`||`) avoids the lost-update window of a
+ * read-modify-write when the worker emits in parallel (e.g.
+ * search.sold + search.active resolving in different orders).
  */
-export async function appendTrace(id: string, event: unknown): Promise<void> {
+export async function appendEvent(id: string, event: unknown): Promise<void> {
 	await db
 		.update(computeJobs)
 		.set({
-			trace: sql`${computeJobs.trace} || ${JSON.stringify([event])}::jsonb`,
+			events: sql`${computeJobs.events} || ${JSON.stringify([event])}::jsonb`,
 			updatedAt: new Date(),
 		})
 		.where(eq(computeJobs.id, id));

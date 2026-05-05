@@ -14,6 +14,7 @@ import Layout from "../../../layouts/Layout.astro";
 		   at the same x-positions so the page chrome stays consistent. */
 		.scalar-shell {
 			min-height: calc(100vh - 56px);
+			min-height: calc(var(--vh-full, 100dvh) - 56px);
 			border-left: 1px solid var(--border-faint);
 			border-right: 1px solid var(--border-faint);
 		}

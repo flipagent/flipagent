@@ -329,7 +329,7 @@ function renderRowButton(state: EvalState, itemId: string): HTMLElement {
 		);
 	} else if (state.kind === "running") {
 		btn = makeRowBtn("Evaluating…", "spinner");
-		btn.title = state.stepLabel || "Working…";
+		btn.title = state.phaseLabel || "Working…";
 		btn.addEventListener("click", clickHandler(openSidepanel));
 	} else if (state.kind === "error") {
 		btn = makeRowBtn("Retry", "refresh");

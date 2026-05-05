@@ -72,10 +72,15 @@ function buildBuckets(soldCents: number[], activeCents: number[], candidate: num
 	if (all.length === 0) return [];
 	const min = Math.min(...all);
 	const max = Math.max(...all);
-	if (max - min < 100) return [];
 
-	// Pad endpoints so first/last bin doesn't sit on the edge of the chart.
-	const pad = Math.max(100, (max - min) * 0.06);
+	// Pad endpoints so the first / last bin doesn't sit on the edge of
+	// the chart. Single data point (or near-zero spread) widens the
+	// pad to ~20% of the value so the lone bar lands clearly in the
+	// middle of a visible range instead of squeezing into a 1px slice.
+	const span = max - min;
+	const pad = span < 100
+		? Math.max(2000, Math.round(max * 0.2))
+		: Math.max(100, Math.round(span * 0.06));
 	const lo = Math.max(0, min - pad);
 	const hi = max + pad;
 	const step = Math.max(1, Math.round((hi - lo) / binCount));

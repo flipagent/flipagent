@@ -1,17 +1,20 @@
 /**
- * Playground orchestration. Single composite call:
+ * Playground orchestration for the Evaluate panel.
  *
- *   runEvaluate({ itemId })   → POST /v1/evaluate → { item, evaluation, meta }
+ *   runEvaluate({ itemId })  → POST /v1/evaluate/jobs → SDK stream
+ *                              → onStep / onPartial callbacks +
+ *                                terminal `StreamOutcome`.
  *
  * The server runs the full pipeline (detail → sold + active →
- * same-product filter → score) and returns a `meta` block describing
- * what was fetched. The playground synthesizes a 4-step trace from
- * `meta` so the UI still tells the story (lookup → search → filter →
- * decision) without the client re-implementing the chain.
+ * same-product filter → score), emitting step events (trace UI) and
+ * `partial` events (state hydration) as it goes. SSE parsing +
+ * trace-row collapsing live in `@flipagent/sdk/streams`; this file
+ * just adapts the SDK iterator to the playground's `Step` + outcome
+ * shape.
  */
 
+import { type EvaluateStreamEvent, streamEvaluateJob } from "@flipagent/sdk";
 import { apiBase } from "../../lib/authClient";
-import { playgroundApi, type ApiPlan, type ApiResponse } from "./api";
 import { mockEvaluateFixture } from "./mockData";
 import type {
 	BrowseSearchResponse,
@@ -55,66 +58,6 @@ export function parseItemId(input: string): string | null {
 	return `v1|${legacy}|${variationId}`;
 }
 
-function asTitleQuery(detail: ItemDetail): string {
-	// Trim eBay's clutter so sold_search returns dense matches: drop
-	// punctuation but keep numbers (model refs) and case (eBay search is
-	// case-insensitive but extra whitespace hurts).
-	return detail.title.replace(/[^\p{L}\p{N}\s]+/gu, " ").replace(/\s+/g, " ").trim();
-}
-
-function summariseError<T>(res: ApiResponse<T>): string {
-	if (res.status === 0) {
-		const b = res.body as { message?: string } | undefined;
-		return `Couldn't reach the API — ${b?.message || "network error"}`;
-	}
-	const b = res.body as { error?: string; message?: string };
-	if (b && typeof b === "object") return [b.error, b.message].filter(Boolean).join(": ") || `HTTP ${res.status}`;
-	return `HTTP ${res.status}`;
-}
-
-/**
- * Invoke an API call as one named step: emit running → resolve to ok/error
- * with the response body and timing. Returns the parsed body on success
- * or null on failure (caller short-circuits).
- */
-async function runStep<T>(
-	step: { key: string; label: string },
-	onStep: StepUpdate,
-	prepare: () => ApiPlan<T>,
-): Promise<T | null> {
-	const plan = prepare();
-	// Surface the call (and request body) the moment the step starts so the
-	// trace shows what was sent before the response lands.
-	onStep(step.key, {
-		status: "running",
-		label: step.label,
-		call: plan.call,
-		requestBody: plan.requestBody,
-	});
-	const res = await plan.exec();
-	if (!res.ok) {
-		onStep(step.key, {
-			status: "error",
-			call: res.call,
-			requestBody: res.requestBody,
-			httpStatus: res.status,
-			result: res.body,
-			error: summariseError(res),
-			durationMs: res.durationMs,
-		});
-		return null;
-	}
-	onStep(step.key, {
-		status: "ok",
-		call: res.call,
-		requestBody: res.requestBody,
-		httpStatus: res.status,
-		result: res.body,
-		durationMs: res.durationMs,
-	});
-	return res.body as T;
-}
-
 /* ------------------------- evaluate pipeline ------------------------- */
 
 /**
@@ -147,6 +90,20 @@ export interface EvaluateOutcome {
 	evaluation: EvaluateResponse["evaluation"];
 	returns: EvaluateResponse["returns"];
 	meta: EvaluateMeta;
+	/**
+	 * True while `market` is the raw-pool preliminary digest, before the
+	 * LLM filter has run. Flips to false on the post-filter `digest`
+	 * event. UI dims/marks the stat cards while this is true so users
+	 * see numbers will sharpen.
+	 */
+	preliminary: boolean;
+	/**
+	 * Live triage progress during the LLM same-product filter step.
+	 * Streamed as the matcher's chunks resolve (~every 3-5s). Cleared
+	 * once the filter completes — outcome.filter / meta carries the
+	 * final counts then.
+	 */
+	filterProgress?: { processed: number; total: number };
 }
 
 export interface EvaluateInputs {
@@ -164,28 +121,6 @@ export interface EvaluateInputs {
 	 * X days" filter into the recommended-exit grid search.
 	 */
 	maxDaysToSell?: number;
-}
-
-/**
- * Server-emitted step lifecycle events (`started` / `succeeded` /
- * `failed`) always carry `key`. Splitting this from the wire envelope
- * makes `evt.key` narrow correctly inside `if (evt.kind === "started")`
- * etc. without us having to non-null assert at every call site.
- */
-interface ServerStepEvent {
-	kind: "started" | "succeeded" | "failed";
-	key: string;
-	label?: string;
-	parent?: string;
-	request?: { method: "GET" | "POST"; path: string; body?: unknown };
-	result?: unknown;
-	error?: string;
-	/** HTTP status forwarded from the upstream service error on a failed step. */
-	httpStatus?: number;
-	/** Parsed upstream response body forwarded on a failed step (e.g. eBay's error envelope). */
-	errorBody?: unknown;
-	durationMs?: number;
-	source?: "rest" | "scrape" | "bridge";
 }
 
 /* ------------------------- compute-job helpers ------------------------- */
@@ -287,57 +222,17 @@ function pickEvaluateOpts(params: EvaluateInputs): Record<string, unknown> | und
 }
 
 /**
- * Subscribe to GET /v1/evaluate/jobs/{id}/stream. Yields each SSE event
- * as `{ event, data }`. The server replays accumulated trace events
- * from the `trace` column first, then live-streams new events until
- * terminal (`done` / `cancelled` / `error`).
- *
- * Pass `signal` to drop the connection on unmount; the server keeps the
- * worker running regardless and a fresh subscriber can resume by
- * calling this again with the same `jobId`.
+ * Cookie-authed fetcher for the SDK stream consumer. The dashboard
+ * uses session cookies (no API key in the browser), so we wrap
+ * `globalThis.fetch` with the right `credentials` mode + base URL
+ * resolution. Bearer-token consumers (the SDK client, the Chrome
+ * extension) bring their own fetcher.
  */
-async function* subscribeJobStream(
-	kind: ComputeJobKind,
-	jobId: string,
-	signal?: AbortSignal,
-): AsyncGenerator<{ event: string; data: ServerStepEvent | EvaluateResponse | { error?: string; message?: string } }> {
-	const res = await fetch(`${apiBase}/v1/${kind}/jobs/${encodeURIComponent(jobId)}/stream`, {
+function dashboardStreamFetcher(path: string, init?: RequestInit): Promise<Response> {
+	return fetch(`${apiBase}${path}`, {
+		...init,
 		credentials: "include",
-		headers: { Accept: "text/event-stream" },
-		signal,
 	});
-	if (!res.ok || !res.body) {
-		throw await readErrorEnvelope(res, `GET /v1/${kind}/jobs/${jobId}/stream`);
-	}
-	const reader = res.body.getReader();
-	const decoder = new TextDecoder();
-	let buffer = "";
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		buffer += decoder.decode(value, { stream: true });
-		// SSE messages separated by blank line (\n\n).
-		let sep = buffer.indexOf("\n\n");
-		while (sep !== -1) {
-			const block = buffer.slice(0, sep);
-			buffer = buffer.slice(sep + 2);
-			sep = buffer.indexOf("\n\n");
-			let eventName = "message";
-			const dataLines: string[] = [];
-			for (const line of block.split("\n")) {
-				if (line.startsWith("event:")) eventName = line.slice(6).trim();
-				else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
-			}
-			if (dataLines.length === 0) continue;
-			let data: unknown;
-			try {
-				data = JSON.parse(dataLines.join("\n"));
-			} catch {
-				continue;
-			}
-			yield { event: eventName, data: data as ServerStepEvent };
-		}
-	}
 }
 
 /**
@@ -509,7 +404,14 @@ export async function runEvaluate(
 ): Promise<StreamOutcome<EvaluateOutcome>> {
 	const ack = await createEvaluateJob(inputs);
 	callbacks.onJobCreated?.(ack.id);
-	return consumeEvaluateStream(subscribeJobStream("evaluate", ack.id, signal), callbacks);
+	return consumeEvaluateStream(
+		streamEvaluateJob({
+			jobId: ack.id,
+			fetcher: dashboardStreamFetcher,
+			...(signal ? { signal } : {}),
+		}),
+		callbacks,
+	);
 }
 
 /**
@@ -532,7 +434,14 @@ export async function reopenEvaluate(
 	callbacks: RunEvaluateCallbacks,
 	signal?: AbortSignal,
 ): Promise<StreamOutcome<EvaluateOutcome>> {
-	return consumeEvaluateStream(subscribeJobStream("evaluate", jobId, signal), callbacks);
+	return consumeEvaluateStream(
+		streamEvaluateJob({
+			jobId,
+			fetcher: dashboardStreamFetcher,
+			...(signal ? { signal } : {}),
+		}),
+		callbacks,
+	);
 }
 
 /**
@@ -563,100 +472,67 @@ export async function fetchJobStatus(
 }
 
 /**
- * Consume an async stream of SSE-shaped events (live or replayed from a
- * persisted job) and translate to the playground's Step + outcome
- * shape. Both `runEvaluate` (fresh job) and `resumeEvaluate` /
- * `hydrateEvaluate` (existing job) delegate here so the dispatch logic
- * doesn't drift across paths.
+ * Consume the SDK's typed event stream and translate to the
+ * playground's Step + outcome shape. Both `runEvaluate` (fresh job)
+ * and `reopenEvaluate` (existing job) delegate here.
+ *
+ * The SDK has already done SSE parsing and the `started → succeeded`
+ * trace-row collapse, so this function is now pure mapping: dispatch
+ * trace rows to `onStep`, spread partial patches into outcome state,
+ * surface terminal events as `StreamOutcome`. Single source of truth
+ * for SSE wire format lives in `@flipagent/sdk`.
  */
 async function consumeEvaluateStream(
-	stream: AsyncIterable<{ event: string; data: unknown }>,
+	stream: AsyncGenerator<EvaluateStreamEvent, void, void>,
 	cb: RunEvaluateCallbacks,
 ): Promise<StreamOutcome<EvaluateOutcome>> {
 	const { onStep, onPartial } = cb;
 	let final: EvaluateResponse | null = null;
 	try {
-		for await (const { event, data } of stream) {
-			if (event === "cancelled") {
-				return { kind: "cancelled" };
-			}
-			if (event === "done") {
-				final = data as EvaluateResponse;
-				continue;
-			}
-			if (event === "error") {
-				// Pipeline-level error (server reported the whole job failed,
-				// not a specific step). Bubble up — the panel surfaces a
-				// top-level banner + freezes any still-running step rows so
-				// we don't leave Search market spinning while only Evaluate
-				// shows an error.
-				//
-				// `details` carries structured payloads on typed errors
-				// (today: `variation_required` ships `{legacyId, variations[]}`
-				// so the panel can render a picker). Forward verbatim — the
-				// UI layer reads it through `readVariationDetails`.
-				const e = data as { error?: string; message?: string; details?: unknown };
-				const message = e.message ?? e.error ?? "stream error";
-				const detailsObj =
-					e.details && typeof e.details === "object" ? (e.details as Record<string, unknown>) : undefined;
-				return {
-					kind: "failed",
-					message,
-					...(e.error ? { code: e.error } : {}),
-					...(detailsObj ? { details: detailsObj } : {}),
-				};
-			}
-			const evt = data as ServerStepEvent;
-			if (evt.kind === "started") {
-				onStep(evt.key, {
-					status: "running",
-					label: evt.label,
-					parent: evt.parent,
-					call: evt.request ? { method: evt.request.method, path: evt.request.path } : undefined,
-					requestBody: evt.request?.body,
-				});
-			} else if (evt.kind === "succeeded") {
-				onStep(evt.key, {
-					status: "ok",
-					result: evt.result,
-					durationMs: evt.durationMs,
-				});
-				// Stream partial outcome as soon as each step's payload
-				// lands so the UI hydrates incrementally — the item hero
-				// after detail, the sold/active pools after each search
-				// child, instead of all-or-nothing on `done`.
-				if (onPartial) {
-					if (evt.key === "detail") {
-						const r = evt.result as { itemId?: string; title?: string; image?: unknown } | undefined;
-						if (r && typeof r === "object" && "itemId" in r) {
-							onPartial({ item: r as EvaluateOutcome["item"] });
-						}
-					} else if (evt.key === "search.sold") {
-						const r = evt.result as { items?: EvaluateOutcome["soldPool"] } | undefined;
-						if (r?.items) onPartial({ soldPool: r.items });
-					} else if (evt.key === "search.active") {
-						const r = evt.result as { items?: EvaluateOutcome["activePool"] } | undefined;
-						if (r?.items) onPartial({ activePool: r.items });
-					}
+		for await (const evt of stream) {
+			switch (evt.kind) {
+				case "step": {
+					const step = evt.step;
+					onStep(step.key, {
+						status: step.status === "running" ? "running" : step.status === "ok" ? "ok" : "error",
+						...(step.label ? { label: step.label } : {}),
+						...(step.parent ? { parent: step.parent } : {}),
+						...(step.result !== undefined ? { result: step.result } : {}),
+						...(step.durationMs !== undefined ? { durationMs: step.durationMs } : {}),
+						...(step.error ? { error: step.error } : {}),
+						...(step.httpStatus !== undefined ? { httpStatus: step.httpStatus } : {}),
+					});
+					break;
 				}
-			} else if (evt.kind === "failed") {
-				onStep(evt.key, {
-					status: "error",
-					error: evt.error,
-					httpStatus: evt.httpStatus,
-					// Forward the upstream response body as `result` so the
-					// trace UI's existing JSON-viewer renders it under
-					// Response. Users see *what* failed (eBay's error
-					// envelope, validation detail, …), not just the message.
-					...(evt.errorBody !== undefined ? { result: evt.errorBody } : {}),
-					durationMs: evt.durationMs,
-				});
+				case "partial": {
+					if (onPartial) onPartial(evt.patch as Partial<EvaluateOutcome>);
+					break;
+				}
+				case "done": {
+					final = evt.result;
+					break;
+				}
+				case "error": {
+					// Pipeline-level error. `details` carries structured
+					// payloads on typed errors (today: `variation_required`
+					// ships `{legacyId, variations[]}` so the panel can
+					// render a picker).
+					const detailsObj =
+						evt.error.details && typeof evt.error.details === "object"
+							? (evt.error.details as Record<string, unknown>)
+							: undefined;
+					return {
+						kind: "failed",
+						message: evt.error.message,
+						...(evt.error.code ? { code: evt.error.code } : {}),
+						...(detailsObj ? { details: detailsObj } : {}),
+					};
+				}
+				case "cancelled":
+					return { kind: "cancelled" };
 			}
 		}
 	} catch (err) {
-		// AbortError = user-initiated cancel via the panel's AbortController.
-		// Treat the same as a server-emitted `cancelled` event so the
-		// caller doesn't lump it into "Failed".
 		if ((err as Error).name === "AbortError") return { kind: "cancelled" };
 		const message = err instanceof Error ? err.message : String(err);
 		return { kind: "failed", message };
@@ -676,6 +552,7 @@ async function consumeEvaluateStream(
 			evaluation: final.evaluation,
 			returns: final.returns ?? null,
 			meta: final.meta,
+			preliminary: false,
 		},
 	};
 }
@@ -877,6 +754,7 @@ export async function runEvaluateMock(
 				evaluation: fixture.evaluation,
 				returns: fixture.returns ?? null,
 				meta,
+				preliminary: false,
 			},
 		};
 	} catch (err) {

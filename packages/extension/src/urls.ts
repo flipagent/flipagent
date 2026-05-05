@@ -6,7 +6,7 @@
  *
  * `DEFAULT_DASHBOARD_BASE_URL` itself is a build-time constant set
  * from `__FLIPAGENT_DASHBOARD_BASE__` (see build.mjs / globals.d.ts);
- * dev builds bake `http://localhost:4321`, prod bakes
+ * dev builds bake `https://dev.flipagent.dev`, prod bakes
  * `https://flipagent.dev`.
  */
 
