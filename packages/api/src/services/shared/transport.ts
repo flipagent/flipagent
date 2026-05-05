@@ -158,7 +158,6 @@ export const RESOURCE_TRANSPORTS = {
 	"inbox.watching": { bridge: { taskName: BRIDGE_TASKS.EBAY_INBOX_WATCHING } },
 	"inbox.offers": { bridge: { taskName: BRIDGE_TASKS.EBAY_INBOX_OFFERS } },
 	"inbox.cases": { bridge: { taskName: BRIDGE_TASKS.EBAY_INBOX_CASES } },
-	"inbox.savedSearches": { bridge: { taskName: BRIDGE_TASKS.EBAY_INBOX_SAVED_SEARCHES } },
 	// Buy Browse persistent shopping cart — REST only (user OAuth).
 	"cart.read": { rest: { needsAuth: "user" } },
 	"cart.write": { rest: { needsAuth: "user" } },

@@ -128,37 +128,3 @@ export type WatchListResponse = Static<typeof WatchListResponse>;
 
 export const WatchAddRequest = Type.Object({ itemId: Type.String() }, { $id: "WatchAddRequest" });
 export type WatchAddRequest = Static<typeof WatchAddRequest>;
-
-/* ----- saved searches ------------------------------------------------ */
-
-export const SavedSearch = Type.Object(
-	{
-		id: Type.String(),
-		name: Type.String(),
-		query: Type.Optional(Type.String()),
-		categoryId: Type.Optional(Type.String()),
-		filter: Type.Optional(Type.String()),
-		emailNotifications: Type.Optional(Type.Boolean()),
-		createdAt: Type.Optional(Type.String()),
-	},
-	{ $id: "SavedSearch" },
-);
-export type SavedSearch = Static<typeof SavedSearch>;
-
-export const SavedSearchCreate = Type.Object(
-	{
-		name: Type.String(),
-		query: Type.Optional(Type.String()),
-		categoryId: Type.Optional(Type.String()),
-		filter: Type.Optional(Type.String()),
-		emailNotifications: Type.Optional(Type.Boolean({ default: true })),
-	},
-	{ $id: "SavedSearchCreate" },
-);
-export type SavedSearchCreate = Static<typeof SavedSearchCreate>;
-
-export const SavedSearchesListResponse = Type.Object(
-	{ searches: Type.Array(SavedSearch), source: Type.Optional(ResponseSource) },
-	{ $id: "SavedSearchesListResponse" },
-);
-export type SavedSearchesListResponse = Static<typeof SavedSearchesListResponse>;

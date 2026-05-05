@@ -1,11 +1,9 @@
 /**
  * Trading XML calls in the MyeBay namespace: selling + buying overview,
- * watch list, saved searches.
+ * watch list.
  *
  *   GetMyeBaySelling / GetMyeBayBuying — listings/orders for me
  *   AddToWatchList / RemoveFromWatchList — watch list mutations
- *   Saved-search list/add/delete (no clean Trading equivalents — see
- *   note inline)
  */
 
 import { arrayify, escapeXml, parseTrading, stringFrom, tradingCall } from "./client.js";
@@ -238,47 +236,4 @@ export async function removeFromWatchList(accessToken: string, itemId: string): 
 	const xml = await tradingCall({ callName: "RemoveFromWatchList", accessToken, body });
 	const parsed = parseTrading(xml, "RemoveFromWatchList");
 	return { removed: stringFrom(parsed.Ack) === "Success" };
-}
-
-/* ----- saved searches ------------------------------------------------ */
-//
-// eBay doesn't expose a clean "list saved searches" Trading call —
-// `GetSearchResults` runs a saved search by id, and saved-search
-// management is bundled under `GetMyMessages` notifications + the
-// member-info system. The list/add/delete stubs below keep the
-// surface well-typed; a real implementation will swap in a
-// persistence store + bridge task to set up the subscription.
-
-export async function listSavedSearches(accessToken: string): Promise<
-	Array<{
-		id: string;
-		name: string;
-		query: string;
-		categoryId?: string;
-		filter?: string;
-		emailNotifications?: boolean;
-		createdAt?: string;
-	}>
-> {
-	const body = `<?xml version="1.0" encoding="utf-8"?>
-<GetSearchResultsRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-	<DetailLevel>ReturnAll</DetailLevel>
-</GetSearchResultsRequest>`;
-	const _xml = await tradingCall({ callName: "GetSearchResults", accessToken, body }).catch(() => "");
-	void _xml;
-	return [];
-}
-
-export async function addSavedSearch(
-	accessToken: string,
-	args: { name: string; query?: string; categoryId?: string; filter?: string; emailNotifications?: boolean },
-): Promise<{ id: string }> {
-	void accessToken;
-	void args;
-	return { id: `saved-search-${Date.now()}` };
-}
-
-export async function deleteSavedSearch(accessToken: string, id: string): Promise<void> {
-	void accessToken;
-	void id;
 }

@@ -22,7 +22,6 @@ export const BRIDGE_TASKS = {
 	EBAY_INBOX_WATCHING: "ebay_inbox_watching",
 	EBAY_INBOX_OFFERS: "ebay_inbox_offers",
 	EBAY_INBOX_CASES: "ebay_inbox_cases",
-	EBAY_INBOX_SAVED_SEARCHES: "ebay_inbox_saved_searches",
 	// Forwarder — Planet Express
 	PLANETEXPRESS_PULL_PACKAGES: "pull_packages",
 	PLANETEXPRESS_PACKAGE_PHOTOS: "planetexpress_package_photos",

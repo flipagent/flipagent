@@ -20,7 +20,7 @@
  * Surfaces with wrappers but disabled for V1 (left commented at the bottom):
  *   charities, featured, edelivery, violations, marketplaces (metadata),
  *   expenses, trends, promotions, markdowns, ads, store, feeds, translate,
- *   watching, saved-searches, developer, cart, listings/bulk, listing-groups.
+ *   watching, developer, cart, listings/bulk, listing-groups.
  *
  * To re-enable: uncomment the import + mount line. Service-layer wrappers
  * stay intact under `services/*` so the call site is ready when needed.
@@ -167,7 +167,6 @@ v1Routes.route("/browser", browserRoute);
 // import { markdownsRoute } from "./markdowns.js";
 // import { marketplacesRoute } from "./marketplaces.js";
 // import { promotionsRoute } from "./promotions.js";
-// import { savedSearchesRoute } from "./saved-searches.js";
 // import { storeRoute } from "./store.js";
 // import { translateRoute } from "./translate.js";
 // import { trendsRoute } from "./trends.js";
@@ -191,5 +190,4 @@ v1Routes.route("/browser", browserRoute);
 // v1Routes.route("/feeds", feedsRoute);
 // v1Routes.route("/translate", translateRoute);
 // v1Routes.route("/watching", watchingRoute);
-// v1Routes.route("/saved-searches", savedSearchesRoute);
 // v1Routes.route("/developer", developerRoute);

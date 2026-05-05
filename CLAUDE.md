@@ -79,7 +79,7 @@ get the same scoring without re-implementing it.
   V2 (wrapped, not mounted): `charities, featured, listings/bulk,
   listing-groups, cart, edelivery, violations, marketplaces, expenses,
   trends, promotions, markdowns, ads, store, feeds, translate,
-  watching, saved-searches, developer`. Re-enable by uncommenting
+  watching, developer`. Re-enable by uncommenting
   the import + mount in `routes/v1/index.ts`.
 
   Operator routes (`requireAdmin` = session + `user.role==='admin'`):

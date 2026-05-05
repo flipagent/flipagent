@@ -44,7 +44,7 @@ Sell-side namespaces (`listings`, `sales`, `payouts`, `transactions`,
 `/v1/connect/ebay`. Surfaces deferred from V1 (`expenses`, `trends`,
 `promotions`, `markdowns`, `ads`, `store`, `feeds`, `translate`,
 `charities`, `featured`, `listing-groups`, `listings/bulk`,
-`watching`, `saved-searches`, `violations`, `marketplaces`) live as
+`watching`, `violations`, `marketplaces`) live as
 typed wrappers but are not surfaced on the client until promoted.
 Reach them through `client.http` if you need them sooner.
 

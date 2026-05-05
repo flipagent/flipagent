@@ -21,7 +21,7 @@
  * Surfaces deferred from Phase 1 (wrappers exist on the API; not surfaced
  * on the client): ads, cart, charities, developer, edelivery, expenses,
  * featured, feeds, listing-groups, listings-bulk, markdowns, marketplaces,
- * promotions, saved-searches, store, takedown, translate, trends,
+ * promotions, store, takedown, translate, trends,
  * violations, watching. Reach them through `client.http` until promoted.
  */
 
