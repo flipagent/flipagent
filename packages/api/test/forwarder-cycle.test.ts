@@ -189,6 +189,14 @@ describe("/v1/forwarder/{provider}/* — queue + poll", () => {
 
 	it("dispatch is idempotent on (packageId, ebayOrderId) — second queue returns the same jobId", async () => {
 		const { key } = await freshKey("integration-forwarder+idem@example.com");
+		// Pair a bridge token so `assertForwarderSignedIn` passes — without
+		// a bridgeTokens row the route returns 412 extension_not_paired
+		// before idempotency-key resolution even runs.
+		await call("/v1/bridge/tokens", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+			body: JSON.stringify({ deviceName: "test-machine" }),
+		});
 		const body = JSON.stringify({
 			toAddress: {
 				name: "Idem Buyer",
