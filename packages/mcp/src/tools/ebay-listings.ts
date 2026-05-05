@@ -209,40 +209,14 @@ export async function listingsBulkPublishExecute(config: Config, args: Record<st
 	}
 }
 
-/* ----------------------------- group publish / withdraw ----------------------------- */
-/* Listing groups (multi-variation listings — same item different
- * sizes / colors). Less common than single listings but fully wired. */
-
-export const listingsGroupPublishInput = Type.Object({
-	inventoryItemGroupKey: Type.String({ description: "Group key — must already exist with member SKUs added." }),
-	marketplace: Type.Optional(Type.String({ default: "EBAY_US" })),
-});
-
-export const listingsGroupPublishDescription =
-	"Publish a multi-variation listing (e.g. T-shirt available in S/M/L). Calls POST /v1/listings/groups/{groupKey}/publish (eBay's `publishByInventoryItemGroup`). **When to use** — single eBay listing that buyers can pick a variation from. The group must already exist with member SKUs (each SKU created via `flipagent_create_listing` then linked to the group via PUT /sell/inventory/v1/inventory_item_group/{key} — not yet exposed via MCP, use raw HTTP). **Inputs** — `inventoryItemGroupKey`, optional `marketplace` (default EBAY_US). **Output** — `{ listingId }`. **Prereqs** — eBay seller account connected, group exists with valid member SKUs.";
-
-export async function listingsGroupPublishExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
-	try {
-		const client = getClient(config);
-		return await client.listings.publishGroup(args as Parameters<typeof client.listings.publishGroup>[0]);
-	} catch (err) {
-		return toolErrorEnvelope(err, "listings_group_publish_failed", "/v1/listings/groups/{key}/publish");
-	}
-}
-
-export const listingsGroupWithdrawInput = Type.Object({
-	inventoryItemGroupKey: Type.String(),
-	marketplace: Type.Optional(Type.String({ default: "EBAY_US" })),
-});
-
-export const listingsGroupWithdrawDescription =
-	"End a multi-variation group listing. Calls POST /v1/listings/groups/{groupKey}/withdraw (eBay's `withdrawByInventoryItemGroup`). **When to use** — pull the entire variation listing off eBay (sold out across all variants, mistake, etc). **Inputs** — `inventoryItemGroupKey`. **Output** — `{ ok: true }`. **Prereqs** — eBay seller account connected.";
-
-export async function listingsGroupWithdrawExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
-	try {
-		const client = getClient(config);
-		return await client.listings.withdrawGroup(args as Parameters<typeof client.listings.withdrawGroup>[0]);
-	} catch (err) {
-		return toolErrorEnvelope(err, "listings_group_withdraw_failed", "/v1/listings/groups/{key}/withdraw");
-	}
-}
+/* Multi-variation listing-group publish / withdraw is intentionally
+ * NOT exposed via MCP — the prerequisite step (creating an
+ * inventory_item_group + adding member SKUs) lives behind the V2
+ * /v1/listing-groups surface which isn't mounted yet. Without a way
+ * for the agent to create a group end-to-end, exposing only the
+ * publish/withdraw half just bloats the tool catalog with something
+ * agents can't actually use. The REST surface
+ * `POST /v1/listings/groups/{key}/{publish|withdraw}` plus the SDK
+ * methods `client.listings.publishGroup` / `withdrawGroup` stay live
+ * for power users who set up groups via the eBay seller hub UI.
+ * Re-add MCP wrappers once /v1/listing-groups is promoted. */
