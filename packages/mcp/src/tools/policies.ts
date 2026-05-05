@@ -27,25 +27,6 @@ export async function policiesListExecute(config: Config, _args: Record<string, 
 	}
 }
 
-/* ---------------------- flipagent_policies_list_by_type --------------------- */
-
-export const policiesListByTypeInput = Type.Object({
-	type: Type.Union([Type.Literal("return"), Type.Literal("payment"), Type.Literal("fulfillment")]),
-});
-
-export const policiesListByTypeDescription =
-	'List one policy type — `return`, `payment`, or `fulfillment` — without paying for the other two. Calls GET /v1/policies/{type}. **When to use** — narrow alternative to `flipagent_list_policies` when you only need one type (e.g. picking a fulfillment policy by carrier). For setting up a new listing, prefer `flipagent_list_policies` (one call, all three). **Inputs** — `type` (`"return" | "payment" | "fulfillment"`). **Output** — `{ policies: Policy[] }` of the requested type. **Prereqs** — eBay seller account connected. On 401 the response carries `next_action` with the connect URL. **Example** — `{ type: "fulfillment" }`.';
-
-export async function policiesListByTypeExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
-	const type = args.type as "return" | "payment" | "fulfillment";
-	try {
-		const client = getClient(config);
-		return await client.policies.listByType(type);
-	} catch (err) {
-		return toolErrorEnvelope(err, "policies_list_by_type_failed", `/v1/policies/${type}`);
-	}
-}
-
 /* ---------------------- flipagent_create_seller_policies -------------------- */
 
 export const sellerPoliciesSetupInput = Type.Object({

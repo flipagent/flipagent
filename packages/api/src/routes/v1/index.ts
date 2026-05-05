@@ -11,7 +11,7 @@
  *   - Sell:          sales, labels
  *   - Communicate:   messages, feedback, notifications, webhooks, offers
  *   - Resolve:       disputes
- *   - Analyze:       payouts, transactions, transfers, analytics, recommendations
+ *   - Analyze:       payouts, transactions, analytics, recommendations
  *   - Tax:           seller (sales-tax under /v1/me/seller)
  *   - Operational:   connect, me, keys, billing, health, capabilities, admin
  *   - Compliance:    takedown (DMCA / GDPR / CCPA / seller opt-out)
@@ -43,6 +43,7 @@ import { feedbackRoute } from "./feedback.js";
 import { forwarderRoute } from "./forwarder.js";
 import { v1HealthRoute } from "./health.js";
 import { itemsRoute } from "./items.js";
+import { jobsRoute } from "./jobs.js";
 import { keysRoute } from "./keys.js";
 import { labelsRoute } from "./labels.js";
 import { listingsRoute } from "./listings.js";
@@ -63,7 +64,6 @@ import { sellerRoute } from "./seller.js";
 import { shipRoute } from "./ship.js";
 import { takedownRoute } from "./takedown.js";
 import { transactionsRoute } from "./transactions.js";
-import { transfersRoute } from "./transfers.js";
 import { webhooksRoute } from "./webhooks.js";
 
 export const v1Routes = new Hono();
@@ -73,6 +73,7 @@ v1Routes.route("/items", itemsRoute);
 v1Routes.route("/categories", categoriesRoute);
 v1Routes.route("/products", productsRoute);
 v1Routes.route("/evaluate", evaluateRoute);
+v1Routes.route("/jobs", jobsRoute);
 
 // ---- Buy + Receive -----------------------------------------------------
 v1Routes.route("/purchases", purchasesRoute);
@@ -105,7 +106,6 @@ v1Routes.route("/disputes", disputesRoute);
 // ---- Analyze -----------------------------------------------------------
 v1Routes.route("/payouts", payoutsRoute);
 v1Routes.route("/transactions", transactionsRoute);
-v1Routes.route("/transfers", transfersRoute);
 v1Routes.route("/analytics", analyticsRoute);
 v1Routes.route("/recommendations", recommendationsRoute);
 

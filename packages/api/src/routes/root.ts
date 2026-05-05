@@ -91,7 +91,6 @@ rootRoute.get(
 				"GET /v1/payouts",
 				"GET /v1/payouts/summary",
 				"GET /v1/transactions",
-				"GET /v1/transfers",
 				"GET /v1/messages",
 				"POST /v1/messages",
 				"GET /v1/messages/{conversationId}",

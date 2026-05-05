@@ -248,28 +248,3 @@ policiesRoute.delete(
 		return c.json({ ok: true, source: "rest" as const });
 	},
 );
-
-policiesRoute.get(
-	"/:type",
-	describeRoute({
-		tags: ["Policies"],
-		summary: "List policies of a specific type",
-		responses: {
-			200: jsonResponse("Policies.", PoliciesListResponse),
-			400: errorResponse("Invalid policy type."),
-			...COMMON,
-		},
-	}),
-	requireApiKey,
-	async (c) => {
-		const type = c.req.param("type");
-		if (!POLICY_TYPES.has(type)) {
-			return c.json({ error: "invalid_policy_type", message: "Use 'return', 'payment', or 'fulfillment'." }, 400);
-		}
-		const r = await listPolicies(type as PolicyType, {
-			apiKeyId: c.var.apiKey.id,
-			marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID"),
-		});
-		return c.json({ policies: r.policies, limit: r.limit, offset: r.offset, source: "rest" as const });
-	},
-);

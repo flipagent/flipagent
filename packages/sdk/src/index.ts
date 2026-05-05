@@ -12,7 +12,7 @@
  *   Sell:          sales, labels, ship
  *   Communicate:   messages, feedback, notifications, webhooks, offers
  *   Resolve:       disputes
- *   Analyze:       payouts, transactions, transfers, analytics, recommendations
+ *   Analyze:       payouts, transactions, analytics, recommendations
  *   Operational:   me, seller, keys, billing, connect, capabilities, browser
  *
  *   Escape hatch:  http — typed get/post/put/patch/delete for endpoints
@@ -39,6 +39,7 @@ import { createFeedbackClient, type FeedbackClient } from "./feedback.js";
 import { createForwarderClient, type ForwarderClient } from "./forwarder.js";
 import { createHttp, type FlipagentHttp } from "./http.js";
 import { createItemsClient, type ItemsClient } from "./items.js";
+import { createJobsClient, type JobsClient } from "./jobs.js";
 import { createKeysClient, type KeysClient } from "./keys.js";
 import { createLabelsClient, type LabelsClient } from "./labels.js";
 import { createListingsClient, type ListingsClient } from "./listings.js";
@@ -56,7 +57,6 @@ import { createRecommendationsClient, type RecommendationsClient } from "./recom
 import { createSalesClient, type SalesClient } from "./sales.js";
 import { createSellerClient, type SellerClient } from "./seller.js";
 import { createShipClient, type ShipClient } from "./ship.js";
-import { createTransfersClient, type TransfersClient } from "./transfers.js";
 import { createWebhooksClient, type WebhooksClient } from "./webhooks.js";
 
 export interface FlipagentClientOptions {
@@ -101,7 +101,6 @@ export interface FlipagentClient {
 	// Analyze
 	payouts: PayoutsClient;
 	transactions: TransactionsClient;
-	transfers: TransfersClient;
 	analytics: AnalyticsClient;
 	recommendations: RecommendationsClient;
 
@@ -116,6 +115,9 @@ export interface FlipagentClient {
 
 	// Agent (preview)
 	agent: AgentClient;
+
+	// Cross-surface activity history (any kind, any surface).
+	jobs: JobsClient;
 
 	// Escape hatch
 	http: FlipagentHttp;
@@ -158,7 +160,6 @@ export function createFlipagentClient(opts: FlipagentClientOptions): FlipagentCl
 
 		payouts: createPayoutsClient(http),
 		transactions: createTransactionsClient(http),
-		transfers: createTransfersClient(http),
 		analytics: createAnalyticsClient(http),
 		recommendations: createRecommendationsClient(http),
 
@@ -171,6 +172,8 @@ export function createFlipagentClient(opts: FlipagentClientOptions): FlipagentCl
 		browser: createBrowserClient(http),
 
 		agent: createAgentClient(http),
+
+		jobs: createJobsClient(http),
 
 		http,
 	};
@@ -191,6 +194,7 @@ export type { ForwarderClient } from "./forwarder.js";
 export type { FlipagentHttp, RequestMethod } from "./http.js";
 export { FlipagentApiError } from "./http.js";
 export type { ItemsClient } from "./items.js";
+export type { JobsClient, JobsListQuery } from "./jobs.js";
 export type { KeysClient } from "./keys.js";
 export type { LabelsClient } from "./labels.js";
 export type { ListingsClient } from "./listings.js";
@@ -208,5 +212,4 @@ export type { RecommendationsClient } from "./recommendations.js";
 export type { SalesClient } from "./sales.js";
 export type { SellerClient } from "./seller.js";
 export type { ShipClient, ShipProviderSummary, ShipProvidersResponse } from "./ship.js";
-export type { TransfersClient } from "./transfers.js";
 export type { WebhooksClient } from "./webhooks.js";

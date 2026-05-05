@@ -103,31 +103,7 @@ export const TransactionsListResponse = Type.Composite(
 );
 export type TransactionsListResponse = Static<typeof TransactionsListResponse>;
 
-/* ----- /v1/transfers + /v1/payouts/summary --------------------------- */
-
-export const TransferDirection = Type.Union([Type.Literal("debit"), Type.Literal("credit")], {
-	$id: "TransferDirection",
-});
-export type TransferDirection = Static<typeof TransferDirection>;
-
-export const Transfer = Type.Object(
-	{
-		id: Type.String(),
-		amount: Money,
-		direction: TransferDirection,
-		reason: Type.Optional(Type.String()),
-		bankReference: Type.Optional(Type.String()),
-		executedAt: Type.String(),
-	},
-	{ $id: "Transfer" },
-);
-export type Transfer = Static<typeof Transfer>;
-
-export const TransfersListResponse = Type.Composite(
-	[Page, Type.Object({ transfers: Type.Array(Transfer), source: Type.Optional(ResponseSource) })],
-	{ $id: "TransfersListResponse" },
-);
-export type TransfersListResponse = Static<typeof TransfersListResponse>;
+/* ----- /v1/payouts/summary ------------------------------------------- */
 
 export const PayoutSummary = Type.Object(
 	{

@@ -100,6 +100,7 @@ import {
 	flipagentConnectStatusInput,
 } from "../flipagent-connect.js";
 import { keysMeDescription, keysMeExecute, keysMeInput } from "../keys.js";
+import { listJobsDescription, listJobsExecute, listJobsInput } from "../list-jobs.js";
 import { listingsVerifyDescription, listingsVerifyExecute, listingsVerifyInput } from "../listings-fees.js";
 import {
 	locationsListDescription,
@@ -135,9 +136,6 @@ import {
 	mediaGetInput,
 } from "../media.js";
 import {
-	policiesListByTypeDescription,
-	policiesListByTypeExecute,
-	policiesListByTypeInput,
 	policiesListDescription,
 	policiesListExecute,
 	policiesListInput,
@@ -266,6 +264,13 @@ export const coreTools: Tool[] = [
 		toolset: "core",
 	},
 	{
+		name: "flipagent_list_jobs",
+		description: listJobsDescription,
+		inputSchema: listJobsInput,
+		execute: listJobsExecute,
+		toolset: "core",
+	},
+	{
 		name: "flipagent_quote_shipping",
 		description: shipQuoteDescription,
 		inputSchema: shipQuoteInput,
@@ -358,13 +363,6 @@ export const coreTools: Tool[] = [
 		description: policiesListDescription,
 		inputSchema: policiesListInput,
 		execute: policiesListExecute,
-		toolset: "core",
-	},
-	{
-		name: "flipagent_list_policies_by_type",
-		description: policiesListByTypeDescription,
-		inputSchema: policiesListByTypeInput,
-		execute: policiesListByTypeExecute,
 		toolset: "core",
 	},
 	{
