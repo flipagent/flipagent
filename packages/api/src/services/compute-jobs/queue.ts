@@ -21,7 +21,7 @@
  * `status` to forward live progress — see `sse-stream.ts`.
  */
 
-import { and, asc, eq, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { type ComputeJob, computeJobs, type NewComputeJob } from "../../db/schema.js";
 
@@ -76,6 +76,186 @@ export async function findInProgressEvaluateJob(apiKeyId: string, itemId: string
 		.orderBy(asc(computeJobs.createdAt))
 		.limit(1);
 	return rows[0] ?? null;
+}
+
+/**
+ * Cross-user upstream-dedup lookup. Finds any non-terminal evaluate
+ * job (across all api keys) whose params match the upstream cache key
+ * `(itemId, lookbackDays, soldLimit)` — excluding `excludeJobId` so the
+ * caller doesn't match itself.
+ *
+ * Pairs with `services/evaluate/market-data.ts`: when User B kicks off
+ * evaluate(itemId=X) and User A is already mid-pipeline on X with the
+ * same lookback/limit, B attaches to A's run, waits for A to populate
+ * `market_data_cache`, then runs scoring with B's own opts. B never
+ * sees A's identity or opts — this is purely an internal optimization
+ * to avoid duplicate scrape + LLM cost.
+ */
+export async function findInProgressUpstreamJob(
+	itemId: string,
+	lookbackDays: number,
+	soldLimit: number,
+	excludeJobId: string,
+): Promise<ComputeJob | null> {
+	const rows = await db
+		.select()
+		.from(computeJobs)
+		.where(
+			and(
+				eq(computeJobs.kind, "evaluate"),
+				or(eq(computeJobs.status, "queued"), eq(computeJobs.status, "running")),
+				sql`${computeJobs.params}->>'itemId' = ${itemId}`,
+				sql`(${computeJobs.params}->>'lookbackDays')::int = ${lookbackDays}`,
+				sql`(${computeJobs.params}->>'soldLimit')::int = ${soldLimit}`,
+				sql`${computeJobs.id} != ${excludeJobId}::uuid`,
+			),
+		)
+		.orderBy(asc(computeJobs.createdAt))
+		.limit(1);
+	return rows[0] ?? null;
+}
+
+/**
+ * Per-api-key history list. Backs `GET /v1/jobs` — the cross-surface
+ * "my recent operations" view. All surfaces (extension, playground,
+ * MCP, agent, SDK) write to the same `compute_jobs` rows regardless
+ * of `kind`, so any operation kicked off anywhere shows up here.
+ *
+ * Keyset paging on `created_at DESC` (uses `compute_jobs_api_key_idx`).
+ * Cursor is the previous page's last `createdAt`; we read rows with
+ * `created_at < cursor` to step backward in time.
+ *
+ * `kind` filter is optional — omit for cross-kind history, set to
+ * `"evaluate"` / `"search"` to scope.
+ */
+export interface ListJobsOpts {
+	apiKeyId: string;
+	kind?: ComputeJob["kind"];
+	status?: ComputeJob["status"];
+	since?: Date;
+	cursor?: Date;
+	/** Default 20, max 100. */
+	limit?: number;
+}
+
+export async function listJobs(opts: ListJobsOpts): Promise<ComputeJob[]> {
+	const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
+	const conditions = [eq(computeJobs.apiKeyId, opts.apiKeyId)];
+	if (opts.kind) conditions.push(eq(computeJobs.kind, opts.kind));
+	if (opts.status) conditions.push(eq(computeJobs.status, opts.status));
+	if (opts.since) conditions.push(gte(computeJobs.createdAt, opts.since));
+	if (opts.cursor) conditions.push(lt(computeJobs.createdAt, opts.cursor));
+	return await db
+		.select()
+		.from(computeJobs)
+		.where(and(...conditions))
+		.orderBy(desc(computeJobs.createdAt))
+		.limit(limit);
+}
+
+/**
+ * Sync execution wrapper for `kind`s that run inside the API container
+ * (not via the worker queue). Used by `search` and any future sync
+ * pipeline. The row is created in `running` state, the body runs, and
+ * the row transitions to `completed | failed` in the same request — so
+ * lease/heartbeat/claimedBy stay NULL throughout.
+ *
+ * Returns the body's value to the caller. `compute_jobs.result` carries
+ * a JSONB-serialised version of the same value for the history list.
+ *
+ * Failures: the body's exception is rethrown after marking the row
+ * `failed`. Caller handles HTTP mapping at the route layer.
+ */
+export interface RunSyncJobInput<T> {
+	apiKeyId: string;
+	userId: string | null;
+	kind: ComputeJob["kind"];
+	params: Record<string, unknown>;
+	run: () => Promise<T>;
+}
+
+export async function runSyncJob<T>(input: RunSyncJobInput<T>): Promise<{ job: ComputeJob | null; result: T }> {
+	const expiresAt = new Date(Date.now() + DEFAULT_TTL_MS);
+	const now = new Date();
+
+	// History tracking is best-effort: a DB hiccup on the row write
+	// shouldn't tank the user's request. The body still runs; we lose
+	// the audit row.
+	let job: ComputeJob | null = null;
+	try {
+		const [created] = await db
+			.insert(computeJobs)
+			.values({
+				apiKeyId: input.apiKeyId,
+				userId: input.userId,
+				kind: input.kind,
+				params: input.params as object,
+				status: "running",
+				startedAt: now,
+				expiresAt,
+			})
+			.returning();
+		job = created ?? null;
+	} catch (err) {
+		console.warn("[compute-jobs] sync row create failed; running without history:", (err as Error).message);
+	}
+
+	try {
+		const result = await input.run();
+		if (job) {
+			try {
+				const completedAt = new Date();
+				const [done] = await db
+					.update(computeJobs)
+					.set({
+						status: "completed",
+						result: result as object,
+						completedAt,
+						updatedAt: completedAt,
+					})
+					.where(eq(computeJobs.id, job.id))
+					.returning();
+				return { job: done ?? job, result };
+			} catch (err) {
+				console.warn("[compute-jobs] completed transition failed:", (err as Error).message);
+			}
+		}
+		return { job, result };
+	} catch (err) {
+		if (job) {
+			try {
+				const completedAt = new Date();
+				const message = err instanceof Error ? err.message : String(err);
+				const code =
+					err && typeof err === "object" && "code" in err && typeof (err as { code?: unknown }).code === "string"
+						? (err as { code: string }).code
+						: "run_failed";
+				await db
+					.update(computeJobs)
+					.set({
+						status: "failed",
+						errorCode: code,
+						errorMessage: message,
+						completedAt,
+						updatedAt: completedAt,
+					})
+					.where(eq(computeJobs.id, job.id));
+			} catch (e) {
+				console.warn("[compute-jobs] failed transition failed:", (e as Error).message);
+			}
+		}
+		throw err;
+	}
+}
+
+/** Status-only lookup (no apiKey check) — for cross-user attach to poll a leader's terminal state. */
+export async function getJobStatus(id: string): Promise<ComputeJob["status"] | null> {
+	const rows = await db
+		.select({ status: computeJobs.status })
+		.from(computeJobs)
+		.where(eq(computeJobs.id, id))
+		.limit(1);
+	return rows[0]?.status ?? null;
 }
 
 export async function getJob(id: string, apiKeyId: string): Promise<ComputeJob | null> {

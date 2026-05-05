@@ -15,8 +15,8 @@
  */
 
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
-import type { ReactElement } from "react";
-import { flipagentItemToSummary, type FlipagentItem } from "./api";
+import { useEffect, useRef, useState, type ReactElement } from "react";
+import { flipagentItemToSummary, playgroundApi, type FlipagentItem } from "./api";
 import { EvaluateResultBody } from "./EvaluateResult";
 import type { EvaluateOutcome } from "./pipelines";
 import { SearchResult } from "./SearchResult";
@@ -157,9 +157,9 @@ export interface NextActionPanelProps {
 	message?: string;
 	next_action?: {
 		/** "ebay_oauth" | "extension_install" | "rest_or_extension" |
-		 *  "forwarder_signin" | "setup_seller_policies" | "configure_ebay" |
-		 *  "configure_stripe". String-typed so future kinds render as the
-		 *  generic fallback without a code change. */
+		 *  "forwarder_signin" | "forwarder_signup" | "setup_seller_policies" |
+		 *  "configure_ebay" | "configure_stripe". String-typed so future
+		 *  kinds render as the generic fallback without a code change. */
 		kind?: string;
 		url?: string;
 		instructions?: string;
@@ -190,8 +190,23 @@ function formatCompactCount(n: number): string {
  * Build the embed-tool action that fires `flipagent_evaluate_item` for
  * a given row. Used by both row activation and the per-row Evaluate
  * button so the two click targets dispatch identical payloads.
+ *
+ * Typed against the structural subset of `ItemSummary` we actually
+ * read so callers can pass either the eBay-mirror mutable shape from
+ * `@flipagent/types/ebay/buy` or the playground-local readonly shape
+ * (`./types`) without a TS clash on unrelated fields like
+ * `shippingOptions: ReadonlyArray<…>` vs `ShippingOption[]`.
  */
-function buildEvaluateAction(item: ItemSummary, args: SearchPanelProps["args"]): EmbedAction {
+type EvaluatableItem = {
+	itemId: string;
+	title?: string;
+	condition?: string;
+	price?: { value: string };
+	image?: { imageUrl?: string };
+	itemWebUrl?: string;
+};
+
+function buildEvaluateAction(item: EvaluatableItem, args: SearchPanelProps["args"]): EmbedAction {
 	void args; // reserved for future "search context"; not on the eval payload yet.
 	const priceLabel = item.price?.value ? `$${item.price.value}` : "";
 	const subtitle = [priceLabel, item.condition].filter(Boolean).join(" · ");
@@ -283,15 +298,101 @@ export function EvaluatePanel({
 	}
 	const pending = !props.outcome || (props.status != null && props.status !== "completed");
 	const item = props.outcome?.item;
+	const itemId = item?.itemId;
+	const completed = !pending && itemId != null;
+	// Lazy-load the rejected sold/active pools straight from
+	// `/v1/evaluate/{itemId}/pool` so the agent's MCP tool result stays
+	// lean (kept-only). One server-cached GET per panel; merged into the
+	// outcome the same shape `EvaluateResultBody` already renders for the
+	// playground's full mode, so the View toggles light up with rejected
+	// rows + per-item reasons without any extra plumbing.
+	const enriched = useRejectedPool(itemId, completed, props.outcome);
 	return (
 		<div className="msg-ui-panel msg-ui-eval">
 			<div className="msg-ui-eyebrow">{pending ? "Evaluation · running" : "Evaluation"}</div>
 			<div className="msg-ui-eval-body pg-result">
-				<EvaluateResultBody outcome={props.outcome ?? {}} pending={pending} />
+				<EvaluateResultBody outcome={enriched ?? props.outcome ?? {}} pending={pending} />
 			</div>
 			{!pending && item && <EvalActions item={item} onAction={onAction} />}
 		</div>
 	);
+}
+
+/**
+ * Lazy-fetch the rejected pool once `EvaluatePanel` shows a completed
+ * outcome. Returns the panel's `outcome` merged with `rejectedSoldPool`
+ * / `rejectedActivePool` (mapped from the pool API's lean
+ * `EvaluationRejectedItem` shape into the `ItemSummary` subset
+ * `MatchRow` reads) plus a `rejectionReasons` map keyed by `itemId`.
+ *
+ * Fires exactly once per (itemId) and skips entirely when the outcome
+ * already carries rejected pools (full-mode playground path) or when
+ * the run hasn't completed yet.
+ */
+function useRejectedPool(
+	itemId: string | undefined,
+	completed: boolean,
+	outcome: Partial<EvaluateOutcome> | undefined,
+): Partial<EvaluateOutcome> | undefined {
+	const [extra, setExtra] = useState<Partial<EvaluateOutcome> | null>(null);
+	const fetchedRef = useRef<string | null>(null);
+	const alreadyHasRejected =
+		(outcome?.rejectedSoldPool && outcome.rejectedSoldPool.length > 0) ||
+		(outcome?.rejectedActivePool && outcome.rejectedActivePool.length > 0);
+	useEffect(() => {
+		if (!completed || !itemId) return;
+		if (alreadyHasRejected) return;
+		if (fetchedRef.current === itemId) return;
+		fetchedRef.current = itemId;
+		let cancelled = false;
+		(async () => {
+			const res = await playgroundApi.evaluatePool(itemId).exec();
+			if (cancelled || !res.ok) return;
+			const body = res.body as {
+				sold?: { rejected?: PoolRejectedRow[] };
+				active?: { rejected?: PoolRejectedRow[] };
+			};
+			const soldRej = body?.sold?.rejected ?? [];
+			const actRej = body?.active?.rejected ?? [];
+			if (soldRej.length === 0 && actRej.length === 0) return;
+			const reasons: Record<string, string> = {};
+			for (const r of soldRej) if (r.itemId && r.rejectionReason) reasons[r.itemId] = r.rejectionReason;
+			for (const r of actRej) if (r.itemId && r.rejectionReason) reasons[r.itemId] = r.rejectionReason;
+			setExtra({
+				rejectedSoldPool: soldRej.map(rejectedRowToItemSummary),
+				rejectedActivePool: actRej.map(rejectedRowToItemSummary),
+				rejectionReasons: reasons,
+			});
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [completed, itemId, alreadyHasRejected]);
+	if (!outcome) return undefined;
+	if (!extra) return outcome;
+	return { ...outcome, ...extra };
+}
+
+interface PoolRejectedRow {
+	itemId: string;
+	title: string;
+	priceCents: number;
+	currency: string;
+	condition?: string;
+	itemWebUrl: string;
+	rejectionReason: string;
+	rejectionCategory: string;
+}
+
+function rejectedRowToItemSummary(r: PoolRejectedRow): ItemSummary {
+	const value = (r.priceCents / 100).toFixed(2);
+	return {
+		itemId: r.itemId,
+		title: r.title,
+		itemWebUrl: r.itemWebUrl,
+		price: { value, currency: r.currency },
+		...(r.condition ? { condition: r.condition } : {}),
+	} as ItemSummary;
 }
 
 function EvaluateVariationPicker({
@@ -423,21 +524,6 @@ function EvalActions({
 				}
 			>
 				Buy this item
-			</button>
-			<button
-				type="button"
-				className="msg-ui-action"
-				onClick={() =>
-					onAction({
-						type: "embed-tool",
-						name: "flipagent_search_sold_items",
-						args: { q: item.title },
-						label: "Pull sold comps",
-						subject,
-					})
-				}
-			>
-				Sold comps
 			</button>
 			{item.itemWebUrl && (
 				<a
@@ -781,6 +867,12 @@ const NEXT_ACTION_PRESENTATION: Record<
 		eyebrow: "Sign in to Planet Express",
 		title: "Your Planet Express session expired",
 		ctaLabel: "Sign in to PE",
+	},
+	forwarder_signup: {
+		icon: <LinkIcon />,
+		eyebrow: "Sign up for Planet Express",
+		title: "You'll need a US ship-from address",
+		ctaLabel: "Get a PE address",
 	},
 	setup_seller_policies: {
 		icon: <DocIcon />,

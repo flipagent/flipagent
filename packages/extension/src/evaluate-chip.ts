@@ -60,15 +60,13 @@ export async function mountEvaluateChip(itemId: string): Promise<void> {
 
 	// Reactively re-render on credential / buyer-state changes (gates)
 	// AND on cross-tab evaluate state mirrors. RUNNING_EVALS catches
-	// the SRP-tab → /itm-tab handoff mid-run; EVAL_CACHE catches the
-	// moment another tab finishes.
+	// the SRP-tab → /itm-tab handoff mid-run.
 	const onStorage = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
 		if (area !== "local") return;
 		if (
 			STORAGE_KEYS.BUYER_STATE in changes ||
 			STORAGE_KEYS.CONFIG in changes ||
-			STORAGE_KEYS.RUNNING_EVALS in changes ||
-			STORAGE_KEYS.EVAL_CACHE in changes
+			STORAGE_KEYS.RUNNING_EVALS in changes
 		) {
 			void renderForCurrentState(itemId, ctrl);
 		}

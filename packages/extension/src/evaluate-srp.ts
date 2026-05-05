@@ -62,8 +62,7 @@ export async function mountEvaluateSrp(): Promise<void> {
 			if (
 				STORAGE_KEYS.BUYER_STATE in changes ||
 				STORAGE_KEYS.CONFIG in changes ||
-				STORAGE_KEYS.RUNNING_EVALS in changes ||
-				STORAGE_KEYS.EVAL_CACHE in changes
+				STORAGE_KEYS.RUNNING_EVALS in changes
 			) {
 				for (const p of pills.values()) p.render();
 			}

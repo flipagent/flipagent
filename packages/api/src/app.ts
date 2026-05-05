@@ -85,8 +85,15 @@ app.onError((err, c) => {
 	// avoid the 500 internal_error fallback for OAuth/config misses.
 	if (err instanceof EbayApiError) {
 		const next_action = err.nextActionKind ? nextAction(c, err.nextActionKind) : undefined;
+		const ebayErrors = extractUpstreamErrors(err.upstream);
+		if (ebayErrors) console.error("[ebay]", err.status, err.code, JSON.stringify(ebayErrors));
 		return c.json(
-			{ error: err.code, message: err.message, ...(next_action ? { next_action } : {}) },
+			{
+				error: err.code,
+				message: err.message,
+				...(ebayErrors ? { ebay_errors: ebayErrors } : {}),
+				...(next_action ? { next_action } : {}),
+			},
 			err.status as 401 | 403 | 404 | 412 | 502 | 503,
 		);
 	}
@@ -103,3 +110,20 @@ app.onError((err, c) => {
 	console.error("[api]", err);
 	return c.json({ error: "internal_error", message: err.message }, 500);
 });
+
+interface UpstreamEbayError {
+	errorId?: number;
+	domain?: string;
+	category?: string;
+	message?: string;
+	longMessage?: string;
+	parameters?: unknown;
+}
+
+function extractUpstreamErrors(upstream: unknown): UpstreamEbayError[] | undefined {
+	if (!upstream || typeof upstream !== "object") return undefined;
+	const u = upstream as { errors?: unknown; errorId?: number; message?: string; longMessage?: string };
+	if (Array.isArray(u.errors) && u.errors.length > 0) return u.errors as UpstreamEbayError[];
+	if (u.errorId != null || u.message) return [u as UpstreamEbayError];
+	return undefined;
+}

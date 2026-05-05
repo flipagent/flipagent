@@ -451,6 +451,10 @@ resource "azurerm_container_app" "api" {
         name  = "ADMIN_EMAILS"
         value = var.admin_emails
       }
+      env {
+        name  = "PLANET_EXPRESS_REFERRAL_CODE"
+        value = var.planet_express_referral_code
+      }
 
       # AES-256-GCM key for encrypting issued API key plaintext at rest.
       # Generated once with `openssl rand -base64 32` and stored in Key
@@ -817,6 +821,10 @@ resource "azurerm_container_app" "worker" {
       env {
         name  = "OBSERVATION_ENABLED"
         value = var.observation_enabled ? "1" : "0"
+      }
+      env {
+        name  = "PLANET_EXPRESS_REFERRAL_CODE"
+        value = var.planet_express_referral_code
       }
       # LLM provider — pipelines call the matcher, which requires one configured.
       env {

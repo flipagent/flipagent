@@ -1,25 +1,36 @@
 /**
- * Per-pair match-decision cache. The two-pass LLM matcher pays for one
- * inference per (candidate, item) pair on every Evaluate call — many
- * of those pairs are seen repeatedly across users (the same
- * Travis Scott Mocha listings get scanned by every sneaker hunter for
- * weeks). This cache short-circuits the second pass: if the same pair
- * was decided in the last 30 days, return that decision directly.
+ * Two-table matcher persistence:
  *
- * TTL 30d because eBay listings expire and seller framing shifts over
- * time. Older decisions go stale and are re-evaluated when next seen.
+ *   1. `match_decisions` — runtime CACHE. (candidate, item) unique;
+ *      latest decision wins (`onConflictDoUpdate`). 30d TTL. The
+ *      two-pass LLM matcher reads this to skip repeat verifications:
+ *      same Travis Scott Mocha listings get scanned by every sneaker
+ *      hunter for weeks; one row, one bill.
  *
- * Always on. The cache holds *decisions* (binary same-product outcomes)
- * — pure performance optimisation, not telemetry. The separate
- * `OBSERVATION_ENABLED` flag gates the listing-content archive
- * (`listing_observations` table), which IS a hosted telemetry feature.
- * Mixing the two gates meant self-host always paid full LLM cost on
- * repeat pairs; that's no longer the case.
+ *   2. `match_history` — APPEND-ONLY ML ARCHIVE. Every decision lands
+ *      here as a new row, carrying `model_id` (`${provider}/${model}`)
+ *      and the rejection `category`. Lets us A/B a new matcher against
+ *      the historical seed→candidate corpus without re-running LLMs;
+ *      pair with `listing_observations` (looked up by legacy id +
+ *      nearest `observed_at`) to reconstruct what the matcher saw at
+ *      decision time.
+ *
+ * Both writes share the same call site (`setCachedMatchDecision`) so
+ * the matcher stays unaware of the split — it just declares "decision
+ * X for pair Y by model M" and persistence does the right thing.
+ *
+ * TTL 30d on the cache reflects listing expiration and seller framing
+ * drift; the archive has no TTL — ML iteration needs the full history.
+ *
+ * `OBSERVATION_ENABLED` gates the listing/product *content* archive
+ * (separate concern, hosted telemetry). The matcher cache + history
+ * are always on: cache is pure perf, history is per-pair decisions
+ * (no listing content).
  */
 
 import { and, eq, gt, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { matchDecisions } from "../../db/schema.js";
+import { matchDecisions, matchHistory } from "../../db/schema.js";
 
 const TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -45,27 +56,51 @@ export async function getCachedMatchDecision(
 	return { decision: row.decision, reason: row.reason ?? "" };
 }
 
-export async function setCachedMatchDecision(
-	candidateId: string,
-	itemId: string,
-	decision: CachedDecision,
-	reason: string,
-): Promise<void> {
+export interface SetMatchDecisionInput {
+	candidateId: string;
+	itemId: string;
+	decision: CachedDecision;
+	reason: string;
+	/** Rejection bucket the verifier picked (for rejects). `undefined` for matches. */
+	category?: string;
+	/** `${provider.name}/${provider.model}` so cross-model evals are direct in the archive. */
+	modelId?: string;
+}
+
+export async function setCachedMatchDecision(input: SetMatchDecisionInput): Promise<void> {
+	const { candidateId, itemId, decision, reason, category, modelId } = input;
+	const trimmedReason = reason.slice(0, 1000);
 	const expiresAt = new Date(Date.now() + TTL_MS);
+	// Cache write — latest decision wins.
 	try {
 		await db
 			.insert(matchDecisions)
-			.values({ candidateId, itemId, decision, reason: reason.slice(0, 1000), expiresAt })
+			.values({ candidateId, itemId, decision, reason: trimmedReason, expiresAt })
 			.onConflictDoUpdate({
 				target: [matchDecisions.candidateId, matchDecisions.itemId],
 				set: {
 					decision,
-					reason: reason.slice(0, 1000),
+					reason: trimmedReason,
 					decidedAt: sql`now()`,
 					expiresAt,
 				},
 			});
 	} catch (err) {
-		console.error("[match-cache] write failed:", err);
+		console.error("[match-cache] cache write failed:", err);
+	}
+	// Archive write — append-only, never overwrites. Independent failure
+	// path so a cache hit + archive miss (or vice versa) doesn't poison
+	// the other.
+	try {
+		await db.insert(matchHistory).values({
+			candidateId,
+			itemId,
+			decision,
+			reason: trimmedReason,
+			category: category ?? null,
+			modelId: modelId ?? null,
+		});
+	} catch (err) {
+		console.error("[match-cache] archive write failed:", err);
 	}
 }

@@ -11,6 +11,9 @@
 import Layout from "../../layouts/Layout.astro";
 import DocsSidebar from "../../components/DocsSidebar.astro";
 import { COVERAGE_SECTIONS, NATIVE_ROWS, TRADING_ROWS } from "../../data/coverage.ts";
+
+const PE_REF = (import.meta.env.PLANET_EXPRESS_REFERRAL_CODE ?? "361308").trim();
+const PE_SIGNUP = PE_REF ? `https://planetexpress.com/?ref=${encodeURIComponent(PE_REF)}` : "https://planetexpress.com/signup";
 ---
 <Layout title="eBay coverage · flipagent docs">
 	<div class="cmw cmw-bordered">
@@ -65,7 +68,7 @@ import { COVERAGE_SECTIONS, NATIVE_ROWS, TRADING_ROWS } from "../../data/coverag
 					<tbody>
 						<tr><td><strong>Source</strong></td><td><a href="#buy-browse">items search/sold/detail</a>, <a href="#flipagent-native">evaluate</a>, <a href="#commerce-taxonomy">categories (+ suggest, aspects)</a>, <a href="#commerce-catalog">products (EPID)</a></td></tr>
 						<tr><td><strong>Buy</strong></td><td><a href="#buy-order">purchases</a> (full lifecycle), <a href="#buy-offer">bids</a> (auctions)</td></tr>
-						<tr><td><strong>Receive</strong></td><td><a href="#flipagent-native">forwarder</a> (Planet Express today)</td></tr>
+						<tr><td><strong>Receive</strong></td><td><a href="#flipagent-native">forwarder</a> (Planet Express today — <a href={PE_SIGNUP} target="_blank" rel="noopener">get a US ship-from</a>)</td></tr>
 						<tr><td><strong>List</strong></td><td><a href="#sell-inventory">listings</a>, listings/fees, <a href="#sell-inventory">locations</a>, <a href="#sell-account">policies</a>, <a href="#commerce-media">media</a></td></tr>
 						<tr><td><strong>Sell</strong></td><td><a href="#sell-fulfillment">sales</a> (list, get, ship), <a href="#sell-logistics">labels</a> (quote, buy, download)</td></tr>
 						<tr><td><strong>Communicate</strong></td><td><a href="#commerce-message">messages</a>, <a href="#commerce-feedback">feedback</a>, <a href="#commerce-notification">notifications + webhooks</a>, <a href="#sell-negotiation">offers</a> (Best Offer)</td></tr>

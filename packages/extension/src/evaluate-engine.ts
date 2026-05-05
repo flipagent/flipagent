@@ -83,6 +83,13 @@ export class EvaluateApiError extends Error {
 	readonly upgradeUrl: string | null;
 	readonly creditsUsed: number | null;
 	readonly creditsLimit: number | null;
+	/**
+	 * Structured payload from the failing pipeline step. `variation_required`
+	 * carries `{ legacyId, variations[], parentImageUrl?, parentTitle? }`
+	 * so the side-panel can render a SKU picker instead of just an error.
+	 * Treat as opaque at the engine layer; consumers shape it.
+	 */
+	readonly details: unknown;
 	constructor(opts: {
 		status: number;
 		code: string | null;
@@ -90,6 +97,7 @@ export class EvaluateApiError extends Error {
 		upgradeUrl: string | null;
 		creditsUsed: number | null;
 		creditsLimit: number | null;
+		details?: unknown;
 	}) {
 		super(opts.message);
 		this.status = opts.status;
@@ -97,6 +105,7 @@ export class EvaluateApiError extends Error {
 		this.upgradeUrl = opts.upgradeUrl;
 		this.creditsUsed = opts.creditsUsed;
 		this.creditsLimit = opts.creditsLimit;
+		this.details = opts.details ?? null;
 	}
 }
 
@@ -106,6 +115,7 @@ interface ApiErrorBody {
 	upgrade?: string;
 	creditsUsed?: number;
 	creditsLimit?: number;
+	details?: unknown;
 }
 
 async function throwForResponse(res: Response, opName: string): Promise<never> {
@@ -120,6 +130,7 @@ async function throwForResponse(res: Response, opName: string): Promise<never> {
 		upgradeUrl: parsed?.upgrade ?? null,
 		creditsUsed: parsed?.creditsUsed ?? null,
 		creditsLimit: parsed?.creditsLimit ?? null,
+		details: parsed?.details,
 	});
 }
 
@@ -192,8 +203,20 @@ async function streamEvaluateJob(
 					return JSON.parse(parsed.data) as EvaluateResponse;
 				}
 				if (parsed.event === "error") {
-					const payload = safeJson(parsed.data) as { error?: string; message?: string } | null;
-					throw new Error(payload?.message ?? payload?.error ?? "evaluate failed");
+					// Server emits `{ error: code, message, details? }` — preserve
+					// the structured `details` so terminal errors like
+					// `variation_required` surface their `{ legacyId, variations[] }`
+					// payload to the side panel's variation picker.
+					const payload = safeJson(parsed.data) as ApiErrorBody | null;
+					throw new EvaluateApiError({
+						status: 0,
+						code: payload?.error ?? null,
+						message: payload?.message ?? payload?.error ?? "evaluate failed",
+						upgradeUrl: payload?.upgrade ?? null,
+						creditsUsed: payload?.creditsUsed ?? null,
+						creditsLimit: payload?.creditsLimit ?? null,
+						details: payload?.details,
+					});
 				}
 				if (parsed.event === "cancelled") {
 					throw new Error("evaluate cancelled");

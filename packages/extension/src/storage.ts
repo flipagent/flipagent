@@ -29,8 +29,6 @@ export const STORAGE_KEYS = {
 	RUNNING_EVALS: "flipagent_running_evals",
 	/** Map<itemId, PartialOutcomeEntry> — incremental outcome + steps + terminal error, streamed during a run and held while the panel is the user's surface. */
 	PARTIAL_OUTCOME: "flipagent_partial_outcome",
-	/** Map<itemId, EvalCacheEntry> — completed evaluates within TTL. Avoids re-spending credits when the user re-views the same item. */
-	EVAL_CACHE: "flipagent_eval_cache",
 	/** Currently-focused itemId in the side panel. Set by background SW on `open-sidepanel` so the iframe can paint with the right item. */
 	SIDEPANEL_ITEM_ID: "flipagent_sidepanel_itemId",
 	/** Request from the side panel's "Re-evaluate" button — content script picks it up via storage onChanged. */
@@ -39,16 +37,9 @@ export const STORAGE_KEYS = {
 
 /* -------------------------------- TTLs ---------------------------------- */
 
-/** 24h cache freshness for completed evaluates. Long enough to cover a
- * full browse session without re-charging credits. */
-export const EVAL_CACHE_TTL_MS = 24 * 60 * 60_000;
 /** Matches `evaluate-engine.STREAM_TIMEOUT_MS` — anything older is a
  * dead run that never wrote a terminal state (killed tab, network drop). */
 export const RUNNING_MIRROR_TTL_MS = 6 * 60_000;
-/** Soft bound on how many cached entries to keep before evicting LRU.
- * Each entry holds a full EvaluateResponse + trace — bounded so the
- * 10MB chrome.storage.local quota stays comfortable. */
-const EVAL_CACHE_MAX = 64;
 
 /* -------------------------------- types --------------------------------- */
 
@@ -63,16 +54,6 @@ export interface PeStateSnapshot {
 	updatedAt: string;
 }
 
-export interface EvalCacheEntry {
-	result: unknown;
-	completedAt: string;
-	jobId?: string;
-	/** Trace steps the worker emitted on the way to this result. Persisted
-	 * so opening a cached evaluate's side panel still renders the full
-	 * "Show trace" expander rather than an empty `<ol>`. */
-	steps?: unknown[];
-}
-
 export interface RunningEvalEntry {
 	stepLabel: string;
 	jobId?: string;
@@ -85,8 +66,16 @@ export interface PartialOutcomeEntry {
 	updatedAt: string;
 	/** Set on terminal error transitions so the side panel renders an
 	 * error pane (credits_exceeded → upgrade prompt, etc) instead of a
-	 * misleading loading skeleton. */
-	error?: { message: string; code: string | null; upgradeUrl: string | null };
+	 * misleading loading skeleton. `details` carries structured payloads
+	 * from typed pipeline errors — `variation_required` ships
+	 * `{ legacyId, variations[] }` so the side panel can render a SKU
+	 * picker. */
+	error?: {
+		message: string;
+		code: string | null;
+		upgradeUrl: string | null;
+		details?: unknown;
+	};
 }
 
 /* ----------------------------- buyer-state ----------------------------- */
@@ -107,36 +96,6 @@ export async function readPeState(): Promise<PeStateSnapshot | null> {
 
 export async function writePeState(snap: PeStateSnapshot): Promise<void> {
 	await chrome.storage.local.set({ [STORAGE_KEYS.PE_STATE]: snap });
-}
-
-/* ------------------------------ eval cache ------------------------------ */
-
-type EvalCacheMap = Record<string, EvalCacheEntry>;
-
-export async function readEvalCache(itemId: string): Promise<EvalCacheEntry | null> {
-	const stored = await chrome.storage.local.get([STORAGE_KEYS.EVAL_CACHE]);
-	const map = (stored[STORAGE_KEYS.EVAL_CACHE] ?? {}) as EvalCacheMap;
-	const entry = map[itemId];
-	if (!entry) return null;
-	const ageMs = Date.now() - new Date(entry.completedAt).getTime();
-	if (!Number.isFinite(ageMs) || ageMs > EVAL_CACHE_TTL_MS) return null;
-	return entry;
-}
-
-export async function writeEvalCache(itemId: string, entry: EvalCacheEntry): Promise<void> {
-	const stored = await chrome.storage.local.get([STORAGE_KEYS.EVAL_CACHE]);
-	const map = { ...((stored[STORAGE_KEYS.EVAL_CACHE] ?? {}) as EvalCacheMap), [itemId]: entry };
-	const entries = Object.entries(map);
-	if (entries.length > EVAL_CACHE_MAX) {
-		// LRU eviction by completedAt — keep the most-recent N. Bounded
-		// loop, runs only when the cap is exceeded.
-		entries.sort(([, a], [, b]) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
-		const trimmed: EvalCacheMap = {};
-		for (const [k, v] of entries.slice(0, EVAL_CACHE_MAX)) trimmed[k] = v;
-		await chrome.storage.local.set({ [STORAGE_KEYS.EVAL_CACHE]: trimmed });
-		return;
-	}
-	await chrome.storage.local.set({ [STORAGE_KEYS.EVAL_CACHE]: map });
 }
 
 /* ----------------------------- running mirror ----------------------------- */
@@ -197,7 +156,7 @@ export async function writePartialOutcome(
 
 export async function writePartialError(
 	itemId: string,
-	error: { message: string; code: string | null; upgradeUrl: string | null },
+	error: { message: string; code: string | null; upgradeUrl: string | null; details?: unknown },
 ): Promise<void> {
 	const map = await readPartialOutcomes();
 	const existing = map[itemId];

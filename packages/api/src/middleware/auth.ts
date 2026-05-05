@@ -147,7 +147,7 @@ export const requireApiKey = createMiddleware(async (c, next) => {
 	// gate. Post-handler we recompute against the actual model and bill
 	// the realised cost. Worst-case gating is what stops a 20-credit
 	// caller from stealth-executing an 80-credit evaluate.
-	const worstCase = viaApiKey ? worstCaseCreditsForEndpoint(c.req.path) : 0;
+	const worstCase = viaApiKey ? worstCaseCreditsForEndpoint(c.req.path, c.req.method) : 0;
 	const [usage, burst] = await Promise.all([
 		snapshotUsage({ apiKeyId: row.id, userId: row.userId }, billingTier),
 		snapshotBurst({ apiKeyId: row.id, userId: row.userId }, billingTier),
@@ -239,7 +239,9 @@ export const requireApiKey = createMiddleware(async (c, next) => {
 	// of legitimate retries via the burst gate.
 	const isTransientFailure = statusCode >= 500 || statusCode === 429;
 	const realisedCredits =
-		viaApiKey && !isTransientFailure ? creditsForCall({ endpoint: c.req.path, source, agentModel }) : 0;
+		viaApiKey && !isTransientFailure
+			? creditsForCall({ endpoint: c.req.path, method: c.req.method, source, agentModel })
+			: 0;
 	c.res.headers.set("X-Flipagent-Credits-Charged", String(realisedCredits));
 
 	// Skip usage_events insert ONLY when the caller is the dashboard

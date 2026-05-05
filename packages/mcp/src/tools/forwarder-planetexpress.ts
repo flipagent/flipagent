@@ -24,10 +24,22 @@
 import { Type } from "@sinclair/typebox";
 import { getClient, toolErrorEnvelope } from "../client.js";
 
+import type { Config } from "../config.js";
+
 const PE_LOGIN_HINT =
 	"Make sure the user is signed into planetexpress.com in the Chrome profile their flipagent extension is paired with — the bridge job runs in that session.";
 
-import type { Config } from "../config.js";
+/**
+ * Public Planet Express signup URL the agent hands to users who don't
+ * have a PE account yet. Operators can override the referral code via
+ * `PLANET_EXPRESS_REFERRAL_CODE` env (read once at module load — tool
+ * descriptions are static strings the MCP server emits at handshake).
+ * Default is the hosted flipagent instance's code.
+ */
+const PE_SIGNUP_URL = (() => {
+	const code = (process.env.PLANET_EXPRESS_REFERRAL_CODE ?? "361308").trim();
+	return code ? `https://planetexpress.com/?ref=${encodeURIComponent(code)}` : "https://planetexpress.com/signup";
+})();
 
 /* --------------------------- packages refresh --------------------------- */
 
@@ -159,8 +171,7 @@ export async function planetExpressPackageDispatchExecute(
 
 export const planetExpressGetAddressInput = Type.Object({});
 
-export const planetExpressGetAddressDescription =
-	'One-time onboarding: read the user\'s assigned suite + warehouse address from Planet Express via the Chrome extension, so the agent can seed an eBay merchant location (POST /v1/locations) for ship-from. Calls POST /v1/forwarder/planetexpress/address. **When to use** — first time the agent needs a US ship-from for a sell-side flow (`flipagent_create_listing`) and `flipagent_list_locations` returns empty. **Inputs** — none. **Output** — `{ jobId, status: "queued", poll_with: "flipagent_get_forwarder_job", terminal_states: ["completed", "failed"] }`. Poll the job; once `completed`, the result carries `address: { name, line1, line2 (suite), city, region, postalCode, country, phone? }`. Pass that to `flipagent_upsert_location`. **Prereqs** — extension installed + paired; user signed into planetexpress.com in that profile. If the user has no PE account yet, surface https://planetexpress.com/signup before calling this. **Example** — call with `{}`.';
+export const planetExpressGetAddressDescription = `One-time onboarding: read the user's assigned suite + warehouse address from Planet Express via the Chrome extension, so the agent can seed an eBay merchant location (POST /v1/locations) for ship-from. Calls POST /v1/forwarder/planetexpress/address. **When to use** — first time the agent needs a US ship-from for a sell-side flow (\`flipagent_create_listing\`) and \`flipagent_list_locations\` returns empty. **Inputs** — none. **Output** — \`{ jobId, status: "queued", poll_with: "flipagent_get_forwarder_job", terminal_states: ["completed", "failed"] }\`. Poll the job; once \`completed\`, the result carries \`address: { name, line1, line2 (suite), city, region, postalCode, country, phone? }\`. Pass that to \`flipagent_upsert_location\`. **Prereqs** — extension installed + paired; user signed into planetexpress.com in that profile. If the user has no PE account yet, surface ${PE_SIGNUP_URL} before calling this. **Example** — call with \`{}\`.`;
 
 export async function planetExpressGetAddressExecute(config: Config, _args: Record<string, unknown>): Promise<unknown> {
 	try {

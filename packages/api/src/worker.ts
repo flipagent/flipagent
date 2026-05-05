@@ -120,6 +120,7 @@ async function runOneJob(job: ComputeJob): Promise<void> {
 						opts: params.opts as never,
 						onStep: (event) => void onStep(event),
 						cancelCheck,
+						jobId: job.id,
 					}),
 			});
 		} else {

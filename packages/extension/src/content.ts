@@ -453,10 +453,32 @@ function handlePlanetExpressJob(job: InFlightSnapshot): void {
 	}
 	// Branch on the bridge task. Address scrape can run anywhere under
 	// /client/* because the warehouse cards live on the dashboard root;
-	// inbox scrape needs the packages page.
+	// inbox scrape needs the packages page; photos need the detail page;
+	// dispatch starts at the inbox and walks the multi-page MPS flow.
 	const task = job.metadata && typeof job.metadata === "object" ? (job.metadata as { task?: string }).task : undefined;
 	if (task === "planetexpress_get_address") {
 		void scrapeAddressesAndReport(job);
+		return;
+	}
+	if (task === "planetexpress_package_photos") {
+		void scrapePhotosAndReport(job);
+		return;
+	}
+	if (task === "planetexpress_package_dispatch") {
+		// Multi-step outbound flow not yet wired in the content script.
+		// Failing fast (instead of falling through to the inbox scraper
+		// and returning a wrong-shape `{ packages: [...] }` payload) so
+		// callers see a clean precondition error.
+		showBanner({
+			tone: "error",
+			title: "flipagent · dispatch flow not implemented",
+			body: "Outbound shipment via the extension isn't wired yet. Use the Planet Express UI directly to ship this package — flipagent will reconcile state on the next inbox refresh.",
+		});
+		void report({
+			jobId: job.id,
+			outcome: "failed" as BridgeJobStatus,
+			failureReason: "planetexpress_dispatch_not_implemented",
+		});
 		return;
 	}
 	// Default: refresh / packages inbox.
@@ -492,6 +514,97 @@ async function scrapeAddressesAndReport(job: InFlightSnapshot): Promise<void> {
 		outcome: "completed" as BridgeJobStatus,
 		result: { addresses },
 	});
+}
+
+/**
+ * Photos handler. Runs on `/client/packet/detail/<numericId>`; PE renders
+ * intake photos as `<img class="mainImage">` whose `src` is a presigned
+ * S3 URL with the original filename baked into the
+ * `response-content-disposition` query param. We extract both — the
+ * filename gives the agent a useful caption ("cameraTop IMG_6688.JPG"
+ * vs "misc_data.png") for picking the right photo when seeding eBay
+ * listings.
+ */
+async function scrapePhotosAndReport(job: InFlightSnapshot): Promise<void> {
+	if (!/^\/client\/packet\/detail\//.test(location.pathname)) {
+		// Wrong page — content script re-runs on next nav.
+		return;
+	}
+	// Brief tick: PE pre-renders these server-side so they're in the DOM
+	// on first paint, but the S3 presigned URL is regenerated per render
+	// — give the page a beat to settle.
+	await new Promise((r) => setTimeout(r, 600));
+	const photos = scrapePlanetExpressPhotos();
+	if (photos.length === 0) {
+		showBanner({
+			tone: "error",
+			title: "flipagent · no intake photos",
+			body: "Couldn't find any photos on the package detail page. Either the package has no intake shots, or the selectors changed.",
+		});
+		await report({
+			jobId: job.id,
+			outcome: "completed" as BridgeJobStatus,
+			result: { photos: [] },
+		});
+		return;
+	}
+	showBanner({
+		tone: "success",
+		title: `flipagent · ${photos.length} photo${photos.length === 1 ? "" : "s"} read`,
+		body: "Captured to your flipagent inventory — feed these to listing creation as needed.",
+	});
+	await report({
+		jobId: job.id,
+		outcome: "completed" as BridgeJobStatus,
+		result: { photos },
+	});
+}
+
+interface ScrapedPhoto {
+	url: string;
+	caption?: string;
+}
+
+/**
+ * Walk every `<img.mainImage>` on the page; the `<img src>` is a
+ * presigned S3 URL whose query string carries
+ * `response-content-disposition=inline; filename="..."`. We URL-decode
+ * that and use the filename as a caption hint — PE's first photo is
+ * conventionally `cameraTop IMG_*.JPG` (the intake top-down shot),
+ * remaining are user uploads / other angles named `misc_data.png` etc.
+ */
+function scrapePlanetExpressPhotos(): ScrapedPhoto[] {
+	const imgs = Array.from(document.querySelectorAll<HTMLImageElement>("img.mainImage"));
+	const out: ScrapedPhoto[] = [];
+	for (const img of imgs) {
+		const src = img.src;
+		if (!src || !/^https?:\/\//.test(src)) continue;
+		const caption = filenameFromDispositionUrl(src);
+		const photo: ScrapedPhoto = { url: src };
+		if (caption) photo.caption = caption;
+		out.push(photo);
+	}
+	return out;
+}
+
+/**
+ * Extract `filename="..."` from a URL whose query string carries an S3
+ * `response-content-disposition` parameter. Returns null when the
+ * filename isn't present (e.g. PE rotated the URL shape and dropped the
+ * disposition override) — caller treats absent caption as a soft miss.
+ */
+function filenameFromDispositionUrl(url: string): string | null {
+	try {
+		const u = new URL(url);
+		const disp = u.searchParams.get("response-content-disposition");
+		if (!disp) return null;
+		const m = disp.match(/filename="([^"]+)"/i);
+		if (m) return decodeURIComponent(m[1] ?? "").trim() || null;
+		const m2 = disp.match(/filename=([^;]+)/i);
+		return m2 ? decodeURIComponent(m2[1] ?? "").trim() || null : null;
+	} catch {
+		return null;
+	}
 }
 
 async function scrapeAndReport(job: InFlightSnapshot): Promise<void> {
@@ -572,6 +685,14 @@ function collectDiagnostics(): Record<string, unknown> {
 }
 
 interface PlanetExpressPackage {
+	/**
+	 * Numeric internal id parsed from the row's detail-link href
+	 * (`/client/packet/detail/<id>`). PE addresses every per-package
+	 * surface (photos, dispatch, invoice, …) by this id, so the inbox
+	 * scrape captures it once and the API stores it as the canonical
+	 * `packageId`. The human label ("R0348-A") lives in `dom`.
+	 */
+	id?: string;
 	tracking?: string;
 	sender?: string;
 	receivedAt?: string;
@@ -720,6 +841,13 @@ function extractPackage(row: Element): PlanetExpressPackage {
 	const actionsCell = row.querySelector<HTMLElement>("td.grid-col-actions");
 	const labelText = (labelCell?.textContent ?? "").replace(/\s+/g, " ").trim();
 	const requestsText = (requestsCell?.textContent ?? "").replace(/\s+/g, " ").trim();
+	// Detail link sits in either the photo cell or the label cell — PE
+	// renders both as anchors. Match the first href that points at
+	// `/client/packet/detail/<digits>` so we get the numeric id used by
+	// every per-package surface (photos, dispatch, invoice).
+	const detailAnchor = row.querySelector<HTMLAnchorElement>('a[href*="/client/packet/detail/"]');
+	const detailHref = detailAnchor?.getAttribute("href") ?? "";
+	const id = detailHref.match(/\/client\/packet\/detail\/(\d+)/)?.[1];
 	const tracking = labelText.match(/\b([A-Z0-9]{10,30})\b/)?.[1];
 	const weightMatch = labelText.match(/(\d+(?:\.\d+)?)\s*(g|kg|lb|oz)\b/i);
 	const weightG = weightMatch ? toGrams(Number.parseFloat(weightMatch[1] ?? ""), weightMatch[2] ?? "") : undefined;
@@ -732,6 +860,7 @@ function extractPackage(row: Element): PlanetExpressPackage {
 				.filter((s) => s.length > 0)
 		: [];
 	return {
+		id,
 		tracking,
 		sender: senderMatch?.[1]?.trim(),
 		receivedAt: dateMatch?.[1],

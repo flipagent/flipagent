@@ -1,18 +1,19 @@
 /**
  * Passive capture intake — accepts a parsed eBay PDP from the Chrome
- * extension's content script and stores it in the shared response cache
- * so subsequent `/v1/items/*` lookups for the same item hit the cached
- * entry instead of issuing a fresh scrape.
+ * extension's content script and writes it to `listing_observations`
+ * so subsequent `/v1/items/{id}` lookups for the same item hit the
+ * captured row via `getFreshDetailObservation` instead of issuing a
+ * fresh scrape.
  *
  * The extension parses the PDP via the same `parseEbayDetailHtml` shipped
  * in `@flipagent/ebay-scraper` (single source of truth — see
  * `packages/extension/src/content.ts`), so the wire payload here is the
  * canonical `EbayItemDetail` shape. We normalise it through the same
- * `ebayDetailToBrowse()` the bridge/scrape transports use, then write the
- * resulting `ItemDetail` into the cache keyed on `source: "scrape"` —
- * that's the cache key the default scrape transport reads, so any future
- * `getItemDetail()` call serves the captured copy without going to
- * Oxylabs.
+ * `ebayDetailToBrowse()` the bridge/scrape transports use, then record
+ * the resulting `ItemDetail` as a detail observation tagged
+ * `source: "scrape"` — same cache key the default scrape transport
+ * reads, so any future `getItemDetail()` call serves the captured copy
+ * without going to Oxylabs.
  *
  * Privacy: caller URL is verified to be a public eBay PDP / search
  * (/itm/, /sch/, /p/) — never personal pages (/mye, /signin, /vod, etc.).
@@ -25,8 +26,8 @@ import type { ItemDetail } from "@flipagent/types/ebay";
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { ebayDetailToBrowse } from "./ebay/scrape/normalize.js";
-import { DETAIL_PATH, DETAIL_TTL_SEC } from "./items/detail.js";
-import { hashQuery, setCached } from "./shared/cache.js";
+import { DETAIL_TTL_SEC } from "./items/detail.js";
+import { recordDetailObservation } from "./observations.js";
 
 // Rate limit per api key. 60/min is well above any real browsing rate
 // (a user opens ~1 PDP per few seconds at most) and below abuse thresholds.
@@ -108,17 +109,12 @@ export async function captureDetail(input: {
 	if (!normalised) return { stored: false, reason: "parse_failed" };
 	if (!normalised.legacyItemId) return { stored: false, reason: "no_item_id" };
 
-	// Key captured detail under `source: "scrape"` so the default
-	// detail-fetch path (which keys on `source` per `EBAY_DETAIL_SOURCE`)
-	// finds it. Bridge/REST callers reading other source keys will still
-	// fall through to their own transport — captured data benefits the
-	// most-common path without leaking into transport-specific behaviour.
-	//
-	// Body is the bare ItemDetail (no envelope) — `withCache` stores
-	// `body` and `source` as separate columns; double-wrapping would
-	// surface to consumers as `result.body.body`.
-	const queryHash = hashQuery({ itemId: normalised.legacyItemId, source: "scrape" });
-	await setCached(DETAIL_PATH, queryHash, normalised, "capture", DETAIL_TTL_SEC);
+	// Tag the row `source: "scrape"` so the default detail-fetch path
+	// (which filters observation reads by `source`) finds it.
+	// Bridge/REST callers asking for other sources still fall through
+	// to their own transport — captured data benefits the most-common
+	// path without leaking cross-transport.
+	await recordDetailObservation(normalised, { rawResponse: normalised, source: "scrape" });
 
 	// Audit row: lets us later count captures per apiKey, prove provenance
 	// for any individual cached entry, and enforce rate limits without

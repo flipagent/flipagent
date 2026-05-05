@@ -220,6 +220,12 @@ variable "admin_emails" {
   default     = ""
 }
 
+variable "planet_express_referral_code" {
+  description = "Planet Express forwarder referral code attached to signup URLs surfaced by /v1/capabilities and the forwarder_signup next-action. Empty = unbranded /signup. Hosted instance uses 361308."
+  type        = string
+  default     = ""
+}
+
 variable "keys_encryption_key" {
   description = "AES-256-GCM symmetric key (base64, 32 bytes) used to encrypt issued API key plaintext at rest. Required in production for the dashboard's 'reveal key' feature; without it the column stays null on new keys and reveal returns 503 (sha256 hash auth still works). Generate with `openssl rand -base64 32`."
   type        = string

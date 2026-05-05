@@ -36,6 +36,19 @@
  *       WEBHOOK_DELIVERY_RETENTION_DAYS (30). Honors privacy.astro's
  *       30-day retention promise for outbound webhook delivery logs.
  *
+ *   - proxy cache prune
+ *       Drop proxy_response_cache rows whose TTL has passed. Read-side
+ *       queries already filter by `expires_at`, so stale rows are
+ *       invisible to callers — but disk usage grows without this sweep.
+ *
+ *   - auth session/verification expiry
+ *       Drop session + verification rows past `expiresAt`. Better-Auth
+ *       enforces expiry at the app layer on every read, so leftovers
+ *       are not exploitable through the auth flow — but we don't want
+ *       expired session tokens (auth-equivalent material) sitting on
+ *       disk indefinitely. Verification rows hold short-lived email
+ *       confirmation / password reset tokens, same logic.
+ *
  * The whole sweep is single-replica safe via row-level WHERE clauses;
  * if two workers tick at once, the second one's UPDATE just touches no
  * rows because the first already set the marker.
@@ -49,9 +62,12 @@ import {
 	bridgeTokens,
 	forwarderInventory,
 	marketplaceNotifications,
+	session,
 	takedownRequests,
+	verification,
 	webhookDeliveries,
 } from "../../db/schema.js";
+import { pruneExpired as pruneProxyCache } from "../shared/cache.js";
 
 const TAKEDOWN_SLA_HOURS = 48;
 const NOTIFICATION_PII_RETENTION_DAYS = 90;
@@ -62,6 +78,12 @@ const BRIDGE_TOKEN_IDLE_DAYS = 90;
 // status + payload), kept long enough to debug a failing endpoint then
 // dropped. Privacy policy promises 30-day retention; this sweep enforces.
 const WEBHOOK_DELIVERY_RETENTION_DAYS = 30;
+// Grace window past `expiresAt` before deleting expired sessions /
+// verification rows. Better-Auth already rejects them on read — the
+// grace just keeps the recently-expired rows around for a bit in case
+// something needs to look them up (debugging, race with refresh).
+const SESSION_EXPIRY_GRACE_DAYS = 7;
+const VERIFICATION_EXPIRY_GRACE_DAYS = 1;
 
 interface SweepResult {
 	task: string;
@@ -91,6 +113,9 @@ export async function runMaintenanceTick(): Promise<SweepResult[]> {
 	results.push(await safe("forwarder_photos", forwarderPhotoCleanup));
 	results.push(await safe("bridge_token_ttl", bridgeTokenTtl));
 	results.push(await safe("webhook_delivery_retention", webhookDeliveryRetention));
+	results.push(await safe("proxy_cache_prune", pruneProxyCache));
+	results.push(await safe("auth_session_expired", authSessionExpired));
+	results.push(await safe("auth_verification_expired", authVerificationExpired));
 	return results;
 }
 
@@ -208,5 +233,20 @@ async function bridgeTokenTtl(): Promise<number> {
 		.set({ revokedAt: new Date() })
 		.where(and(isNull(bridgeTokens.revokedAt), lt(bridgeTokens.lastSeenAt, cutoff)))
 		.returning({ id: bridgeTokens.id });
+	return result.length;
+}
+
+async function authSessionExpired(): Promise<number> {
+	const cutoff = new Date(Date.now() - SESSION_EXPIRY_GRACE_DAYS * 86_400_000);
+	const result = await db.delete(session).where(lt(session.expiresAt, cutoff)).returning({ id: session.id });
+	return result.length;
+}
+
+async function authVerificationExpired(): Promise<number> {
+	const cutoff = new Date(Date.now() - VERIFICATION_EXPIRY_GRACE_DAYS * 86_400_000);
+	const result = await db
+		.delete(verification)
+		.where(lt(verification.expiresAt, cutoff))
+		.returning({ id: verification.id });
 	return result.length;
 }

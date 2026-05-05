@@ -104,6 +104,16 @@ export const SetupHints = Type.Object(
 			),
 		}),
 		dashboardUrl: Type.String({ description: "Where the user manages keys / OAuth / billing." }),
+		/**
+		 * Signup URLs for forwarders the agent might point a fresh user
+		 * at (no PE account yet). Operator-configured: when the api has
+		 * a referral code (`PLANET_EXPRESS_REFERRAL_CODE`), this URL
+		 * carries it so the new account attributes back to the
+		 * operator. Empty referral falls back to the unbranded `/signup`.
+		 */
+		forwarderSignup: Type.Object({
+			planetexpress: Type.String({ format: "uri" }),
+		}),
 	},
 	{ $id: "SetupHints" },
 );

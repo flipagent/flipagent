@@ -22,12 +22,9 @@ import { loadConfig } from "./shared.js";
 import {
 	clearPartialOutcome,
 	clearRunningEval,
-	type EvalCacheEntry,
 	RUNNING_MIRROR_TTL_MS,
-	readEvalCache,
 	readRunningEval,
 	setRunningEval,
-	writeEvalCache,
 	writePartialError,
 	writePartialOutcome,
 } from "./storage.js";
@@ -121,16 +118,6 @@ export async function readVisibleState(itemId: string): Promise<EvalState> {
 				mirrored: true,
 			};
 		}
-	}
-
-	const entry = await readEvalCache(itemId).catch(() => null);
-	if (entry) {
-		return {
-			kind: "done",
-			result: entry.result as EvaluateResponse,
-			cached: true,
-			jobId: entry.jobId,
-		};
 	}
 
 	return { kind: "idle" };
@@ -244,18 +231,10 @@ export async function startEvaluate(itemId: string): Promise<void> {
 		});
 		const s = states.get(itemId);
 		const jobId = s?.kind === "running" ? s.jobId : undefined;
-		await writeEvalCache(itemId, {
-			result,
-			completedAt: new Date().toISOString(),
-			jobId,
-			// Persist the trace alongside the result so the cached side
-			// panel still renders a full Trace expander — without this,
-			// `Hide trace` opens an empty `<ol class="pg-trace">` and
-			// reads as if the section was clipped.
-			steps: trace.slice(),
-		} satisfies EvalCacheEntry).catch(() => {});
-		// Cache covers the side panel from here on — drop the partial
-		// mirror so subsequent renders read the canonical full result.
+		// Drop the partial mirror — the side panel now reads the
+		// canonical full result from in-memory state. Persistent cache
+		// lives server-side in compute_jobs (cross-surface, ML-grade
+		// observation lake doubles as cache). No extension-side mirror.
 		void clearPartialOutcome(itemId).catch(() => {});
 		setState(itemId, { kind: "done", result, cached: false, jobId });
 	} catch (err) {
@@ -264,6 +243,7 @@ export async function startEvaluate(itemId: string): Promise<void> {
 			message: errorMessage(err),
 			code: apiErr?.code ?? null,
 			upgradeUrl: apiErr?.upgradeUrl ?? null,
+			details: apiErr?.details ?? null,
 		};
 		// Flip any still-running step in the trace to error so the side
 		// panel renders the failure visually (red pill on the failed

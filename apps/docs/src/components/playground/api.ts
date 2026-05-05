@@ -6,6 +6,7 @@
  */
 
 import { apiBase } from "../../lib/authClient";
+import type { WireSearchParams } from "./SearchFilters";
 import type { BrowseSearchResponse, EvaluateResponse, ItemDetail } from "./types";
 
 export interface ApiResponse<T> {
@@ -209,105 +210,27 @@ function flipagentItemToDetail(item: FlipagentItem): ItemDetail {
 	};
 }
 
-function parseEbayFilterString(s: string | undefined): {
-	conditionIds?: string[];
-	priceMin?: number;
-	priceMax?: number;
-	buyingOption?: "auction" | "fixed_price" | "best_offer";
-	/**
-	 * Filter terms we don't translate to flipagent-native query fields —
-	 * `itemLocationCountry`, `itemLocationRegion`, `returnsAccepted`,
-	 * `maxDeliveryCost`, `topRatedListing`, `priceCurrency`, etc. They
-	 * ride through the API's raw `filter` passthrough param.
-	 */
-	residualFilter?: string;
-} {
-	if (!s) return {};
-	const out: {
-		conditionIds?: string[];
-		priceMin?: number;
-		priceMax?: number;
-		buyingOption?: "auction" | "fixed_price" | "best_offer";
-		residualFilter?: string;
-	} = {};
-	// Top-level comma split. eBay's filter spec doesn't allow commas
-	// inside `{...}` value lists, so a naive split is safe.
-	const residual: string[] = [];
-	for (const raw of s.split(",")) {
-		const clause = raw.trim();
-		if (!clause) continue;
-		const cm = clause.match(/^conditionIds:\{([^}]+)\}$/);
-		if (cm) {
-			out.conditionIds = cm[1]
-				.split("|")
-				.map((x) => x.trim())
-				.filter(Boolean);
-			continue;
-		}
-		const pm = clause.match(/^price:\[([^\]]*)\]$/);
-		if (pm) {
-			const [lo, hi] = pm[1].split("..");
-			if (lo) {
-				const n = Number.parseFloat(lo);
-				if (Number.isFinite(n)) out.priceMin = Math.round(n * 100);
-			}
-			if (hi) {
-				const n = Number.parseFloat(hi);
-				if (Number.isFinite(n)) out.priceMax = Math.round(n * 100);
-			}
-			continue;
-		}
-		const bm = clause.match(/^buyingOptions:\{([^}]+)\}$/);
-		if (bm) {
-			const v = bm[1].trim().toUpperCase();
-			if (v === "AUCTION") out.buyingOption = "auction";
-			else if (v === "FIXED_PRICE") out.buyingOption = "fixed_price";
-			else if (v === "BEST_OFFER") out.buyingOption = "best_offer";
-			continue;
-		}
-		// `priceCurrency:USD` is a hint paired with the price clause; if
-		// price was already extracted the currency hint is redundant on
-		// the flipagent side (everything's USD-cents internally).
-		if (clause === "priceCurrency:USD") continue;
-		residual.push(clause);
-	}
-	if (residual.length > 0) out.residualFilter = residual.join(",");
-	return out;
-}
-
-const SORT_TO_FLIPAGENT: Record<string, string | undefined> = {
-	"": undefined,
-	newlyListed: "newest",
-	endingSoonest: "ending_soonest",
-	pricePlusShippingLowest: "price_asc",
-};
-
-function planSearchAdapter(params: {
-	q?: string;
-	mode?: "active" | "sold";
-	filter?: string;
-	sort?: string;
-	limit?: number;
-	offset?: number;
-	category_ids?: string;
-	gtin?: string;
-}): ApiPlan<BrowseSearchResponse> {
-	const mode = params.mode ?? "active";
-	const parsed = parseEbayFilterString(params.filter);
-	const sort = params.sort ? SORT_TO_FLIPAGENT[params.sort] : undefined;
+/**
+ * `/v1/items/search` adapter. Takes the validated wire shape
+ * (`WireSearchParams` from `SearchFilters.tsx` — produced by
+ * `searchQueryToWire`) and serialises it into URL params. No
+ * intermediate "playground call params" layer; what the panel built is
+ * what gets sent.
+ */
+function planSearchAdapter(wire: WireSearchParams): ApiPlan<BrowseSearchResponse> {
 	const qs = new URLSearchParams();
-	if (params.q) qs.set("q", params.q);
-	qs.set("status", mode);
-	if (params.limit !== undefined) qs.set("limit", String(params.limit));
-	if (params.offset !== undefined) qs.set("offset", String(params.offset));
-	if (params.category_ids) qs.set("categoryId", params.category_ids);
-	if (params.gtin) qs.set("gtin", params.gtin);
-	if (sort) qs.set("sort", sort);
-	if (parsed.priceMin !== undefined) qs.set("priceMin", String(parsed.priceMin));
-	if (parsed.priceMax !== undefined) qs.set("priceMax", String(parsed.priceMax));
-	if (parsed.buyingOption) qs.set("buyingOption", parsed.buyingOption);
-	if (parsed.residualFilter) qs.set("filter", parsed.residualFilter);
-	for (const c of parsed.conditionIds ?? []) qs.append("conditionIds", c);
+	qs.set("status", wire.status);
+	qs.set("limit", String(wire.limit));
+	if (wire.q) qs.set("q", wire.q);
+	if (wire.offset && wire.offset > 0) qs.set("offset", String(wire.offset));
+	if (wire.categoryId) qs.set("categoryId", wire.categoryId);
+	if (wire.gtin) qs.set("gtin", wire.gtin);
+	for (const c of wire.conditionIds ?? []) qs.append("conditionIds", c);
+	if (wire.priceMin !== undefined) qs.set("priceMin", String(wire.priceMin));
+	if (wire.priceMax !== undefined) qs.set("priceMax", String(wire.priceMax));
+	if (wire.buyingOption) qs.set("buyingOption", wire.buyingOption);
+	if (wire.sort) qs.set("sort", wire.sort);
+	if (wire.filter) qs.set("filter", wire.filter);
 	const path = `/v1/items/search?${qs.toString()}`;
 	return {
 		call: { method: "GET", path },
@@ -319,7 +242,7 @@ function planSearchAdapter(params: {
 			const body = raw.body as ItemSearchResponseBody;
 			const summaries = (body.items ?? []).map(flipagentItemToSummary);
 			const adapted: BrowseSearchResponse = {
-				...(mode === "sold"
+				...(wire.status === "sold"
 					? { itemSales: summaries as BrowseSearchResponse["itemSales"] }
 					: { itemSummaries: summaries as BrowseSearchResponse["itemSummaries"] }),
 				total: body.total,
@@ -333,27 +256,8 @@ function planSearchAdapter(params: {
 }
 
 export const playgroundApi = {
-	/**
-	 * Unified search — `/v1/items/search` with a flipagent-native shape.
-	 * The adapter (`planSearchAdapter`) keeps the panels' eBay-shape
-	 * callers working unchanged.
-	 */
-	listingsSearch: (params: { q?: string; filter?: string; sort?: string; limit?: number; category_ids?: string }) =>
-		planSearchAdapter({ ...params, mode: "active" }),
-
-	soldSearch: (params: { q: string; filter?: string; limit?: number }) =>
-		planSearchAdapter({ ...params, mode: "sold" }),
-
-	search: (params: {
-		q?: string;
-		mode?: "active" | "sold";
-		filter?: string;
-		sort?: string;
-		limit?: number;
-		offset?: number;
-		category_ids?: string;
-		gtin?: string;
-	}) => planSearchAdapter(params),
+	/** `/v1/items/search` — pass the wire shape from `searchQueryToWire(query)`. */
+	search: (wire: WireSearchParams) => planSearchAdapter(wire),
 
 	itemDetail: (itemId: string): ApiPlan<ItemDetail> => {
 		const path = `/v1/items/${encodeURIComponent(itemId)}`;
@@ -380,6 +284,18 @@ export const playgroundApi = {
 			maxDaysToSell?: number;
 		};
 	}) => plan<EvaluateResponse>("POST", "/v1/evaluate", req),
+
+	/** Drill-down companion to `evaluate` — kept + rejected pools with
+	 *  per-item rejection reasons. Used by the inline agent EvaluatePanel
+	 *  to lazy-load rejected comps without paying for them in the LLM
+	 *  context (the agent digest already carries kept pools eagerly). */
+	evaluatePool: (itemId: string) =>
+		plan<{
+			itemId: string;
+			evaluatedAt: string;
+			sold: { kept: unknown[]; rejected: unknown[] };
+			active: { kept: unknown[]; rejected: unknown[] };
+		}>("GET", `/v1/evaluate/${encodeURIComponent(itemId)}/pool`),
 
 	/** Server-curated "Try one" examples sourced from real recent runs. */
 	featuredEvaluations: (limit?: number) =>

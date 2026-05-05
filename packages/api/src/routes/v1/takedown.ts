@@ -23,7 +23,7 @@ import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { db } from "../../db/client.js";
-import { listingObservations, takedownRequests } from "../../db/schema.js";
+import { listingObservations, marketDataCache, productObservations, takedownRequests } from "../../db/schema.js";
 import { legacyFromV1 } from "../../utils/item-id.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
@@ -85,13 +85,33 @@ takedownRoute.post(
 		if (!legacyId) {
 			return c.json({ id: row?.id ?? "", status: "pending" as const, slaHours: SLA_HOURS }, 201);
 		}
+		// Propagate to every cache + lake table that keys on the
+		// flagged itemId — `listing_observations` gets `takedown_at`
+		// (audit trail preserved); `product_observations` the same; the
+		// upstream evaluate-pipeline cache (`market_data_cache`) is
+		// dropped outright so the next caller forces a re-fetch past the
+		// takedown blocklist. Failures log but don't abort — the
+		// takedown row itself is the system of record.
 		try {
 			await db
 				.update(listingObservations)
 				.set({ takedownAt: sql`now()` })
 				.where(eq(listingObservations.legacyItemId, legacyId));
 		} catch (err) {
-			console.error("[takedown] observation flag failed:", err);
+			console.error("[takedown] listing_observations flag failed:", err);
+		}
+		try {
+			await db
+				.update(productObservations)
+				.set({ takedownAt: sql`now()` })
+				.where(eq(productObservations.epid, legacyId));
+		} catch (err) {
+			console.error("[takedown] product_observations flag failed:", err);
+		}
+		try {
+			await db.delete(marketDataCache).where(eq(marketDataCache.itemId, legacyId));
+		} catch (err) {
+			console.error("[takedown] market_data_cache flush failed:", err);
 		}
 		return c.json({ id: row?.id ?? "", status: "pending" as const, slaHours: SLA_HOURS }, 201);
 	},

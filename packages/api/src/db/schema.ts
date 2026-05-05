@@ -23,7 +23,7 @@ export const takedownStatusEnum = pgEnum("takedown_status", ["pending", "approve
  * closes the P&L loop without polling eBay Finances.
  */
 export const expenseEventKindEnum = pgEnum("expense_event_kind", ["purchased", "forwarder_fee", "expense", "sold"]);
-export const computeJobKindEnum = pgEnum("compute_job_kind", ["evaluate"]);
+export const computeJobKindEnum = pgEnum("compute_job_kind", ["evaluate", "search"]);
 export const computeJobStatusEnum = pgEnum("compute_job_status", [
 	"queued",
 	"running",
@@ -420,6 +420,20 @@ export const listingObservations = pgTable(
 		itemEndDate: timestamp("item_end_date", { withTimezone: true }),
 		// Takedown flag — non-null hides row from all archive queries.
 		takedownAt: timestamp("takedown_at", { withTimezone: true }),
+		/**
+		 * Full normalised `ItemDetail` body — only populated for detail
+		 * fetches (search-result rows leave it NULL). Lets the data lake
+		 * double as runtime cache: `getFreshDetailObservation(legacyId,
+		 * ttlMs)` reads the latest `raw_response IS NOT NULL` row and
+		 * `getItemDetail` skips upstream when fresh.
+		 *
+		 * Stored shape is the flipagent-normalised `ItemDetail`, not the
+		 * raw eBay/scraper response — so reads are transport-uniform
+		 * (REST, scrape, bridge produce the same shape post-conversion).
+		 */
+		rawResponse: jsonb("raw_response"),
+		/** Which transport served the underlying fetch — `rest` | `scrape` | `bridge`. NULL for legacy rows. */
+		source: text("source"),
 	},
 	(t) => ({
 		legacyIdx: index("listing_obs_legacy_idx").on(t.marketplace, t.legacyItemId, t.observedAt),
@@ -486,6 +500,101 @@ export const matchDecisions = pgTable(
 	(t) => ({
 		pk: uniqueIndex("match_decisions_pkey").on(t.candidateId, t.itemId),
 		expiresIdx: index("match_decisions_expires_idx").on(t.expiresAt),
+	}),
+);
+
+/**
+ * Append-only ML-grade history of matcher decisions. Parallel write to
+ * `match_decisions` (which is the runtime cache, latest-only, 30d TTL).
+ * Every LLM verify decision lands here permanently — same pair can have
+ * multiple rows over time as model revs ship, letting us A/B new
+ * matchers against the historical seed→candidate corpus.
+ *
+ * Reproducibility: pair this with the seed/candidate snapshots in
+ * `listing_observations` (looked up by `legacy_item_id` + nearest
+ * `observed_at`) to reconstruct exactly what the matcher saw at decision
+ * time. `model_id` carries `${provider.name}/${provider.model}` so
+ * cross-model evals are direct.
+ *
+ * Read pattern: `WHERE candidate_id=? AND item_id=? ORDER BY observed_at
+ * DESC` for per-pair history; `WHERE model_id=? AND observed_at IN
+ * range` for ML training set extraction.
+ */
+export const matchHistory = pgTable(
+	"match_history",
+	{
+		id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
+		candidateId: text("candidate_id").notNull(),
+		itemId: text("item_id").notNull(),
+		decision: text("decision").notNull(),
+		reason: text("reason"),
+		/** wrong_product | bundle_or_lot | off_condition | other (populated for rejects). */
+		category: text("category"),
+		/** `${provider.name}/${provider.model}` — e.g. `gemini/gemini-3.1-flash-lite-preview`. */
+		modelId: text("model_id"),
+		observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => ({
+		pairIdx: index("match_history_pair_idx").on(t.candidateId, t.itemId, t.observedAt.desc()),
+		modelTimeIdx: index("match_history_model_time_idx").on(t.modelId, t.observedAt),
+	}),
+);
+
+/**
+ * Append-only catalog product capture — parallel to
+ * `listing_observations` but for `/v1/products/{epid}` reads (Catalog
+ * REST + scrape JSON-LD). One row per upstream fetch (deduped at the
+ * transport layer's in-flight Map; the cache hit path doesn't insert).
+ *
+ * Snapshot is the full `Product` body as JSONB — keeps schema-free so
+ * future Product field additions don't need migrations. ML / dedup reads
+ * can land on the latest fresh row by `(epid, observed_at desc)`.
+ *
+ * Takedown: matches `listing_observations.takedown_at` semantics — the
+ * `/v1/takedown` route flips `takedown_at` on approval; live reads
+ * filter `takedown_at IS NULL`.
+ */
+export const productObservations = pgTable(
+	"product_observations",
+	{
+		id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
+		marketplace: text("marketplace").notNull().default("ebay"),
+		epid: text("epid").notNull(),
+		observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+		/** Full `Product` body. Schema-free for forward-compat. */
+		snapshot: jsonb("snapshot").notNull(),
+		/** Which transport served this fetch — `rest` | `scrape`. */
+		source: text("source").notNull(),
+		takedownAt: timestamp("takedown_at", { withTimezone: true }),
+	},
+	(t) => ({
+		epidIdx: index("product_observations_epid_observed_idx").on(t.epid, t.observedAt.desc()),
+	}),
+);
+
+/**
+ * eBay category-tree snapshots, change-only. eBay revs categories
+ * quarterly-ish; instead of snapshotting on every fetch (the tree is
+ * large — hundreds of KB), we hash the canonical-JSON payload and only
+ * insert when the hash differs from the latest row for `(marketplace,
+ * root)`.
+ *
+ * `root` = the subtree root id (or `"0"` for the full tree). Lets us
+ * track partial-fetch deltas without forcing a full refetch.
+ */
+export const categorySnapshots = pgTable(
+	"category_snapshots",
+	{
+		id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
+		marketplace: text("marketplace").notNull().default("ebay"),
+		root: text("root").notNull(),
+		/** SHA-256 of canonical-JSON serialised snapshot. Insert dedup'd on this per (marketplace, root). */
+		hash: text("hash").notNull(),
+		snapshot: jsonb("snapshot").notNull(),
+		observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => ({
+		rootIdx: index("category_snapshots_root_observed_idx").on(t.marketplace, t.root, t.observedAt.desc()),
 	}),
 );
 
@@ -1003,6 +1112,44 @@ export const computeJobs = pgTable(
 );
 
 /**
+ * Cross-user cache of the upstream digest assembled by the evaluate
+ * pipeline (item detail + sold pool + active pool + same-product LLM
+ * filter + market stats). Keyed on the **itemId-side** inputs only —
+ * `(itemId, lookbackDays, soldLimit)` — never on user opts. Per-user
+ * scoring (forwarder cost, minNet thresholds) runs on top and lands in
+ * `compute_jobs.result` as a self-contained snapshot; this table is
+ * the dedup/cache layer below it.
+ *
+ * Lifecycle: a compute_job that misses cache fetches upstream and
+ * inserts here on success. Concurrent fetches lose the unique-index
+ * race — one redundant fetch is cheaper than coordinating a lock. TTL
+ * aligns with the sold-search transport cache (12h).
+ *
+ * Takedown: `/v1/takedown` approval deletes by `item_id`; subsequent
+ * evaluate calls see a miss and the takedown blocklist short-circuits
+ * before any re-fetch.
+ */
+export const marketDataCache = pgTable(
+	"market_data_cache",
+	{
+		id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+		itemId: text("item_id").notNull(),
+		lookbackDays: integer("lookback_days").notNull(),
+		soldLimit: integer("sold_limit").notNull(),
+		/** Assembled upstream digest. Shape: { item, soldPool, activePool, filter, returns, market, meta }. Pre-scoring. */
+		digest: jsonb("digest").notNull(),
+		/** compute_jobs row that originally produced this digest. Audit / debugging only — readers don't need it. */
+		sourceJobId: uuid("source_job_id").references(() => computeJobs.id, { onDelete: "set null" }),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+	},
+	(t) => ({
+		keyIdx: uniqueIndex("market_data_cache_key").on(t.itemId, t.lookbackDays, t.soldLimit),
+		expiresIdx: index("market_data_cache_expires_idx").on(t.expiresAt),
+	}),
+);
+
+/**
  * Append-only ledger of admin-granted credits. Each row adjusts the
  * caller's monthly credit budget by `creditsDelta` (positive = bonus,
  * negative = clawback) for as long as it's not revoked and not
@@ -1076,6 +1223,8 @@ export type BridgeJob = typeof bridgeJobs.$inferSelect;
 export type NewBridgeJob = typeof bridgeJobs.$inferInsert;
 export type ComputeJob = typeof computeJobs.$inferSelect;
 export type NewComputeJob = typeof computeJobs.$inferInsert;
+export type MarketDataCache = typeof marketDataCache.$inferSelect;
+export type NewMarketDataCache = typeof marketDataCache.$inferInsert;
 export type BuyCheckoutSession = typeof buyCheckoutSessions.$inferSelect;
 export type NewBuyCheckoutSession = typeof buyCheckoutSessions.$inferInsert;
 export type ForwarderInventory = typeof forwarderInventory.$inferSelect;
@@ -1094,6 +1243,12 @@ export type QueryPulse = typeof queryPulse.$inferSelect;
 export type NewQueryPulse = typeof queryPulse.$inferInsert;
 export type MatchDecision = typeof matchDecisions.$inferSelect;
 export type NewMatchDecision = typeof matchDecisions.$inferInsert;
+export type MatchHistory = typeof matchHistory.$inferSelect;
+export type NewMatchHistory = typeof matchHistory.$inferInsert;
+export type ProductObservation = typeof productObservations.$inferSelect;
+export type NewProductObservation = typeof productObservations.$inferInsert;
+export type CategorySnapshot = typeof categorySnapshots.$inferSelect;
+export type NewCategorySnapshot = typeof categorySnapshots.$inferInsert;
 export type CreditGrant = typeof creditGrants.$inferSelect;
 export type NewCreditGrant = typeof creditGrants.$inferInsert;
 

@@ -21,7 +21,7 @@ import {
   EMPTY_SEARCH_QUERY,
   SearchFilters,
   type SearchQuery,
-  searchQueryToParams,
+  searchQueryToWire,
 } from './SearchFilters';
 import { SearchResult, type SearchOutcome } from './SearchResult';
 import type { BrowseSearchResponse, ItemSummary } from './types';
@@ -261,7 +261,7 @@ export function PlaygroundSourcing<TabId extends string = string>({
       // category state is kept in sync via `pick`, but using
       // `node.id` here is the load-bearing source of truth.
       const target: SearchQuery = { ...sq, category: { id: node.id, name: node.name } };
-      const plan = playgroundApi.search(searchQueryToParams(target, nextOffset));
+      const plan = playgroundApi.search(searchQueryToWire(target, nextOffset));
       const r = await plan.exec();
       if (controller.signal.aborted) return;
       if (!r.ok) {

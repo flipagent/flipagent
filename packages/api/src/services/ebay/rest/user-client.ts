@@ -226,14 +226,32 @@ function safeJson(text: string): unknown {
 	}
 }
 
+interface EbayErrorRow {
+	message?: string;
+	longMessage?: string;
+	errorId?: number;
+	parameters?: unknown;
+}
+
 interface EbayErrorEnvelope {
-	errors?: Array<{ message?: string; longMessage?: string; errorId?: number; parameters?: unknown }>;
+	errors?: EbayErrorRow[];
+	// Some surfaces (commerce/feedback/v1) flatten the row to top level.
+	errorId?: number;
+	message?: string;
+	longMessage?: string;
 }
 
 function extractEbayMessage(parsed: unknown): string | undefined {
 	if (!parsed || typeof parsed !== "object") return undefined;
 	const env = parsed as EbayErrorEnvelope;
-	if (!env.errors?.length) return undefined;
-	const first = env.errors[0]!;
-	return first.longMessage ?? first.message;
+	const first: EbayErrorRow | undefined = env.errors?.length
+		? env.errors[0]
+		: env.errorId != null || env.message
+			? env
+			: undefined;
+	if (!first) return undefined;
+	const text = (first.longMessage?.trim() || first.message?.trim()) ?? "";
+	if (text) return first.errorId != null ? `[${first.errorId}] ${text}` : text;
+	if (first.errorId != null) return `eBay errorId ${first.errorId}`;
+	return undefined;
 }

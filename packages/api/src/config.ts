@@ -190,6 +190,12 @@ const Schema = Type.Object({
 	// instance to start accumulating. ToS-safe: itemWebUrl + image CDN
 	// URL only (no binary mirroring), takedown channel honoured.
 	OBSERVATION_ENABLED: Type.Boolean({ default: false }),
+	// Planet Express forwarder referral code. When set, signup URLs
+	// surfaced by the api (next-action hints, capabilities feed) point
+	// at `https://planetexpress.com/?ref=<code>` so PE attributes the
+	// signup to the operator. Empty (default) = unbranded `/signup`.
+	// The hosted instance sets `361308`; self-hosters set their own.
+	PLANET_EXPRESS_REFERRAL_CODE: Type.String({ default: "" }),
 	// Comma-separated list of email addresses that auto-promote to
 	// `role=admin` on sign-up + on every session resolution. The
 	// `/v1/admin/*` surface and the `/admin` dashboard page are gated by
@@ -247,6 +253,7 @@ const raw = {
 	AGENT_OPENAI_MODEL: process.env.AGENT_OPENAI_MODEL ?? "gpt-5.4-mini",
 	MCP_PUBLIC_URL: process.env.MCP_PUBLIC_URL,
 	OBSERVATION_ENABLED: process.env.OBSERVATION_ENABLED === "1",
+	PLANET_EXPRESS_REFERRAL_CODE: process.env.PLANET_EXPRESS_REFERRAL_CODE ?? "",
 	ADMIN_EMAILS: process.env.ADMIN_EMAILS ?? "",
 };
 
@@ -306,6 +313,7 @@ export const config = decoded as {
 	AGENT_OPENAI_MODEL: string;
 	MCP_PUBLIC_URL?: string;
 	OBSERVATION_ENABLED: boolean;
+	PLANET_EXPRESS_REFERRAL_CODE: string;
 	ADMIN_EMAILS: string;
 };
 

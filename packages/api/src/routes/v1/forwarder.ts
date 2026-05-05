@@ -28,7 +28,7 @@ import {
 	ForwarderShipmentRequest,
 } from "@flipagent/types";
 import { Type } from "@sinclair/typebox";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import type { ForwarderInventory } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
@@ -54,6 +54,37 @@ const ProviderPackageParam = Type.Object({
 	packageId: Type.String({ minLength: 1 }),
 });
 
+/**
+ * Translate the two forwarder precondition errors into 412 + structured
+ * `next_action` so MCP / agents render `instructions` verbatim. Falls
+ * through (rethrows) for anything else so the global error handler can
+ * surface it as 500.
+ */
+function handleForwarderPrecondition(c: Context, err: unknown) {
+	if (err instanceof ExtensionNotPairedError) {
+		return c.json(
+			{
+				error: "extension_not_paired",
+				message:
+					"The flipagent Chrome extension isn't installed or paired for this api key. Forwarder ops drive the user's browser session, so the extension must be set up first.",
+				next_action: nextAction(c, "extension_install"),
+			},
+			412,
+		);
+	}
+	if (err instanceof ForwarderSignedOutError) {
+		return c.json(
+			{
+				error: "forwarder_signed_out",
+				message: `Sign in to ${err.provider} first — last seen as signed out.`,
+				next_action: nextAction(c, "forwarder_signin"),
+			},
+			412,
+		);
+	}
+	return null;
+}
+
 forwarderRoute.post(
 	"/:provider/refresh",
 	describeRoute({
@@ -66,18 +97,25 @@ forwarderRoute.post(
 			200: jsonResponse("Job queued.", ForwarderRefreshResponse),
 			401: errorResponse("Missing or invalid API key."),
 			404: errorResponse("Unknown provider."),
+			412: errorResponse("Forwarder session not active — sign in first."),
 		},
 	}),
 	requireApiKey,
 	tbCoerce("param", ProviderParam),
 	async (c) => {
 		const { provider } = c.req.valid("param");
-		const job = await refreshForwarder({
-			provider,
-			apiKeyId: c.var.apiKey.id,
-			userId: c.var.apiKey.userId ?? null,
-		});
-		return c.json({ jobId: job.jobId, status: job.status, expiresAt: job.expiresAt });
+		try {
+			const job = await refreshForwarder({
+				provider,
+				apiKeyId: c.var.apiKey.id,
+				userId: c.var.apiKey.userId ?? null,
+			});
+			return c.json({ jobId: job.jobId, status: job.status, expiresAt: job.expiresAt });
+		} catch (err) {
+			const handled = handleForwarderPrecondition(c, err);
+			if (handled) return handled;
+			throw err;
+		}
 	},
 );
 
@@ -108,27 +146,8 @@ forwarderRoute.post(
 			});
 			return c.json({ jobId: job.jobId, status: job.status, expiresAt: job.expiresAt });
 		} catch (err) {
-			if (err instanceof ExtensionNotPairedError) {
-				return c.json(
-					{
-						error: "extension_not_paired",
-						message:
-							"The flipagent Chrome extension isn't installed or paired for this api key. Forwarder ops drive the user's browser session, so the extension must be set up first.",
-						next_action: nextAction(c, "extension_install"),
-					},
-					412,
-				);
-			}
-			if (err instanceof ForwarderSignedOutError) {
-				return c.json(
-					{
-						error: "forwarder_signed_out",
-						message: `Sign in to ${err.provider} first — last seen as signed out.`,
-						next_action: nextAction(c, "forwarder_signin"),
-					},
-					412,
-				);
-			}
+			const handled = handleForwarderPrecondition(c, err);
+			if (handled) return handled;
 			throw err;
 		}
 	},
@@ -182,13 +201,19 @@ forwarderRoute.post(
 	tbCoerce("param", ProviderPackageParam),
 	async (c) => {
 		const { provider, packageId } = c.req.valid("param");
-		const job = await getPackagePhotos({
-			provider,
-			packageId,
-			apiKeyId: c.var.apiKey.id,
-			userId: c.var.apiKey.userId ?? null,
-		});
-		return c.json({ jobId: job.jobId, status: job.status, expiresAt: job.expiresAt });
+		try {
+			const job = await getPackagePhotos({
+				provider,
+				packageId,
+				apiKeyId: c.var.apiKey.id,
+				userId: c.var.apiKey.userId ?? null,
+			});
+			return c.json({ jobId: job.jobId, status: job.status, expiresAt: job.expiresAt });
+		} catch (err) {
+			const handled = handleForwarderPrecondition(c, err);
+			if (handled) return handled;
+			throw err;
+		}
 	},
 );
 
@@ -289,14 +314,20 @@ forwarderRoute.post(
 	async (c) => {
 		const { provider, packageId } = c.req.valid("param");
 		const request = c.req.valid("json");
-		const job = await dispatchPackage({
-			provider,
-			packageId,
-			apiKeyId: c.var.apiKey.id,
-			userId: c.var.apiKey.userId ?? null,
-			request,
-		});
-		return c.json({ jobId: job.jobId, status: job.status, expiresAt: job.expiresAt });
+		try {
+			const job = await dispatchPackage({
+				provider,
+				packageId,
+				apiKeyId: c.var.apiKey.id,
+				userId: c.var.apiKey.userId ?? null,
+				request,
+			});
+			return c.json({ jobId: job.jobId, status: job.status, expiresAt: job.expiresAt });
+		} catch (err) {
+			const handled = handleForwarderPrecondition(c, err);
+			if (handled) return handled;
+			throw err;
+		}
 	},
 );
 

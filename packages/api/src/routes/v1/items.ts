@@ -23,6 +23,7 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { requireApiKey } from "../../middleware/auth.js";
 import { checkCompatibility } from "../../services/compatibility.js";
+import { runSyncJob } from "../../services/compute-jobs/queue.js";
 import { getItemDetail } from "../../services/items/detail.js";
 import { ListingsError } from "../../services/items/errors.js";
 import { ebayMarketplaceForCountry, mapItemSearchQuery } from "../../services/items/query.js";
@@ -107,29 +108,47 @@ itemsRoute.get(
 		}
 		const mapped = mapItemSearchQuery(query);
 		try {
-			const result = await search(
-				{
-					q: mapped.q,
-					mode: query.status === "sold" ? "sold" : "active",
-					limit: mapped.limit,
-					offset: mapped.offset,
-					filter: mapped.filter,
-					sort: mapped.sort,
-					categoryIds: mapped.categoryIds,
-					aspectFilter: mapped.aspectFilter,
-					fieldgroups: mapped.fieldgroups,
-					autoCorrect: mapped.autoCorrect,
-					compatibilityFilter: mapped.compatibilityFilter,
-					charityIds: mapped.charityIds,
-					epid: query.epid,
-					gtin: query.gtin,
-				},
-				{
-					apiKey: c.var.apiKey,
-					marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID") ?? ebayMarketplaceForCountry(query.country),
-					acceptLanguage: c.req.header("Accept-Language"),
-				},
-			);
+			// Wrap in compute_jobs so this search shows up in
+			// `GET /v1/jobs?kind=search` history alongside evaluate runs.
+			// Sync execution: row created, search runs, row marked
+			// completed — all in this request handler.
+			//
+			// `params` stores the validated wire query verbatim so a
+			// re-run (`reopen` from history) gets every structured field
+			// back unchanged: conditionIds[], priceMin/Max (cents),
+			// buyingOption, sort, categoryId, filter (residual string
+			// for shipsFrom + refinements). No curation = no lossy
+			// round-trip.
+			const { result } = await runSyncJob({
+				apiKeyId: c.var.apiKey.id,
+				userId: c.var.apiKey.userId,
+				kind: "search",
+				params: query as Record<string, unknown>,
+				run: () =>
+					search(
+						{
+							q: mapped.q,
+							mode: query.status === "sold" ? "sold" : "active",
+							limit: mapped.limit,
+							offset: mapped.offset,
+							filter: mapped.filter,
+							sort: mapped.sort,
+							categoryIds: mapped.categoryIds,
+							aspectFilter: mapped.aspectFilter,
+							fieldgroups: mapped.fieldgroups,
+							autoCorrect: mapped.autoCorrect,
+							compatibilityFilter: mapped.compatibilityFilter,
+							charityIds: mapped.charityIds,
+							epid: query.epid,
+							gtin: query.gtin,
+						},
+						{
+							apiKey: c.var.apiKey,
+							marketplace: c.req.header("X-EBAY-C-MARKETPLACE-ID") ?? ebayMarketplaceForCountry(query.country),
+							acceptLanguage: c.req.header("Accept-Language"),
+						},
+					),
+			});
 			renderResultHeaders(c, result);
 			const ebayItems = [...(result.body.itemSummaries ?? []), ...(result.body.itemSales ?? [])];
 			const items = ebayItems.map(ebayItemToFlipagent);

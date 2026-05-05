@@ -56,7 +56,19 @@ export type IssueBridgeTokenResponse = Static<typeof IssueBridgeTokenResponse>;
 export const BridgeJobTask = Type.Union(
 	[
 		Type.Literal("ebay_buy_item"),
+		// Auction proxy-bid via the buyer's logged-in eBay session. Same
+		// tab shape as ebay_buy_item; observer branches on metadata.task.
+		Type.Literal("ebay_place_bid"),
 		Type.Literal("pull_packages"),
+		// Per-package photos scrape — opens `/client/packet/detail/<id>`
+		// and reports `img.mainImage` urls.
+		Type.Literal("planetexpress_package_photos"),
+		// Multi-step outbound shipment via the user's PE session.
+		Type.Literal("planetexpress_package_dispatch"),
+		// One-time onboarding scrape of warehouse tab pane on PE
+		// dashboard — returns the user's assigned suite + warehouse
+		// address(es) so the agent can seed an eBay merchant location.
+		Type.Literal("planetexpress_get_address"),
 		// Meta task: agent → bridge client `chrome.runtime.reload()`.
 		Type.Literal("reload_extension"),
 		// Generic browser primitive: query / extract DOM from the active

@@ -199,8 +199,8 @@ export interface LeaveFeedbackResult {
 export async function leaveFeedback(args: LeaveFeedbackArgs): Promise<LeaveFeedbackResult> {
 	const body = {
 		orderLineItemId: args.orderLineItemId,
-		rating: RATING_TO_REST[args.rating],
-		comment: { commentText: args.comment },
+		commentType: RATING_TO_REST[args.rating],
+		commentText: args.comment,
 	};
 	const res = await sellRequest<UpstreamLeaveFeedbackResponse>({
 		apiKeyId: args.apiKeyId,

@@ -614,7 +614,14 @@ export async function matchPoolWithLlm(
 					// real decisions are cached — "verifier returned no entry"
 					// signals a malformed LLM response we shouldn't memoise.
 					if (decisions[i]) {
-						void setCachedMatchDecision(candidate.itemId, c.item.itemId, same ? "match" : "reject", reason);
+						void setCachedMatchDecision({
+							candidateId: candidate.itemId,
+							itemId: c.item.itemId,
+							decision: same ? "match" : "reject",
+							reason,
+							category,
+							modelId: `${verifyProvider.name}/${verifyProvider.model}`,
+						});
 					}
 					return { item: c.item, same, reason, category };
 				});

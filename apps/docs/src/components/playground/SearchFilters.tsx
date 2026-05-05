@@ -103,56 +103,156 @@ const SORT_OPTIONS: ReadonlyArray<SelectOption<SortValue>> = [
 	{ value: "pricePlusShippingLowest", label: "Lowest price" },
 ];
 
-/* ----------------------------- helpers ----------------------------- */
+/* ------------------ wire round-trip (forward + inverse) ------------------ */
 
 /**
- * Compile structured form fields into eBay's filter expression.
- * Conditions / price / buyingOption are pulled out by the api adapter
- * and sent as their own flipagent-native query params; the rest
- * (location, free-shipping, returns, top-rated) ride through the raw
- * `filter` passthrough. eBay docs:
- * https://developer.ebay.com/api-docs/buy/static/ref-buy-browse-filters.html
+ * Validated `/v1/items/search` query — the wire shape stored in
+ * `compute_jobs.params`. Most fields are structured one-to-one; the
+ * `filter` string only carries eBay passthroughs that don't have a
+ * native API field (shipsFrom + refinements like free_shipping).
  */
-export function buildFilterString(q: SearchQuery): string | undefined {
-	const parts: string[] = [];
-	if (q.conditions.length > 0) {
-		const ids = q.conditions.flatMap((k) => CONDITION_CHIPS.find((c) => c.value === k)?.ids ?? []);
-		if (ids.length > 0) parts.push(`conditionIds:{${ids.join("|")}}`);
+export interface WireSearchParams {
+	q?: string;
+	status: "active" | "sold";
+	limit: number;
+	offset?: number;
+	categoryId?: string;
+	gtin?: string;
+	conditionIds?: string[];
+	priceMin?: number;
+	priceMax?: number;
+	buyingOption?: BuyingOptionKey;
+	sort?: "newest" | "ending_soonest" | "price_asc";
+	filter?: string;
+}
+
+const SORT_PAIR: ReadonlyArray<readonly [SortValue, WireSearchParams["sort"]]> = [
+	["newlyListed", "newest"],
+	["endingSoonest", "ending_soonest"],
+	["pricePlusShippingLowest", "price_asc"],
+];
+
+/**
+ * Forward — `SearchQuery` → wire. Single source of truth for "what we
+ * send to /v1/items/search" so all panels agree. Maps:
+ *
+ *   - chip keys (`conditions`, `buyingOption`) → wire enums + id lists
+ *   - dollar strings (`priceMin/Max`) → integer cents
+ *   - sort labels → wire enums
+ *   - eBay-only fields (`shipsFrom`, `refinements`) → residual `filter`
+ *     string (the only field that's still string-encoded; eBay's filter
+ *     spec doesn't have native equivalents at the API surface)
+ */
+export function searchQueryToWire(q: SearchQuery, offset = 0): WireSearchParams {
+	const wire: WireSearchParams = { status: q.mode, limit: q.limit };
+	const trimmedQ = q.q.trim();
+	if (trimmedQ) wire.q = trimmedQ;
+	if (offset > 0) wire.offset = offset;
+	if (q.category) wire.categoryId = q.category.id;
+	if (q.gtin) wire.gtin = q.gtin;
+
+	const conditionIds = q.conditions.flatMap((k) => CONDITION_CHIPS.find((c) => c.value === k)?.ids ?? []);
+	if (conditionIds.length > 0) wire.conditionIds = conditionIds;
+	if (q.priceMin) {
+		const cents = Math.round(Number(q.priceMin) * 100);
+		if (Number.isFinite(cents)) wire.priceMin = cents;
 	}
-	if (q.priceMin || q.priceMax) {
-		const lo = q.priceMin ? Number(q.priceMin).toFixed(2) : "";
-		const hi = q.priceMax ? Number(q.priceMax).toFixed(2) : "";
-		parts.push(`price:[${lo}..${hi}],priceCurrency:USD`);
+	if (q.priceMax) {
+		const cents = Math.round(Number(q.priceMax) * 100);
+		if (Number.isFinite(cents)) wire.priceMax = cents;
 	}
-	if (q.buyingOption === "auction") parts.push("buyingOptions:{AUCTION}");
-	else if (q.buyingOption === "fixed_price") parts.push("buyingOptions:{FIXED_PRICE}");
-	else if (q.buyingOption === "best_offer") parts.push("buyingOptions:{BEST_OFFER}");
-	if (q.shipsFrom === "eu") parts.push("itemLocationRegion:{EUROPEAN_UNION}");
-	else if (q.shipsFrom) parts.push(`itemLocationCountry:${q.shipsFrom.toUpperCase()}`);
-	if (q.refinements.includes("free_shipping")) parts.push("maxDeliveryCost:0");
-	if (q.refinements.includes("returns_accepted")) parts.push("returnsAccepted:true");
-	if (q.refinements.includes("top_rated")) parts.push("topRatedListing:true");
-	return parts.length > 0 ? parts.join(",") : undefined;
+	if (q.buyingOption) wire.buyingOption = q.buyingOption;
+	if (q.mode === "active") {
+		const wireSort = SORT_PAIR.find(([ui]) => ui === q.sort)?.[1];
+		if (wireSort) wire.sort = wireSort;
+	}
+
+	// eBay passthrough — only fields with no native API parameter.
+	const filterParts: string[] = [];
+	if (q.shipsFrom === "eu") filterParts.push("itemLocationRegion:{EUROPEAN_UNION}");
+	else if (q.shipsFrom) filterParts.push(`itemLocationCountry:${q.shipsFrom.toUpperCase()}`);
+	if (q.refinements.includes("free_shipping")) filterParts.push("maxDeliveryCost:0");
+	if (q.refinements.includes("returns_accepted")) filterParts.push("returnsAccepted:true");
+	if (q.refinements.includes("top_rated")) filterParts.push("topRatedListing:true");
+	if (filterParts.length > 0) wire.filter = filterParts.join(",");
+
+	return wire;
 }
 
 /**
- * Build the param object expected by `playgroundApi.search()`. Single
- * source of truth for "translate SearchQuery → API call shape" so both
- * panels produce identical wire-format requests.
+ * Inverse — wire → `SearchQuery`. Mirror of `searchQueryToWire` so
+ * `reopen` can rehydrate the panel from the row's stored params.
+ *
+ * `resolveCategoryName` is an optional sync hook for restoring the
+ * pretty category label (otherwise the chip falls back to showing the
+ * id). `lookupCachedCategoryName` from `useCategoryTree.ts` is the
+ * canonical resolver.
+ *
+ * Tolerant of partial / unknown shapes — anything missing falls back
+ * to `EMPTY_SEARCH_QUERY` defaults rather than throwing.
  */
-export function searchQueryToParams(target: SearchQuery, offset = 0) {
-	const filter = buildFilterString(target);
-	const trimmedQ = target.q.trim();
+export function wireToSearchQuery(
+	input: unknown,
+	resolveCategoryName?: (id: string) => string | undefined,
+): SearchQuery {
+	const w = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+
+	const wireIds = Array.isArray(w.conditionIds) ? (w.conditionIds as string[]) : [];
+	const conditions: ConditionKey[] = [];
+	for (const chip of CONDITION_CHIPS) {
+		if (chip.ids.some((id) => wireIds.includes(id))) conditions.push(chip.value);
+	}
+
+	const buyingOption =
+		typeof w.buyingOption === "string" && ["auction", "fixed_price", "best_offer"].includes(w.buyingOption)
+			? (w.buyingOption as BuyingOptionKey)
+			: "";
+
+	const sort: SortValue =
+		typeof w.sort === "string" ? (SORT_PAIR.find(([, wire]) => wire === w.sort)?.[0] ?? "") : "";
+
+	let shipsFrom: ShipsFromKey | "" = "";
+	const refinements: RefinementKey[] = [];
+	const filterStr = typeof w.filter === "string" ? w.filter : "";
+	for (const raw of filterStr.split(",")) {
+		const clause = raw.trim();
+		if (!clause) continue;
+		const reg = clause.match(/^itemLocationRegion:\{([^}]+)\}$/);
+		if (reg && reg[1].trim().toUpperCase() === "EUROPEAN_UNION") shipsFrom = "eu";
+		const cc = clause.match(/^itemLocationCountry:([A-Z]{2})$/);
+		if (cc) {
+			const lower = cc[1].toLowerCase() as ShipsFromKey;
+			if (SHIPS_FROM_CHIPS.some((x) => x.value === lower)) shipsFrom = lower;
+		}
+		if (clause === "maxDeliveryCost:0") refinements.push("free_shipping");
+		else if (clause === "returnsAccepted:true") refinements.push("returns_accepted");
+		else if (clause === "topRatedListing:true") refinements.push("top_rated");
+	}
+
+	const categoryId = typeof w.categoryId === "string" ? w.categoryId : "";
+	const category = categoryId ? { id: categoryId, name: resolveCategoryName?.(categoryId) ?? categoryId } : null;
+
+	const limit = typeof w.limit === "number" && w.limit > 0 ? w.limit : 25;
+
 	return {
-		...(trimmedQ ? { q: trimmedQ } : {}),
-		mode: target.mode,
-		limit: target.limit,
-		...(offset > 0 ? { offset } : {}),
-		...(filter ? { filter } : {}),
-		...(target.mode === "active" && target.sort ? { sort: target.sort } : {}),
-		...(target.category ? { category_ids: target.category.id } : {}),
-		...(target.gtin ? { gtin: target.gtin } : {}),
+		...EMPTY_SEARCH_QUERY,
+		q: typeof w.q === "string" ? w.q : "",
+		mode: w.status === "sold" ? "sold" : "active",
+		category,
+		buyingOption,
+		priceMin: typeof w.priceMin === "number" ? centsToDollarString(w.priceMin) : "",
+		priceMax: typeof w.priceMax === "number" ? centsToDollarString(w.priceMax) : "",
+		conditions,
+		shipsFrom,
+		gtin: typeof w.gtin === "string" ? w.gtin : "",
+		refinements,
+		sort,
+		limit,
 	};
+}
+
+function centsToDollarString(cents: number): string {
+	return (cents / 100).toFixed(2).replace(/\.00$/, "");
 }
 
 /** Human-readable summary for recent-runs / breadcrumbs. */

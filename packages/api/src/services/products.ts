@@ -22,7 +22,11 @@ import { config, isEbayAppConfigured } from "../config.js";
 import { appRequest } from "./ebay/rest/app-client.js";
 import { sellRequest } from "./ebay/rest/user-client.js";
 import { scrapeCatalogProduct } from "./ebay/scrape/catalog.js";
+import { getFreshProduct, recordProductObservation } from "./observations.js";
 import type { FlipagentResult } from "./shared/result.js";
+
+/** Catalog products are stable; revalidate every 24h. */
+const PRODUCT_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Real eBay Catalog response shape (verified live 2026-05-03 against
@@ -127,12 +131,28 @@ export async function getProductByEpid(
 	marketplace?: string,
 	apiKeyId?: string,
 ): Promise<FlipagentResult<Product> | null> {
+	// Lake-as-cache: latest fresh `product_observations` row short-circuits
+	// upstream. Same row that ML iteration reads from — single source of truth.
+	const cached = await getFreshProduct(epid, PRODUCT_TTL_MS, marketplace ?? "ebay");
+	if (cached) {
+		return {
+			body: cached.body,
+			source: cached.source as "rest" | "scrape",
+			fromCache: true,
+			cachedAt: cached.observedAt,
+		};
+	}
+
 	const restRes = await fetchCatalogRest(
 		`/commerce/catalog/v1_beta/product/${encodeURIComponent(epid)}`,
 		marketplace,
 		apiKeyId,
 	);
-	if (restRes) return { body: ebayProductToProduct(restRes), source: "rest", fromCache: false };
+	if (restRes) {
+		const body = ebayProductToProduct(restRes);
+		void recordProductObservation(body, "rest", marketplace);
+		return { body, source: "rest", fromCache: false };
+	}
 
 	const scraped = await scrapeCatalogProduct(epid).catch(() => null);
 	if (!scraped) return null;
@@ -159,6 +179,7 @@ export async function getProductByEpid(
 		...(Object.keys(aspects).length ? { aspects } : {}),
 		...(scraped.primaryCategoryId ? { category: { id: scraped.primaryCategoryId } } : {}),
 	};
+	void recordProductObservation(body, "scrape", marketplace ?? "ebay");
 	return { body, source: "scrape", fromCache: false };
 }
 

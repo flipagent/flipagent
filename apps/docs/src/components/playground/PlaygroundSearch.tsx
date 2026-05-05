@@ -31,8 +31,10 @@ import {
 	EMPTY_SEARCH_QUERY,
 	SearchFilters,
 	type SearchQuery,
-	searchQueryToParams,
+	searchQueryToWire,
+	wireToSearchQuery,
 } from "./SearchFilters";
+import { lookupCachedCategoryName } from "./useCategoryTree";
 import type { BrowseSearchResponse, ItemSummary, Step } from "./types";
 
 export function PlaygroundSearch<TabId extends string = "search" | "sourcing" | "evaluate">({
@@ -104,7 +106,7 @@ export function PlaygroundSearch<TabId extends string = "search" | "sourcing" | 
 			body: offset > 0 ? prev.body : undefined,
 		}));
 		const stepKey = "search";
-		const params = searchQueryToParams(target, offset);
+		const params = searchQueryToWire(target, offset);
 		const plan = playgroundApi.search(params);
 		setSteps([
 			{
@@ -200,8 +202,14 @@ export function PlaygroundSearch<TabId extends string = "search" | "sourcing" | 
 	}
 
 	function reopen(rec: RecentRun<SearchQuery>) {
-		setQuery(rec.query);
-		void execute(rec.query);
+		// `rec.query` is the wire shape stored in `compute_jobs.params`.
+		// Restore the panel state via the inverse of `searchQueryToWire`,
+		// resolving the category's pretty name from the localStorage tree
+		// cache (falls back to id when not cached — picker re-resolves on
+		// open).
+		const query = wireToSearchQuery(rec.query, lookupCachedCategoryName);
+		setQuery(query);
+		void execute(query);
 	}
 
 	// Reseller-grade specificity: a real model reference (not "watch"), a

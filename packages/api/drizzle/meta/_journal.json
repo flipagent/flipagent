@@ -281,6 +281,34 @@
       "when": 1777927045825,
       "tag": "0039_agent_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1779696000000,
+      "tag": "0040_market_data_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1779696000001,
+      "tag": "0041_data_lake",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1779696000002,
+      "tag": "0042_listing_obs_raw_response",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1779696000003,
+      "tag": "0043_compute_job_search_kind",
+      "breakpoints": true
     }
   ]
 }

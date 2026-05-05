@@ -42,22 +42,56 @@ export async function evaluateListingExecute(config: Config, args: Record<string
 /* ----------------- flipagent_get_evaluate_job (polling) ----------------- */
 
 /**
- * Trim the job's terminal result down to the digest before forwarding
- * to the LLM. The api still ships heavy back-compat fields
- * (`soldPool`, `rejectedSoldPool`, …) for the playground; agents read
- * the digests + drill into pools via `flipagent_get_evaluation_pool`
- * when needed.
+ * Hybrid trim: keep the **matched** sold/active comp pools (lean per-item
+ * essentials only) so an inline panel can render the histogram + comp
+ * lists immediately, while dropping the **rejected** pools + reason
+ * narratives — those are large (sometimes 100+ rows of LLM filter
+ * narration) and rarely needed. Agents drill into rejected via
+ * `flipagent_get_evaluation_pool` when explicitly asked.
+ *
+ * Per-item we keep only what the comp-list UI renders: id, title,
+ * price/sold-price/bid-price, condition, image, web url, sold/end
+ * date, buying options, bid count. Heavy fields (item specifics,
+ * full seller blocks, location, shipping, image carousels) are
+ * dropped — rows still link out via `itemWebUrl` for the user.
  */
+function trimPoolItem(it: Record<string, unknown>): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	if (it.itemId != null) out.itemId = it.itemId;
+	if (it.title != null) out.title = it.title;
+	if (it.price != null) out.price = it.price;
+	if (it.lastSoldPrice != null) out.lastSoldPrice = it.lastSoldPrice;
+	if (it.currentBidPrice != null) out.currentBidPrice = it.currentBidPrice;
+	if (typeof it.bidCount === "number") out.bidCount = it.bidCount;
+	if (it.condition != null) out.condition = it.condition;
+	if (it.conditionId != null) out.conditionId = it.conditionId;
+	if (it.image != null) out.image = it.image;
+	if (it.itemWebUrl != null) out.itemWebUrl = it.itemWebUrl;
+	if (it.itemEndDate != null) out.itemEndDate = it.itemEndDate;
+	if (it.lastSoldDate != null) out.lastSoldDate = it.lastSoldDate;
+	if (Array.isArray(it.buyingOptions)) out.buyingOptions = it.buyingOptions;
+	return out;
+}
+
+function trimPoolList(arr: unknown): unknown[] {
+	if (!Array.isArray(arr)) return [];
+	return arr.map((it) => (it && typeof it === "object" ? trimPoolItem(it as Record<string, unknown>) : it));
+}
+
 function trimToDigest(full: Record<string, unknown>): Record<string, unknown> {
 	const {
-		soldPool: _soldPool,
-		activePool: _activePool,
+		soldPool,
+		activePool,
 		rejectedSoldPool: _rejectedSoldPool,
 		rejectedActivePool: _rejectedActivePool,
 		rejectionReasons: _rejectionReasons,
 		...rest
 	} = full;
-	return rest;
+	return {
+		...rest,
+		...(Array.isArray(soldPool) ? { soldPool: trimPoolList(soldPool) } : {}),
+		...(Array.isArray(activePool) ? { activePool: trimPoolList(activePool) } : {}),
+	};
 }
 
 export const evaluateJobInput = Type.Object(
@@ -71,7 +105,7 @@ export const evaluateJobInput = Type.Object(
 );
 
 export const evaluateJobDescription =
-	'Poll an evaluation job until it reaches a terminal state. Calls GET /v1/evaluate/jobs/{id}. **When to use** — after `flipagent_evaluate_item` returned `{ jobId, status: "queued", poll_with: "flipagent_get_evaluate_job" }`, call this every ~5–10s until `status` is in `terminal_states`. **Inputs** — `jobId` (UUID from `flipagent_evaluate_item`). **Output (still running)** — `{ jobId, status: "queued" | "running", queuedAt, startedAt?, poll_with: "flipagent_get_evaluate_job" }`. Keep polling. **Output (completed)** — `{ jobId, status: "completed", queuedAt, completedAt, outcome: <digest> }`. The digest is `{ item, evaluation, market, sold, active, filter, returns, meta }`. `evaluation` is the headline: `{ rating: "buy" | "hold" | "skip", reason, expectedNetCents, confidence, bidCeilingCents, safeBidBreakdown, netRangeCents, recommendedExit, signals[] }`. `sold`/`active` digests carry distribution stats (`priceCents.{p10..p90}`, `priceHistogram`, `conditionMix`, `recentTrend`, `lastSale*` / `bestPriceCents`, `sellerConcentration`). `filter.rejectionsByCategory` counts rejections per category. **How to present to user (when completed)** — speak in pattern-level language using the stats; do NOT quote individual listings. Surface `evaluation.rating` + `reason` + `bidCeilingCents`, cite `sold.priceCents.p50` + IQR, `salesPerDay`, `recentTrend.direction`, and `filter.rejectionsByCategory` so the user can audit how the comp set was filtered. The default digest answers ~95% of "why?" questions on its own. For specific listings call `flipagent_get_evaluation_pool({ itemId })`. **Output (failed)** — `{ jobId, status: "failed", errorCode, errorMessage }`. Common: `variation_required` (multi-SKU listing — re-call `flipagent_evaluate_item` with `v1|<n>|<variation>`), `too_few_sold` (under N matches; try lower confidence or different `lookbackDays`), `item_not_found`. **Output (cancelled)** — `{ jobId, status: "cancelled" }`. Rare. **Cost** — no usage event per poll. **Prereqs** — `FLIPAGENT_API_KEY`. Job lives 7 days. **Example** — `{ jobId: "abcd1234-..." }`.';
+	'Poll an evaluation job until it reaches a terminal state. Calls GET /v1/evaluate/jobs/{id}. **When to use** — after `flipagent_evaluate_item` returned `{ jobId, status: "queued", poll_with: "flipagent_get_evaluate_job" }`, call this every ~5–10s until `status` is in `terminal_states`. **Inputs** — `jobId` (UUID from `flipagent_evaluate_item`). **Output (still running)** — `{ jobId, status: "queued" | "running", queuedAt, startedAt?, poll_with: "flipagent_get_evaluate_job" }`. Keep polling. **Output (completed)** — `{ jobId, status: "completed", queuedAt, completedAt, outcome: <digest> }`. The digest is `{ item, evaluation, market, sold, active, filter, returns, meta, soldPool, activePool }`. `evaluation` is the headline: `{ rating: "buy" | "hold" | "skip", reason, expectedNetCents, confidence, bidCeilingCents, safeBidBreakdown, netRangeCents, recommendedExit, signals[] }`. `sold`/`active` digests carry distribution stats (`priceCents.{p10..p90}`, `priceHistogram`, `conditionMix`, `recentTrend`, `lastSale*` / `bestPriceCents`, `sellerConcentration`). `filter.rejectionsByCategory` counts rejections per category. `soldPool` / `activePool` carry the **matched** comps used to score the listing — lean rows: `{ itemId, title, price?, lastSoldPrice?, currentBidPrice?, bidCount?, condition?, image?, itemWebUrl, itemEndDate? | lastSoldDate?, buyingOptions? }`. **How to present to user (when completed)** — speak in pattern-level language using the stats; do NOT quote individual listings unless the user asks. Surface `evaluation.rating` + `reason` + `bidCeilingCents`, cite `sold.priceCents.p50` + IQR, `salesPerDay`, `recentTrend.direction`, and `filter.rejectionsByCategory` so the user can audit how the comp set was filtered. The digest answers ~95% of "why?" questions on its own. **Rejected pools** (filtered-out comps + per-item rejection reasons) are NOT included to keep context lean — call `flipagent_get_evaluation_pool({ itemId })` only when the user explicitly asks "show me what was rejected" / "what got filtered out". **Output (failed)** — `{ jobId, status: "failed", errorCode, errorMessage }`. Common: `variation_required` (multi-SKU listing — re-call `flipagent_evaluate_item` with `v1|<n>|<variation>`), `too_few_sold` (under N matches; try lower confidence or different `lookbackDays`), `item_not_found`. **Output (cancelled)** — `{ jobId, status: "cancelled" }`. Rare. **Cost** — no usage event per poll. **Prereqs** — `FLIPAGENT_API_KEY`. Job lives 7 days. **Example** — `{ jobId: "abcd1234-..." }`.';
 
 export async function evaluateJobExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const jobId = String(args.jobId);

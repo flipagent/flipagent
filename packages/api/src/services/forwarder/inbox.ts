@@ -40,6 +40,7 @@ export interface RefreshArgs {
 }
 
 export async function refreshForwarder(args: RefreshArgs): Promise<ForwarderJobResponse> {
+	await assertForwarderSignedIn(args.apiKeyId, args.provider);
 	const order = await createBridgeJob({
 		apiKeyId: args.apiKeyId,
 		userId: args.userId,
@@ -76,6 +77,7 @@ export interface PackagePhotosArgs {
  * polls `GET /v1/forwarder/{provider}/jobs/{jobId}` until terminal.
  */
 export async function getPackagePhotos(args: PackagePhotosArgs): Promise<ForwarderJobResponse> {
+	await assertForwarderSignedIn(args.apiKeyId, args.provider);
 	const order = await createBridgeJob({
 		apiKeyId: args.apiKeyId,
 		userId: args.userId,
@@ -113,6 +115,7 @@ export interface DispatchArgs extends PackagePhotosArgs {
  * fulfillment) and fall back to the package id alone when not.
  */
 export async function dispatchPackage(args: DispatchArgs): Promise<ForwarderJobResponse> {
+	await assertForwarderSignedIn(args.apiKeyId, args.provider);
 	const idem = args.request.ebayOrderId
 		? `dispatch:${args.provider}:${args.packageId}:${args.request.ebayOrderId}`
 		: `dispatch:${args.provider}:${args.packageId}`;
@@ -206,17 +209,28 @@ export class ForwarderSignedOutError extends Error {
 async function assertForwarderSignedIn(apiKeyId: string, provider: ForwarderProvider): Promise<void> {
 	if (provider !== "planetexpress") return; // others not yet wired
 	const rows = await db
-		.select({ peLoggedIn: bridgeTokens.peLoggedIn })
+		.select({ peLoggedIn: bridgeTokens.peLoggedIn, peVerifiedAt: bridgeTokens.peVerifiedAt })
 		.from(bridgeTokens)
 		.where(and(eq(bridgeTokens.apiKeyId, apiKeyId), isNull(bridgeTokens.revokedAt)))
 		.orderBy(desc(bridgeTokens.lastSeenAt))
 		.limit(1);
-	// Two distinct failure modes:
+	// Three failure modes:
 	//   - no row at all → extension never paired (one-time setup needed)
-	//   - row exists but pe_logged_in=false → paired but session expired
+	//   - row exists, pe_verified_at IS NULL → never visited PE yet,
+	//     can't tell signed-in vs signed-out from the bridge state alone.
+	//     Let the job through; the content script's URL probe on the
+	//     actual tab open is the source of truth and will fail cleanly
+	//     with `planetexpress_signed_out` if the user lands on /login.
+	//     Pre-emptive 412 here would block the very first refresh after
+	//     pairing — the call that's typically used to check whether PE
+	//     even works.
+	//   - row exists, pe_verified_at NOT NULL, pe_logged_in=false →
+	//     we've affirmatively seen them signed out. 412 with a clear
+	//     forwarder_signin next_action.
 	// Each gets a different next_action so the agent gives the right nudge.
 	if (rows.length === 0) throw new ExtensionNotPairedError();
-	if (!rows[0]?.peLoggedIn) throw new ForwarderSignedOutError(provider);
+	const row = rows[0];
+	if (row?.peVerifiedAt && !row.peLoggedIn) throw new ForwarderSignedOutError(provider);
 }
 
 export async function getForwarderJob(

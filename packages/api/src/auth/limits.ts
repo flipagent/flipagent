@@ -289,7 +289,7 @@ export function agentTurnCreditsFor(model: string | null | undefined): number {
  * surface the actual `credits_charged` after the response. Prevents a
  * 30-credit-remaining caller from stealth-executing an 80-credit evaluate.
  */
-export function worstCaseCreditsForEndpoint(endpoint: string): number {
+export function worstCaseCreditsForEndpoint(endpoint: string, method?: string): number {
 	if (endpoint.startsWith("/v1/evaluate/featured")) return 0;
 	if (endpoint.startsWith("/v1/evaluate/scopes")) return 0;
 	// Job polling: GET `/v1/evaluate/jobs/<id>` and `/v1/evaluate/<id>/pool`
@@ -298,6 +298,9 @@ export function worstCaseCreditsForEndpoint(endpoint: string): number {
 	// legitimate poll. Stay free for read paths; the create POST
 	// (`/v1/evaluate/jobs`, no trailing slash) still hits the evaluate cost.
 	if (endpoint.startsWith("/v1/evaluate/jobs/")) return 0;
+	// `GET /v1/jobs*` — cross-surface activity history. Pure reads off
+	// `compute_jobs`; never charged.
+	if (endpoint.startsWith("/v1/jobs") && method === "GET") return 0;
 	if (endpoint.includes("/pool")) return 0;
 	if (endpoint.startsWith("/v1/evaluate")) return 80;
 	if (endpoint.startsWith("/v1/agent/chat")) {
@@ -326,15 +329,17 @@ export function worstCaseCreditsForEndpoint(endpoint: string): number {
  */
 export function creditsForCall(args: {
 	endpoint: string;
+	method?: string;
 	source: SourceKindForBilling;
 	agentModel?: string | null;
 }): number {
-	const { endpoint, agentModel } = args;
+	const { endpoint, method, agentModel } = args;
 	if (endpoint.startsWith("/v1/evaluate/featured")) return 0;
 	if (endpoint.startsWith("/v1/evaluate/scopes")) return 0;
 	// Same exemptions as `worstCaseCreditsForEndpoint`: polling + pool
-	// drill-down are reads, not new compute.
+	// drill-down + history list are reads, not new compute.
 	if (endpoint.startsWith("/v1/evaluate/jobs/")) return 0;
+	if (endpoint.startsWith("/v1/jobs") && method === "GET") return 0;
 	if (endpoint.includes("/pool")) return 0;
 	if (endpoint.startsWith("/v1/evaluate")) return 80;
 	if (endpoint.startsWith("/v1/agent/chat")) {

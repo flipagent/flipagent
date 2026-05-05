@@ -48,6 +48,33 @@ interface EvaluateQuery {
 	recoveryDays: number;
 }
 
+/**
+ * Inverse of the inline encoding in `run()` — rebuilds an
+ * `EvaluateQuery` from the validated `EvaluateRequest` wire shape
+ * stored in `compute_jobs.params`. Used by `reopen` so a row clicked
+ * from the Recent strip rehydrates the panel inputs unchanged.
+ *
+ *   wire `{ itemId, lookbackDays, soldLimit, opts: { minNetCents, maxDaysToSell } }`
+ *   ↓
+ *   panel `{ input, lookbackDays, sampleLimit, minProfit (dollars), recoveryDays }`
+ *
+ * `outboundShippingCents` is panel state outside of `EvaluateQuery`
+ * (the Recent strip never tracked it); the panel keeps whatever it
+ * already had on screen.
+ */
+function wireToEvaluateQuery(input: unknown): EvaluateQuery {
+	const w = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+	const opts = (w.opts && typeof w.opts === "object" ? w.opts : {}) as Record<string, unknown>;
+	const minNetCents = typeof opts.minNetCents === "number" ? opts.minNetCents : 0;
+	return {
+		input: typeof w.itemId === "string" ? w.itemId : "",
+		lookbackDays: typeof w.lookbackDays === "number" ? w.lookbackDays : 90,
+		sampleLimit: typeof w.soldLimit === "number" ? w.soldLimit : 50,
+		minProfit: Math.round(minNetCents / 100),
+		recoveryDays: typeof opts.maxDaysToSell === "number" ? (opts.maxDaysToSell as number) : 0,
+	};
+}
+
 // eBay's Marketplace Insights / sold-listings page caps at ~90 days.
 // Going further returns stale or empty data, so we don't expose it.
 const LOOKBACK_OPTIONS: ReadonlyArray<SelectOption<string>> = [
@@ -446,18 +473,21 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 	 * params, matching the pre-queue UX.
 	 */
 	function reopen(rec: RecentRun<EvaluateQuery>) {
-		setInput(rec.query.input);
-		setLookbackDays(String(rec.query.lookbackDays ?? 90));
-		setSampleLimit(String(rec.query.sampleLimit ?? 50));
-		setMinProfit(String(rec.query.minProfit ?? 0));
-		setRecoveryDays(String(rec.query.recoveryDays ?? 0));
+		// `rec.query` is the wire `EvaluateRequest` stored in
+		// `compute_jobs.params`. Restore the panel inputs via the inverse.
+		const q = wireToEvaluateQuery(rec.query);
+		setInput(q.input);
+		setLookbackDays(String(q.lookbackDays));
+		setSampleLimit(String(q.sampleLimit));
+		setMinProfit(String(q.minProfit));
+		setRecoveryDays(String(q.recoveryDays));
 
 		if (!rec.jobId) {
-			void run(rec.query.input, {
-				lookbackDays: rec.query.lookbackDays ?? 90,
-				sampleLimit: rec.query.sampleLimit ?? 50,
-				minProfit: rec.query.minProfit ?? 0,
-				recoveryDays: rec.query.recoveryDays ?? 0,
+			void run(q.input, {
+				lookbackDays: q.lookbackDays,
+				sampleLimit: q.sampleLimit,
+				minProfit: q.minProfit,
+				recoveryDays: q.recoveryDays,
 			});
 			return;
 		}

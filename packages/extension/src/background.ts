@@ -564,8 +564,28 @@ function formatCents(cents: number, currency = "USD"): string {
 	return `${symbol}${(cents / 100).toFixed(2)}`;
 }
 
+/**
+ * Should this job interrupt the user? Money-commit tasks (buy, bid,
+ * PE outbound dispatch) yes — the bridge stalls until the user clicks.
+ * Read-only scrapes (PE inbox refresh, photos, address) finish on
+ * their own; pinging the user every time would be noise.
+ */
+function needsAttention(job: BridgePollJob): boolean {
+	const task = (job.args.metadata as { task?: string } | null)?.task;
+	if (task === "planetexpress_package_photos") return false;
+	if (task === "planetexpress_get_address") return false;
+	if (job.args.marketplace === "planetexpress" && (!task || task === "pull_packages")) return false;
+	return true;
+}
+
 function copyForJob(job: BridgePollJob): AttentionCopy {
-	const meta = (job.args.metadata ?? {}) as { task?: string; maxAmountCents?: number; currency?: string };
+	const meta = (job.args.metadata ?? {}) as {
+		task?: string;
+		maxAmountCents?: number;
+		currency?: string;
+		packageId?: string;
+		request?: { toAddress?: { name?: string; city?: string; region?: string }; service?: string };
+	};
 	const itemId = job.args.itemId ?? "";
 	if (meta.task === "ebay_place_bid") {
 		const max = meta.maxAmountCents != null ? ` (max ${formatCents(meta.maxAmountCents, meta.currency)})` : "";
@@ -575,9 +595,31 @@ function copyForJob(job: BridgePollJob): AttentionCopy {
 		};
 	}
 	if (job.args.marketplace === "planetexpress") {
+		const pkg = meta.packageId ?? itemId;
+		if (meta.task === "planetexpress_package_dispatch") {
+			const to = meta.request?.toAddress;
+			const dest = to ? `${to.name ?? ""} · ${to.city ?? ""}${to.region ? `, ${to.region}` : ""}`.trim() : "buyer";
+			const svc = meta.request?.service ? ` via ${meta.request.service}` : "";
+			return {
+				title: "flipagent · ship package",
+				body: `Package ${pkg} → ${dest}${svc}. Review the cost in the open Planet Express tab and click Send Mailout if right.`,
+			};
+		}
+		if (meta.task === "planetexpress_package_photos") {
+			return {
+				title: "flipagent · reading PE photos",
+				body: `Capturing intake photos for package ${pkg}. No click needed.`,
+			};
+		}
+		if (meta.task === "planetexpress_get_address") {
+			return {
+				title: "flipagent · reading PE warehouse address",
+				body: "Capturing your assigned suite + address from the dashboard. No click needed.",
+			};
+		}
 		return {
-			title: "flipagent · Planet Express action",
-			body: "Action required in the open Planet Express tab.",
+			title: "flipagent · refreshing PE inbox",
+			body: "Reading packages from your Planet Express inbox. No click needed.",
 		};
 	}
 	const cap = job.args.maxPriceCents != null ? ` (cap ${formatCents(job.args.maxPriceCents)})` : "";
@@ -672,12 +714,15 @@ async function dispatchJob(cfg: ExtensionConfig, job: BridgePollJob): Promise<vo
 	}
 	const tab = await ensureMarketplaceTab(job.args.marketplace, url);
 	if (tab.id === undefined) throw new Error("could not open marketplace tab");
-	// Bridge transport requires a human click. Without an OS-level
-	// signal the marketplace tab can sit unnoticed behind the agent's
-	// terminal / IDE until the content-script observer times out
-	// (`bid_observer_timeout` etc.). Fire a system notification + focus
-	// Chrome + badge the action icon so the user can't miss it.
-	await notifyAttention(job, tab).catch((err) => console.warn("[flipagent] notifyAttention failed:", err));
+	// Bridge transport requires a human click for money-commit tasks.
+	// Read-only scrapes (PE refresh / photos / address) finish in a few
+	// seconds without user input, so skip the OS-level dock-bounce +
+	// system notification + badge for those — otherwise every routine
+	// inventory pull pings the user. Buy + bid + dispatch keep the
+	// notification because they all need a confirm click.
+	if (needsAttention(job)) {
+		await notifyAttention(job, tab).catch((err) => console.warn("[flipagent] notifyAttention failed:", err));
+	}
 	// Content script's observer runs on document_idle and reads
 	// `flipagent_in_flight` from storage to know what to do. Progress
 	// comes back via onOrderProgress; clearAttention runs there on terminal.
@@ -690,9 +735,22 @@ function itemUrlFor(job: BridgePollJob): string | null {
 	}
 	if (m === "planetexpress") {
 		// Per-task landing page. Address scrape lives on the dashboard
-		// root (`FREE MAILBOX` panel); package inbox is its own page.
+		// root (`FREE MAILBOX` panel); inbox refresh hits packet list;
+		// per-package photos require the detail URL (numeric internal id);
+		// dispatch starts at the inbox so the user can select packets,
+		// then the multi-step content-script flow advances to mailout-mps.
 		const task = (job.args.metadata as { task?: string } | null)?.task;
 		if (task === "planetexpress_get_address") return "https://app.planetexpress.com/client/";
+		if (task === "planetexpress_package_photos") {
+			const id = job.args.itemId;
+			if (id && /^\d+$/.test(id)) {
+				return `https://app.planetexpress.com/client/packet/detail/${encodeURIComponent(id)}`;
+			}
+			// Non-numeric id (legacy / mismatched inventory) — fall back
+			// to the inbox so the user can navigate manually; the photos
+			// handler will surface a clear "id_not_numeric" failure.
+			return "https://app.planetexpress.com/client/packet/";
+		}
 		return "https://app.planetexpress.com/client/packet/";
 	}
 	return null;

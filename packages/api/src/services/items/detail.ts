@@ -14,18 +14,15 @@ import { config, isEbayAppConfigured } from "../../config.js";
 import type { ApiKey } from "../../db/schema.js";
 import { toLegacyId } from "../../utils/item-id.js";
 import { scrapeItemDetail } from "../ebay/scrape/client.js";
-import { recordDetailObservation } from "../observations.js";
-import { hashQuery } from "../shared/cache.js";
+import { getFreshDetailObservation, recordDetailObservation } from "../observations.js";
 import type { FlipagentResult } from "../shared/result.js";
 import { selectTransport, TransportUnavailableError } from "../shared/transport.js";
-import { timeoutMsForSource, withCache } from "../shared/with-cache.js";
 import { bridgeItemDetail } from "./bridge.js";
 import { rethrowAsListingsError } from "./bridge-status.js";
 import { ListingsError } from "./errors.js";
 import { fetchItemDetailRest } from "./rest.js";
 import type { ListingsSource } from "./search.js";
 
-export const DETAIL_PATH = "/buy/browse/v1/item";
 export const DETAIL_TTL_SEC = 60 * 60 * 4;
 
 export interface DetailContext {
@@ -51,6 +48,13 @@ export type DetailResult = FlipagentResult<ItemDetail>;
  * Fetch detail for a numeric legacy itemId via the configured source.
  * Returns null when the listing wasn't found (scrape returned null,
  * etc.). Throws `ListingsError` on transport failure.
+ *
+ * Cache layer = `listing_observations.raw_response` ("data lake = cache"
+ * unification). Hits short-circuit transport selection + upstream;
+ * misses dispatch to the chosen transport and write the fresh row.
+ * `variationId` and `source` are folded into the lookup so different
+ * SKUs / different transports don't poison each other's cache (REST
+ * has fields scrape doesn't and vice versa).
  */
 export async function getItemDetail(legacyId: string, ctx: DetailContext = {}): Promise<DetailResult | null> {
 	let source: ListingsSource;
@@ -68,57 +72,32 @@ export async function getItemDetail(legacyId: string, ctx: DetailContext = {}): 
 		}
 		throw err;
 	}
-	// `variationId` factors into the cache key so different SKUs of the
-	// same parent listing get distinct entries — otherwise the first
-	// variation requested would poison the cache for every subsequent
-	// variation lookup of that legacy id. `source` is folded in too:
-	// `withCache` keys on path+queryHash only (the `scope` arg is for
-	// telemetry, not key composition), so without this, flipping
-	// `EBAY_DETAIL_SOURCE` between scrape/REST/bridge serves a stale
-	// entry from whichever source filled the cache first — which in
-	// turn loses fields each transport carries differently (REST has
-	// `qualifiedPrograms` / `authenticityGuarantee`, scrape has
-	// `variations`, etc.).
-	const queryHash = hashQuery({
-		itemId: legacyId,
-		...(ctx.variationId ? { variationId: ctx.variationId } : {}),
+
+	// Lake-as-cache: try the latest fresh `raw_response` row first.
+	const fullItemId = `v1|${legacyId}|${ctx.variationId ?? "0"}`;
+	const cached = await getFreshDetailObservation(legacyId, DETAIL_TTL_SEC * 1000, {
+		itemId: fullItemId,
 		source,
+		marketplace: ctx.marketplace,
 	});
-
-	// `withCache` wraps cache-or-fetch; the fetcher returns null when
-	// the listing 404s upstream so we surface that as a missing item.
-	let missing = false;
-	const result = await withCache(
-		{
-			scope: `listings:detail:${source}`,
-			ttlSec: DETAIL_TTL_SEC,
-			path: DETAIL_PATH,
-			queryHash,
-			timeoutMs: timeoutMsForSource(source),
-		},
-		async () => {
-			const body = await dispatch(legacyId, { ...ctx, source });
-			if (!body) {
-				missing = true;
-				// Throw a sentinel so withCache skips the cache write; the
-				// catch below converts it to a null return.
-				throw new MissingDetail();
-			}
-			void recordDetailObservation(body, { queryHash });
-			return { body, source };
-		},
-	).catch((err) => {
-		if (err instanceof MissingDetail) return null;
-		throw err;
-	});
-	if (missing || !result) return null;
-	return result;
-}
-
-class MissingDetail extends Error {
-	constructor() {
-		super("missing_detail");
+	if (cached) {
+		return {
+			body: cached.body,
+			source: cached.source as ListingsSource,
+			fromCache: true,
+			cachedAt: cached.observedAt,
+		};
 	}
+
+	// Miss → upstream dispatch + write observation row.
+	const body = await dispatch(legacyId, { ...ctx, source });
+	if (!body) return null;
+	void recordDetailObservation(body, {
+		rawResponse: body as unknown as object,
+		source,
+		...(ctx.marketplace ? { marketplace: ctx.marketplace } : {}),
+	});
+	return { body, source, fromCache: false };
 }
 
 /**

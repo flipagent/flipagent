@@ -30,6 +30,40 @@ interface IframeError {
 	message: string;
 	code: string | null;
 	upgradeUrl: string | null;
+	/** Structured payload from typed pipeline errors. `variation_required`
+	 * carries `{ legacyId, variations[] }` so we render a SKU picker. */
+	details?: unknown;
+}
+
+interface EvaluateVariation {
+	variationId: string;
+	priceCents?: number;
+	currency?: string;
+	aspects?: ReadonlyArray<{ name?: string; value?: string }>;
+}
+
+function readVariationDetails(
+	details: unknown,
+): { legacyId: string; variations: EvaluateVariation[] } | null {
+	if (!details || typeof details !== "object") return null;
+	const d = details as { legacyId?: unknown; variations?: unknown };
+	if (typeof d.legacyId !== "string" || !Array.isArray(d.variations) || d.variations.length === 0) return null;
+	return { legacyId: d.legacyId, variations: d.variations as EvaluateVariation[] };
+}
+
+function variationLabel(v: EvaluateVariation): string {
+	const parts = (v.aspects ?? [])
+		.map((a) => a.value)
+		.filter((s): s is string => typeof s === "string" && s.length > 0);
+	return parts.length > 0 ? parts.join(" · ") : v.variationId;
+}
+
+function formatVariationPrice(v: EvaluateVariation): string | null {
+	if (typeof v.priceCents !== "number") return null;
+	const dollars = v.priceCents / 100;
+	const formatted = dollars.toFixed(dollars % 1 === 0 ? 0 : 2);
+	const symbol = v.currency === "USD" || !v.currency ? "$" : `${v.currency} `;
+	return `${symbol}${formatted}`;
 }
 
 interface IncomingMessage {
@@ -84,11 +118,56 @@ export default function ExtensionResult() {
 		);
 	}
 
+	const variation = state.error?.code === "variation_required" ? readVariationDetails(state.error.details) : null;
+
 	return (
 		<>
 			{state.error && <ErrorBanner error={state.error} />}
+			{variation && <VariationPicker legacyId={variation.legacyId} variations={variation.variations} />}
 			<EvaluateResult outcome={state.outcome} steps={state.steps} pending={state.pending} hideHero={false} />
 		</>
+	);
+}
+
+/**
+ * SKU picker for `variation_required` failures. The user pasted (or
+ * navigated to) a multi-SKU parent listing; eBay default-rendered one
+ * variation server-side, which the api refuses to evaluate (it'd score
+ * the wrong listing-side price). Each chip opens the canonical
+ * `/itm/<legacy>?var=<id>` URL in a new tab — the extension's content
+ * script picks that page up and the chip there auto-evaluates the
+ * specific SKU.
+ */
+function VariationPicker({
+	legacyId,
+	variations,
+}: {
+	legacyId: string;
+	variations: ReadonlyArray<EvaluateVariation>;
+}) {
+	function urlFor(id: string): string {
+		return `https://www.ebay.com/itm/${legacyId}?var=${id}`;
+	}
+	return (
+		<div className="pg-variations" style={{ marginBottom: 12 }}>
+			<div className="pg-variations-row">
+				{variations.map((v) => {
+					const price = formatVariationPrice(v);
+					return (
+						<a
+							key={v.variationId}
+							className="pg-variation"
+							href={urlFor(v.variationId)}
+							target="_blank"
+							rel="noreferrer"
+						>
+							<span className="pg-variation-aspects">{variationLabel(v)}</span>
+							{price && <span className="pg-variation-price">{price}</span>}
+						</a>
+					);
+				})}
+			</div>
+		</div>
 	);
 }
 

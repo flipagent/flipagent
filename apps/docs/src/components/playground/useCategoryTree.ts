@@ -74,6 +74,36 @@ export async function fetchCategories(parentId?: string): Promise<CategoryNode[]
 	return fetchCategoriesNetwork(parentId);
 }
 
+/**
+ * Sync lookup of a category's pretty name from the localStorage cache.
+ * Used by `wireToSearchQuery` (in `SearchFilters.tsx`) on `reopen` so
+ * the picker chip shows "Wristwatches" instead of "31387". Returns
+ * undefined when the id isn't in any cached subtree — the caller falls
+ * back to the id, and the picker can re-resolve when the user opens
+ * the tree (which fetches the missing branch).
+ *
+ * No async. Walks every cached entry once; tiny in practice (a user's
+ * cache holds at most a few hundred nodes — root + a handful of
+ * expanded branches).
+ */
+export function lookupCachedCategoryName(id: string): string | undefined {
+	if (!id || typeof window === "undefined") return undefined;
+	for (let i = 0; i < window.localStorage.length; i++) {
+		const key = window.localStorage.key(i);
+		if (!key?.startsWith(`flipagent:cat:v${CATEGORY_CACHE_VERSION}:`)) continue;
+		try {
+			const raw = window.localStorage.getItem(key);
+			if (!raw) continue;
+			const entry = JSON.parse(raw) as CategoryCacheEntry;
+			const found = entry.nodes?.find((n) => n.id === id);
+			if (found) return found.name;
+		} catch {
+			// Corrupt entry — ignore.
+		}
+	}
+	return undefined;
+}
+
 export interface CategoryTreeState {
 	roots: CategoryNode[] | null;
 	childrenByParent: Map<string, CategoryNode[]>;

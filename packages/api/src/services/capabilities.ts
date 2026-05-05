@@ -22,6 +22,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { config, isEbayOAuthConfigured, isInsightsApproved, isScraperApiConfigured } from "../config.js";
 import { db } from "../db/client.js";
 import { bridgeTokens, userEbayOauth } from "../db/schema.js";
+import { planetExpressSignupUrl } from "./shared/forwarder.js";
 
 /**
  * Setup hints — what install path the agent should hand the user. Hosted
@@ -38,6 +39,7 @@ function computeSetupHints(): SetupHints {
 	const apiBase = config.BETTER_AUTH_URL.replace(/\/+$/, "");
 	const dashboard = config.APP_URL.replace(/\/+$/, "");
 	const hosted = apiBase === "https://api.flipagent.dev";
+	const forwarderSignup = { planetexpress: planetExpressSignupUrl() };
 	if (hosted) {
 		return {
 			mode: "hosted",
@@ -47,6 +49,7 @@ function computeSetupHints(): SetupHints {
 				from: "chrome-web-store",
 				url: "https://chrome.google.com/webstore/detail/flipagent",
 			},
+			forwarderSignup,
 		};
 	}
 	return {
@@ -61,6 +64,7 @@ function computeSetupHints(): SetupHints {
 				"Click the flipagent extension icon → enter your flipagent API key to pair (or open the dashboard above and pair from there)",
 			],
 		},
+		forwarderSignup,
 	};
 }
 

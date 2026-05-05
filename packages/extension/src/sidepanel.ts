@@ -21,14 +21,7 @@
  */
 
 import { MESSAGES } from "./messages.js";
-import {
-	EVAL_CACHE_TTL_MS,
-	type EvalCacheEntry,
-	type PartialOutcomeEntry,
-	RUNNING_MIRROR_TTL_MS,
-	type RunningEvalEntry,
-	STORAGE_KEYS,
-} from "./storage.js";
+import { type PartialOutcomeEntry, RUNNING_MIRROR_TTL_MS, type RunningEvalEntry, STORAGE_KEYS } from "./storage.js";
 import { DASHBOARD_PATHS, dashboardUrl } from "./urls.js";
 
 const frame = document.getElementById("sp-frame") as HTMLIFrameElement;
@@ -41,7 +34,7 @@ interface IframePayload {
 	outcome: Record<string, unknown>;
 	steps: unknown[];
 	pending: boolean;
-	error?: { message: string; code: string | null; upgradeUrl: string | null };
+	error?: { message: string; code: string | null; upgradeUrl: string | null; details?: unknown };
 }
 
 let lastPosted: IframePayload | null = null;
@@ -51,14 +44,12 @@ async function compute(): Promise<IframePayload | null> {
 		STORAGE_KEYS.SIDEPANEL_ITEM_ID,
 		STORAGE_KEYS.RUNNING_EVALS,
 		STORAGE_KEYS.PARTIAL_OUTCOME,
-		STORAGE_KEYS.EVAL_CACHE,
 	]);
 	const itemId = stored[STORAGE_KEYS.SIDEPANEL_ITEM_ID] as string | undefined;
 	if (!itemId) return null;
 
 	const runningMap = (stored[STORAGE_KEYS.RUNNING_EVALS] ?? {}) as Record<string, RunningEvalEntry>;
 	const partialMap = (stored[STORAGE_KEYS.PARTIAL_OUTCOME] ?? {}) as Record<string, PartialOutcomeEntry>;
-	const cacheMap = (stored[STORAGE_KEYS.EVAL_CACHE] ?? {}) as Record<string, EvalCacheEntry>;
 
 	// Error takes precedence — if the last attempt failed (credits_exceeded,
 	// network, etc), surface that to the iframe so the side panel
@@ -87,23 +78,11 @@ async function compute(): Promise<IframePayload | null> {
 		}
 	}
 
-	// Cache hit — fully resolved outcome from a prior run within TTL.
-	// `steps` was added later; older entries don't have it. Fall back
-	// to the partial mirror's steps when present, otherwise empty —
-	// the playground's Trace component handles empty steps cleanly.
-	const cached = cacheMap[itemId];
-	if (cached) {
-		const age = Date.now() - new Date(cached.completedAt).getTime();
-		if (Number.isFinite(age) && age < EVAL_CACHE_TTL_MS) {
-			return {
-				outcome: cached.result as Record<string, unknown>,
-				steps: cached.steps ?? partial?.steps ?? [],
-				pending: false,
-			};
-		}
-	}
-
-	return { outcome: {}, steps: [], pending: false };
+	// Persistent cache lives server-side in `compute_jobs` (cross-surface
+	// observation lake doubles as cache). The side panel reaches into it
+	// via `GET /v1/evaluate/jobs/{id}` when a row is opened from the
+	// dashboard's history list — no extension-local cache mirror.
+	return { outcome: partial?.outcome ?? {}, steps: partial?.steps ?? [], pending: false };
 }
 
 async function syncToIframe(): Promise<void> {
@@ -133,8 +112,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 	if (
 		STORAGE_KEYS.SIDEPANEL_ITEM_ID in changes ||
 		STORAGE_KEYS.RUNNING_EVALS in changes ||
-		STORAGE_KEYS.PARTIAL_OUTCOME in changes ||
-		STORAGE_KEYS.EVAL_CACHE in changes
+		STORAGE_KEYS.PARTIAL_OUTCOME in changes
 	) {
 		void syncToIframe();
 	}

@@ -13,12 +13,14 @@
  */
 
 import type { Context } from "hono";
+import { planetExpressSignupUrl } from "./forwarder.js";
 
 export type NextActionKind =
 	| "ebay_oauth" // caller must run /v1/connect/ebay
 	| "extension_install" // user must install + pair the Chrome extension
 	| "rest_or_extension" // either flag is enough — used by /v1/purchases
 	| "forwarder_signin" // user must re-sign-in to the forwarder (PE) — session expired
+	| "forwarder_signup" // user has no PE account — direct them to sign up (referral-attributed)
 	| "setup_seller_policies" // agent must collect prefs + POST /v1/policies/setup
 	| "configure_ebay" // operator must set EBAY_CLIENT_ID/SECRET/RU_NAME
 	| "configure_bidding_api" // either operator sets EBAY_BIDDING_APPROVED=1 after Buy Offer LR approval, or end user pairs the Chrome extension
@@ -67,6 +69,13 @@ export function nextAction(c: Context, kind: NextActionKind): NextAction {
 				url: "https://app.planetexpress.com/sign/in",
 				instructions:
 					"The user's Planet Express session has expired (PE auto-signs out after ~30 minutes of inactivity). Direct them to sign back in at this URL, then re-call the tool. This is normal — PE doesn't have a long-lived auth token, so re-sign-in is expected at ship time.",
+			};
+		case "forwarder_signup":
+			return {
+				kind,
+				url: planetExpressSignupUrl(),
+				instructions:
+					"The user does not have a Planet Express account yet. Direct them to sign up at this URL — they'll get a US warehouse address that flipagent can use as the eBay ship-from. Once their account is active and they're signed in to planetexpress.com in the Chrome profile their extension is paired with, re-call the tool.",
 			};
 		case "setup_seller_policies":
 			return {
