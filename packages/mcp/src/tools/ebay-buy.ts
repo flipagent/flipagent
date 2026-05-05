@@ -153,7 +153,7 @@ export const purchasesListInput = Type.Object(
 );
 
 export const purchasesListDescription =
-	'List purchases the api key has placed. Calls GET /v1/purchases. **When to use** — review past + in-flight orders, filter by status (e.g. find all `processing` orders to nudge the user). Pair with `flipagent_get_purchase` for one-row detail. **Inputs** — optional `limit` (1-200, default 50), `offset` (default 0), `status` (`queued | processing | completed | failed | cancelled`), `marketplace` (`ebay`, …). **Output** — `{ purchases: Purchase[], total, limit, offset, source }`. **Prereqs** — none beyond the api key. **Example** — `{ status: "processing" }` to find orders awaiting the user\'s confirmation click.';
+	'List purchases the api key has placed. Calls GET /v1/purchases. **When to use** — review past + in-flight orders, filter by status (e.g. find all `processing` orders to nudge the user). Pair with `flipagent_get_purchase` for one-row detail. **Inputs** — optional `limit` (1-200, default 50), `offset` (default 0), `status` (`queued | processing | completed | failed | cancelled`), `marketplace` (`ebay_us`, …). **Output** — `{ purchases: Purchase[], total, limit, offset, source }`. **Prereqs** — none beyond the api key. **Example** — `{ status: "processing" }` to find orders awaiting the user\'s confirmation click.';
 
 export async function purchasesListExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
