@@ -1368,27 +1368,139 @@
 }
 .dash-bars-err { color: #dc2626; }
 
-/* ───────── Mobile ───────── */
+/* ───────── Mobile top bar (≤720px only) ───────── */
+/* Slim header that sits above the main column at mobile widths. The
+ * permanent left sidebar collapses into a drawer below 720px; this bar
+ * keeps brand + tier visible and the menu one tap away. */
+
+.dash-mobile-topbar { display: none; }
+
+@media (max-width: 720px) {
+	.dash-mobile-topbar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 14px;
+		height: 52px;
+		box-sizing: border-box;
+		background: var(--surface);
+		border-bottom: 1px solid var(--border-faint);
+		position: sticky;
+		top: 0;
+		z-index: 30;
+	}
+	.dash-mobile-menu {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		margin-left: -6px;
+		background: transparent;
+		border: 0;
+		color: var(--text);
+		cursor: pointer;
+		border-radius: 6px;
+	}
+	.dash-mobile-menu:hover { background: var(--surface-2); }
+	.dash-mobile-brand {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex: 1;
+		min-width: 0;
+		font-size: 15px;
+		font-weight: 600;
+		letter-spacing: -0.02em;
+		color: var(--text);
+		text-decoration: none;
+	}
+	.dash-mobile-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.dash-mobile-upgrade {
+		background: var(--brand);
+		color: white;
+		border: 0;
+		font: inherit;
+		font-size: 12.5px;
+		font-weight: 600;
+		padding: 6px 12px;
+		border-radius: 6px;
+		cursor: pointer;
+	}
+	.dash-mobile-upgrade:hover { background: var(--brand-strong, var(--brand)); filter: brightness(0.95); }
+}
+
+/* ───────── Mobile drawer (sidebar at ≤720px) ───────── */
+/* Above 720px the sidebar is permanent (column 1 of dash-app's grid).
+ * Below 720px it becomes a slide-in drawer over the main content,
+ * triggered by the hamburger in MobileTopBar. The desktop topbar
+ * (dash-topbar inside main) hides on mobile — its content (tier
+ * pill, ConnChip, Docs/Help/Upgrade) lives in MobileTopBar + the
+ * sidebar's collapsible drawer + the user menu. */
+
+.dash-drawer-backdrop { display: none; }
 
 @media (max-width: 720px) {
 	.dash-app { grid-template-columns: 1fr; }
+	.dash-app--collapsed { grid-template-columns: 1fr; }
+
 	.dash-sidebar {
-		position: static;
-		height: auto;
-		flex-direction: row;
-		flex-wrap: wrap;
-		padding: 12px;
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 280px;
+		max-width: 86vw;
+		height: 100vh;
+		z-index: 50;
+		border-right: 1px solid var(--border-faint);
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+		transform: translateX(-100%);
+		transition: transform 0.22s ease;
+		padding-top: 16px;
 	}
-	.dash-nav { flex-direction: row; flex-wrap: wrap; overflow-x: auto; margin-top: 0; }
-	.dash-nav-group,
-	.dash-nav-divider { display: none; }
-	.dash-sidebar-foot {
-		width: 100%;
-		flex-direction: row;
-		justify-content: space-between;
+	.dash-sidebar.dash-sidebar--mobile-open {
+		transform: translateX(0);
 	}
+
+	.dash-drawer-backdrop {
+		display: block;
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+		background: rgba(0, 0, 0, 0.4);
+		border: 0;
+		padding: 0;
+		cursor: pointer;
+		animation: dash-backdrop-fade 0.18s ease;
+	}
+	@keyframes dash-backdrop-fade {
+		from { opacity: 0; }
+		to { opacity: 1; }
+	}
+
+	.dash-app--drawer-open { overflow: hidden; }
+	.dash-app--drawer-open body,
+	.dash-app--drawer-open .dash-main { overflow: hidden; }
+
+	/* The Collapse button is a desktop-only affordance — on mobile
+	 * the drawer closes via tap-outside / nav click / hamburger. */
 	.dash-collapse { display: none; }
+
 	.dash-content { padding: 20px 16px 48px; }
+
+	/* Desktop topbar inside main: hide. Tier pill + Upgrade live in
+	 * the mobile top bar; Docs/Help/eBay status are reachable via
+	 * the drawer (UserMenu + nav). */
+	.dash-topbar { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dash-sidebar { transition: none; }
+	.dash-drawer-backdrop { animation: none; }
 }
 
 .dash-card-head {

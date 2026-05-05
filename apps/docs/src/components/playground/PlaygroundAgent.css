@@ -383,6 +383,19 @@
 	.agent-hero-examples {
 		flex-direction: column;
 	}
+	/* In a column-flex container, `flex: 1 1 0` collapses every chip to
+	 * an equal slice of the parent's height — at mobile that ends up as
+	 * an unreadable 18 px sliver. Pin to content size instead and let
+	 * each chip wrap to multiple lines so the prompt actually shows. */
+	.agent-hero-example {
+		flex: 0 0 auto;
+		white-space: normal;
+		overflow: visible;
+		text-overflow: clip;
+		font-size: 13px;
+		padding: 10px 14px;
+		line-height: 1.4;
+	}
 	.agent-hero-title {
 		font-size: 22px;
 	}

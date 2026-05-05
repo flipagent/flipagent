@@ -20,7 +20,7 @@ import {
 } from "@flipagent/types";
 import * as RxDialog from "@radix-ui/react-dialog";
 import * as RxPopover from "@radix-ui/react-popover";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { CHANGELOG, type ChangelogEntry, type ChangelogTag } from "../data/changelog";
 import { apiBase, apiFetch, authClient, signOut } from "../lib/authClient";
@@ -358,6 +358,28 @@ export default function Dashboard() {
 		return () => window.removeEventListener("flipagent-goto", onGoto);
 	}, []);
 
+	// Mobile drawer state. Above 720px the sidebar is permanent and
+	// this is ignored; at mobile widths the sidebar slides in as an
+	// overlay triggered by the hamburger in MobileTopBar. Wrapping
+	// setView so any nav click auto-closes the drawer is the table-
+	// stakes mobile UX. MUST be declared before any early return —
+	// React enforces a stable hook count per render.
+	const [mobileNavOpen, setMobileNavOpen] = useState(false);
+	const setViewAndCloseDrawer = useCallback(
+		(v: View) => {
+			setView(v);
+			setMobileNavOpen(false);
+		},
+		[setView],
+	);
+	const upgradeAction = useCallback(() => {
+		setView("settings");
+		setMobileNavOpen(false);
+		requestAnimationFrame(() => {
+			document.getElementById("settings-billing")?.scrollIntoView({ behavior: "smooth", block: "center" });
+		});
+	}, [setView]);
+
 	if (error && !profile) {
 		return <div className="dash-fatal"><p>{error}</p></div>;
 	}
@@ -369,7 +391,7 @@ export default function Dashboard() {
 
 	return (
 		<ConnectionsProvider>
-		<div className={`dash-app ${collapsed ? "dash-app--collapsed" : ""}`}>
+		<div className={`dash-app ${collapsed ? "dash-app--collapsed" : ""} ${mobileNavOpen ? "dash-app--drawer-open" : ""}`}>
 			{needsConsent && (
 				<TermsConsentModal
 					version={profile.currentTermsVersion}
@@ -380,26 +402,33 @@ export default function Dashboard() {
 					}}
 				/>
 			)}
+			<MobileTopBar
+				tier={profile.tier}
+				open={mobileNavOpen}
+				onToggle={() => setMobileNavOpen((v) => !v)}
+				onUpgrade={upgradeAction}
+			/>
+			{mobileNavOpen && (
+				<button
+					type="button"
+					className="dash-drawer-backdrop"
+					aria-label="Close menu"
+					onClick={() => setMobileNavOpen(false)}
+				/>
+			)}
 			<Sidebar
 				view={view}
-				setView={setView}
+				setView={setViewAndCloseDrawer}
 				profile={profile}
 				collapsed={collapsed}
 				onToggle={() => setCollapsed((v) => !v)}
+				mobileOpen={mobileNavOpen}
 			/>
 			{!profile.emailVerified && (
 				<EmailVerifyBanner email={profile.email} />
 			)}
 			<main className="dash-main">
-				<TopBar
-					tier={profile.tier}
-					onUpgrade={() => {
-						setView("settings");
-						requestAnimationFrame(() => {
-							document.getElementById("settings-billing")?.scrollIntoView({ behavior: "smooth", block: "center" });
-						});
-					}}
-				/>
+				<TopBar tier={profile.tier} onUpgrade={upgradeAction} />
 				<div className="dash-content">
 					{view === "overview" && (
 						<Overview
@@ -660,12 +689,17 @@ function Sidebar({
 	profile,
 	collapsed,
 	onToggle,
+	mobileOpen,
 }: {
 	view: View;
 	setView: (v: View) => void;
 	profile: Profile;
 	collapsed: boolean;
 	onToggle: () => void;
+	/** Drawer-open flag from the mobile top bar. Ignored above 720px
+	 * (the sidebar is permanent there); below 720px controls the
+	 * `dash-sidebar--mobile-open` class that slides the drawer in. */
+	mobileOpen: boolean;
 }) {
 	const [query, setQuery] = useState("");
 	const q = query.trim().toLowerCase();
@@ -823,7 +857,7 @@ function Sidebar({
 	const anyMatch = overviewMatch || pgVisible.length > 0 || groupsVisible.length > 0;
 
 	return (
-		<aside className="dash-sidebar">
+		<aside className={`dash-sidebar ${mobileOpen ? "dash-sidebar--mobile-open" : ""}`}>
 			<a href="/" className="dash-brand">
 				<img src="/logo.png" width="60" height="18" alt="" aria-hidden="true" />
 				{!collapsed && <span>flipagent</span>}
@@ -1335,6 +1369,62 @@ const ICONS = {
 };
 
 /* ─────────── Top bar ─────────── */
+
+/* Mobile-only header with hamburger + brand + tier pill. The desktop
+ * sidebar carries the brand, search, nav, etc.; below 720px we collapse
+ * the sidebar into a drawer and surface this slim bar so the brand +
+ * tier are always visible and the menu is one tap away. Hidden above
+ * 720px via `display: none` in `Dashboard.css`. */
+function MobileTopBar({
+	tier,
+	open,
+	onToggle,
+	onUpgrade,
+}: {
+	tier: Tier;
+	open: boolean;
+	onToggle: () => void;
+	onUpgrade: () => void;
+}) {
+	return (
+		<header className="dash-mobile-topbar" data-open={open ? "true" : "false"}>
+			<button
+				type="button"
+				className="dash-mobile-menu"
+				aria-label={open ? "Close menu" : "Open menu"}
+				aria-expanded={open}
+				onClick={onToggle}
+			>
+				<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+					{open ? (
+						<>
+							<path d="M5 5l10 10" />
+							<path d="M15 5L5 15" />
+						</>
+					) : (
+						<>
+							<path d="M3 6h14" />
+							<path d="M3 10h14" />
+							<path d="M3 14h14" />
+						</>
+					)}
+				</svg>
+			</button>
+			<a href="/" className="dash-mobile-brand">
+				<img src="/logo.png" width="56" height="16" alt="" aria-hidden="true" />
+				<span>flipagent</span>
+			</a>
+			<div className="dash-mobile-actions">
+				<span className="dash-tier-pill" data-tier={tier}>{tier.toUpperCase()}</span>
+				{tier === "free" && (
+					<button type="button" className="dash-mobile-upgrade" onClick={onUpgrade}>
+						Upgrade
+					</button>
+				)}
+			</div>
+		</header>
+	);
+}
 
 function TopBar({ tier, onUpgrade }: { tier: Tier; onUpgrade: () => void }) {
 	return (
