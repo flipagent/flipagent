@@ -2,7 +2,10 @@
 import Layout from "../../layouts/Layout.astro";
 import DocsSidebar from "../../components/DocsSidebar.astro";
 ---
-<Layout title="Rate limits · flipagent docs">
+<Layout
+	title="Rate limits · flipagent docs"
+	description="Per-tier monthly quotas and per-resource rate limits for the flipagent API. How limits are enforced, how to read response headers, and how to upgrade."
+>
 	<div class="cmw cmw-bordered">
 		<div class="docs-shell">
 			<DocsSidebar />
@@ -35,7 +38,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td>Cache hit</td><td>any (response carries <code>X-Flipagent-From-Cache: true</code>)</td><td>same as a fresh call</td></tr>
 					</tbody>
 				</table>
-				<p>Free routes (uncounted, burst rate-limit only): everything that runs on your own connected eBay account or browser, including <code>/v1/listings</code>, <code>/v1/sales</code>, <code>/v1/payouts</code>, <code>/v1/transactions</code>, <code>/v1/disputes</code>, <code>/v1/policies</code>, <code>/v1/recommendations</code>, <code>/v1/me/seller</code>, <code>/v1/messages</code>, <code>/v1/offers</code>, <code>/v1/feedback</code>, <code>/v1/analytics</code>, <code>/v1/bids</code>, <code>/v1/labels</code>, <code>/v1/purchases</code>, <code>/v1/forwarder/*</code>, <code>/v1/ship/*</code>, <code>/v1/browser/*</code>, <code>/v1/bridge/*</code>, <code>/v1/media</code>, <code>/v1/locations</code>, <code>/v1/notifications</code>, <code>/v1/webhooks</code>. Plus account routes: <code>/v1/health</code>, <code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/capabilities</code>, <code>/v1/admin/*</code>.</p>
+				<p>Free routes (uncounted, burst rate-limit only): everything that runs on your own connected eBay account or browser, including <code>/v1/listings</code>, <code>/v1/sales</code>, <code>/v1/payouts</code>, <code>/v1/transactions</code>, <code>/v1/disputes</code>, <code>/v1/policies</code>, <code>/v1/recommendations</code>, <code>/v1/me/seller</code>, <code>/v1/messages</code>, <code>/v1/offers</code>, <code>/v1/feedback</code>, <code>/v1/analytics</code>, <code>/v1/bids</code>, <code>/v1/labels</code>, <code>/v1/purchases</code>, <code>/v1/forwarder/*</code>, <code>/v1/ship/*</code>, <code>/v1/browser/*</code>, <code>/v1/bridge/*</code>, <code>/v1/media</code>, <code>/v1/locations</code>, <code>/v1/notifications</code>, <code>/v1/webhooks</code>, <code>/v1/jobs</code>. Plus account routes: <code>/v1/health</code>, <code>/v1/me/*</code>, <code>/v1/keys/*</code>, <code>/v1/connect/*</code>, <code>/v1/billing/*</code>, <code>/v1/takedown</code>, <code>/v1/capabilities</code>, <code>/v1/admin/*</code>.</p>
 
 				<h2>Worked examples</h2>
 				<table class="api">

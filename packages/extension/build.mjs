@@ -70,7 +70,22 @@ function copyStatic() {
 	// keys each install by extension id, but a same-named action button
 	// is confusing to operate.
 	const manifest = JSON.parse(readFileSync(resolve(root, "manifest.json"), "utf8"));
-	if (isDev) manifest.name = `${manifest.name} (dev)`;
+	if (isDev) {
+		manifest.name = `${manifest.name} (dev)`;
+	} else {
+		// Prod build (Chrome Web Store): strip localhost host_permissions and
+		// content_scripts / externally_connectable matches. Reviewers reject
+		// extensions that request hosts they don't actually use in production.
+		const isProdHost = (m) => !m.startsWith("http://localhost");
+		manifest.host_permissions = (manifest.host_permissions ?? []).filter(isProdHost);
+		manifest.content_scripts = (manifest.content_scripts ?? []).map((cs) => ({
+			...cs,
+			matches: (cs.matches ?? []).filter(isProdHost),
+		}));
+		if (manifest.externally_connectable?.matches) {
+			manifest.externally_connectable.matches = manifest.externally_connectable.matches.filter(isProdHost);
+		}
+	}
 	writeFileSync(resolve(outDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 	cpSync(resolve(root, "src/popup.html"), resolve(outDir, "popup.html"));
 	cpSync(resolve(root, "src/popup.css"), resolve(outDir, "popup.css"));

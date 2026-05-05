@@ -114,7 +114,6 @@ OpenAPI contract not bundled in `references/ebay-mcp/docs/` (sell-only mirror). 
 | GET | `/bidding/{listing_id}` | `buy.offer.auction` (user) | `services/bids.ts:getBidStatus` | `/v1/bids/{listingId}` | LOCK 2026-05-03 — endpoint reachable on `v1_beta`, returns 403 errorId 1100 (`buy.offer.auction` is sandbox-only in eBay's published scope catalog; production access needs app approval) | path was `v1` not `v1_beta` for months — silent 404. Fixed. |
 | POST | `/bidding/{listing_id}/place_proxy_bid` | `buy.offer.auction` (user) | `services/bids.ts:placeBid` | `/v1/bids` POST | LOCK 2026-05-03 — same gate as above | |
 | (LIST) | n/a — eBay has no REST list endpoint | n/a | `services/bids.ts:listBids` (Trading `GetMyeBayBuying.BidList`) | `/v1/bids` GET | OK 2026-05-03 — rerouted through Trading | previous `/buy/offer/v1/bidding` 404 was bogus path |
-| GET | `/find_eligible_items` | `buy.offer.auction` (user) | `services/compatibility.ts:59` | `/v1/bids/eligible-listings` | LOCK | Same gate as bidding. |
 
 ### Buy / Feed (`/buy/feed/v1_beta`) — LR / app-required
 
@@ -268,7 +267,6 @@ OpenAPI not bundled. Endpoints inferred from our wrappers + eBay docs. Scope `se
 | GET | `/payout_summary` | `services/money/operations.ts:74` | `/v1/payouts/summary` | OK 2026-05-03 | apiz host |
 | GET | `/transaction` | `services/money/operations.ts:101` | `/v1/transactions` | OK 2026-05-03 | apiz host |
 | GET | `/transaction_summary` | MISS | — | MISS | |
-| GET | `/transfer` | `services/money/operations.ts:122` | `/v1/transfers` | LR 2026-05-03 — 404 errorId 2002 on apiz | Limited Release sub-resource within otherwise-open Finances. Apply for transfer approval to unlock. |
 | GET | `/transfer/{id}` | MISS | — | MISS | LR (same gate as list). |
 | POST | `/seller_funds_summary` | MISS | — | MISS | |
 
@@ -690,7 +688,6 @@ Trading client: `services/ebay/trading/client.ts`. Any verb is callable via `tra
 | GetMyeBayBuying | `services/ebay/trading/myebay.ts:94` | `/v1/me/buying` | OK | No REST equivalent. |
 | AddToWatchList | `services/ebay/trading/myebay.ts:112` | `/v1/watching` POST | OK 2026-05-03 | Live-probed errorCode 20819 on fake itemId — XML body shape correct, endpoint reachable. No REST watchlist write. |
 | RemoveFromWatchList | `services/ebay/trading/myebay.ts:122` | `/v1/watching/{id}` DELETE | OK 2026-05-03 | Live-probed errorCode 20820 on fake itemId — XML body shape correct. |
-| GetSearchResults | `services/ebay/trading/myebay.ts:151` | `/v1/saved-searches` (fallback) | WRP — Trading XML, no spec to diff against | Bridge is preferred — see Section 3. |
 | SetNotificationPreferences | `services/notifications/ebay-trading.ts:73` | `/v1/notifications/config` (Trading topics) | OK | Trading covers a broader topic set than Commerce/Notification. |
 | GetNotificationPreferences | `services/notifications/ebay-trading.ts:98-99` | `/v1/notifications/config` (read app + user) | OK | |
 | GetStore | `services/store.ts:85` | `/v1/store` | OK 2026-05-02 | Replaces gated REST `/sell/stores/v1/store`. |
@@ -720,7 +717,6 @@ Defined in `services/ebay/bridge/tasks.ts`. Eight constants total.
 | EBAY_INBOX_WATCHING | `/v1/watching` | OK | No eBay REST equivalent. |
 | EBAY_INBOX_OFFERS | `/v1/me/offers` (inbox view) | OK | Trading `GetBestOffers` covers existence; bridge gives inbox-shape view + counters. |
 | EBAY_INBOX_CASES | `/v1/me/cases` | OK | No eBay REST equivalent — Resolution Center scrape. |
-| EBAY_INBOX_SAVED_SEARCHES | `/v1/saved-searches` | OK | Trading `GetSearchResults` is fallback only. |
 | PLANETEXPRESS_PULL_PACKAGES | `/v1/forwarder/planetexpress/packages` | OK | No eBay equivalent (forwarder ops). |
 | PLANETEXPRESS_PACKAGE_PHOTOS | `/v1/forwarder/planetexpress/packages/{id}/photos` | OK | |
 | PLANETEXPRESS_PACKAGE_DISPATCH | `/v1/forwarder/planetexpress/packages/{id}/dispatch` | OK | |

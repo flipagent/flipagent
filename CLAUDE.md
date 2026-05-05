@@ -68,7 +68,7 @@ get the same scoring without re-implementing it.
   - **Marketplace data (read)** — `/v1/{items,categories,products,media}`
   - **My side (write)** — `/v1/{listings,locations,purchases,bids,sales}`
   - **Money + comms + disputes** —
-    `/v1/{payouts,transactions,transfers,messages,offers,feedback,disputes,policies,recommendations}`
+    `/v1/{payouts,transactions,messages,offers,feedback,disputes,policies,recommendations}`
   - **Intelligence** — `/v1/{evaluate,ship}`
   - **Storefront ops** — `/v1/{analytics,labels}`
   - **My eBay surfaces** — `/v1/me/seller`, `/v1/me/{selling,buying,programs,quota,…}`
@@ -176,7 +176,7 @@ returns 503 when any are missing.
 eBay OAuth passthrough is opt-in too: set `EBAY_CLIENT_ID`,
 `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` together or not at all —
 `/v1/connect/ebay/*` and any sell-side route that needs user OAuth
-(listings, sales, payouts, transactions, transfers, policies, …)
+(listings, sales, payouts, transactions, policies, …)
 returns 503 when any are missing. Default
 `EBAY_BASE_URL=https://api.ebay.com` (swap to sandbox by setting
 `EBAY_BASE_URL` + `EBAY_AUTH_URL` to `*.sandbox.ebay.com`).

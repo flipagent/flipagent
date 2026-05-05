@@ -231,11 +231,15 @@ export async function startEvaluate(itemId: string): Promise<void> {
 		});
 		const s = states.get(itemId);
 		const jobId = s?.kind === "running" ? s.jobId : undefined;
-		// Drop the partial mirror — the side panel now reads the
-		// canonical full result from in-memory state. Persistent cache
-		// lives server-side in compute_jobs (cross-surface, ML-grade
-		// observation lake doubles as cache). No extension-side mirror.
-		void clearPartialOutcome(itemId).catch(() => {});
+		// Persist the final outcome to chrome.storage so the side-panel
+		// iframe (which reads from storage, not the content script's
+		// in-memory `states` Map) renders the completed result instead
+		// of falling back to an empty skeleton. The "partial" outcome
+		// mirror evolves from streamed-partial → finalized-full as the
+		// run progresses; this is the panel's view-state, not a long-
+		// lived cache. The persistent cache lives server-side in
+		// `compute_jobs` (per the data-lake = cache architecture).
+		void writePartialOutcome(itemId, result as unknown as Record<string, unknown>, trace).catch(() => {});
 		setState(itemId, { kind: "done", result, cached: false, jobId });
 	} catch (err) {
 		const apiErr = err instanceof EvaluateApiError ? err : null;
@@ -282,5 +286,8 @@ export function cancelEvaluate(itemId: string): void {
 export function resetEvaluate(itemId: string): void {
 	const cur = states.get(itemId);
 	if (cur?.kind === "running") cur.abort.abort();
+	// Drop the persisted view state so the side panel doesn't render a
+	// stale "completed" outcome between reset and the next startEvaluate.
+	void clearPartialOutcome(itemId).catch(() => {});
 	setState(itemId, { kind: "idle" });
 }

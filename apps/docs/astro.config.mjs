@@ -1,8 +1,22 @@
 import { defineConfig } from "astro/config";
 
 import react from "@astrojs/react";
+import sitemap from "@astrojs/sitemap";
 
 import tailwindcss from "@tailwindcss/vite";
+
+// Paths excluded from sitemap.xml. App / auth / embed surfaces — not
+// indexable content. Keep in sync with public/robots.txt Disallow list
+// and the meta robots="noindex" tags on the corresponding pages.
+const SITEMAP_EXCLUDE = [
+	/^\/dashboard\/?/,
+	/^\/admin\/?/,
+	/^\/signup\/?/,
+	/^\/reset-password\/?/,
+	/^\/embed\//,
+	/^\/extension\//,
+	/^\/agent-onboarding\//,
+];
 
 export default defineConfig({
   site: "https://flipagent.dev",
@@ -39,5 +53,12 @@ export default defineConfig({
     },
   },
 
-  integrations: [react()],
+  integrations: [
+    react(),
+    sitemap({
+      filter: (page) => !SITEMAP_EXCLUDE.some((re) => re.test(new URL(page).pathname)),
+      changefreq: "weekly",
+      priority: 0.7,
+    }),
+  ],
 });

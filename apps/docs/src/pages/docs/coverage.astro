@@ -15,7 +15,10 @@ import { COVERAGE_SECTIONS, NATIVE_ROWS, TRADING_ROWS } from "../../data/coverag
 const PE_REF = (import.meta.env.PLANET_EXPRESS_REFERRAL_CODE ?? "361308").trim();
 const PE_SIGNUP = PE_REF ? `https://planetexpress.com/?ref=${encodeURIComponent(PE_REF)}` : "https://planetexpress.com/signup";
 ---
-<Layout title="eBay coverage · flipagent docs">
+<Layout
+	title="eBay coverage · flipagent docs"
+	description="What flipagent covers across eBay's REST, Trading, scrape, and bridge transports — and what's coming next."
+>
 	<div class="cmw cmw-bordered">
 		<div class="docs-shell">
 			<DocsSidebar />
@@ -73,7 +76,7 @@ const PE_SIGNUP = PE_REF ? `https://planetexpress.com/?ref=${encodeURIComponent(
 						<tr><td><strong>Sell</strong></td><td><a href="#sell-fulfillment">sales</a> (list, get, ship), <a href="#sell-logistics">labels</a> (quote, buy, download)</td></tr>
 						<tr><td><strong>Communicate</strong></td><td><a href="#commerce-message">messages</a>, <a href="#commerce-feedback">feedback</a>, <a href="#commerce-notification">notifications + webhooks</a>, <a href="#sell-negotiation">offers</a> (Best Offer)</td></tr>
 						<tr><td><strong>Resolve</strong></td><td><a href="#post-order">disputes</a> (return, cancellation, case, inquiry, payment)</td></tr>
-						<tr><td><strong>Analyze</strong></td><td><a href="#sell-finances">payouts, transactions, transfers</a>, <a href="#sell-analytics">analytics</a>, <a href="#sell-recommendation">recommendations</a></td></tr>
+						<tr><td><strong>Analyze</strong></td><td><a href="#sell-finances">payouts, transactions</a>, <a href="#sell-analytics">analytics</a>, <a href="#sell-recommendation">recommendations</a></td></tr>
 						<tr><td><strong>Tax</strong></td><td><a href="#sell-account">seller/sales-tax</a></td></tr>
 						<tr><td><strong>Operational</strong></td><td>connect/ebay, keys, billing, me (+ overview, devices, ebay), health, capabilities, admin</td></tr>
 					</tbody>

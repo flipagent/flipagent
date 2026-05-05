@@ -27,7 +27,7 @@
  */
 
 import { anthropic } from "@ai-sdk/anthropic";
-import { google } from "@ai-sdk/google";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { openai } from "@ai-sdk/openai";
 import { jsonSchema, type LanguageModel, type ModelMessage, stepCountIs, streamText, type ToolSet, tool } from "ai";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -140,7 +140,10 @@ function pickModel(modelId: string): LanguageModel {
 	}
 	if (modelId.startsWith("gemini-")) {
 		if (!config.GOOGLE_API_KEY) throw new AgentError("model_provider_not_configured", `GOOGLE_API_KEY not set.`, 503);
-		return google(modelId);
+		// Pass `GOOGLE_API_KEY` explicitly instead of letting `@ai-sdk/google`
+		// auto-read its own `GOOGLE_GENERATIVE_AI_API_KEY` env var — keeps
+		// flipagent's env contract on a single, owned name.
+		return createGoogleGenerativeAI({ apiKey: config.GOOGLE_API_KEY })(modelId);
 	}
 	throw new AgentError("unknown_model", `Model "${modelId}" is not registered.`, 400);
 }

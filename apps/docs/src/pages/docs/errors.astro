@@ -2,7 +2,10 @@
 import Layout from "../../layouts/Layout.astro";
 import DocsSidebar from "../../components/DocsSidebar.astro";
 ---
-<Layout title="Errors · flipagent docs">
+<Layout
+	title="Errors · flipagent docs"
+	description="Error codes and shapes returned by the flipagent API — HTTP status, machine-readable code strings, and how to recover."
+>
 	<div class="cmw cmw-bordered">
 		<div class="docs-shell">
 			<DocsSidebar />
@@ -42,7 +45,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 						<tr><td>502</td><td><code>upstream_failed</code></td><td>The upstream marketplace call failed. Usually transient; retry once.</td></tr>
 						<tr><td>503</td><td><code>billing_not_configured</code></td><td>Stripe isn't enabled on the server. Hosted users won't see this.</td></tr>
 						<tr><td>503</td><td><code>auth_not_configured</code></td><td>Better-Auth env (<code>BETTER_AUTH_SECRET</code>, GitHub/Google OAuth) not set. <code>/v1/me/*</code> + <code>/api/auth/*</code> return this.</td></tr>
-						<tr><td>503</td><td><code>ebay_not_configured</code></td><td>eBay OAuth env (<code>EBAY_CLIENT_ID</code>, etc.) not set. <code>/v1/connect/ebay</code> and any sell-side route that needs user OAuth (listings, sales, payouts, transactions, transfers, policies, …) return this. Same for <code>/v1/purchases</code> in REST transport mode.</td></tr>
+						<tr><td>503</td><td><code>ebay_not_configured</code></td><td>eBay OAuth env (<code>EBAY_CLIENT_ID</code>, etc.) not set. <code>/v1/connect/ebay</code> and any sell-side route that needs user OAuth (listings, sales, payouts, transactions, policies, …) return this. Same for <code>/v1/purchases</code> in REST transport mode.</td></tr>
 					</tbody>
 				</table>
 				<p>The table above is the cross-cutting catalog. Individual routes also emit feature-specific codes (e.g. <code>extension_not_paired</code>, <code>ebay_account_not_connected</code>, <code>disclaimer_not_acknowledged</code>, <code>image_too_large</code>, <code>no_card_on_file</code>). Errors that the caller can fix carry a <code>next_action: &#123; kind, url, instructions &#125;</code> block — relay it to the end user verbatim.</p>

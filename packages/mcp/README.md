@@ -77,8 +77,7 @@ everything) to add more.
 
 Every tool is `flipagent_<verb>_<resource>` (snake_case, action-leading).
 The `flipagent_` prefix avoids collisions when other MCP servers are
-loaded alongside. Marketplace stays a parameter, never part of the tool
-name — Amazon / Mercari adapters reuse the same names.
+loaded alongside.
 
 Errors that the caller can fix carry a `next_action: { kind, url,
 instructions }` block. The MCP renders that into `isError: true`

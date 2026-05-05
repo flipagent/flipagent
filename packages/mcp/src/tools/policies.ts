@@ -33,8 +33,10 @@ export const sellerPoliciesSetupInput = Type.Object({
 	returns: Type.Object({
 		accepted: Type.Boolean({ description: "Does the seller accept returns?" }),
 		periodDays: Type.Optional(
-			Type.Union([Type.Literal(14), Type.Literal(30), Type.Literal(60)], {
-				description: "Required if accepted=true. eBay accepts 14/30/60.",
+			Type.Integer({
+				description: "Required if accepted=true. eBay accepts 14, 30, or 60.",
+				minimum: 14,
+				maximum: 60,
 			}),
 		),
 		shippingPayer: Type.Optional(

@@ -17,11 +17,11 @@ export const documentation: Partial<OpenAPIV3.Document> = {
 	openapi: "3.1.0",
 	info: {
 		title: "flipagent API",
-		version: "0.1.0",
+		version: "0.0.1",
 		description:
 			"The API to resell on eBay for AI agents. Every resource lives under `/v1/<resource>`, returns cents-int Money, ISO timestamps, lowercase status enums, and a `marketplace` discriminator. Auth is `X-API-Key` or `Authorization: Bearer`.",
 		contact: { name: "flipagent", url: "https://flipagent.dev", email: "hello@flipagent.dev" },
-		license: { name: "Proprietary" },
+		license: { name: "FSL-1.1-ALv2", url: "https://fsl.software/FSL-1.1-ALv2.template.md" },
 	},
 	servers: [{ url: "https://api.flipagent.dev", description: "Production" }],
 	tags: [

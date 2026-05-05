@@ -32,14 +32,14 @@ const quote = await client.ship.quote({ item: items[0], forwarder: { destState: 
 |---|---|
 | Marketplace data | `items`, `categories`, `products`, `media` |
 | My side (write) | `listings`, `locations`, `purchases`, `bids`, `sales`, `forwarder` |
-| Money + comms | `payouts`, `transactions`, `transfers`, `messages`, `feedback`, `offers`, `disputes` |
+| Money + comms | `payouts`, `transactions`, `messages`, `feedback`, `offers`, `disputes` |
 | flipagent intelligence | `evaluate`, `ship` |
 | Account + ops | `me`, `seller`, `keys`, `billing`, `connect`, `policies`, `recommendations`, `analytics`, `labels`, `notifications`, `webhooks`, `capabilities`, `browser` |
 | Agent (preview) | `agent` |
 | Escape hatch | `client.http.{get,post,put,delete,patch}(path, body?)` |
 
 Sell-side namespaces (`listings`, `sales`, `payouts`, `transactions`,
-`transfers`, `policies`, `seller`, `messages`, `feedback`, `offers`,
+`policies`, `seller`, `messages`, `feedback`, `offers`,
 `disputes`) need the user to authorize their eBay account first via
 `/v1/connect/ebay`. Surfaces deferred from V1 (`expenses`, `trends`,
 `promotions`, `markdowns`, `ads`, `store`, `feeds`, `translate`,

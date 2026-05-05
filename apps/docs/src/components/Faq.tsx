@@ -32,7 +32,7 @@ const GROUPS: Group[] = [
 				a: (
 					<>
 						Yes, that's the primary host. The <code>flipagent-mcp</code> server exposes every
-						endpoint as an MCP tool, so any MCP-compatible host (Claude Code, Cursor, Cline)
+						endpoint as an MCP tool, so Claude Code or any other MCP-compatible host
 						can search eBay, evaluate deals, and manage orders. Run{" "}
 						<code>npx -y flipagent-cli init --mcp</code> and the CLI writes the config for you.
 						See <a href="/docs/mcp/">/docs/mcp</a>.

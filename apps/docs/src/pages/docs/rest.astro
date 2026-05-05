@@ -2,13 +2,16 @@
 import Layout from "../../layouts/Layout.astro";
 import DocsSidebar from "../../components/DocsSidebar.astro";
 ---
-<Layout title="REST quickstart · flipagent docs">
+<Layout
+	title="REST quickstart · flipagent docs"
+	description="Call the flipagent REST API directly from any language. Authenticate with X-API-Key, use cents-int Money, and explore /v1/items, /v1/listings, /v1/purchases."
+>
 	<div class="cmw cmw-bordered">
 		<div class="docs-shell">
 			<DocsSidebar />
 			<article class="docs-content">
 				<h1>REST quickstart</h1>
-				<p class="lead">flipagent exposes one unified surface under <code>/v1/*</code>. Responses are flipagent-native (cents-int Money, ISO 8601 timestamps, lowercase status enums, <code>marketplace</code> on every record). Future Amazon / Mercari adapters reuse the same paths via the <code>marketplace</code> parameter.</p>
+				<p class="lead">flipagent exposes one unified surface under <code>/v1/*</code>. Responses are flipagent-native (cents-int Money, ISO 8601 timestamps, lowercase status enums, <code>marketplace</code> on every record).</p>
 
 				<h2>Search active listings</h2>
 				<div class="code"><pre><code>{`curl "https://api.flipagent.dev/v1/items/search?q=canon%2050mm&limit=5" \\

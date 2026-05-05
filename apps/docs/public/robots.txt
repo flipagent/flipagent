@@ -1,0 +1,14 @@
+# https://flipagent.dev/robots.txt
+# Marketing + docs are crawlable; app / auth / embed surfaces are not.
+
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /signup
+Disallow: /reset-password
+Disallow: /embed/
+Disallow: /extension/
+Disallow: /agent-onboarding/
+
+Sitemap: https://flipagent.dev/sitemap-index.xml

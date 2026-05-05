@@ -1,6 +1,6 @@
 {
 	"name": "@flipagent/extension",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"private": true,
 	"license": "MIT",
 	"description": "flipagent Chrome extension — local executor for the bridge surfaces (`/v1/purchases`, `/v1/forwarder/*`, `/v1/browser/*`). Polls the hosted bridge protocol and runs jobs inside the user's existing Chrome — their cookies, their marketplace logins. The extension is a stateless observer, not an auto-clicker.",

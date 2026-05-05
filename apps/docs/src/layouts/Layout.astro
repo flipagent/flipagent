@@ -5,13 +5,72 @@ import "../styles/global.css";
 interface Props {
 	title: string;
 	description?: string;
+	/** Path-relative or absolute. Defaults to current URL resolved against Astro.site. */
+	canonical?: string;
+	/** When true, emits <meta name="robots" content="noindex,nofollow">. */
+	noindex?: boolean;
+	/** Absolute or path-relative og:image. Defaults to /og.png. */
+	ogImage?: string;
 }
 
 const {
 	title,
 	description = "The full eBay reselling cycle as one API — sourcing, evaluation, buying, listing, fulfillment, finance. Connect via MCP, REST, or the TypeScript SDK.",
+	canonical,
+	noindex = false,
+	ogImage = "/og.png",
 } = Astro.props;
 const path = Astro.url.pathname;
+
+// Astro.site is set in astro.config.mjs. Resolving the canonical against it
+// keeps the URL stable regardless of preview / tunnel hosts at build time.
+const siteOrigin = Astro.site ?? new URL("https://flipagent.dev");
+const canonicalUrl = new URL(canonical ?? Astro.url.pathname, siteOrigin).toString();
+const ogImageUrl = new URL(ogImage, siteOrigin).toString();
+
+// JSON-LD schema graph. Emitted only on the home page so the
+// Organization+WebSite entities aren't duplicated across every doc page.
+const isHome = path === "/" || path === "";
+const jsonLd = isHome
+	? {
+			"@context": "https://schema.org",
+			"@graph": [
+				{
+					"@type": "Organization",
+					"@id": "https://flipagent.dev/#org",
+					name: "flipagent",
+					url: "https://flipagent.dev/",
+					logo: "https://flipagent.dev/logo.png",
+					sameAs: [
+						"https://github.com/flipagent/flipagent",
+						"https://x.com/flipagent_dev",
+					],
+				},
+				{
+					"@type": "WebSite",
+					"@id": "https://flipagent.dev/#site",
+					url: "https://flipagent.dev/",
+					name: "flipagent",
+					description:
+						"The full eBay reselling cycle as one API — sourcing, evaluation, buying, listing, fulfillment, finance.",
+					publisher: { "@id": "https://flipagent.dev/#org" },
+				},
+				{
+					"@type": "SoftwareApplication",
+					name: "flipagent",
+					applicationCategory: "DeveloperApplication",
+					operatingSystem: "Cross-platform",
+					description:
+						"AI-agent-native API for end-to-end eBay reselling. MCP, REST, and TypeScript SDK.",
+					offers: {
+						"@type": "Offer",
+						price: "0",
+						priceCurrency: "USD",
+					},
+				},
+			],
+		}
+	: null;
 
 // GitHub star count. Build-time fetch is just an SSR baseline — Cloudflare
 // Pages builds run on shared IPs that easily hit GitHub's 60/hr unauthenticated
@@ -36,16 +95,37 @@ const stars: number | null = await fetch(
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>{title}</title>
 		<meta name="description" content={description} />
+		<link rel="canonical" href={canonicalUrl} />
+		{noindex && <meta name="robots" content="noindex,nofollow" />}
+		<meta name="theme-color" content="#0a0a0a" />
+
 		<meta property="og:title" content={title} />
 		<meta property="og:description" content={description} />
 		<meta property="og:type" content="website" />
-		<meta property="og:url" content={Astro.url.toString()} />
+		<meta property="og:url" content={canonicalUrl} />
+		<meta property="og:site_name" content="flipagent" />
+		<meta property="og:locale" content="en_US" />
+		<meta property="og:image" content={ogImageUrl} />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:site" content="@flipagent_dev" />
+		<meta name="twitter:creator" content="@flipagent_dev" />
+		<meta name="twitter:title" content={title} />
+		<meta name="twitter:description" content={description} />
+		<meta name="twitter:image" content={ogImageUrl} />
+
 		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 		<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+		{jsonLd && (
+			<script is:inline type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+		)}
 	</head>
 	<body>
 		<!-- Top announcement banner — full-bleed thin strip -->

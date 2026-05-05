@@ -2,7 +2,10 @@
 import Layout from "../../layouts/Layout.astro";
 import DocsSidebar from "../../components/DocsSidebar.astro";
 ---
-<Layout title="MCP server · flipagent docs">
+<Layout
+	title="MCP server · flipagent docs"
+	description="Connect Claude Code or any other MCP client to flipagent. One-command install via flipagent-cli."
+>
 	<div class="cmw cmw-bordered">
 		<div class="docs-shell">
 			<DocsSidebar />
@@ -28,7 +31,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<p>Restart the host. The tools below show up in any chat.</p>
 
 				<h2>Tools</h2>
-				<p>Tool names follow <code>flipagent_&lt;verb&gt;_&lt;resource&gt;</code> (snake_case, action-leading). The <code>flipagent_</code> prefix keeps names collision-free when other MCP servers are loaded alongside. Marketplace stays a parameter — the same names work as Amazon and Mercari adapters land.</p>
+				<p>Tool names follow <code>flipagent_&lt;verb&gt;_&lt;resource&gt;</code> (snake_case, action-leading). The <code>flipagent_</code> prefix keeps names collision-free when other MCP servers are loaded alongside.</p>
 
 				<h3>Toolsets</h3>
 				<p>Tools group by domain so the host loads only what's needed. Default = <code>core</code>; opt in to others via <code>FLIPAGENT_MCP_TOOLSETS</code> (comma-separated, or <code>*</code> for everything).</p>

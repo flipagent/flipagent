@@ -33,8 +33,11 @@ export const ebayPictureUploadInput = Type.Object({
 			"HTTPS URL of the image. flipagent fetches it and forwards to eBay's Picture Hosting in one round-trip. ≤10MB.",
 	}),
 	extensionInDays: Type.Optional(
-		Type.Union([Type.Literal(1), Type.Literal(5), Type.Literal(7), Type.Literal(30), Type.Literal(60)], {
-			description: "eBay deletes the picture this many days after the last listing referencing it ends. Default 30.",
+		Type.Integer({
+			description:
+				"eBay deletes the picture this many days after the last listing referencing it ends. eBay accepts 1, 5, 7, 30, or 60. Default 30.",
+			minimum: 1,
+			maximum: 60,
 		}),
 	),
 	pictureName: Type.Optional(
@@ -43,7 +46,7 @@ export const ebayPictureUploadInput = Type.Object({
 });
 
 export const ebayPictureUploadDescription =
-	"Upload an image directly to eBay's Picture Hosting. Calls POST /v1/media/ebay-pictures (Trading API `UploadSiteHostedPictures` under the hood). **When to use** — eBay-only listings where you don't want third-party storage in the path. eBay hosts the image; the returned URL is permanent for the listing's lifetime. For multi-marketplace catalog (Amazon + eBay + Mercari sharing one URL) or permanent product curation, prefer `flipagent_create_media_upload` (flipagent-hosted blob). **Inputs** — `sourceUrl` (any public HTTPS image URL flipagent can fetch), optional `extensionInDays` (1/5/7/30/60), optional `pictureName`. **Output** — `{ fullUrl, memberUrls, extensionInDays }`. Drop `fullUrl` straight into `flipagent_create_listing.images[]`. **Prereqs** — eBay seller account connected. The image must be ≤10MB and a valid type eBay accepts (jpeg/png/gif/bmp/tiff). **Example** — `{ sourceUrl: \"https://photos.example.com/iphone-front.jpg\" }`.";
+	"Upload an image directly to eBay's Picture Hosting. Calls POST /v1/media/ebay-pictures (Trading API `UploadSiteHostedPictures` under the hood). **When to use** — eBay-only listings where you don't want third-party storage in the path. eBay hosts the image; the returned URL is permanent for the listing's lifetime. For permanent product curation or when you want flipagent-hosted blobs instead of eBay-hosted, prefer `flipagent_create_media_upload`. **Inputs** — `sourceUrl` (any public HTTPS image URL flipagent can fetch), optional `extensionInDays` (1/5/7/30/60), optional `pictureName`. **Output** — `{ fullUrl, memberUrls, extensionInDays }`. Drop `fullUrl` straight into `flipagent_create_listing.images[]`. **Prereqs** — eBay seller account connected. The image must be ≤10MB and a valid type eBay accepts (jpeg/png/gif/bmp/tiff). **Example** — `{ sourceUrl: \"https://photos.example.com/iphone-front.jpg\" }`.";
 
 export async function ebayPictureUploadExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
