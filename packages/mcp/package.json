@@ -1,7 +1,7 @@
 {
 	"name": "flipagent-mcp",
 	"version": "1.1.0",
-	"description": "MCP server exposing flipagent's reseller toolchain (eBay search, sold-listing search, evaluate, buy, list, ship, sale fulfillment, finance) to Claude Desktop, Cursor, Cline, Zed, Continue, Windsurf, and any MCP-compatible AI client. Toolsets opt-in via FLIPAGENT_MCP_TOOLSETS for comms, forwarder, notifications, seller_account, admin. Talks to api.flipagent.dev by default; point FLIPAGENT_BASE_URL elsewhere for self-host / staging.",
+	"description": "MCP server exposing flipagent's reseller toolchain (eBay search, sold-listing search, evaluate, buy, list, ship, sale fulfillment, finance) to Claude Code and any other MCP-compatible host. Toolsets opt-in via FLIPAGENT_MCP_TOOLSETS for comms, forwarder, notifications, seller_account, admin. Talks to api.flipagent.dev by default; point FLIPAGENT_BASE_URL elsewhere for self-host / staging.",
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
@@ -59,7 +59,7 @@
 		"mcp",
 		"model-context-protocol",
 		"claude",
-		"cursor",
+		"claude-code",
 		"ebay",
 		"deal-finding",
 		"arbitrage",

@@ -1,6 +1,6 @@
 /**
- * Shared MCP server factory — same wiring for stdio (Claude Desktop /
- * Cursor / Cline) and HTTP (OpenAI Responses API native MCP integration).
+ * Shared MCP server factory — same wiring for stdio (Claude Code and
+ * other MCP hosts) and HTTP (OpenAI Responses API native MCP integration).
  *
  * Both transports build the same `Server` with the same tool catalog;
  * only the transport class differs.

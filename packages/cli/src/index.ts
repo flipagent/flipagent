@@ -622,7 +622,6 @@ function detectClients(): ClientTarget[] {
 				? join(process.env.APPDATA ?? join(home, "AppData/Roaming"), "Claude/claude_desktop_config.json")
 				: join(home, ".config/Claude/claude_desktop_config.json");
 
-	const cursorPath = join(home, ".cursor/mcp.json");
 	// Claude Code keeps user-level MCP settings in `~/.claude.json` (the
 	// `mcpServers` key sits alongside other CLI config). It's our primary
 	// host — try it first.
@@ -631,7 +630,6 @@ function detectClients(): ClientTarget[] {
 	return [
 		{ name: "Claude Code", configPath: claudeCodePath },
 		{ name: "Claude Desktop", configPath: claudeDesktopPath },
-		{ name: "Cursor", configPath: cursorPath },
 	];
 }
 
