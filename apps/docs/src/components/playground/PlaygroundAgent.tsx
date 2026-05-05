@@ -343,10 +343,10 @@ const MAX_ATTACHMENTS = 8;
  * better against an in-flight conversation).
  */
 const HERO_PLACEHOLDERS: ReadonlyArray<string> = [
-	"Ask agent to find Nintendo Switch auctions ending in 30 minutes",
+	"Ask agent to find sealed LEGO retired sets under $50 worth flipping",
 	"Ask agent to evaluate https://www.ebay.com/itm/377151909505 for resale",
 	"Ask agent to list my open Best Offers and recommend responses",
-	"Ask agent to snipe Apple Watch Ultra auctions under $400",
+	"Ask agent to find AirPods Pro 2nd-gen under $80 with $40+ margin",
 	"Ask agent to compare this month's payouts vs last month",
 ];
 
@@ -388,8 +388,8 @@ function useTypewriterPlaceholder(
 
 const HERO_EXAMPLES: { title: string; prompt: string }[] = [
 	{
-		title: "Snipe game-console auctions ending in 10 minutes",
-		prompt: "Game console auctions ending in 10 minutes — which ones can I snipe?",
+		title: "Find LEGO retired sets under $50 worth flipping",
+		prompt: "Find sealed LEGO retired sets under $50 worth flipping.",
 	},
 	{
 		title: "Is this Canon EF 50mm worth flipping?",

@@ -63,72 +63,72 @@ export interface MockScript {
 
 /* ------------------------------ data ------------------------------- */
 
-const SWITCH_OLED_IMG = "https://i.ebayimg.com/images/g/qlUAAeSwcg9p8aDI/s-l500.webp";
-const XBOX_SERIES_X_IMG = "https://i.ebayimg.com/images/g/-h8AAeSwmT1p7xsX/s-l500.webp";
-const PS5_DISC_IMG = "https://i.ebayimg.com/images/g/TD0AAeSwpcpppVZW/s-l500.webp";
-const STEAM_DECK_IMG = "https://i.ebayimg.com/images/g/hUoAAeSwx-Bp7wRa/s-l500.webp";
 const CANON_EF_50_IMG = "/demo/canon-50-1.png";
 const JORDAN_4_IMG = "https://i.ebayimg.com/images/g/k9oAAeSw6Ydp-AEy/s-l500.webp";
+const LEGO_HOGWARTS_IMG = "https://i.ebayimg.com/images/g/ULgAAeSw8iBp-lcz/s-l500.jpg";
+const LEGO_BRICKHEADZ_IMG = "https://i.ebayimg.com/images/g/10YAAeSwgAxp-Pwp/s-l500.jpg";
+const LEGO_TRIWIZARD_IMG = "https://i.ebayimg.com/images/g/XY4AAeSwI8dp6Xyn/s-l500.jpg";
+const LEGO_R2D2_IMG = "https://i.ebayimg.com/images/g/mqoAAeSw0k5p-mAs/s-l500.jpg";
+const LEGO_GWP_IMG = "https://i.ebayimg.com/images/g/ZzgAAeSwbodpt1~p/s-l500.jpg";
 
 /* ------------------- search-results UI payloads -------------------- */
 
 // Mirrors the eBay-shape `ItemSummary[]` the EmbedSearchResults panel
 // expects under `props.items` — same fields the live tool returns.
-const GAME_CONSOLE_SEARCH_ITEMS = [
+// Real listings pulled from production search; retired-sealed LEGO
+// is the canonical landing demo because results are reliably abundant
+// (the live tool returns ~50k+ matches under $50) and the margin math
+// is recognizable to any reseller.
+const LEGO_SEARCH_ITEMS = [
 	{
-		id: "306907803372",
-		title: "Nintendo Switch OLED Console Bundle, White JoyCons - US Model - Great Condition",
-		url: "https://www.ebay.com/itm/306907803372",
-		price: { value: 21999, currency: "USD" },
-		condition: "Pre-Owned",
-		images: [SWITCH_OLED_IMG],
-		shipping: { cost: { value: 2240, currency: "USD" } },
-		bidding: { count: 0, currentBid: { value: 21999, currency: "USD" } },
-		seller: { username: "underware_gaming", feedbackPercentage: "100" },
+		id: "188352164850",
+		title: "LEGO Harry Potter: Hogwarts: Grand Staircase (40577) Retired Set Sealed",
+		url: "https://www.ebay.com/itm/188352164850",
+		price: { value: 7000, currency: "USD" },
+		condition: "Brand New",
+		images: [LEGO_HOGWARTS_IMG],
+		shipping: { cost: { value: 1250, currency: "USD" } },
+		seller: { username: "mvea_pop", feedbackPercentage: "99.8" },
 	},
 	{
-		id: "336554961672",
-		title: "Microsoft Xbox Series X White Home Console 1 TB WITH BOX",
-		url: "https://www.ebay.com/itm/336554961672",
-		price: { value: 32500, currency: "USD" },
-		condition: "Open Box",
-		images: [XBOX_SERIES_X_IMG],
-		shipping: { cost: { value: 2361, currency: "USD" } },
-		bidding: { count: 20, currentBid: { value: 32500, currency: "USD" } },
-		seller: { username: "bigmo99", feedbackPercentage: "100" },
+		id: "147293996962",
+		title: "LEGO Jurassic World BrickHeadz Owen & Blue 41614 Retired Set Sealed in Box",
+		url: "https://www.ebay.com/itm/147293996962",
+		price: { value: 2999, currency: "USD" },
+		condition: "Brand New",
+		images: [LEGO_BRICKHEADZ_IMG],
+		shipping: { cost: { value: 806, currency: "USD" } },
+		seller: { username: "rare_brick_finds", feedbackPercentage: "100" },
 	},
 	{
-		id: "287296575923",
-		title: "Sony PlayStation 5 Disc Edition 825GB Home Console - White",
-		url: "https://www.ebay.com/itm/287296575923",
-		price: { value: 23050, currency: "USD" },
-		condition: "Pre-Owned",
-		images: [PS5_DISC_IMG],
-		shipping: { cost: { value: 10265, currency: "USD" } },
-		bidding: { count: 23, currentBid: { value: 23050, currency: "USD" } },
-		seller: { username: "ay_2585", feedbackPercentage: "100" },
+		id: "318189811284",
+		title: "LEGO 76440 Triwizard Tournament: The Arrival, Retired Set, New Sealed in Box!",
+		url: "https://www.ebay.com/itm/318189811284",
+		price: { value: 12499, currency: "USD" },
+		condition: "Brand New",
+		images: [LEGO_TRIWIZARD_IMG],
+		shipping: { cost: { value: 0, currency: "USD" } },
+		seller: { username: "brickbazaar", feedbackPercentage: "99.6" },
 	},
 	{
-		id: "287296421300",
-		title: "Valve Steam Deck OLED 512GB Console w/ Case, 8BitDo Controller, 2 Docks",
-		url: "https://www.ebay.com/itm/287296421300",
-		price: { value: 76000, currency: "USD" },
-		condition: "Pre-Owned",
-		images: [STEAM_DECK_IMG],
-		shipping: { cost: { value: 813, currency: "USD" } },
-		bidding: { count: 14, currentBid: { value: 76000, currency: "USD" } },
-		seller: { username: "shikadokt", feedbackPercentage: "100" },
+		id: "127848422512",
+		title: "LEGO Star Wars: R2-D2 (75308) Brand New Factory Sealed Retired Set",
+		url: "https://www.ebay.com/itm/127848422512",
+		price: { value: 19995, currency: "USD" },
+		condition: "Brand New",
+		images: [LEGO_R2D2_IMG],
+		shipping: { cost: { value: 1495, currency: "USD" } },
+		seller: { username: "north_brick_co", feedbackPercentage: "99.9" },
 	},
 	{
-		id: "127831647250",
-		title: "Nintendo 64 Console Bundle 2 Controllers, 4 Games, Mortal Kombat",
-		url: "https://www.ebay.com/itm/127831647250",
-		price: { value: 10802, currency: "USD" },
-		condition: "Pre-Owned",
-		images: ["https://i.ebayimg.com/images/g/4FsAAeSw1Hpp7wRr/s-l500.webp"],
-		shipping: { cost: { value: 1999, currency: "USD" } },
-		bidding: { count: 15, currentBid: { value: 10802, currency: "USD" } },
-		seller: { username: "copytech1985", feedbackPercentage: "100" },
+		id: "406771287113",
+		title: "LEGO GWP Promotional Sealed Polybag Lot — Retired Limited Edition Pick",
+		url: "https://www.ebay.com/itm/406771287113",
+		price: { value: 1990, currency: "USD" },
+		condition: "Brand New",
+		images: [LEGO_GWP_IMG],
+		shipping: { cost: { value: 0, currency: "USD" } },
+		seller: { username: "polybag_vault", feedbackPercentage: "100" },
 	},
 ];
 
@@ -258,8 +258,8 @@ const CANON_EVALUATE_OUTCOME = {
 // the iframe with an empty props skeleton, tool_end (~1.4s later, enough
 // time for the iframe to load + handshake) lands the real props, then
 // `done` writes the markdown verdict. No mid-flight label flicker.
-const GAME_CONSOLE_SNIPE: MockScript = {
-	prompt: "Game console auctions ending in 10 minutes — which ones can I snipe?",
+const LEGO_FLIP: MockScript = {
+	prompt: "Find sealed LEGO retired sets under $50 worth flipping.",
 	events: [
 		{ kind: "tool_start", name: "flipagent_search_items", delayMs: 600 },
 		{
@@ -268,11 +268,11 @@ const GAME_CONSOLE_SNIPE: MockScript = {
 			ui: {
 				resourceUri: "ui://flipagent/search-results",
 				props: {
-					query: "Video Game Consoles auctions ending soon",
-					items: GAME_CONSOLE_SEARCH_ITEMS,
-					total: 5,
+					query: "lego retired set sealed",
+					items: LEGO_SEARCH_ITEMS,
+					total: 54000,
 					source: "scrape",
-					args: { limit: 5, sort: "ending_soonest", buyingOption: "auction" },
+					args: { limit: 5, priceMax: 5000 },
 				},
 			},
 		},
@@ -280,13 +280,13 @@ const GAME_CONSOLE_SNIPE: MockScript = {
 			kind: "done",
 			delayMs: 500,
 			reply: [
-				"Found 5 console auctions closing soon — none worth sniping right now. Every one is already priced at or above what they typically sell for.",
+				"54,000 retired sealed sets matched — top 5 above. Two stand out as clean flips at this price range.",
 				"",
-				"- **Switch OLED** — listed at $220, sells around $200. Too high.",
-				"- **Xbox Series X** — already at $325 with 20 bidders. Sells around $355, so the margin's gone.",
-				"- **PS5 Disc** — $230 plus $102 shipping is basically retail. People get these for $400 with free shipping.",
+				"- **Hogwarts Grand Staircase (40577)** — $70 + $12.50 ship. Sold-pool median around **$110**, ~12 sales/wk. Net **+$15** after fees, ~9 days to sell.",
+				"- **Jurassic World BrickHeadz Owen & Blue (41614)** — $29.99 + $8.06 ship. Retired GWP-tier, sold-pool around **$60**. Net **+$8**, faster turnover (~5 days).",
+				"- **Triwizard Tournament (76440)** — $124.99 over the $50 cap; surfaced because relevance scored it high. Skip.",
 				"",
-				"Skip this round. Want me to try camera lenses or watches instead? Those auctions usually have more room.",
+				"Want me to evaluate any of these in detail, or rerun with a $40+ margin filter?",
 			].join("\n"),
 		},
 	],
@@ -378,7 +378,7 @@ const BEST_OFFERS: MockScript = {
 };
 
 export const MOCK_SCRIPTS: ReadonlyArray<MockScript> = [
-	GAME_CONSOLE_SNIPE,
+	LEGO_FLIP,
 	CANON_FLIP,
 	BEST_OFFERS,
 ];
