@@ -1,26 +1,32 @@
 /**
- * Listing fee preview tool — backed by `/v1/listings/preview-fees`
- * (eBay Sell Inventory `POST /offer/get_listing_fees`).
+ * Pre-publish dry-run tool — backed by `/v1/listings/verify`
+ * (eBay Trading `VerifyAddItem`).
  *
- * Operates on UNPUBLISHED offer drafts. For "estimate fees on a
- * hypothetical listing I haven't drafted yet", use
- * `flipagent_verify_listing` (Trading VerifyAddItem) instead.
+ * Replaces the older `flipagent_preview_listing_fees` MCP tool, which
+ * called Sell Inventory `get_listing_fees` and required N existing
+ * draft offer ids — useful for power-seller bulk batches but useless
+ * to an agent that hasn't created any drafts yet. Verify takes the
+ * same field shape as `flipagent_create_listing`, returns the eBay
+ * fee total + the actual validation errors eBay would raise on
+ * publish (missing aspects, invalid condition for category, return
+ * policy gaps, etc.). The preview-fees REST + SDK paths stay live
+ * for batch power users.
  */
 
-import { ListingPreviewFeesRequest } from "@flipagent/types";
+import { ListingVerifyRequest } from "@flipagent/types";
 import { getClient, toolErrorEnvelope } from "../client.js";
 import type { Config } from "../config.js";
 
-export { ListingPreviewFeesRequest as listingsPreviewFeesInput };
+export { ListingVerifyRequest as listingsVerifyInput };
 
-export const listingsPreviewFeesDescription =
-	'Preview eBay fees for unpublished offer drafts. Calls POST /v1/listings/preview-fees. **When to use** — bulk pre-publish review: caller has already created N drafts (via `flipagent_create_listing` or the inventory APIs) and wants the marketplace fees before flipping the publish switch. **Inputs** — `{ offerIds: string[] }` (1–250 unpublished offerIds; published offers error with 25754). **Output** — `{ summaries: [{ marketplaceId, fees: [{ feeType, amount, promotionalDiscount? }], totalCents, warnings? }] }`. eBay groups fees by marketplace, NOT per-offer — the totals span all input offerIds publishing to that marketplace. **For pre-draft hypothetical fees** (no offerIds yet) call `flipagent_verify_listing` instead — Trading VerifyAddItem returns fees without needing a draft. **Prereqs** — eBay seller account connected. **Example** — `{ offerIds: ["OFR-12345", "OFR-67890"] }`.';
+export const listingsVerifyDescription =
+	'Dry-run a listing before creating it: returns eBay\'s fee estimate + the exact validation errors eBay would raise on publish. Calls POST /v1/listings/verify (Trading VerifyAddItem). **When to use** — pre-publish gate: estimate fees, catch missing aspects / wrong condition / missing return policy BEFORE you waste a `flipagent_create_listing` call (which goes through inventory_item → offer → publish and only fails at the last step). Run this with the user\'s draft data, surface the errors, then call create_listing once verify passes. **Inputs** — same shape as `flipagent_create_listing`: `title`, `price` ({value, currency}, cents-int), `categoryId` (from `flipagent_suggest_category`), `condition` (e.g. `used_excellent`), `images: string[]` (≥1 URL), optional `description`, `quantity` (default 1), `aspects` ({Brand: ["Apple"], …}), `duration` (default `GTC`). **Output** — `{ passed: boolean, fees?: { value, currency }, errors?: [{ code, message }], warnings?: [{ code, message }] }`. `passed=true` (Success or Warning) means eBay would accept the publish; `passed=false` means errors must be fixed first. Common errors: 21916250 missing return policy, 21919303 missing item-specific aspect, 21919136 photos required. **Prereqs** — eBay seller account connected. **Example** — `{ title: "Apple iPhone 12 mini 128GB White", price: { value: 39900, currency: "USD" }, categoryId: "9355", condition: "used_excellent", images: ["https://media.flipagent.dev/abc.jpg"], aspects: { Brand: ["Apple"], Model: ["iPhone 12 mini"], Color: ["White"], "Storage Capacity": ["128 GB"] } }`.';
 
-export async function listingsPreviewFeesExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
+export async function listingsVerifyExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
-		return await client.listings.previewFees(args as Parameters<typeof client.listings.previewFees>[0]);
+		return await client.listings.verify(args as Parameters<typeof client.listings.verify>[0]);
 	} catch (err) {
-		return toolErrorEnvelope(err, "listings_preview_fees_failed", "/v1/listings/preview-fees");
+		return toolErrorEnvelope(err, "listings_verify_failed", "/v1/listings/verify");
 	}
 }

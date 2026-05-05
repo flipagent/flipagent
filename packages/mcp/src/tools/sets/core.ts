@@ -100,11 +100,7 @@ import {
 	flipagentConnectStatusInput,
 } from "../flipagent-connect.js";
 import { keysMeDescription, keysMeExecute, keysMeInput } from "../keys.js";
-import {
-	listingsPreviewFeesDescription,
-	listingsPreviewFeesExecute,
-	listingsPreviewFeesInput,
-} from "../listings-fees.js";
+import { listingsVerifyDescription, listingsVerifyExecute, listingsVerifyInput } from "../listings-fees.js";
 import {
 	locationsListDescription,
 	locationsListExecute,
@@ -456,10 +452,10 @@ export const coreTools: Tool[] = [
 		toolset: "core",
 	},
 	{
-		name: "flipagent_preview_listing_fees",
-		description: listingsPreviewFeesDescription,
-		inputSchema: listingsPreviewFeesInput,
-		execute: listingsPreviewFeesExecute,
+		name: "flipagent_verify_listing",
+		description: listingsVerifyDescription,
+		inputSchema: listingsVerifyInput,
+		execute: listingsVerifyExecute,
 		toolset: "core",
 	},
 

@@ -24,6 +24,8 @@ import type {
 	ListingsListQuery,
 	ListingsListResponse,
 	ListingUpdate,
+	ListingVerifyRequest,
+	ListingVerifyResponse,
 	ProductCompatibilityRequest,
 	ProductCompatibilityResponse,
 } from "@flipagent/types";
@@ -38,6 +40,7 @@ export interface ListingsClient {
 	end(sku: string): Promise<Listing>;
 	relist(sku: string): Promise<Listing>;
 	previewFees(body: ListingPreviewFeesRequest): Promise<ListingPreviewFeesResponse>;
+	verify(body: ListingVerifyRequest): Promise<ListingVerifyResponse>;
 	publishGroup(body: ItemGroupActionRequest): Promise<ItemGroupPublishResponse>;
 	withdrawGroup(body: ItemGroupActionRequest): Promise<{ ok: true }>;
 	bulkGetInventory(body: BulkInventoryGet): Promise<unknown>;
@@ -68,6 +71,7 @@ export function createListingsClient(http: FlipagentHttp): ListingsClient {
 		end: (sku) => http.delete(`/v1/listings/${encodeURIComponent(sku)}`),
 		relist: (sku) => http.post(`/v1/listings/${encodeURIComponent(sku)}/relist`),
 		previewFees: (body) => http.post("/v1/listings/preview-fees", body),
+		verify: (body) => http.post("/v1/listings/verify", body),
 		publishGroup: (body) =>
 			http.post(`/v1/listings/groups/${encodeURIComponent(body.inventoryItemGroupKey)}/publish`, body),
 		withdrawGroup: (body) =>
