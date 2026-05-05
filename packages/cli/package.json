@@ -1,6 +1,6 @@
 {
 	"name": "flipagent-cli",
-	"version": "0.0.2",
+	"version": "1.0.0",
 	"description": "flipagent CLI — log in, drive the API from your shell (search / sold / evaluate / ship / buy / sales / payouts / transactions / messages / offers / disputes / feedback), diagnose your host with `doctor`, and one-command-set-up the flipagent MCP server for Claude Code and other MCP hosts. Buy-side execution (/v1/purchases) runs in two transports — REST passthrough (with eBay Buy Order API approval) or the flipagent Chrome extension. Zero runtime deps.",
 	"type": "module",
 	"main": "./dist/index.js",
