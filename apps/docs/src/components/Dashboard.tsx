@@ -32,6 +32,7 @@ import { BillingTopUp } from "./dashboard/BillingTopUp";
 import { EbayConnectConsentModal } from "./dashboard/EbayConnectConsentModal";
 import { TermsConsentModal } from "./dashboard/TermsConsentModal";
 import { PlaygroundAgent } from "./playground/PlaygroundAgent";
+import { PlaygroundDeals } from "./playground/PlaygroundDeals";
 import { PlaygroundEvaluate } from "./playground/PlaygroundEvaluate";
 import { PlaygroundSearch } from "./playground/PlaygroundSearch";
 import { PlaygroundSourcing } from "./playground/PlaygroundSourcing";
@@ -46,6 +47,7 @@ type View =
 	| "playground/search"
 	| "playground/sourcing"
 	| "playground/evaluate"
+	| "playground/deals"
 	| "playground/agent"
 	| "keys"
 	| "devices"
@@ -444,6 +446,7 @@ export default function Dashboard() {
 					{(view === "playground/search" ||
 						view === "playground/sourcing" ||
 						view === "playground/evaluate" ||
+						view === "playground/deals" ||
 						view === "playground/agent") && (
 						<PlaygroundShell
 							active={
@@ -453,7 +456,9 @@ export default function Dashboard() {
 										? "sourcing"
 										: view === "playground/evaluate"
 											? "evaluate"
-											: "agent"
+											: view === "playground/deals"
+												? "deals"
+												: "agent"
 							}
 							onChange={(next) =>
 								setView(
@@ -463,7 +468,9 @@ export default function Dashboard() {
 											? "playground/sourcing"
 											: next === "evaluate"
 												? "playground/evaluate"
-												: "playground/agent",
+												: next === "deals"
+													? "playground/deals"
+													: "playground/agent",
 								)
 							}
 							evaluateSeed={evaluateSeed}
@@ -830,10 +837,17 @@ function Sidebar({
 	}
 
 	const overviewMatch = matches("Overview");
+	const isAdmin = profile.role === "admin";
 	const pgItems: { v: View; icon: keyof typeof ICONS; label: string; pill?: string }[] = [
 		{ v: "playground/search", icon: "search", label: "Search" },
 		{ v: "playground/sourcing", icon: "tree", label: "Sourcing" },
 		{ v: "playground/evaluate", icon: "gauge", label: "Evaluate" },
+		// Admin-only for now — the underlying `/v1/admin/evaluations` route
+		// is gated by `requireAdmin`, and we hide the entry until the public
+		// surface is ready. Drop the `isAdmin` filter to roll it out.
+		...(isAdmin
+			? [{ v: "playground/deals" as View, icon: "trend" as const, label: "Top deals", pill: "admin" }]
+			: []),
 		{ v: "playground/agent", icon: "spark", label: "Agent", pill: "preview" },
 	];
 	type SidebarGroup = { label: string; items: { v: View; icon: keyof typeof ICONS; label: string }[] };
@@ -1366,6 +1380,7 @@ const ICONS = {
 	device: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="12" height="8.5" rx="1" /><path d="M5.5 14h5M8 11.5V14" /></svg>,
 	cog: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="2.5" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>,
 	spark: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2.5l1.4 3.6L13 7.5l-3.6 1.4L8 12.5 6.6 8.9 3 7.5l3.6-1.4z" /><path d="M13 2v2M14 3h-2" /></svg>,
+	trend: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m2.5 11 4-4 3 3 4-5" /><path d="M9.5 5h4v4" /></svg>,
 };
 
 /* ─────────── Top bar ─────────── */
@@ -1818,9 +1833,15 @@ const PG_TAB_ICONS = {
 			<path d="M19 3v3M20.5 4.5h-3" />
 		</svg>
 	),
+	deals: (
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+			<path d="m4 17 4-4 3 3 7-8" />
+			<path d="M14 8h4v4" />
+		</svg>
+	),
 };
 
-type PgTabId = "search" | "sourcing" | "evaluate" | "agent";
+type PgTabId = "search" | "sourcing" | "evaluate" | "agent" | "deals";
 
 const PG_TABS: ReadonlyArray<ComposeTab<PgTabId>> = [
 	{
@@ -1840,6 +1861,12 @@ const PG_TABS: ReadonlyArray<ComposeTab<PgTabId>> = [
 		label: "Evaluate",
 		icon: PG_TAB_ICONS.evaluate,
 		caption: "Pick a listing. Get its profit, sell-through, and a buy or skip call.",
+	},
+	{
+		id: "deals",
+		label: "Top deals",
+		icon: PG_TAB_ICONS.deals,
+		caption: "Browse evaluations across the platform, sorted by expected net profit.",
 	},
 	{
 		id: "agent",
@@ -1880,6 +1907,7 @@ function PlaygroundShell({
 			<div className={active === "evaluate" ? "" : "hidden"}>
 				<PlaygroundEvaluate tabsProps={tabsProps} seed={evaluateSeed} />
 			</div>
+			{active === "deals" && <PlaygroundDeals tabsProps={tabsProps} />}
 			<div className={active === "agent" ? "" : "hidden"}>
 				<PlaygroundAgent tabsProps={tabsProps} seedPrompt={agentSeed ?? undefined} />
 			</div>

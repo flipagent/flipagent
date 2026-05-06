@@ -1,0 +1,331 @@
+/* ───────── PlaygroundDeals ─────────
+ * Compact, table-style results grid for the admin "Top deals" surface.
+ * Sits inside ComposeOutput, so it inherits the card's horizontal padding.
+ * The row template is fixed-column (asking / median / E[net] / rating /
+ * days) so numbers line up vertically — much faster to scan when the
+ * default sort is "best E[net] first" and the user is comparing rows.
+ *
+ * For visual continuity with the other playground panels we reuse the
+ * thumb size (36px), border tokens (--border-faint), and typography
+ * scale (12px row body, 10.5px head) of `.pg-result-matches-row`.
+ */
+
+/* Toolbar bits inside ComposeFilters ---------------------------------- */
+
+.pg-deals-search {
+	flex: 1 1 200px;
+	min-width: 0;
+	font: inherit;
+	font-size: 13px;
+	padding: 6px 10px;
+	color: var(--text);
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 6px;
+	outline: none;
+	transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.pg-deals-search::placeholder { color: var(--text-4); }
+.pg-deals-search:focus {
+	border-color: var(--text);
+	box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+}
+
+.pg-deals-num-field {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--text-3);
+}
+.pg-deals-num-field input {
+	width: 64px;
+	font: inherit;
+	font-size: 12px;
+	padding: 4px 8px;
+	color: var(--text);
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 6px;
+	outline: none;
+	font-variant-numeric: tabular-nums;
+	transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.pg-deals-num-field input:focus {
+	border-color: var(--text);
+	box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+}
+
+.pg-deals-count {
+	margin-left: auto;
+	font-size: 11.5px;
+	color: var(--text-3);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Empty / error states ------------------------------------------------- */
+
+.pg-deals-empty,
+.pg-deals-error {
+	margin: 0;
+	padding: 32px 12px;
+	font-size: 13px;
+	color: var(--text-3);
+	text-align: center;
+}
+.pg-deals-error { color: var(--danger); }
+
+/* Table ---------------------------------------------------------------- */
+
+/* Outer scroller — at ≤720 the table is wider than the viewport so this
+ * lets users swipe horizontally without breaking the page layout. */
+.pg-deals-table-wrap {
+	overflow-x: auto;
+}
+
+.pg-deals-table {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+}
+
+.pg-deals-row {
+	display: grid;
+	/* thumb / item / asking / median / E[net] / rating / risk / days / link */
+	grid-template-columns: 36px minmax(0, 1fr) 70px 70px 90px 56px 64px 56px 28px;
+	gap: 12px;
+	align-items: center;
+	width: 100%;
+	padding: 8px 4px;
+	color: var(--text);
+	font-size: 12px;
+	border-bottom: 1px solid var(--border-faint);
+}
+.pg-deals-row:last-child { border-bottom: 0; }
+.pg-deals-row[role="button"] {
+	cursor: pointer;
+	outline: none;
+}
+.pg-deals-row[role="button"]:hover,
+.pg-deals-row[role="button"]:focus-visible {
+	background: var(--surface-2);
+}
+.pg-deals-row[role="button"]:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--brand);
+	border-radius: 4px;
+}
+.pg-deals-row--opening { opacity: 0.6; cursor: progress; }
+
+.pg-deals-row--head {
+	font-size: 10.5px;
+	font-weight: 500;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-3);
+	padding: 8px 4px;
+}
+.pg-deals-row--head:hover { background: transparent; }
+
+.pg-deals-num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.pg-deals-thumb {
+	width: 36px;
+	height: 36px;
+	border: 1px solid var(--border-faint);
+	border-radius: 4px;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-4);
+	background: var(--surface);
+}
+.pg-deals-thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.pg-deals-title-cell {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.pg-deals-title {
+	font-size: 12.5px;
+	color: var(--text);
+	text-decoration: none;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.pg-deals-title:hover { color: var(--brand); }
+
+.pg-deals-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 8px;
+	font-size: 11px;
+	color: var(--text-3);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.pg-deals-meta > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 200px;
+}
+
+/* E[net] cell — the sort key, so it gets weight + colour. */
+.pg-deals-net {
+	font-weight: 500;
+	font-size: 13px;
+}
+.pg-deals-net--pos { color: var(--success); }
+.pg-deals-net--neg { color: var(--danger); }
+
+/* Rating pill — same palette idiom as `.dash-status--*`. */
+.pg-deals-rating {
+	display: inline-block;
+	padding: 1px 8px;
+	font-size: 10.5px;
+	font-weight: 500;
+	letter-spacing: 0.02em;
+	border-radius: 999px;
+	text-transform: lowercase;
+	font-variant-numeric: tabular-nums;
+}
+.pg-deals-rating--buy {
+	background: rgba(74, 222, 128, 0.14);
+	color: #16a34a;
+}
+.pg-deals-rating--skip {
+	background: var(--surface-2);
+	color: var(--text-3);
+}
+
+/* Risk pill — derived from P_fraud, color-graded so a row of "best E[net]"
+ * results doesn't hide a sketchy seller. Hover shows raw fb count + %. */
+.pg-deals-risk {
+	display: inline-block;
+	padding: 1px 8px;
+	font-size: 10.5px;
+	font-weight: 500;
+	letter-spacing: 0.02em;
+	border-radius: 999px;
+	text-transform: lowercase;
+	font-variant-numeric: tabular-nums;
+	cursor: help;
+}
+.pg-deals-risk--low {
+	background: rgba(74, 222, 128, 0.14);
+	color: #16a34a;
+}
+.pg-deals-risk--med {
+	background: #fef3c7;
+	color: #b45309;
+}
+.pg-deals-risk--high {
+	background: #ffedd5;
+	color: #c2410c;
+}
+.pg-deals-risk--severe {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+.pg-deals-risk--unknown {
+	background: var(--surface-2);
+	color: var(--text-3);
+	cursor: default;
+}
+
+.pg-deals-link {
+	color: var(--text-3);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 4px;
+	text-decoration: none;
+	transition: background 120ms ease, color 120ms ease;
+}
+.pg-deals-link:hover {
+	background: var(--surface);
+	color: var(--text);
+}
+
+/* Skeleton row -------------------------------------------------------- */
+
+.pg-deals-row--skel { color: transparent; cursor: default; }
+.pg-deals-row--skel .pg-deals-thumb { background: var(--surface-2); border-color: var(--surface-2); }
+
+.pg-deals-skel {
+	display: inline-block;
+	height: 10px;
+	background: var(--surface-2);
+	border-radius: 3px;
+	animation: pg-deals-skel-pulse 1.4s ease-in-out infinite;
+}
+.pg-deals-skel--w-8 { width: 32px; }
+.pg-deals-skel--w-10 { width: 40px; }
+.pg-deals-skel--w-12 { width: 50px; }
+.pg-deals-skel--w-32 { width: 130px; }
+.pg-deals-skel--w-64 { width: 260px; }
+
+@keyframes pg-deals-skel-pulse {
+	0%, 100% { opacity: 1; }
+	50%      { opacity: 0.5; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.pg-deals-skel { animation: none; }
+}
+
+/* Pager --------------------------------------------------------------- */
+
+.pg-deals-pager {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 14px 4px 4px;
+}
+.pg-deals-pager-info {
+	font-size: 12px;
+	color: var(--text-3);
+	font-variant-numeric: tabular-nums;
+}
+.pg-deals-pager-btn {
+	font: inherit;
+	font-size: 12.5px;
+	font-weight: 500;
+	padding: 6px 12px;
+	color: var(--text);
+	background: var(--surface);
+	border: 1px solid var(--border-faint);
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background 0.12s ease, border-color 0.12s ease;
+}
+.pg-deals-pager-btn:hover:not(:disabled) {
+	background: var(--surface-2);
+	border-color: var(--border-strong);
+}
+.pg-deals-pager-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Mobile: keep the full column set (admins want all the numbers) and let
+ * the table scroll horizontally inside the compose card. When this surface
+ * goes public we'll restack into card rows, but for an admin-only build
+ * the trade is fine and avoids losing data on small screens. */
+@media (max-width: 720px) {
+	.pg-deals-table {
+		min-width: 640px;
+	}
+}

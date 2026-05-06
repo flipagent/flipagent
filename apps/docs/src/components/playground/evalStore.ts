@@ -214,3 +214,19 @@ export function resetEvalForItem(itemId: string): void {
 	if (state.status === "running") state.controller.abort();
 	setState(itemId, IDLE);
 }
+
+/**
+ * Seed the store with a previously-computed `EvaluateOutcome` so the drawer
+ * lands in the "complete" branch the moment it opens. Used by surfaces
+ * that hold cached results and don't want to re-run the pipeline (deals
+ * table, recent-runs reopen, etc.). Aborts any in-flight run for this
+ * itemId first so seeded data doesn't get clobbered by a stale
+ * completion. The synthesised steps array marks every pipeline stage
+ * `ok`, so the trace renders without "in progress" noise.
+ */
+export function seedEvalForItem(itemId: string, outcome: EvaluateOutcome): void {
+	const state = getEvalState(itemId);
+	if (state.status === "running") state.controller.abort();
+	const steps = initialSteps(EVALUATE_STEPS).map((s) => ({ ...s, status: "ok" as const }));
+	setState(itemId, { status: "complete", outcome, steps });
+}

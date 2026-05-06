@@ -5,6 +5,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
+import { Marketplace } from "./_common.js";
 import { Role, Tier } from "./flipagent.js";
 
 /* ------------------------------- users list ------------------------------- */
@@ -206,3 +207,83 @@ export const AdminStats = Type.Object(
 	{ $id: "AdminStats" },
 );
 export type AdminStats = Static<typeof AdminStats>;
+
+/* ----------------------------- evaluations -------------------------------
+ * Cross-tenant browse over `compute_jobs` rows where `kind='evaluate'` and
+ * `status='completed'`. Deduped server-side to the latest row per itemId
+ * (the same itemId may have been evaluated repeatedly; a stale older
+ * snapshot would mislead). Default sort: expectedNetCents DESC. Eventually
+ * the same surface goes public — for now it's admin-gated and lives at
+ * `/v1/admin/evaluations`. */
+
+export const AdminEvaluationListQuery = Type.Object(
+	{
+		q: Type.Optional(Type.String({ description: "Substring search on item title (case-insensitive)." })),
+		rating: Type.Optional(Type.Union([Type.Literal("buy"), Type.Literal("skip")])),
+		minNetCents: Type.Optional(
+			Type.Integer({
+				description: "Lower bound on expectedNetCents. Useful to hide near-zero / negative E[net] rows.",
+			}),
+		),
+		marketplace: Type.Optional(Marketplace),
+		sort: Type.Optional(
+			Type.Union([Type.Literal("net_desc"), Type.Literal("net_asc"), Type.Literal("recent")], {
+				description: "net_desc (default) = expectedNetCents desc; net_asc = ascending; recent = completedAt desc.",
+			}),
+		),
+		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+		offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+	},
+	{ $id: "AdminEvaluationListQuery" },
+);
+export type AdminEvaluationListQuery = Static<typeof AdminEvaluationListQuery>;
+
+export const AdminEvaluationRow = Type.Object(
+	{
+		/** compute_jobs.id of the evaluation that produced this row. */
+		jobId: Type.String(),
+		marketplace: Marketplace,
+		itemId: Type.String(),
+		title: Type.String(),
+		/** Always present — eBay ToS requires every cached row carry the original web URL. */
+		itemWebUrl: Type.String({ format: "uri" }),
+		image: Type.Optional(Type.String({ format: "uri" })),
+		condition: Type.Union([Type.String(), Type.Null()]),
+		categoryName: Type.Union([Type.String(), Type.Null()]),
+		/** Current asking price on the listing at evaluation time. */
+		askingPriceCents: Type.Union([Type.Integer(), Type.Null()]),
+		rating: Type.Union([Type.Literal("buy"), Type.Literal("skip")]),
+		/** Sort key. Probabilistic E[net] per trade — `(1−P_fraud)·successNet − P_fraud·maxLoss`. */
+		expectedNetCents: Type.Integer(),
+		successNetCents: Type.Union([Type.Integer(), Type.Null()]),
+		maxLossCents: Type.Union([Type.Integer(), Type.Null()]),
+		medianSoldCents: Type.Integer(),
+		salesPerDay: Type.Number(),
+		expectedDaysToSell: Type.Union([Type.Number(), Type.Null()]),
+		recommendedListPriceCents: Type.Union([Type.Integer(), Type.Null()]),
+		/** Probability of fraud / not-as-described, derived from seller
+		 *  feedback count + percent via Beta-Bernoulli posterior. 0..0.5.
+		 *  Null when the evaluation didn't compute risk (no feedback data). */
+		pFraud: Type.Union([Type.Number(), Type.Null()]),
+		/** Raw seller feedback score (positive count). Surfaced for tooltip
+		 *  context — pFraud is the actionable summary. */
+		sellerFeedbackScore: Type.Union([Type.Integer(), Type.Null()]),
+		/** Raw seller positive-feedback percent (0..100). */
+		sellerFeedbackPercent: Type.Union([Type.Number(), Type.Null()]),
+		lookbackDays: Type.Integer(),
+		completedAt: Type.String({ format: "date-time" }),
+	},
+	{ $id: "AdminEvaluationRow" },
+);
+export type AdminEvaluationRow = Static<typeof AdminEvaluationRow>;
+
+export const AdminEvaluationList = Type.Object(
+	{
+		rows: Type.Array(AdminEvaluationRow),
+		total: Type.Integer({ description: "Total rows after dedup + filters, pre-pagination." }),
+		limit: Type.Integer(),
+		offset: Type.Integer(),
+	},
+	{ $id: "AdminEvaluationList" },
+);
+export type AdminEvaluationList = Static<typeof AdminEvaluationList>;

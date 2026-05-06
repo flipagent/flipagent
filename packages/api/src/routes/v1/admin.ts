@@ -22,6 +22,9 @@
  */
 
 import {
+	AdminEvaluationList,
+	AdminEvaluationListQuery,
+	type AdminEvaluationRow,
 	AdminGrantCreateRequest,
 	AdminGrantRevokeRequest,
 	AdminKeyIssueRequest,
@@ -29,6 +32,7 @@ import {
 	AdminUserDetail,
 	AdminUserList,
 	AdminUserPatchRequest,
+	EvaluateResponse,
 	KeyCreateResponse,
 	KeyRevokeResponse,
 } from "@flipagent/types";
@@ -43,6 +47,7 @@ import { config } from "../../config.js";
 import { db } from "../../db/client.js";
 import {
 	apiKeys,
+	computeJobs,
 	creditGrants,
 	listingObservations,
 	takedownRequests,
@@ -555,6 +560,246 @@ adminRoute.post(
 		});
 	},
 );
+
+/* ------------------------------ /evaluations ------------------------------
+ * Cross-tenant browse over completed evaluate jobs. Deduped to the latest
+ * row per `(item->>itemId)` because the same listing may have been
+ * evaluated repeatedly — older snapshots would mislead. Default sort is
+ * expected-net DESC so admins see the best E[net] picks across the whole
+ * platform first. Approved takedowns are excluded; the takedown blocklist
+ * is the authority on what may surface.
+ *
+ * The CTE costs ~one full scan over completed evaluates (no expression
+ * index on result->'item'->>'itemId' yet) but the table is bounded by
+ * `expiresAt` GC and admin traffic is low, so it's fine for now. When
+ * this surface goes public we'll add a generated column + btree index. */
+
+adminRoute.get(
+	"/evaluations",
+	describeRoute({
+		tags: ["Admin"],
+		summary: "Browse all completed evaluations across users",
+		responses: {
+			200: jsonResponse("Evaluations.", AdminEvaluationList),
+			401: errorResponse("Not signed in."),
+			403: errorResponse("Admin role required."),
+		},
+	}),
+	tbCoerce("query", AdminEvaluationListQuery),
+	async (c) => {
+		const q = c.req.valid("query");
+		const limit = q.limit ?? 50;
+		const offset = q.offset ?? 0;
+
+		// Build the dynamic WHERE fragment. Each branch is a parameterised
+		// `sql\`\`` chunk — joining with ` AND ` happens inside the CTE.
+		const conds: ReturnType<typeof sql>[] = [
+			sql`kind = 'evaluate'`,
+			sql`status = 'completed'`,
+			sql`result IS NOT NULL`,
+		];
+		if (q.q) {
+			const like = `%${q.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+			conds.push(sql`(result->'item'->>'title') ILIKE ${like}`);
+		}
+		if (q.rating) conds.push(sql`(result->'evaluation'->>'rating') = ${q.rating}`);
+		if (typeof q.minNetCents === "number") {
+			conds.push(sql`((result->'evaluation'->>'expectedNetCents')::int) >= ${q.minNetCents}`);
+		}
+		if (q.marketplace) {
+			conds.push(sql`(result->'market'->>'marketplace') = ${q.marketplace}`);
+		}
+		const whereClause = sql.join(conds, sql` AND `);
+
+		const orderClause =
+			q.sort === "net_asc"
+				? sql`net_cents ASC NULLS LAST`
+				: q.sort === "recent"
+					? sql`completed_at DESC NULLS LAST`
+					: sql`net_cents DESC NULLS LAST`;
+
+		// Row CTE: dedup-by-itemId via row_number, then filter out approved
+		// takedowns by joining against `takedown_requests`. Keep the latest
+		// (rn=1) row per itemId.
+		const rowsQuery = sql`
+			WITH ranked AS (
+				SELECT
+					id,
+					result,
+					completed_at,
+					(result->'evaluation'->>'expectedNetCents')::int AS net_cents,
+					row_number() OVER (
+						PARTITION BY (result->'item'->>'itemId')
+						ORDER BY completed_at DESC NULLS LAST
+					) AS rn
+				FROM compute_jobs
+				WHERE ${whereClause}
+			)
+			SELECT id, result, completed_at, net_cents
+			FROM ranked
+			WHERE rn = 1
+				AND (result->'item'->>'itemId') NOT IN (
+					SELECT item_id FROM takedown_requests WHERE status = 'approved'
+				)
+			ORDER BY ${orderClause}, completed_at DESC NULLS LAST
+			LIMIT ${limit} OFFSET ${offset}
+		`;
+
+		const totalQuery = sql`
+			WITH ranked AS (
+				SELECT
+					(result->'item'->>'itemId') AS item_id,
+					row_number() OVER (
+						PARTITION BY (result->'item'->>'itemId')
+						ORDER BY completed_at DESC NULLS LAST
+					) AS rn
+				FROM compute_jobs
+				WHERE ${whereClause}
+			)
+			SELECT count(*)::int AS n
+			FROM ranked
+			WHERE rn = 1
+				AND item_id NOT IN (
+					SELECT item_id FROM takedown_requests WHERE status = 'approved'
+				)
+		`;
+
+		const [rowsResult, totalResult] = await Promise.all([
+			db.execute<{
+				id: string;
+				result: unknown;
+				completed_at: Date | string | null;
+				net_cents: number | null;
+			}>(rowsQuery),
+			db.execute<{ n: number }>(totalQuery),
+		]);
+
+		const rows: AdminEvaluationRow[] = [];
+		for (const raw of rowsResult as Array<{
+			id: string;
+			result: unknown;
+			completed_at: Date | string | null;
+			net_cents: number | null;
+		}>) {
+			const r = raw.result as EvaluateResultLike | null;
+			if (!r?.item || !r.evaluation) continue;
+			if (!r.item.itemId || !r.item.title || !r.item.itemWebUrl) continue;
+			if (!raw.completed_at) continue;
+			const completedAt = raw.completed_at instanceof Date ? raw.completed_at : new Date(raw.completed_at);
+			rows.push(toEvaluationRow(raw.id, r, completedAt));
+		}
+
+		const total = Number((totalResult as Array<{ n: number }>)[0]?.n ?? 0);
+		return c.json({ rows, total, limit, offset });
+	},
+);
+
+/* GET /v1/admin/evaluations/:jobId — full EvaluateResponse for the row.
+ * Used by the deals table to seed the drawer with the cached evaluation
+ * (no re-run, no credit spend). The list endpoint above only ships a
+ * slim summary; the drawer needs the full sold/active digests + filter
+ * counts + market stats. */
+adminRoute.get(
+	"/evaluations/:jobId",
+	describeRoute({
+		tags: ["Admin"],
+		summary: "Full cached evaluation result for one job",
+		responses: {
+			200: jsonResponse("Full EvaluateResponse.", EvaluateResponse),
+			401: errorResponse("Not signed in."),
+			403: errorResponse("Admin role required."),
+			404: errorResponse("Job not found or not a completed evaluate."),
+		},
+	}),
+	async (c) => {
+		const jobId = c.req.param("jobId");
+		const [row] = await db
+			.select({ result: computeJobs.result, kind: computeJobs.kind, status: computeJobs.status })
+			.from(computeJobs)
+			.where(eq(computeJobs.id, jobId))
+			.limit(1);
+		if (!row || row.kind !== "evaluate" || row.status !== "completed" || !row.result) {
+			return c.json({ error: "not_found", message: "Evaluation not found." }, 404);
+		}
+		return c.json(row.result);
+	},
+);
+
+/** Loose mirror of `EvaluateResponse` — only the bits this surface needs.
+ *  `result` is JSONB so we accept it as `unknown` and shape it here rather
+ *  than importing the full schema (which would couple admin to the
+ *  evaluate types' churn). */
+type EvaluateResultLike = {
+	item?: {
+		itemId?: string;
+		title?: string;
+		itemWebUrl?: string;
+		condition?: string;
+		categoryPath?: string;
+		categoryName?: string;
+		image?: { imageUrl?: string };
+		additionalImages?: Array<{ imageUrl?: string }>;
+		price?: { value?: string };
+		currentBidPrice?: { value?: string };
+		seller?: { feedbackScore?: number; feedbackPercentage?: string };
+	};
+	evaluation?: {
+		rating?: "buy" | "skip";
+		expectedNetCents?: number;
+		successNetCents?: number | null;
+		maxLossCents?: number | null;
+		recommendedExit?: { listPriceCents?: number; expectedDaysToSell?: number } | null;
+		risk?: { P_fraud?: number } | null;
+	};
+	market?: { marketplace?: string; medianCents?: number; salesPerDay?: number };
+	meta?: { lookbackDays?: number };
+};
+
+function toEvaluationRow(jobId: string, r: EvaluateResultLike, completedAt: Date): AdminEvaluationRow {
+	const item = r.item ?? {};
+	const ev = r.evaluation ?? {};
+	const market = r.market ?? {};
+	const meta = r.meta ?? {};
+	const image = item.image?.imageUrl ?? item.additionalImages?.[0]?.imageUrl;
+	const askingStr = item.price?.value ?? item.currentBidPrice?.value;
+	const askingPriceCents = askingStr ? Math.round(Number.parseFloat(askingStr) * 100) : null;
+	// Marketplace literal is currently `ebay_us` only — the column lives
+	// on `result.market.marketplace` so adding more later doesn't change
+	// this surface. Default to `ebay_us` for legacy rows missing it.
+	const marketplace = (market.marketplace === "ebay_us" ? "ebay_us" : "ebay_us") as "ebay_us";
+	const fbPctStr = item.seller?.feedbackPercentage;
+	const fbPct = fbPctStr != null ? Number.parseFloat(fbPctStr) : null;
+	return {
+		jobId,
+		marketplace,
+		itemId: item.itemId!,
+		title: item.title!,
+		itemWebUrl: item.itemWebUrl!,
+		...(image ? { image } : {}),
+		condition: item.condition ?? null,
+		categoryName: item.categoryName ?? extractLeafCategory(item.categoryPath),
+		askingPriceCents: Number.isFinite(askingPriceCents) ? askingPriceCents : null,
+		rating: ev.rating ?? "skip",
+		expectedNetCents: ev.expectedNetCents ?? 0,
+		successNetCents: ev.successNetCents ?? null,
+		maxLossCents: ev.maxLossCents ?? null,
+		medianSoldCents: market.medianCents ?? 0,
+		salesPerDay: market.salesPerDay ?? 0,
+		expectedDaysToSell: ev.recommendedExit?.expectedDaysToSell ?? null,
+		recommendedListPriceCents: ev.recommendedExit?.listPriceCents ?? null,
+		pFraud: typeof ev.risk?.P_fraud === "number" ? ev.risk.P_fraud : null,
+		sellerFeedbackScore: typeof item.seller?.feedbackScore === "number" ? item.seller.feedbackScore : null,
+		sellerFeedbackPercent: fbPct != null && Number.isFinite(fbPct) ? fbPct : null,
+		lookbackDays: meta.lookbackDays ?? 0,
+		completedAt: completedAt.toISOString(),
+	};
+}
+
+function extractLeafCategory(path: string | undefined): string | null {
+	if (!path) return null;
+	const parts = path.split(/\s*[>›]\s*/).filter(Boolean);
+	return parts[parts.length - 1] ?? null;
+}
 
 /* --------------------------------- helpers -------------------------------- */
 
