@@ -516,6 +516,19 @@ function Facts({
 	const stats = outcome.soldPool ? soldStats(outcome.soldPool) : null;
 	const referenceSaleCents =
 		market?.medianCents ?? stats?.medianCents ?? evaluation?.safeBidBreakdown?.estimatedSaleCents ?? null;
+	// The model's actual sale anchor — recent14d when present (heating /
+	// cooling shifts), else full-window median. Used for the
+	// `+/− % vs anchor` comparison so the UI's percentage matches what the
+	// recommender actually compared against.
+	const recent14dCents = market?.recent14dMedianCents ?? null;
+	const anchorSaleCents = recent14dCents ?? referenceSaleCents;
+	// Show recent14d as a separate aside only when it materially diverges
+	// from the full-window median (>10% in either direction). Otherwise it's
+	// just noise.
+	const recent14dDivergent =
+		recent14dCents != null && referenceSaleCents != null && referenceSaleCents > 0
+			? Math.abs(recent14dCents - referenceSaleCents) / referenceSaleCents > 0.1
+			: false;
 	const p25 = market?.p25Cents ?? stats?.p25Cents ?? null;
 	const p75 = market?.p75Cents ?? stats?.p75Cents ?? null;
 	// `meta` is no longer used in the row text — the LLM filter ratio
@@ -585,10 +598,15 @@ function Facts({
 		evaluation?.recommendedExit?.listPriceCents ?? evaluation?.safeBidBreakdown?.estimatedSaleCents ?? null;
 	const queueAhead = evaluation?.recommendedExit?.queueAhead ?? null;
 	const asksAbove = evaluation?.recommendedExit?.asksAbove ?? null;
+	// vs the model's actual anchor (recent14d if present), not blindly the
+	// full-window median — when the market has heated or cooled the user
+	// would otherwise see "+63% vs avg sold" while the recommendation is
+	// −2% vs the heated baseline that drove it.
 	const vsAvgPct =
-		exitCents != null && referenceSaleCents != null && referenceSaleCents > 0
-			? Math.round(((exitCents - referenceSaleCents) / referenceSaleCents) * 100)
+		exitCents != null && anchorSaleCents != null && anchorSaleCents > 0
+			? Math.round(((exitCents - anchorSaleCents) / anchorSaleCents) * 100)
 			: null;
+	const vsAvgLabel = recent14dCents != null && recent14dDivergent ? "vs recent" : "vs avg sold";
 
 	return (
 		<dl className="pg-result-facts">
@@ -614,6 +632,11 @@ function Facts({
 						)}
 						{outcome.soldPool && outcome.soldPool.length > 0 && (
 							<span className="pg-result-facts-aside">· {outcome.soldPool.length} sales</span>
+						)}
+						{recent14dDivergent && recent14dCents != null && (
+							<span className="pg-result-facts-aside">
+								· recent {fmtUsd(recent14dCents)}
+							</span>
 						)}
 						{lowSample && (
 							<span className="pg-result-facts-warn">low sample</span>
@@ -894,7 +917,7 @@ function Facts({
 						)}
 						{vsAvgPct != null && (
 							<span className="pg-result-facts-aside">
-								· {vsAvgPct >= 0 ? "+" : ""}{vsAvgPct}% vs avg sold
+								· {vsAvgPct >= 0 ? "+" : ""}{vsAvgPct}% {vsAvgLabel}
 							</span>
 						)}
 						{evaluation?.recommendedExit && (
@@ -935,28 +958,33 @@ function Facts({
 				)}
 			</Row>
 
-			{/* Est. profit — the bottom-line answer. Color-coded sign on
-			    the value carries the verdict directionally (red = loss,
-			    green = profit) so the user reads good-or-bad at a glance
-			    without needing a separate BUY/SKIP chip; the number
-			    itself is the conclusion. The only aside is the
-			    window-overrun warning when the user set a sell-within
-			    budget and the recommended exit blows it. */}
+			{/* Est. profit — the bottom-line answer. Color is driven by the
+			    `evaluation.rating` (the actual verdict from the math), not
+			    just the sign — so a positive successNet that's still below
+			    the minNet floor reads red as "skip" instead of green. We
+			    surface `expectedNetCents` (the rating-driving probabilistic
+			    number) and append the reason when the model rated skip,
+			    so it's clear *why* this isn't a buy. */}
 			<Row label="Est. profit">
 				{evaluation?.recommendedExit ? (
 					<>
 						<span
 							className={`pg-result-facts-val${
-								evaluation.recommendedExit.netCents < 0
+								evaluation.rating === "skip"
 									? " pg-result-facts-val--warn"
-									: evaluation.recommendedExit.netCents > 0
+									: evaluation.rating === "buy"
 										? " pg-result-facts-val--good"
 										: ""
 							}`}
 						>
-							{evaluation.recommendedExit.netCents >= 0 ? "+" : "−"}
-							{fmtUsdRound(Math.abs(evaluation.recommendedExit.netCents))}
+							{(evaluation.expectedNetCents ?? 0) >= 0 ? "+" : "−"}
+							{fmtUsdRound(Math.abs(evaluation.expectedNetCents ?? 0))}
 						</span>
+						{evaluation.rating === "skip" && (
+							<span className="pg-result-facts-aside pg-result-facts-aside--warn">
+								skip — below target net
+							</span>
+						)}
 						{sellWithinDays != null &&
 							sellWithinDays > 0 &&
 							evaluation.recommendedExit.expectedDaysToSell > sellWithinDays && (
