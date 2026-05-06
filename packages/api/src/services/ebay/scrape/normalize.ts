@@ -424,19 +424,99 @@ function parseItemLocation(text: string | null | undefined): ItemLocation | unde
 	return undefined;
 }
 
+/**
+ * Build the `estimatedAvailabilities[]` block REST emits, using the
+ * scraped page signals. eBay PDPs surface availability in two places:
+ *
+ *   - SEMANTIC_DATA `listingStatus` + `singleSkuOutOfStock` (lifecycle)
+ *   - `availabilitySignal` model: "X available" + "X sold" textspans
+ *     (rolling counts on fixed-price listings)
+ *
+ * For ENDED/COMPLETED listings we know the listing is depleted: emit
+ * OUT_OF_STOCK with zeroes (matches REST's wire shape for sold comps).
+ *
+ * For ACTIVE listings we surface whatever numeric counts the page gave
+ * us. `availableQuantity`, `availabilityThreshold`, and `soldQuantity`
+ * are populated from the availabilitySignal — concrete integers when the
+ * page rendered them, null when it didn't (auctions, listings with no
+ * badge). Drop the count fields entirely when null so callers can
+ * distinguish "0 left" from "unknown count" via field presence, the same
+ * way REST does. `estimatedRemainingQuantity` mirrors
+ * `estimatedAvailableQuantity` for normal listings.
+ *
+ * "More than N available" → emit `availabilityThreshold: N` and
+ * `availabilityThresholdType: "MORE_THAN"`, leave the quantity field
+ * absent — exactly what REST does on listings where the seller's
+ * "Display More than {N} available" preference is on. We don't have the
+ * true `estimatedRemainingQuantity` (the page hides it), but we mirror
+ * REST's structural shape so consumers can render "More than 10
+ * available" verbatim.
+ *
+ * Empirically REST emits only `IN_STOCK` and `OUT_OF_STOCK` on every
+ * listing we've sampled (135 across diverse queries, 2026-05) — the docs
+ * mention `LIMITED_STOCK` but it never appeared in practice, so we don't
+ * synthesise it. Keeps scrape ↔ REST parity exact.
+ */
 function synthAvailability(raw: EbayItemDetail): ItemDetail["estimatedAvailabilities"] {
 	const status = raw.listingStatus?.toUpperCase();
-	if (!status) return undefined;
-	if (status === "ACTIVE") return [{ estimatedAvailabilityStatus: "IN_STOCK" }];
+	const deliveryOptions = deriveDeliveryOptions(raw);
 	if (status === "ENDED" || status === "COMPLETED") {
-		return [
-			{
-				estimatedAvailabilityStatus: "OUT_OF_STOCK",
-				estimatedAvailableQuantity: 0,
-				estimatedSoldQuantity: raw.soldOut === true ? 1 : 0,
-				estimatedRemainingQuantity: 0,
-			},
-		];
+		// estimatedSoldQuantity is omitted when the page didn't render a
+		// rolling sold count — eBay shows OUT_OF_STOCK for soldOut listings
+		// without exposing how many sold (could be 1, could be 30). Don't
+		// fabricate `1` from `soldOut === true`; let consumers treat the
+		// field's absence as "unknown" the same way REST does on listings
+		// with no count badge.
+		const entry: NonNullable<ItemDetail["estimatedAvailabilities"]>[number] = {
+			estimatedAvailabilityStatus: "OUT_OF_STOCK",
+			estimatedAvailableQuantity: 0,
+			estimatedRemainingQuantity: 0,
+		};
+		if (raw.soldQuantity !== null) entry.estimatedSoldQuantity = raw.soldQuantity;
+		if (deliveryOptions) entry.deliveryOptions = deliveryOptions;
+		return [entry];
 	}
-	return undefined;
+	if (status !== "ACTIVE") return undefined;
+	const avail = raw.availableQuantity;
+	const threshold = raw.availabilityThreshold;
+	const sold = raw.soldQuantity;
+	const isOutOfStock = avail === 0 || raw.soldOut === true;
+	const entry: NonNullable<ItemDetail["estimatedAvailabilities"]>[number] = {
+		estimatedAvailabilityStatus: isOutOfStock ? "OUT_OF_STOCK" : "IN_STOCK",
+	};
+	if (avail !== null) {
+		entry.estimatedAvailableQuantity = avail;
+		entry.estimatedRemainingQuantity = avail;
+	}
+	if (threshold !== null) {
+		entry.availabilityThreshold = threshold;
+		entry.availabilityThresholdType = "MORE_THAN";
+	}
+	if (sold !== null) entry.estimatedSoldQuantity = sold;
+	if (deliveryOptions) entry.deliveryOptions = deliveryOptions;
+	return [entry];
+}
+
+/**
+ * Mirror REST's `estimatedAvailabilities[].deliveryOptions[]` enum from
+ * the scraped page signals. Verified against live REST 2026-05:
+ *
+ *   - shippable listing  → REST emits `["SHIP_TO_HOME"]`
+ *   - local-pickup-only  → REST omits the field entirely (no shipping
+ *                          options in REST either)
+ *
+ * scrape sees the same partition through `shippingCents`: the PDP only
+ * renders a shipping cost / "Free delivery" line when at least one
+ * carrier service is offered. Mirror that 1:1 — emit `["SHIP_TO_HOME"]`
+ * when scrape captured a shipping cost, omit otherwise. PICKUP /
+ * DIGITAL_DELIVERY enums need different signals that the PDP doesn't
+ * expose in a structured way (eBay renders user-facing copy like "Local
+ * Pickup" but no enum), so we leave them off the scrape path until a
+ * reliable signal lands. Listings that fall through still match REST,
+ * because REST also omits `deliveryOptions` on the same listings.
+ */
+function deriveDeliveryOptions(raw: EbayItemDetail): string[] | null {
+	if (raw.shippingCents !== null && raw.shippingCents !== undefined) return ["SHIP_TO_HOME"];
+	if (raw.shipToLocations) return ["SHIP_TO_HOME"];
+	return null;
 }

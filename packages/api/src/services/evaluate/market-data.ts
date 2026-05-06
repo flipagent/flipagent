@@ -393,7 +393,10 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 	// filter runs. Carries `preliminary: true` so UI surfaces (the
 	// playground notice, the embed eyebrow) can mark them as "verifying"
 	// until the post-filter partial overwrites with confirmed numbers.
-	const prelimMarket = marketFromSold(soldPool, undefined, undefined, activePool);
+	// Seed (detail.body) feeds the per-listing rate blend so multi-quantity
+	// listings surface a faster `salesPerDay` when their own sell-through
+	// outpaces the comp pool — see `applySeedBlend` in adapter.ts.
+	const prelimMarket = marketFromSold(soldPool, undefined, undefined, activePool, detail.body);
 	const prelimSold = buildSoldDigest(
 		soldPool,
 		(prelimMarket as { windowDays: number }).windowDays,
@@ -439,7 +442,7 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 	});
 
 	// assemble digest (pure transforms — no step emission) -------------
-	const market = marketFromSold(filtered.matchedSold, undefined, undefined, filtered.matchedActive);
+	const market = marketFromSold(filtered.matchedSold, undefined, undefined, filtered.matchedActive, detail.body);
 	const sold = buildSoldDigest(
 		filtered.matchedSold,
 		(market as { windowDays: number }).windowDays,

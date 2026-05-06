@@ -6,10 +6,11 @@
  *   GET    /v1/purchases/{id}         single purchase by id
  *   POST   /v1/purchases/{id}/cancel  cancel a non-terminal purchase
  *
- * `id` is eBay's `purchaseOrderId`. Both REST and bridge transports
- * are first-class — `selectTransport` picks based on
- * `EBAY_ORDER_APPROVED` + bridge pairing + the optional
- * `transport` field on the body.
+ * `id` is eBay's `purchaseOrderId`. Three transports are first-class:
+ * REST (with `EBAY_ORDER_APPROVED=1`), bridge (paired Chrome extension),
+ * and url (deeplink to ebay.com when neither of the above applies).
+ * `selectTransport` picks rest → bridge → url based on env approval +
+ * extension pairing + the optional `transport` field on the body.
  */
 
 import {
@@ -25,6 +26,7 @@ import { and, desc, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
+import { isExtensionPaired } from "../../auth/bridge-tokens.js";
 import { db } from "../../db/client.js";
 import { bridgeJobs } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
@@ -38,7 +40,6 @@ import {
 	updatePurchaseShipping,
 } from "../../services/purchases/orchestrate.js";
 import { renderResultHeaders } from "../../services/shared/headers.js";
-import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, paramsFor, tbBody, tbCoerce } from "../../utils/openapi.js";
 
 export const purchasesRoute = new Hono();
@@ -52,11 +53,7 @@ const COMMON_RESPONSES = {
 
 function mapPurchaseError(c: Context, err: unknown) {
 	if (err instanceof PurchaseError) {
-		const next_action = err.nextActionKind ? nextAction(c, err.nextActionKind) : undefined;
-		return c.json(
-			{ error: err.code, message: err.message, ...(next_action ? { next_action } : {}) },
-			err.status as 400 | 401 | 404 | 412 | 502,
-		);
+		return c.json({ error: err.code, message: err.message }, err.status as 400 | 401 | 404 | 412 | 502);
 	}
 	return null;
 }
@@ -67,7 +64,7 @@ purchasesRoute.post(
 		tags: ["Purchases"],
 		summary: "Buy an item (one-shot)",
 		description:
-			"Compresses eBay's two-stage Buy Order flow (initiate + place_order) into one call. Auto-picks REST transport when `EBAY_ORDER_APPROVED=1` and the api key has eBay OAuth bound; otherwise bridge (Chrome extension). `shipTo` and `couponCode` only work in REST transport — bridge uses buyer defaults.",
+			"Compresses eBay's two-stage Buy Order flow (initiate + place_order) into one call. Auto-picks REST when `EBAY_ORDER_APPROVED=1` + eBay OAuth bound; otherwise bridge when the Chrome extension is paired; otherwise url (deeplink — response carries `nextAction.url` pointing at the ebay.com listing for the user to click Buy It Now). `shipTo` and `couponCode` only work in REST transport — bridge + url both use the buyer's stored eBay defaults.",
 		responses: {
 			201: jsonResponse("Purchase placed (status may still be `queued`/`processing`).", PurchaseResponse),
 			400: errorResponse("Validation failed."),
@@ -79,9 +76,11 @@ purchasesRoute.post(
 	async (c) => {
 		const body = c.req.valid("json");
 		try {
+			const bridgePaired = await isExtensionPaired(c.var.apiKey.id);
 			const result = await createPurchase(body, {
 				apiKeyId: c.var.apiKey.id,
 				userId: c.var.apiKey.userId ?? null,
+				bridgePaired,
 			});
 			renderResultHeaders(c, result);
 			return c.json({ ...result.body, source: result.source }, 201);

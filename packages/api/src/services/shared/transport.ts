@@ -4,21 +4,33 @@
  * Single source of truth for "which transports does each `/v1/*`
  * resource support, and which one should the dispatcher pick at
  * runtime?" Everything that fronts an eBay surface — read or write,
- * REST or scrape or bridge or Trading — declares its capabilities
- * here. Adding a new endpoint = one entry. grep this file to answer
- * "can X be served by bridge?" instantly.
+ * REST or scrape or bridge or Trading or url-deeplink — declares its
+ * capabilities here. Adding a new endpoint = one entry. grep this file
+ * to answer "can X be served by bridge?" instantly.
  *
- * `Transport` enumerates the four physical pipes the API can
- * dispatch through. `RESOURCE_TRANSPORTS` is the matrix that says
- * which pipes each resource exposes + what each pipe needs (auth
- * scope, bridge task name, Trading call name). `selectTransport`
- * resolves explicit caller choice → env default → automatic best
- * available, validating capability at every step.
+ * `Transport` enumerates the five physical pipes the API can dispatch
+ * through:
+ *   rest    — eBay REST passthrough
+ *   scrape  — managed-vendor HTML fetch + parse
+ *   bridge  — paired Chrome extension scrapes authenticated pages
+ *             (PE inbox, eBay logged-in inboxes, ebay_query reads)
+ *   trading — Trading XML/SOAP
+ *   url     — deeplink: API hands the agent/user a URL to complete the
+ *             action on the marketplace itself; reconciler matches
+ *             completion async via Trading. Default for human-action
+ *             surfaces (Buy It Now, Place Bid, forwarder dispatch)
+ *             when REST isn't approved.
+ *
+ * `RESOURCE_TRANSPORTS` is the matrix that says which pipes each
+ * resource exposes + what each pipe needs (auth scope, bridge task
+ * name, Trading call name). `selectTransport` resolves explicit caller
+ * choice → env default → automatic best available, validating
+ * capability at every step.
  */
 
 import { BRIDGE_TASKS, type BridgeTask } from "../ebay/bridge/tasks.js";
 
-export type Transport = "rest" | "scrape" | "bridge" | "trading";
+export type Transport = "rest" | "scrape" | "bridge" | "trading" | "url";
 
 interface RestCapability {
 	/** "user" = needs connected eBay OAuth; "app" = our app credential; "none" = anonymous reads. */
@@ -47,6 +59,13 @@ export interface ResourceTransports {
 	scrape?: true;
 	bridge?: BridgeCapability;
 	trading?: TradingCapability;
+	/**
+	 * `url` (deeplink) capability. No auth needs — the user completes
+	 * the action on the marketplace UI directly. Service code surfaces
+	 * `nextAction.url` and creates a tracking row that the reconciler
+	 * matches against once the user clicks through.
+	 */
+	url?: true;
 }
 
 /**
@@ -79,33 +98,42 @@ export const RESOURCE_TRANSPORTS = {
 		scrape: true,
 		bridge: { taskName: BRIDGE_TASKS.EBAY_QUERY },
 	},
-	// Buy Order — both transports first-class. REST is the eBay-native
-	// path (gated by Limited Release env); bridge drives BIN clicks
-	// inside the buyer's real Chrome session. Same `EbayPurchaseOrder`
-	// response shape from either transport.
+	// Buy Order — three transports first-class:
+	//   rest    eBay's Buy Order API places the order server-side
+	//           (gated by Limited Release `EBAY_ORDER_APPROVED`)
+	//   bridge  paired Chrome extension claims a tracking row, opens the
+	//           ebay.com/itm tab, shows a cap-validation banner, and
+	//           captures the orderId off /vod/ for fast reconciliation
+	//   url     no extension required — the API returns the ebay.com/itm
+	//           URL in `next_action`, the user clicks Buy It Now →
+	//           Confirm and pay on eBay's own UI, and the Trading-API
+	//           reconciler matches the new order against a snapshot
+	//           captured at queue time
+	// Same `Purchase` response shape from all three. Auto-pick order:
+	// rest (if approved) → bridge (if paired) → url (always works).
 	"orders.checkout": {
 		rest: { needsAuth: "user", envFlag: "EBAY_ORDER_APPROVED" },
 		bridge: { taskName: BRIDGE_TASKS.EBAY_BUY_ITEM },
+		url: true,
 	},
-	// Buy Offer / Bidding — both transports first-class, mirroring the
-	// Buy Order / `orders.checkout` shape. REST is the eBay-native path
-	// (gated by Limited Release `EBAY_BIDDING_APPROVED`, granted per
+	// Buy Offer / Bidding — mirrors `orders.checkout`. REST is the
+	// eBay-native path (gated by `EBAY_BIDDING_APPROVED`, granted per
 	// program independently from Buy Order); bridge drives the Place-Bid
-	// click inside the buyer's real Chrome session against the ebay.com
-	// itm/ DOM. Same `Bid` response shape from either transport. Without
-	// approval AND without a paired extension `selectTransport` raises
-	// `TransportUnavailableError`, which the route translates to 412 +
-	// `next_action.kind: configure_bidding_api`.
+	// click in the user's logged-in Chrome session; url returns the
+	// ebay.com/itm URL for the user to click Place Bid manually.
+	// Reconciler matches via `BidList` diff regardless of transport.
 	// (`listBids` reads via Trading `GetMyeBayBuying.BidList`, which
 	// doesn't need this scope — only POST /bid + per-item status read
 	// hit the Buy Offer REST surface.)
 	"bids.place": {
 		rest: { needsAuth: "user", envFlag: "EBAY_BIDDING_APPROVED" },
 		bridge: { taskName: BRIDGE_TASKS.EBAY_PLACE_BID },
+		url: true,
 	},
 	"bids.status": {
 		rest: { needsAuth: "user", envFlag: "EBAY_BIDDING_APPROVED" },
 		bridge: { taskName: BRIDGE_TASKS.EBAY_PLACE_BID },
+		url: true,
 	},
 	// Sell-side REST (require user OAuth)
 	"inventory.crud": { rest: { needsAuth: "user" } },
@@ -241,6 +269,8 @@ export function selectTransport(resource: ResourceKey, ctx: SelectTransportConte
 		}
 		if (t === "trading" && !ctx.oauthBound) return null;
 		if (t === "bridge" && !ctx.bridgePaired) return null;
+		// `url` has no preconditions — it's always available when the
+		// resource declares it. Deeplink == the user does the click.
 		return t;
 	};
 
@@ -262,15 +292,21 @@ export function selectTransport(resource: ResourceKey, ctx: SelectTransportConte
 		// fall through to auto if env default isn't viable
 	}
 
-	// Auto preference order — both rest and bridge are first-class for
-	// resources that support both. Default lean: prefer rest when
-	// capable (cheaper, no extension needed), otherwise bridge. The
-	// caller can flip with explicit ?transport= or env default.
+	// Auto preference order. Default lean: prefer rest when capable
+	// (cheapest, no human action needed), then scrape (anonymous reads),
+	// then trading (Trading XML for resources that have no REST
+	// equivalent), then bridge if the extension is paired (richer UX
+	// than url — banner + orderId capture — for human-action surfaces;
+	// authenticated DOM scraping for inbox/ebay_query reads), and
+	// finally url (deeplink) for human-action surfaces when nothing
+	// else applies. The caller can flip with explicit ?transport= or
+	// env default.
 	const restPick = tryPick("rest");
 	if (restPick) return restPick;
 	if (caps.scrape) return "scrape";
 	if (caps.trading && ctx.oauthBound) return "trading";
 	if (caps.bridge && ctx.bridgePaired) return "bridge";
+	if (caps.url) return "url";
 
 	const reasons = [
 		!caps.rest && "no rest",

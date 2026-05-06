@@ -195,7 +195,7 @@ https://api.ebay.com/oauth/api_scope/sell.reputation`}</code></pre>
 				<p>Two capabilities need additional eBay-side approval beyond the standard developer keyset:</p>
 				<ul>
 					<li><strong>Marketplace Insights</strong> (sold-listing history). Apply at developer.ebay.com → Marketplace Insights. Once granted, set <code>EBAY_INSIGHTS_APPROVED=1</code>: <code>/v1/items/search?status=sold</code> then hits the REST endpoint with the app token (faster, cleaner data, <code>source: "rest"</code>). Without approval flipagent serves the same endpoint via the scrape transport, and <code>/v1/me/permissions</code> reports <code>marketplaceInsights: "scrape"</code>.</li>
-					<li><strong>Order API</strong> (Limited Release). Lets your authenticated buyer place purchases via REST. Apply at developer.ebay.com → Order API. Once eBay grants tenant approval, set <code>EBAY_ORDER_APPROVED=1</code>; until then <code>/v1/purchases</code> only works in bridge transport.</li>
+					<li><strong>Order API</strong> (Limited Release). Lets your authenticated buyer place purchases via REST — flipagent's server posts to eBay directly. Apply at developer.ebay.com → Order API; once granted, set <code>EBAY_ORDER_APPROVED=1</code>. Until then <code>/v1/purchases</code> auto-falls-back: bridge transport when the user pairs the Chrome extension (richer in-page UX), or url transport otherwise (response carries <code>nextAction.url</code> pointing at the ebay.com listing for the user to click Buy It Now manually). All three resolve to the same <code>Purchase</code> shape; pick approval up later without breaking integrations.</li>
 				</ul>
 
 				<h2>Inspect a user's eBay scope tier</h2>

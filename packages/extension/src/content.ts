@@ -361,8 +361,9 @@ function handleEbayJob(job: InFlightSnapshot): void {
  * the user's max-bid cap, then watches the page for a *structural*
  * change (price tick, bid-count increment) and updates the banner
  * accordingly. The user clicks Place Bid themselves — eBay UA Feb-2026
- * prohibits automated bidding, and the api-side `humanReviewedAt` gate
- * is the agent-facing half of that commitment.
+ * prohibits automated bidding, and the bridge transport's role is to
+ * surface the agent's intent (max bid, listing context) on the live
+ * page, not to drive the click.
  *
  * Critically, this handler does NOT report the bridge job terminal.
  * The completion oracle is the server-side reconciler in

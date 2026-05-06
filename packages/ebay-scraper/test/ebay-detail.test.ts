@@ -208,4 +208,98 @@ describe("eBay detail extractor", () => {
 		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/1", jsdomFactory);
 		expect(detail.imageUrls).toEqual(["https://i.ebayimg.com/real.jpg"]);
 	});
+
+	// availabilitySignal tests — eBay PDP renders the multi-quantity badge
+	// in two places: an inline `<script>` block carrying the
+	// `"availabilitySignal":{textSpans:[…]}` model AND the rendered
+	// `#qtyAvailability` DOM div. The parser pulls from whichever is
+	// present; these cases drive the script-side path because that's what
+	// the live oxylabs HTML carries on every modern listing we sampled
+	// (2026-05). The DOM-only fallback covers older / regional skins.
+	const availabilityScript = (textSpans: Array<{ text: string }>) =>
+		`<script>window.__model={"availabilitySignal":{"_type":"TextualDisplay","textSpans":${JSON.stringify(
+			textSpans.map((s) => ({ _type: "TextSpan", text: s.text, styles: ["SECONDARY"] })),
+		)}}};</script>`;
+
+	it("parses '17 available' + '10 sold' (regression: PDP user listing 405993262109)", () => {
+		const html = `<!doctype html><html><body>${availabilityScript([
+			{ text: "17 available" },
+			{ text: "10 sold" },
+		])}<h1 id="itemTitle">Test</h1></body></html>`;
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/1", jsdomFactory);
+		expect(detail.availableQuantity).toBe(17);
+		expect(detail.availabilityThreshold).toBeNull();
+		expect(detail.soldQuantity).toBe(10);
+	});
+
+	it("'Last one' maps to availableQuantity = 1", () => {
+		const html = `<!doctype html><html><body>${availabilityScript([
+			{ text: "Last one" },
+			{ text: "2 sold" },
+		])}<h1 id="itemTitle">Test</h1></body></html>`;
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/1", jsdomFactory);
+		expect(detail.availableQuantity).toBe(1);
+		expect(detail.soldQuantity).toBe(2);
+	});
+
+	it("'Out of Stock' maps to availableQuantity = 0", () => {
+		const html = `<!doctype html><html><body>${availabilityScript([
+			{ text: "Out of Stock" },
+			{ text: "40 sold" },
+		])}<h1 id="itemTitle">Test</h1></body></html>`;
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/1", jsdomFactory);
+		expect(detail.availableQuantity).toBe(0);
+		expect(detail.soldQuantity).toBe(40);
+	});
+
+	it("'More than 10 available' surfaces the threshold and drops the count (REST parity)", () => {
+		// Live REST on these listings emits `availabilityThreshold: 10,
+		// availabilityThresholdType: "MORE_THAN"`, drops
+		// `estimatedAvailableQuantity`. Mirror by parsing the threshold
+		// integer out of the PDP text.
+		const html = `<!doctype html><html><body>${availabilityScript([
+			{ text: "More than 10 available" },
+			{ text: "1,746 sold" },
+		])}<h1 id="itemTitle">Test</h1></body></html>`;
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/1", jsdomFactory);
+		expect(detail.availableQuantity).toBeNull();
+		expect(detail.availabilityThreshold).toBe(10);
+		// Comma-grouped sold count parses: PDP renders "1,746 sold" with grouping.
+		expect(detail.soldQuantity).toBe(1746);
+	});
+
+	it("sold-only badge ('627 sold') leaves availability null", () => {
+		const html = `<!doctype html><html><body>${availabilityScript([
+			{ text: "627 sold" },
+		])}<h1 id="itemTitle">Test</h1></body></html>`;
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/1", jsdomFactory);
+		expect(detail.availableQuantity).toBeNull();
+		expect(detail.availabilityThreshold).toBeNull();
+		expect(detail.soldQuantity).toBe(627);
+	});
+
+	it("missing availabilitySignal block (auctions / hidden-count listings) → both null", () => {
+		const html = `<!doctype html><html><body><h1 id="itemTitle">Test</h1></body></html>`;
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/1", jsdomFactory);
+		expect(detail.availableQuantity).toBeNull();
+		expect(detail.availabilityThreshold).toBeNull();
+		expect(detail.soldQuantity).toBeNull();
+	});
+
+	it("falls back to #qtyAvailability DOM when the inline model is absent (older skin)", () => {
+		// Real-world legacy markup: textspan children inside a div with
+		// id="qtyAvailability" / class="x-quantity__availability". eBay
+		// renders this on every live listing; we only fall back to it when
+		// the inline `availabilitySignal` script wasn't picked up.
+		const html = `<!doctype html><html><body>
+			<div class="x-quantity__availability" id="qtyAvailability">
+				<span class="ux-textspans ux-textspans--SECONDARY">17 available</span>
+				<span class="ux-textspans ux-textspans--SECONDARY">10 sold</span>
+			</div>
+			<h1 id="itemTitle">Test</h1>
+			</body></html>`;
+		const detail = parseEbayDetailHtml(html, "https://www.ebay.com/itm/1", jsdomFactory);
+		expect(detail.availableQuantity).toBe(17);
+		expect(detail.soldQuantity).toBe(10);
+	});
 });

@@ -1551,7 +1551,7 @@ function SetupCard({
 									className={`dash-btn ${i === firstActiveIdx ? "dash-btn--brand" : ""}`}
 									onClick={cta.onClick}
 									disabled={locked}
-									title={locked ? "Pair the extension first." : undefined}
+									title={locked ? "Pair the extension first to detect your eBay session." : undefined}
 								>
 									{cta.label}
 								</button>

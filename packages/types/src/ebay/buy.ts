@@ -398,11 +398,32 @@ export type BrowseSearchResponse = Static<typeof BrowseSearchResponse>;
 
 export const EstimatedAvailability = Type.Object(
 	{
+		/** `IN_STOCK` | `OUT_OF_STOCK`. Empirically REST emits these two for
+		 *  every active listing — `LIMITED_STOCK` exists in the enum docs but
+		 *  was 0/135 in our 2026-05 survey, so we don't synth it from scrape.
+		 *  Sold/ENDED comps surface as `OUT_OF_STOCK`. */
 		estimatedAvailabilityStatus: Type.Optional(Type.String()),
+		/** Concrete remaining stock. eBay drops this field (per the seller's
+		 *  "Display More than 10 available" preference) once inventory clears
+		 *  the threshold — see `availabilityThreshold` below. */
 		estimatedAvailableQuantity: Type.Optional(Type.Integer()),
+		/** Rolling units shipped on this listing. */
 		estimatedSoldQuantity: Type.Optional(Type.Integer()),
+		/** Same as `estimatedAvailableQuantity` for normal listings; on
+		 *  threshold-masked listings carries the TRUE remaining count while
+		 *  `estimatedAvailableQuantity` stays absent. */
 		estimatedRemainingQuantity: Type.Optional(Type.Integer()),
-		/** "SHIP_TO_HOME", "PICKUP_DROP_OFF", "DIGITAL_DELIVERY", … */
+		/** Threshold value the seller masked the count behind ("Display More
+		 *  than {N} available" — eBay account preference). Pair with
+		 *  `availabilityThresholdType: "MORE_THAN"`. Surfacing this lets
+		 *  callers render "More than 10 available" verbatim without a string
+		 *  comparison. */
+		availabilityThreshold: Type.Optional(Type.Integer()),
+		/** Currently always `"MORE_THAN"`. */
+		availabilityThresholdType: Type.Optional(Type.String()),
+		/** `SHIP_TO_HOME` | `SELLER_ARRANGED_LOCAL_PICKUP` | `IN_STORE_PICKUP`
+		 *  | `PICKUP_DROP_OFF` | `DIGITAL_DELIVERY`. May be `[]` (empty array)
+		 *  on local-pickup-only listings. */
 		deliveryOptions: Type.Optional(Type.Array(Type.String())),
 	},
 	{ $id: "EstimatedAvailability" },

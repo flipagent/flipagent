@@ -6,6 +6,7 @@ import { BidCreate, BidsListResponse } from "@flipagent/types";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
+import { isExtensionPaired } from "../../auth/bridge-tokens.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { BidError, cancelBid, getBidStatus, listBids, placeBid } from "../../services/bids.js";
 import { nextAction } from "../../services/shared/next-action.js";
@@ -57,10 +58,10 @@ bidsRoute.post(
 		tags: ["Bids"],
 		summary: "Place a (proxy) bid on an auction",
 		description:
-			"Two transports — REST (Buy Offer Limited Release, gated by `EBAY_BIDDING_APPROVED=1`) and bridge (paired Chrome extension drives the click in the buyer's real session). Auto-picks REST when approved, otherwise bridge if paired. Override with `transport`. Bridge requires a fresh `humanReviewedAt` (≤ 5 min) per eBay UA Feb-2026.",
+			"Three transports — REST (Buy Offer Limited Release, gated by `EBAY_BIDDING_APPROVED=1`), bridge (paired Chrome extension drives the click in the buyer's logged-in session), and url (deeplink — response carries `nextAction.url` pointing at the ebay.com listing for the user to click Place Bid). Auto-picks REST → bridge (if paired) → url. Override with `transport`.",
 		responses: {
 			201: jsonResponse("Created.", BidCreate),
-			412: errorResponse("No transport available, or stale human-review attestation."),
+			412: errorResponse("No transport available."),
 			502: errorResponse("Bridge bid placement failed."),
 			504: errorResponse("Bridge client did not respond in time."),
 			...COMMON,
@@ -70,10 +71,12 @@ bidsRoute.post(
 	tbBody(BidCreate),
 	async (c) => {
 		try {
+			const bridgePaired = await isExtensionPaired(c.var.apiKey.id);
 			return c.json(
 				await placeBid(c.req.valid("json"), {
 					apiKeyId: c.var.apiKey.id,
 					userId: c.var.apiKey.userId,
+					bridgePaired,
 				}),
 				201,
 			);
@@ -101,9 +104,11 @@ bidsRoute.get(
 	requireApiKey,
 	async (c) => {
 		try {
+			const bridgePaired = await isExtensionPaired(c.var.apiKey.id);
 			const r = await getBidStatus(c.req.param("listingId"), {
 				apiKeyId: c.var.apiKey.id,
 				userId: c.var.apiKey.userId,
+				bridgePaired,
 			});
 			if (!r) return c.json({ error: "no_bid" }, 404);
 			return c.json(r);

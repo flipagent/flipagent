@@ -4,6 +4,7 @@ import {
 	extractEbayItems,
 	hasBestOfferFormat,
 	normalizeBuyingFormat,
+	parseAvailableQuantity,
 	parseBidCount,
 	parseEbayPrice,
 	parseEbayShipping,
@@ -439,6 +440,32 @@ export interface EbayItemDetail {
 		itemGroupTitle?: string;
 		itemGroupHref?: string;
 	} | null;
+	/**
+	 * Numeric available stock for fixed-price listings. Browse REST
+	 * `estimatedAvailabilities[0].estimatedAvailableQuantity`. Concrete
+	 * count for "X available" / "Last one" / "Out of Stock"; null when
+	 * the count is hidden ("More than 10 available" — see
+	 * `availabilityThreshold`) or the listing is an auction. Pair with
+	 * `soldOut` for the boolean depleted signal.
+	 */
+	availableQuantity: number | null;
+	/**
+	 * The "Display More than {N} available" threshold the seller masked
+	 * the count behind. Mirror of Browse REST's `availabilityThreshold`
+	 * (paired with `availabilityThresholdType: "MORE_THAN"`). When set,
+	 * `availableQuantity` is null because eBay hid the exact count from
+	 * both PDP and REST consumers — only the threshold is exposed.
+	 */
+	availabilityThreshold: number | null;
+	/**
+	 * Numeric rolling sold count for fixed-price listings — how many
+	 * units of THIS listing have shipped so far. Browse REST
+	 * `estimatedAvailabilities[0].estimatedSoldQuantity`. Comma-grouped
+	 * (`"1,746 sold"`) and period-grouped (`"3.627 verkauft"`) numbers
+	 * both parse. Null when the page omits the badge (auctions, fresh
+	 * listings with no sales).
+	 */
+	soldQuantity: number | null;
 }
 
 export type { EbayReturnTerms, EbayVariation } from "./ebay-extract.js";
@@ -458,6 +485,12 @@ export function parseEbayDetailHtml(
 	const root = domFactory(html);
 	const raw: RawEbayDetail = extractEbayDetail(root, sourceUrl, html);
 	const price = parseEbayPrice(raw.priceText);
+	// Availability text decomposes into a discriminated union (concrete
+	// count vs. masked threshold vs. out-of-stock). Pull the two numeric
+	// dimensions out for assignment below.
+	const avail = parseAvailableQuantity(raw.availabilityText);
+	const availableQuantity = avail?.kind === "count" ? avail.quantity : avail?.kind === "out" ? 0 : null;
+	const availabilityThreshold = avail?.kind === "threshold" ? avail.threshold : null;
 	return {
 		itemId: raw.itemId,
 		url: sourceUrl,
@@ -503,5 +536,8 @@ export function parseEbayDetailHtml(
 		conditionDescriptors: raw.conditionDescriptors,
 		marketingPrice: raw.marketingPrice,
 		primaryItemGroup: raw.primaryItemGroup,
+		availableQuantity,
+		availabilityThreshold,
+		soldQuantity: parseSoldQuantity(raw.soldQuantityText),
 	};
 }

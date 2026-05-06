@@ -55,9 +55,11 @@ describe("ebayToPurchase", () => {
 
 	it("forwards transport + completedAt for terminal states", () => {
 		const completedAt = "2026-04-01T13:00:00Z";
-		const out = ebayToPurchase({ order: baseOrder, transport: "bridge", completedAt });
-		expect(out.transport).toBe("bridge");
-		expect(out.completedAt).toBe(completedAt);
+		for (const transport of ["rest", "bridge", "url"] as const) {
+			const out = ebayToPurchase({ order: baseOrder, transport, completedAt });
+			expect(out.transport).toBe(transport);
+			expect(out.completedAt).toBe(completedAt);
+		}
 	});
 	it("does NOT set completedAt for non-terminal states", () => {
 		const out = ebayToPurchase({

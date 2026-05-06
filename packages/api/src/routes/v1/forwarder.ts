@@ -30,6 +30,7 @@ import {
 import { Type } from "@sinclair/typebox";
 import { type Context, Hono } from "hono";
 import { describeRoute } from "hono-openapi";
+import { isExtensionPaired } from "../../auth/bridge-tokens.js";
 import type { ForwarderInventory } from "../../db/schema.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import {
@@ -300,10 +301,10 @@ forwarderRoute.post(
 		tags: ["Forwarder"],
 		summary: "Queue an outbound-shipment job for a forwarder package",
 		description:
-			"Bridge-driven sell-side ship-out. The extension drives the forwarder's outbound flow with the supplied buyer address, picks the requested service tier, and reports back `shipment` (provider id + carrier + tracking + label url) once the label generates. Idempotent on `(packageId, ebayOrderId)` so retried sold-event webhooks don't book two shipments.",
+			"Sell-side ship-out. When the Chrome extension is paired, the bridge drives the forwarder's outbound flow with the supplied buyer address, picks the requested service tier, and reports back `shipment` (provider id + carrier + tracking + label url) once the label generates. When the extension isn't paired, the response carries `nextAction.url` pointing at the forwarder's outbound page so the user completes the dispatch manually; the tracking row is reconciled on the next inbox refresh. Idempotent on `(packageId, ebayOrderId)` so retried sold-event webhooks don't book two shipments.",
 		parameters: paramsFor("path", ProviderPackageParam),
 		responses: {
-			200: jsonResponse("Job queued.", ForwarderRefreshResponse),
+			200: jsonResponse("Job queued.", ForwarderJobResponse),
 			401: errorResponse("Missing or invalid API key."),
 			404: errorResponse("Unknown provider."),
 		},
@@ -315,14 +316,16 @@ forwarderRoute.post(
 		const { provider, packageId } = c.req.valid("param");
 		const request = c.req.valid("json");
 		try {
+			const bridgePaired = await isExtensionPaired(c.var.apiKey.id);
 			const job = await dispatchPackage({
 				provider,
 				packageId,
 				apiKeyId: c.var.apiKey.id,
 				userId: c.var.apiKey.userId ?? null,
 				request,
+				bridgePaired,
 			});
-			return c.json({ jobId: job.jobId, status: job.status, expiresAt: job.expiresAt });
+			return c.json(job);
 		} catch (err) {
 			const handled = handleForwarderPrecondition(c, err);
 			if (handled) return handled;

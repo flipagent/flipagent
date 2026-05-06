@@ -4,9 +4,50 @@
  */
 
 import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
+import { rollingSoldCount } from "../items/transform.js";
 import type { ActiveAsk, MarketStats, PriceObservation, QuantListing } from "../quant/index.js";
-import { summarizeMarket } from "../quant/index.js";
+import {
+	blendSalesPerDay,
+	seedListingRate,
+	sellerTrust,
+	summarizeMarket,
+	weightedMedian,
+	weightedStd,
+} from "../quant/index.js";
 import { toCents } from "../shared/money.js";
+
+/**
+ * Trust-weighted legit market reference for the price-anomaly Bayes update
+ * in `assessRisk`. Each sold listing contributes to the median/std with
+ * weight = its seller's `sellerTrust(...)`. Returns null when total trust
+ * weight is below 1 — the market is dominated by unverified sellers and
+ * there is no clean reference. The price-anomaly signal is then suppressed
+ * (priceBF = 1) rather than fabricated from noise.
+ *
+ * Symmetric: the same `sellerTrust(fb, pct)` from `quant/risk` runs both
+ * here (filtering the supply-side cohort) and inside `assessRisk` (tempering
+ * the candidate's price evidence). One knob (K=20), no cliff.
+ */
+export function legitMarketReference(
+	sold: ReadonlyArray<ItemSummary>,
+): { medianCents: number; stdDevCents: number } | null {
+	const samples = sold
+		.map((s) => ({
+			value: toCents(s.price?.value),
+			weight: sellerTrust(
+				s.seller?.feedbackScore,
+				s.seller?.feedbackPercentage ? Number.parseFloat(s.seller.feedbackPercentage) : undefined,
+			),
+		}))
+		.filter((s) => s.value > 0);
+	const totalTrust = samples.reduce((acc, s) => acc + s.weight, 0);
+	if (totalTrust < 1) return null;
+
+	const medianCents = weightedMedian(samples);
+	const stdDevCents = weightedStd(samples);
+	if (medianCents == null || stdDevCents == null) return null;
+	return { medianCents, stdDevCents };
+}
 
 function pickBuyingFormat(item: ItemSummary | ItemDetail): "AUCTION" | "FIXED_PRICE" | undefined {
 	const opts = item.buyingOptions ?? [];
@@ -47,12 +88,22 @@ export function toQuantListing(item: ItemSummary | ItemDetail): QuantListing {
  * `active` is optional too — when provided the returned `MarketStats`
  * carries `asks` populated, which feeds the cooling-drift detection and
  * queue-position calculation in `recommendListPrice`.
+ *
+ * `seed` is optional — when the seed listing is multi-quantity and has
+ * shipped some units already, its per-listing rate
+ * (`estimatedSoldQuantity / clamp(days_since_creation, 1..60)`) blends
+ * into `salesPerDay` via `blendSalesPerDay`. Asymmetric: only RAISES
+ * the rate. The pre-blend rate is preserved on `salesPerDayBaseline`
+ * and the seed rate on `salesPerDaySeed` so callers can render the
+ * breakdown ("comp pool says 0.5/day, this listing is moving 2/day,
+ * forecast at sqrt(1) = 1/day").
  */
 export function marketFromSold(
 	sold: ReadonlyArray<ItemSummary>,
 	context: { keyword?: string; marketplace?: string; windowDays?: number } = {},
 	details?: ReadonlyArray<ItemDetail>,
 	active?: ReadonlyArray<ItemSummary>,
+	seed?: ItemSummary | ItemDetail,
 ): MarketStats {
 	const detailsById = new Map<string, ItemDetail>();
 	if (details) {
@@ -70,7 +121,7 @@ export function marketFromSold(
 	const asks: ActiveAsk[] | undefined = active?.map((a) => ({
 		priceCents: toCents(a.price?.value),
 	}));
-	return summarizeMarket(
+	const market = summarizeMarket(
 		{ sold: observations, asks },
 		{
 			keyword: context.keyword ?? "",
@@ -78,6 +129,41 @@ export function marketFromSold(
 			windowDays: context.windowDays ?? 30,
 		},
 	);
+	return applySeedBlend(market, seed);
+}
+
+/**
+ * Apply the seed-listing velocity blend to a fresh `MarketStats`. Pulled
+ * out so callers that pre-summarised the market (digest builders, the
+ * scoring path) can apply the same blend without re-summarising.
+ *
+ * No-op when the seed is missing data or when the seed rate is below
+ * the comp-pool rate. When applied, `salesPerDayBaseline` and
+ * `salesPerDaySeed` are populated alongside the new `salesPerDay`.
+ *
+ * Two responsibilities split for clarity:
+ *   - `rollingSoldCount(seed)` — eBay-shape extraction (transform.ts)
+ *   - `seedListingRate` + `blendSalesPerDay` — pure math (sales-rate.ts)
+ *
+ * This function is the thin glue that wires them together.
+ */
+export function applySeedBlend(market: MarketStats, seed: ItemSummary | ItemDetail | undefined): MarketStats {
+	if (!seed) return market;
+	const seedRate = seedListingRate(rollingSoldCount(seed), seed.itemCreationDate);
+	if (seedRate == null) return market;
+	const blended = blendSalesPerDay(market.salesPerDay, seedRate);
+	if (blended === market.salesPerDay) {
+		// Seed rate computable but ≤ market rate. Surface the seed rate
+		// for transparency (UI can still render "this listing alone moved
+		// X/day") without rewriting `salesPerDay`.
+		return { ...market, salesPerDaySeed: seedRate };
+	}
+	return {
+		...market,
+		salesPerDay: blended,
+		salesPerDayBaseline: market.salesPerDay,
+		salesPerDaySeed: seedRate,
+	};
 }
 
 /**

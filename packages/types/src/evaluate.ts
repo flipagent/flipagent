@@ -52,7 +52,21 @@ export const MarketStats = Type.Object(
 		p25Cents: Type.Integer(),
 		p75Cents: Type.Integer(),
 		nObservations: Type.Integer(),
+		/** Effective rate fed into the queue-model exit forecast. When the
+		 *  seed listing's per-listing rate raised this above the comp-pool
+		 *  rate, the pre-blend value is preserved on `salesPerDayBaseline`
+		 *  and the seed contribution on `salesPerDaySeed`. */
 		salesPerDay: Type.Number(),
+		/** Comp-pool sales-per-day before seed blending. Set only when
+		 *  the seed raised the rate; absent when no blend was applied
+		 *  (treat `salesPerDay` as the baseline in that case). */
+		salesPerDayBaseline: Type.Optional(Type.Number()),
+		/** Seed listing's own per-listing rate
+		 *  (`estimatedSoldQuantity / clamp(days_active, 1..60)`). Set when
+		 *  the seed had usable `estimatedSoldQuantity` + `itemCreationDate`
+		 *  data; surfaces the per-listing demand signal even when it didn't
+		 *  end up raising the effective rate. */
+		salesPerDaySeed: Type.Optional(Type.Number()),
 		meanDaysToSell: Type.Optional(Type.Number()),
 		daysStdDev: Type.Optional(Type.Number()),
 		daysP50: Type.Optional(Type.Number()),
@@ -259,6 +273,23 @@ export const Evaluation = Type.Object(
 		maxLossCents: Type.Union([Type.Integer(), Type.Null()]),
 		landedCostCents: Type.Union([Type.Integer(), Type.Null()]),
 		rating: Type.Union([Type.Literal("buy"), Type.Literal("skip")]),
+		/**
+		 * Structured rating reason — mutually exclusive enum a UI / programmatic
+		 * caller can branch on without parsing `reason` text:
+		 *   - `cleared`           — buy passed every gate
+		 *   - `vetoed`            — factual veto (broken / parts only / wrong condition)
+		 *   - `no_market`         — no sold pool or zero velocity (no exit price)
+		 *   - `insufficient_data` — sold pool too small for a confident recommendation
+		 *   - `below_min_net`     — expected net below the `minNetCents` threshold
+		 */
+		reasonCode: Type.Union([
+			Type.Literal("cleared"),
+			Type.Literal("vetoed"),
+			Type.Literal("no_market"),
+			Type.Literal("insufficient_data"),
+			Type.Literal("below_min_net"),
+		]),
+		/** Human-readable explanation paired with `reasonCode`. */
 		reason: Type.String(),
 		bidCeilingCents: Type.Union([Type.Integer(), Type.Null()]),
 		safeBidBreakdown: Type.Union([

@@ -25,6 +25,7 @@ import type {
 	ForwarderProvider,
 	ForwarderShipment,
 	ForwarderShipmentRequest,
+	NextAction,
 } from "@flipagent/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "../../db/client.js";
@@ -32,6 +33,7 @@ import type { BridgeJob } from "../../db/schema.js";
 import { bridgeTokens } from "../../db/schema.js";
 import { createBridgeJob, getJobForApiKey } from "../bridge-jobs.js";
 import { BRIDGE_TASKS } from "../ebay/bridge/tasks.js";
+import { openUrlAction } from "../shared/next-action.js";
 
 export interface RefreshArgs {
 	provider: ForwarderProvider;
@@ -102,11 +104,32 @@ export interface DispatchArgs extends PackagePhotosArgs {
 	request: ForwarderShipmentRequest;
 }
 
+export interface DispatchPackageArgs extends DispatchArgs {
+	/**
+	 * Whether the caller's api key has a paired Chrome extension.
+	 * When true the bridge drives the forwarder's outbound-shipment
+	 * flow inline (selects packages, fills the mailout form, surfaces
+	 * the cost for the user to confirm). When false the API returns
+	 * `nextAction.url` pointing at the forwarder's outbound page so
+	 * the user completes the dispatch on the forwarder's own UI; the
+	 * tracking row stays open for inbox-refresh reconciliation later.
+	 */
+	bridgePaired?: boolean;
+}
+
 /**
- * Queue a "ship this package out" job. The bridge extension drives the
- * forwarder's outbound-shipment flow with the supplied address, picks
- * the requested service tier, and reports back the shipment id +
- * carrier + tracking once the label is generated.
+ * Queue a "ship this package out" job. Two paths:
+ *   - bridge: paired Chrome extension drives the forwarder's outbound
+ *     flow with the supplied address, picks the requested service
+ *     tier, and reports back the shipment id + carrier + tracking
+ *     once the label is generated. Requires the user to be signed in
+ *     to the forwarder (we 412 with `forwarder_signin` next_action
+ *     when we've affirmatively seen them signed out).
+ *   - url: no extension required. The API returns `nextAction.url`
+ *     pointing at the forwarder's outbound page; the user completes
+ *     the dispatch manually. The tracking row remains open and is
+ *     reconciled on the next inbox refresh once the package shows
+ *     "shipped" on the forwarder's side.
  *
  * Idempotency: callers should pass an `idempotencyKey` derived from
  * `(packageId, ebayOrderId)` so a retried sold-event webhook doesn't
@@ -114,8 +137,11 @@ export interface DispatchArgs extends PackagePhotosArgs {
  * `request.ebayOrderId` when present (sufficient for sell-side
  * fulfillment) and fall back to the package id alone when not.
  */
-export async function dispatchPackage(args: DispatchArgs): Promise<ForwarderJobResponse> {
-	await assertForwarderSignedIn(args.apiKeyId, args.provider);
+export async function dispatchPackage(args: DispatchPackageArgs): Promise<ForwarderJobResponse> {
+	const transport: "bridge" | "url" = args.bridgePaired ? "bridge" : "url";
+	if (transport === "bridge") {
+		await assertForwarderSignedIn(args.apiKeyId, args.provider);
+	}
 	const idem = args.request.ebayOrderId
 		? `dispatch:${args.provider}:${args.packageId}:${args.request.ebayOrderId}`
 		: `dispatch:${args.provider}:${args.packageId}`;
@@ -130,11 +156,24 @@ export async function dispatchPackage(args: DispatchArgs): Promise<ForwarderJobR
 		metadata: {
 			kind: "forwarder.dispatch",
 			task: pickDispatchTask(args.provider),
+			transport,
 			packageId: args.packageId,
 			request: args.request,
 		},
 	});
 	return toForwarderJob(args.provider, order);
+}
+
+function dispatchDeeplinkAction(provider: ForwarderProvider): NextAction {
+	switch (provider) {
+		case "planetexpress":
+			return openUrlAction(
+				"https://app.planetexpress.com/client/packet/",
+				"Direct the user to this URL to ship the package outbound from Planet Express. They select the right package, choose the requested service tier, review the cost, and click Send Mailout. flipagent reconciles the dispatch on the next inbox refresh — call POST /v1/forwarder/planetexpress/refresh after the user confirms to mark the package shipped.",
+			);
+		default:
+			return openUrlAction("", `No deeplink wired for forwarder provider: ${provider satisfies never}`);
+	}
 }
 
 export interface GetAddressArgs {
@@ -273,9 +312,17 @@ function pickAddressTask(provider: ForwarderProvider): string {
 	}
 }
 
+const TERMINAL_FORWARDER_STATUSES: ReadonlySet<ForwarderJobStatus> = new Set([
+	"completed",
+	"failed",
+	"cancelled",
+	"expired",
+]);
+
 function toForwarderJob(provider: ForwarderProvider, order: BridgeJob): ForwarderJobResponse {
 	const meta = (order.metadata as Record<string, unknown> | null) ?? null;
 	const kind = typeof meta?.kind === "string" ? (meta.kind as string) : "forwarder.refresh";
+	const transport = typeof meta?.transport === "string" ? (meta.transport as string) : null;
 	const result = order.result as Record<string, unknown> | null;
 	const job: ForwarderJobResponse = {
 		jobId: order.id,
@@ -299,6 +346,12 @@ function toForwarderJob(provider: ForwarderProvider, order: BridgeJob): Forwarde
 	} else if (kind === "forwarder.dispatch") {
 		const shipment = extractShipment(result);
 		if (shipment) job.shipment = shipment;
+		// Url-transport dispatch with no shipment yet — agent prompts
+		// the user via this deeplink. Bridge dispatch leaves nextAction
+		// off (extension already drives the outbound flow inline).
+		if (!shipment && transport === "url" && !TERMINAL_FORWARDER_STATUSES.has(job.status)) {
+			job.nextAction = dispatchDeeplinkAction(provider);
+		}
 	} else if (kind === "forwarder.address") {
 		const addresses = extractAddresses(result);
 		if (addresses && addresses.length > 0) job.addresses = addresses;

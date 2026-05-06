@@ -8,14 +8,26 @@
  * single `POST /v1/purchases`. Caller passes the items + (optional)
  * overrides; we initiate, apply overrides if any, then place_order.
  *
- * Both transports — REST (with `EBAY_ORDER_APPROVED=1`) and bridge
- * (Chrome extension) — surface through this same shape. Multi-stage
- * shipping/payment/coupon overrides only work in REST transport;
- * passing them in bridge mode gets a 412 with a clear pointer.
+ * Three transports surface through the same shape:
+ *   - REST   (with `EBAY_ORDER_APPROVED=1`) — eBay's Buy Order API
+ *            places the order server-side. Multi-stage shipping/
+ *            payment/coupon overrides work here.
+ *   - BRIDGE (paired Chrome extension) — extension opens the ebay.com/
+ *            itm tab, shows a cap-validation banner, and captures the
+ *            orderId off /vod/ for fast reconciliation.
+ *   - URL    (no extension, no REST approval) — the API returns
+ *            `nextAction.url` pointing at the ebay.com/itm page; the
+ *            user clicks Buy It Now → Confirm and pay on eBay's own
+ *            UI. Trading-API reconciler matches completion against a
+ *            snapshot captured at queue time.
+ *
+ * Auto-pick order: REST (if approved) → BRIDGE (if paired) → URL.
+ * Multi-stage shipping/payment/coupon overrides are REST-only; passing
+ * them in bridge or url mode returns 412.
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Address, Marketplace, Money, Page, ResponseSource } from "./_common.js";
+import { Address, Marketplace, Money, NextAction, Page, ResponseSource } from "./_common.js";
 
 export const PurchaseStatus = Type.Union(
 	[
@@ -74,8 +86,22 @@ export const Purchase = Type.Object(
 		createdAt: Type.String(),
 		completedAt: Type.Optional(Type.String()),
 
-		/** "rest" or "bridge" — which transport actually placed the order. */
-		transport: Type.Optional(Type.Union([Type.Literal("rest"), Type.Literal("bridge")])),
+		/**
+		 * "rest" (server placed it), "bridge" (paired Chrome extension
+		 * drives the click), or "url" (the user clicks through on
+		 * ebay.com via the deeplink in `nextAction`).
+		 */
+		transport: Type.Optional(Type.Union([Type.Literal("rest"), Type.Literal("bridge"), Type.Literal("url")])),
+
+		/**
+		 * Deeplink to drive the order forward when transport is "url".
+		 * Agent/UI directs the user to `nextAction.url` (the ebay.com/itm
+		 * page); the order completes once the user clicks through and
+		 * the reconciler matches. Omitted in REST + bridge transports
+		 * (the user doesn't need a URL — REST placed the order server-
+		 * side, and bridge already opened the tab in the user's browser).
+		 */
+		nextAction: Type.Optional(NextAction),
 	},
 	{ $id: "Purchase" },
 );
@@ -107,8 +133,8 @@ export const PurchaseCreate = Type.Object(
 
 		/**
 		 * Override the buyer's default shipping address. REST transport
-		 * only — bridge transport uses the buyer's eBay-side default and
-		 * 412s if this is set.
+		 * only — bridge + url transports use the buyer's eBay-side
+		 * default and 412 if this is set.
 		 */
 		shipTo: Type.Optional(Address),
 
@@ -132,23 +158,7 @@ export const PurchaseCreate = Type.Object(
 		guest: Type.Optional(Type.Boolean()),
 
 		/** Force a specific transport. Auto-picks when omitted. */
-		transport: Type.Optional(Type.Union([Type.Literal("rest"), Type.Literal("bridge")])),
-
-		/**
-		 * Per-order human-review attestation. eBay's User Agreement
-		 * (effective Feb 20, 2026) prohibits "buy-for-me agents,
-		 * LLM-driven bots, or any end-to-end flow that attempts to place
-		 * orders without human review." flipagent's bridge transport
-		 * requires this acknowledgement on every `/v1/purchases` call;
-		 * REST transport requires it unless the eBay developer account
-		 * holds Order API approval (`EBAY_ORDER_APPROVED=1`). Pass
-		 * an ISO-8601 timestamp not older than 5 minutes — the
-		 * attestation means a human in your interface confirmed THIS
-		 * specific order within the last few minutes. The shape check
-		 * (parseable + freshness window) lives in the orchestrator so
-		 * stale + malformed return a uniform 412.
-		 */
-		humanReviewedAt: Type.Optional(Type.String({ description: "ISO-8601 timestamp" })),
+		transport: Type.Optional(Type.Union([Type.Literal("rest"), Type.Literal("bridge"), Type.Literal("url")])),
 	},
 	{ $id: "PurchaseCreate" },
 );

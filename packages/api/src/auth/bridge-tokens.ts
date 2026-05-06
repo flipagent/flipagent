@@ -100,6 +100,21 @@ export async function listBridgeTokensForUser(userId: string): Promise<BridgeTok
 }
 
 /**
+ * Whether this api key has at least one active (non-revoked) bridge
+ * token — i.e. a paired Chrome extension. Used by routes that pick a
+ * transport per call to decide between bridge and url; cheap query
+ * (one indexed lookup, no row materialisation).
+ */
+export async function isExtensionPaired(apiKeyId: string): Promise<boolean> {
+	const rows = await db
+		.select({ id: bridgeTokens.id })
+		.from(bridgeTokens)
+		.where(and(eq(bridgeTokens.apiKeyId, apiKeyId), isNull(bridgeTokens.revokedAt)))
+		.limit(1);
+	return rows.length > 0;
+}
+
+/**
  * Look up a single bridge token row by id, scoped to the owning user.
  * Returns null when missing or owned by someone else — callers (the
  * /v1/me/devices DELETE route) treat both as 404 to avoid leaking

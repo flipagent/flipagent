@@ -152,15 +152,21 @@ describe("selectTransport", () => {
 			expect(selectTransport("feedback.leave", { oauthBound: true })).toBe("rest");
 		});
 
-		it("uses bridge for bridge-only resources when paired", () => {
+		it("uses bridge for human-action surfaces when extension paired", () => {
 			expect(selectTransport("orders.checkout", { bridgePaired: true })).toBe("bridge");
 			expect(selectTransport("inbox.watching", { bridgePaired: true })).toBe("bridge");
 			expect(selectTransport("inbox.cases", { bridgePaired: true })).toBe("bridge");
 		});
 
+		it("falls through to url for orders/bids when neither REST approved nor extension paired", () => {
+			// orders.checkout has rest+bridge+url; auto-pick lands on url
+			// when nothing else is available (deeplink — always works)
+			expect(selectTransport("orders.checkout", { bridgePaired: false })).toBe("url");
+			expect(selectTransport("bids.place", { bridgePaired: false })).toBe("url");
+			expect(selectTransport("bids.status", { bridgePaired: false })).toBe("url");
+		});
+
 		it("throws when no transport is available", () => {
-			// orders.checkout is bridge-only when no rest creds + no env flag
-			expect(() => selectTransport("orders.checkout", { bridgePaired: false })).toThrow(TransportUnavailableError);
 			// messages.list is trading-only — needs oauth
 			expect(() => selectTransport("messages.list", { oauthBound: false })).toThrow(TransportUnavailableError);
 			// inventory.crud is rest:user — needs oauth
@@ -169,6 +175,9 @@ describe("selectTransport", () => {
 			expect(() => selectTransport("markets.taxonomy", { appCredsConfigured: false })).toThrow(
 				TransportUnavailableError,
 			);
+			// inbox.* are bridge-only (no url fallback — authenticated DOM
+			// scrape can't be deeplinked)
+			expect(() => selectTransport("inbox.watching", { bridgePaired: false })).toThrow(TransportUnavailableError);
 		});
 	});
 
@@ -176,32 +185,34 @@ describe("selectTransport", () => {
 		it("declares at least one transport for every resource", () => {
 			for (const [resource, raw] of Object.entries(RESOURCE_TRANSPORTS)) {
 				const caps = raw as ResourceTransports;
-				const has = caps.rest || caps.scrape || caps.bridge || caps.trading;
+				const has = caps.rest || caps.scrape || caps.bridge || caps.trading || caps.url;
 				expect(has, `resource ${resource} declares zero transports`).toBeTruthy();
 			}
 		});
 
-		it("declares dual rest+bridge resources explicitly (sanity check on the matrix)", () => {
+		it("declares triple rest+bridge+url resources explicitly (sanity check on the matrix)", () => {
+			const triple: string[] = [];
+			for (const [resource, raw] of Object.entries(RESOURCE_TRANSPORTS)) {
+				const caps = raw as ResourceTransports;
+				if (caps.rest && caps.bridge && caps.url) triple.push(resource);
+			}
+			// orders.checkout — eBay Buy Order: rest gated by Limited
+			// Release env, bridge for paired extensions, url deeplink
+			// otherwise. All three first-class.
+			// bids.{place,status} — Buy Offer mirrors orders.checkout.
+			expect(triple.sort()).toEqual(["bids.place", "bids.status", "orders.checkout"]);
+		});
+
+		it("declares dual rest+bridge resources for the ebay_query reads", () => {
 			const dual: string[] = [];
 			for (const [resource, raw] of Object.entries(RESOURCE_TRANSPORTS)) {
 				const caps = raw as ResourceTransports;
-				if (caps.bridge && caps.rest) dual.push(resource);
+				if (caps.bridge && caps.rest && !caps.url) dual.push(resource);
 			}
 			// listings.{search,sold,detail} — anonymous-read resources
-			// where bridge is an alternative to scrape/rest.
-			// orders.checkout — eBay Buy Order: rest gated by Limited
-			// Release env, bridge always available; both first-class.
-			// bids.{place,status} — Buy Offer mirrors orders.checkout:
-			// rest gated by EBAY_BIDDING_APPROVED, bridge always available
-			// when the extension is paired.
-			expect(dual.sort()).toEqual([
-				"bids.place",
-				"bids.status",
-				"listings.detail",
-				"listings.search",
-				"listings.sold",
-				"orders.checkout",
-			]);
+			// where bridge is an alternative to scrape/rest (no url
+			// because there's no human action — these are reads).
+			expect(dual.sort()).toEqual(["listings.detail", "listings.search", "listings.sold"]);
 		});
 	});
 });

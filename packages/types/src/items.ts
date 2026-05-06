@@ -153,10 +153,27 @@ export const Item = Type.Object(
 		watchCount: Type.Optional(Type.Integer({ minimum: 0 })),
 		bidding: Type.Optional(ItemBidding),
 
+		// rolling counts — populated for fixed-price listings on both
+		// active (current stock + units already shipped) and sold-comp
+		// summaries (units transacted in the lookback window).
+		availableQuantity: Type.Optional(
+			Type.Integer({
+				minimum: 0,
+				description:
+					"Live stock remaining on the listing. Absent when eBay hides the count (e.g. 'More than 10 available') or for auctions.",
+			}),
+		),
+		soldQuantity: Type.Optional(
+			Type.Integer({
+				minimum: 0,
+				description:
+					"Rolling units shipped on this listing. Browse REST `estimatedSoldQuantity` for active, `totalSoldQuantity` for sold comps.",
+			}),
+		),
+
 		// sold-only
 		soldAt: Type.Optional(Type.String({ description: "ISO 8601 sold/closed time." })),
 		soldPrice: Type.Optional(Money),
-		soldQuantity: Type.Optional(Type.Integer({ minimum: 0 })),
 
 		// shipping summary
 		shipping: Type.Optional(ItemShipping),

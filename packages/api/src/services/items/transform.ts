@@ -39,6 +39,38 @@ function bareId(itemId: string, legacyItemId?: string): string {
 	return m ? m[1] : itemId;
 }
 
+/**
+ * Pull a multi-quantity listing's rolling sold count from either eBay
+ * shape. ItemDetail surfaces it under `estimatedAvailabilities[0]`
+ * (Browse REST detail), ItemSummary under `totalSoldQuantity` (Browse
+ * REST search). Same number, two homes — preference is `totalSoldQuantity`
+ * when present (search summaries are the cheaper source). Returns null
+ * when neither populated.
+ *
+ * Shared between `transform.ts` (mapping into the public `Item` shape)
+ * and `evaluate/adapter.ts` (feeding the seed velocity blend), so both
+ * read from the same single source of truth.
+ */
+export function rollingSoldCount(item: ItemSummary | ItemDetail): number | null {
+	const fromSummary = "totalSoldQuantity" in item && item.totalSoldQuantity != null ? item.totalSoldQuantity : null;
+	if (fromSummary != null) return fromSummary;
+	const fromDetail =
+		"estimatedAvailabilities" in item ? item.estimatedAvailabilities?.[0]?.estimatedSoldQuantity : undefined;
+	return fromDetail != null ? fromDetail : null;
+}
+
+/**
+ * Live remaining stock from `estimatedAvailabilities[0]`. Only
+ * ItemDetail carries this; ItemSummary returns null. Distinct from
+ * `rollingSoldCount` because the two answer different questions:
+ * "how many shipped?" vs "how many left?".
+ */
+function remainingStock(item: ItemSummary | ItemDetail): number | null {
+	if (!("estimatedAvailabilities" in item)) return null;
+	const q = item.estimatedAvailabilities?.[0]?.estimatedAvailableQuantity;
+	return q != null ? q : null;
+}
+
 function seller(s: ItemSummary["seller"]): ItemSeller | undefined {
 	if (!s?.username) return undefined;
 	return {
@@ -271,14 +303,20 @@ export function ebayItemToFlipagent(item: ItemSummary | ItemDetail): Item {
 	const bid = bidding(item);
 	if (bid) out.bidding = bid;
 
+	// Rolling sold count + live remaining stock — surfaces on active
+	// listings (PDP availability + search summaries) and sold comps. Both
+	// extractors centralised in helpers above so `evaluate/adapter.ts` reads
+	// from the same source.
+	const sold = rollingSoldCount(item);
+	if (sold != null) out.soldQuantity = sold;
+	const remaining = remainingStock(item);
+	if (remaining != null) out.availableQuantity = remaining;
+
 	// sold-only — only populated on ItemSummary (Marketplace Insights merge)
 	if ("lastSoldDate" in item) {
 		if (item.lastSoldDate) out.soldAt = item.lastSoldDate;
 		const sold = moneyFrom(item.lastSoldPrice);
 		if (sold) out.soldPrice = sold;
-		if (item.totalSoldQuantity !== undefined && item.totalSoldQuantity !== null) {
-			out.soldQuantity = item.totalSoldQuantity;
-		}
 	}
 
 	const ship = shipping(item);

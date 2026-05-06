@@ -37,7 +37,7 @@ function pricingFrom(summary: PricingSummary | undefined): PurchasePricing | und
 
 export interface ToPurchaseInput {
 	order: EbayPurchaseOrder;
-	transport?: "rest" | "bridge";
+	transport?: "rest" | "bridge" | "url";
 	marketplace?: Marketplace;
 	completedAt?: string;
 }

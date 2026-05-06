@@ -133,4 +133,65 @@ describe("ebayItemToFlipagent", () => {
 		expect(out.location).toBeUndefined();
 		expect(out.shipping).toBeUndefined();
 	});
+
+	// Multi-quantity rolling counts — the user-listing 405993262109 case:
+	// 17 stock + 10 already shipped on the same listing. Both numbers must
+	// reach the public Item shape so evaluate's `item` carries the live
+	// demand signal. Active-listing path (no `lastSoldDate`) is what
+	// regression covered: pre-fix, `soldQuantity` was gated on the sold-
+	// only branch and dropped silently.
+	it("active multi-quantity ItemDetail surfaces estimatedAvailabilities counts", () => {
+		const detail = {
+			itemId: "v1|405993262109|0",
+			legacyItemId: "405993262109",
+			title: "Multi-quantity listing",
+			itemWebUrl: "https://www.ebay.com/itm/405993262109",
+			price: { value: "29.99", currency: "USD" },
+			estimatedAvailabilities: [
+				{
+					estimatedAvailabilityStatus: "IN_STOCK",
+					estimatedAvailableQuantity: 17,
+					estimatedSoldQuantity: 10,
+					estimatedRemainingQuantity: 17,
+				},
+			],
+		} as unknown as ItemDetail;
+		const out = ebayItemToFlipagent(detail);
+		expect(out.status).toBe("active");
+		expect(out.availableQuantity).toBe(17);
+		expect(out.soldQuantity).toBe(10);
+	});
+
+	it("active ItemSummary surfaces totalSoldQuantity even without lastSoldDate", () => {
+		const summary: ItemSummary = { ...baseSummary, totalSoldQuantity: 627 };
+		const out = ebayItemToFlipagent(summary);
+		expect(out.status).toBe("active");
+		expect(out.soldQuantity).toBe(627);
+	});
+
+	it("'More than X available' (only sold count populated) leaves availableQuantity absent", () => {
+		const detail = {
+			itemId: "v1|314208138435|0",
+			legacyItemId: "314208138435",
+			title: "High-stock listing",
+			itemWebUrl: "https://www.ebay.com/itm/314208138435",
+			estimatedAvailabilities: [{ estimatedAvailabilityStatus: "IN_STOCK", estimatedSoldQuantity: 1746 }],
+		} as unknown as ItemDetail;
+		const out = ebayItemToFlipagent(detail);
+		expect(out.availableQuantity).toBeUndefined();
+		expect(out.soldQuantity).toBe(1746);
+	});
+
+	it("totalSoldQuantity (search summary) wins over estimatedSoldQuantity (avoids double-fetch downgrade)", () => {
+		// When upstream populated both fields — e.g. a digest stitched
+		// from a search response and a refreshed detail — totalSoldQuantity
+		// is the authoritative source and shouldn't be overwritten by the
+		// detail-side fallback.
+		const summary = {
+			...baseSummary,
+			totalSoldQuantity: 100,
+			estimatedAvailabilities: [{ estimatedAvailabilityStatus: "IN_STOCK", estimatedSoldQuantity: 50 }],
+		} as unknown as ItemSummary;
+		expect(ebayItemToFlipagent(summary).soldQuantity).toBe(100);
+	});
 });

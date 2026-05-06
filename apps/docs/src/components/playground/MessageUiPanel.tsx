@@ -158,10 +158,11 @@ export interface NextActionPanelProps {
 	error?: string;
 	message?: string;
 	next_action?: {
-		/** "ebay_oauth" | "extension_install" | "rest_or_extension" |
+		/** "ebay_oauth" | "extension_install" | "open_url" |
 		 *  "forwarder_signin" | "forwarder_signup" | "setup_seller_policies" |
-		 *  "configure_ebay" | "configure_stripe". String-typed so future
-		 *  kinds render as the generic fallback without a code change. */
+		 *  "configure_ebay" | "configure_bidding_api" | "configure_stripe".
+		 *  String-typed so future kinds render as the generic fallback
+		 *  without a code change. */
 		kind?: string;
 		url?: string;
 		instructions?: string;
@@ -941,11 +942,17 @@ const NEXT_ACTION_PRESENTATION: Record<
 		title: "I need the flipagent extension to do that",
 		ctaLabel: "Install extension",
 	},
-	rest_or_extension: {
-		icon: <ChromeIcon />,
-		eyebrow: "Install the Chrome extension",
-		title: "Buying needs the extension paired",
-		ctaLabel: "Install extension",
+	open_url: {
+		icon: <LinkIcon />,
+		eyebrow: "Confirm on the marketplace",
+		title: "Open this listing to complete the action",
+		ctaLabel: "Open listing",
+	},
+	configure_bidding_api: {
+		icon: <GearIcon />,
+		eyebrow: "Operator config needed",
+		title: "Buy Offer (Bidding) API not approved on this server",
+		ctaLabel: "View health page",
 	},
 	forwarder_signin: {
 		icon: <LinkIcon />,

@@ -1,13 +1,21 @@
 /**
- * Bridge-mode primitive for eBay's Buy Order flow. Used internally by
+ * Tracking-row primitive for eBay's Buy Order flow. Used internally by
  * `services/purchases/orchestrate.ts` when REST transport isn't
- * approved (`EBAY_ORDER_APPROVED=0`) — the actual buy is driven by
- * our Chrome extension via the bridge protocol.
+ * approved (`EBAY_ORDER_APPROVED=0`) — i.e. for both bridge and url
+ * transports. The row records the order, captures a MyEbay snapshot
+ * for the Trading-API reconciler to match against, and (for bridge
+ * transport) is the queue entry the Chrome extension claims to drive
+ * the BIN tab.
  *
  *   initiateCheckoutSession()   → inserts a `buy_checkout_sessions` row
- *   placeOrder()                → creates a `bridge_jobs` row for the
- *                                  extension to claim + drive BIN
- *   getPurchaseOrder()          → polls the bridge job state
+ *   placeOrder()                → creates a `bridge_jobs` tracking row +
+ *                                  captures MyEbay snapshot. Bridge-
+ *                                  paired clients claim the row and
+ *                                  drive the click; url clients ignore
+ *                                  it and let the user click on
+ *                                  ebay.com directly. Either way the
+ *                                  reconciler matches completion.
+ *   getPurchaseOrder()          → reads the tracking row's state
  *
  * Status mapping internal → eBay shape (still preserved because the
  * orchestrator still consumes `EbayPurchaseOrder`):
@@ -79,6 +87,7 @@ export async function placeOrder(
 	sessionId: string,
 	apiKeyId: string,
 	userId: string | null,
+	transport: "rest" | "bridge" | "url",
 ): Promise<EbayPurchaseOrder> {
 	const row = await loadSession(sessionId, apiKeyId);
 	if (!row) throw new BridgeCheckoutError("session_not_found", 404, `No checkout session ${sessionId}`);
@@ -92,15 +101,16 @@ export async function placeOrder(
 		if (order) return toEbayPurchaseOrder(order, row.lineItems as LineItem[]);
 	}
 
-	// Bridge takes one item per task. eBay can handle multi-item carts,
-	// but the BIN-click flow we drive is per-listing. Take the first item;
-	// surface a 412 if the caller actually wants multi-item carting.
+	// Bridge + url transports both drive one item per task. eBay can
+	// handle multi-item carts, but the BIN flow on ebay.com is
+	// per-listing. Take the first item; surface a 412 if the caller
+	// actually wants multi-item carting (REST-only).
 	const items = row.lineItems as LineItem[];
 	if (items.length > 1) {
 		throw new BridgeCheckoutError(
-			"multi_item_unsupported_in_bridge_mode",
+			"multi_item_unsupported_outside_rest",
 			412,
-			"bridge mode places one line item per call; submit a separate session per item or set EBAY_ORDER_APPROVED=1",
+			"bridge + url transports place one line item per call; submit a separate session per item or set EBAY_ORDER_APPROVED=1",
 		);
 	}
 	const first = items[0];
@@ -129,6 +139,7 @@ export async function placeOrder(
 		idempotencyKey: `checkout-session:${sessionId}`,
 		metadata: {
 			task: BRIDGE_TASKS.EBAY_BUY_ITEM,
+			transport,
 			checkoutSessionId: sessionId,
 			...(first.variationId ? { variationId: first.variationId } : {}),
 			...(beforeSnapshot ? { beforeSnapshot } : {}),
@@ -143,7 +154,12 @@ export async function placeOrder(
 	return toEbayPurchaseOrder(order, items);
 }
 
-export async function getPurchaseOrder(purchaseOrderId: string, apiKeyId: string): Promise<EbayPurchaseOrder | null> {
+export interface PurchaseOrderRecord {
+	order: EbayPurchaseOrder;
+	transport?: "rest" | "bridge" | "url";
+}
+
+export async function getPurchaseOrder(purchaseOrderId: string, apiKeyId: string): Promise<PurchaseOrderRecord | null> {
 	const order = await loadOrder(purchaseOrderId, apiKeyId);
 	if (!order) return null;
 	// Look up the originating session to recover the lineItems shape; if
@@ -159,7 +175,11 @@ export async function getPurchaseOrder(purchaseOrderId: string, apiKeyId: string
 		sessionRow[0] !== undefined
 			? (sessionRow[0].lineItems as LineItem[])
 			: ([{ itemId: order.itemId, quantity: order.quantity }] as LineItem[]);
-	return toEbayPurchaseOrder(order, items);
+	const meta = (order.metadata ?? {}) as { transport?: "rest" | "bridge" | "url" };
+	return {
+		order: toEbayPurchaseOrder(order, items),
+		...(meta.transport ? { transport: meta.transport } : {}),
+	};
 }
 
 /* ----------------------------- helpers ----------------------------- */

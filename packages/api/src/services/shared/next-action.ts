@@ -17,19 +17,28 @@ import { planetExpressSignupUrl } from "./forwarder.js";
 
 export type NextActionKind =
 	| "ebay_oauth" // caller must run /v1/connect/ebay
-	| "extension_install" // user must install + pair the Chrome extension
-	| "rest_or_extension" // either flag is enough — used by /v1/purchases
+	| "extension_install" // user must install + pair the Chrome extension (PE inbox / authenticated reads only)
+	| "open_url" // human-driven action: agent should open `url` for the user to click through (Buy It Now, Place Bid, forwarder dispatch). Service supplies a per-call URL + instructions via `openUrlAction()`.
 	| "forwarder_signin" // user must re-sign-in to the forwarder (PE) — session expired
 	| "forwarder_signup" // user has no PE account — direct them to sign up (referral-attributed)
 	| "setup_seller_policies" // agent must collect prefs + POST /v1/policies/setup
 	| "configure_ebay" // operator must set EBAY_CLIENT_ID/SECRET/RU_NAME
-	| "configure_bidding_api" // either operator sets EBAY_BIDDING_APPROVED=1 after Buy Offer LR approval, or end user pairs the Chrome extension
+	| "configure_bidding_api" // operator must set EBAY_BIDDING_APPROVED=1 after Buy Offer LR approval (otherwise the API auto-falls-back to url transport)
 	| "configure_stripe"; // operator must set STRIPE_* env
 
 export interface NextAction {
 	readonly kind: NextActionKind;
 	readonly url: string;
 	readonly instructions: string;
+}
+
+/**
+ * Build an `open_url` NextAction with caller-supplied url + instructions.
+ * Used by deeplink-transport surfaces (`/v1/purchases`, `/v1/bids`,
+ * forwarder dispatch) where the URL varies per call.
+ */
+export function openUrlAction(url: string, instructions: string): NextAction {
+	return { kind: "open_url", url, instructions };
 }
 
 const EXTENSION_DOCS = "https://flipagent.dev/docs/extension/";
@@ -56,12 +65,15 @@ export function nextAction(c: Context, kind: NextActionKind): NextAction {
 				instructions:
 					"Direct the user to install the flipagent Chrome extension at this URL and pair it with their api key (one-time, via the extension's popup — click the toolbar icon). Re-call the tool once paired.",
 			};
-		case "rest_or_extension":
+		case "open_url":
+			// `open_url` is built at the call site via `openUrlAction(url,
+			// instructions)` because the URL varies per call. This branch
+			// exists only so the static map stays exhaustive — the caller
+			// should never invoke `nextAction(c, "open_url")` directly.
 			return {
 				kind,
-				url: EXTENSION_DOCS,
-				instructions:
-					"Direct the user to install the flipagent Chrome extension and pair it with their api key — purchases will then drive through their logged-in eBay session. Alternatively the api operator can set EBAY_ORDER_APPROVED=1 to use eBay's Buy Order REST API.",
+				url: "",
+				instructions: "Use openUrlAction(url, instructions) to build this NextAction.",
 			};
 		case "forwarder_signin":
 			return {
@@ -94,9 +106,9 @@ export function nextAction(c: Context, kind: NextActionKind): NextAction {
 		case "configure_bidding_api":
 			return {
 				kind,
-				url: EXTENSION_DOCS,
+				url: `${origin}/v1/health`,
 				instructions:
-					"Direct the user to install the flipagent Chrome extension and pair it with their api key — auction bids will then drive through their logged-in eBay session (the bridge clicks Place Bid on ebay.com). Alternatively the api operator can apply at developer.ebay.com → Buy APIs → Buy Offer for Limited Release access and set EBAY_BIDDING_APPROVED=1 to use eBay's REST surface instead.",
+					"The api operator must apply at developer.ebay.com → Buy APIs → Buy Offer for Limited Release access and set EBAY_BIDDING_APPROVED=1 to use eBay's REST bidding surface. Until then, /v1/bids auto-falls-back to url transport — the response carries `next_action.url` pointing at the eBay listing for the user to click Place Bid manually.",
 			};
 		case "configure_stripe":
 			return {

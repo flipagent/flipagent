@@ -1,18 +1,31 @@
 /**
  * `/v1/bids/*` — auction bidding (eBay buy/offer).
+ *
+ * Three transports surface through the same shape:
+ *   - REST   (with `EBAY_BIDDING_APPROVED=1`) — eBay's Buy Offer API
+ *            places the proxy bid server-side.
+ *   - BRIDGE (paired Chrome extension) — extension opens the ebay.com/
+ *            itm tab and surfaces a Place-Bid panel observer.
+ *   - URL    (no extension, no REST approval) — the API returns
+ *            `nextAction.url` pointing at the ebay.com/itm page; the
+ *            user clicks Place Bid on eBay's own UI.
+ *
+ * Trading-API reconciler matches the resulting `BidList` diff against
+ * a snapshot captured at queue time regardless of transport. Auto-pick
+ * order: REST (if approved) → BRIDGE (if paired) → URL.
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, ResponseSource } from "./_common.js";
+import { Marketplace, Money, NextAction, ResponseSource } from "./_common.js";
 
 export const BidStatus = Type.Union(
 	[
-		// `pending` = bridge transport queued the bid in the user's
-		// browser; the user hasn't finished the eBay confirmation flow
-		// yet. The reconciler in `services/bid-reconciler.ts` flips it
-		// to `active` (or `outbid`) once `GetMyeBayBuying.BidList`
-		// confirms it landed; agents poll `GET /v1/bids/{listingId}`
-		// to see the transition.
+		// `pending` = bridge or url transport queued the bid in the
+		// tracking row; the user hasn't clicked through eBay's
+		// confirmation flow yet. The reconciler in
+		// `services/bid-reconciler.ts` flips it to `active` (or
+		// `outbid`) once `GetMyeBayBuying.BidList` confirms it landed;
+		// agents poll `GET /v1/bids/{listingId}` to see the transition.
 		Type.Literal("pending"),
 		Type.Literal("active"),
 		Type.Literal("outbid"),
@@ -35,6 +48,13 @@ export const Bid = Type.Object(
 		bidder: Type.Optional(Type.String()),
 		placedAt: Type.String(),
 		auctionEndsAt: Type.Optional(Type.String()),
+
+		/**
+		 * Deeplink to drive the bid forward when transport is "url".
+		 * Agent/UI directs the user to `nextAction.url` (the ebay.com/itm
+		 * page) to click Place Bid. Omitted in REST + bridge transports.
+		 */
+		nextAction: Type.Optional(NextAction),
 	},
 	{ $id: "Bid" },
 );
@@ -47,21 +67,7 @@ export const BidCreate = Type.Object(
 		maxBid: Type.Optional(Money),
 
 		/** Force a specific transport. Auto-picks when omitted. */
-		transport: Type.Optional(Type.Union([Type.Literal("rest"), Type.Literal("bridge")])),
-
-		/**
-		 * Per-bid human-review attestation. eBay's User Agreement
-		 * (effective Feb 20, 2026) prohibits unattended LLM-driven
-		 * bidding. flipagent's bridge transport requires this field
-		 * on every `/v1/bids` POST; REST transport requires it
-		 * unless the developer account holds Buy Offer (Bidding) API
-		 * approval (`EBAY_BIDDING_APPROVED=1`). Pass an ISO-8601
-		 * timestamp not older than 5 minutes — the attestation means
-		 * a human in your interface confirmed THIS specific bid
-		 * within the last few minutes. Shape + freshness validated
-		 * by the orchestrator (uniform 412 on stale / malformed).
-		 */
-		humanReviewedAt: Type.Optional(Type.String({ description: "ISO-8601 timestamp" })),
+		transport: Type.Optional(Type.Union([Type.Literal("rest"), Type.Literal("bridge"), Type.Literal("url")])),
 	},
 	{ $id: "BidCreate" },
 );

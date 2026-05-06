@@ -26,13 +26,16 @@ function summary(over: Partial<ItemSummary> = {}): ItemSummary {
 	};
 }
 
-/** A small, tight sold pool: median ≈ $120. */
+/** A small, tight sold pool: median ≈ $120. Sized at the rating threshold
+ *  (`MIN_SOLD_FOR_RATING = 6`) so the under-median-buy test exercises a
+ *  real recommendation rather than tripping the thin-data gate. */
 const SOLD: ItemSummary[] = [
 	summary({ itemId: "c1", price: { value: "115.00", currency: "USD" }, lastSoldDate: "2026-04-10T00:00:00Z" }),
-	summary({ itemId: "c2", price: { value: "118.00", currency: "USD" }, lastSoldDate: "2026-04-12T00:00:00Z" }),
-	summary({ itemId: "c3", price: { value: "120.00", currency: "USD" }, lastSoldDate: "2026-04-15T00:00:00Z" }),
-	summary({ itemId: "c4", price: { value: "122.00", currency: "USD" }, lastSoldDate: "2026-04-18T00:00:00Z" }),
-	summary({ itemId: "c5", price: { value: "125.00", currency: "USD" }, lastSoldDate: "2026-04-20T00:00:00Z" }),
+	summary({ itemId: "c2", price: { value: "117.00", currency: "USD" }, lastSoldDate: "2026-04-11T00:00:00Z" }),
+	summary({ itemId: "c3", price: { value: "118.00", currency: "USD" }, lastSoldDate: "2026-04-12T00:00:00Z" }),
+	summary({ itemId: "c4", price: { value: "120.00", currency: "USD" }, lastSoldDate: "2026-04-15T00:00:00Z" }),
+	summary({ itemId: "c5", price: { value: "122.00", currency: "USD" }, lastSoldDate: "2026-04-18T00:00:00Z" }),
+	summary({ itemId: "c6", price: { value: "125.00", currency: "USD" }, lastSoldDate: "2026-04-20T00:00:00Z" }),
 ];
 
 describe("toCents", () => {
@@ -68,6 +71,71 @@ describe("evaluate", () => {
 		});
 		expect(v.rating).toBe("buy");
 		expect(v.expectedNetCents).toBeGreaterThan(0);
+	});
+
+	it("seed listing's own sell-through raises expectedDaysToSell forecast (multi-quantity demand signal)", () => {
+		// Same listing twice: with vs without seed-side `estimatedAvailabilities`
+		// + `itemCreationDate`. The version that's already shipped 30 units in
+		// 10 days (3/day) should land a faster `recommendedExit.expectedDaysToSell`
+		// than the version with only the comp-pool rate (~5 sales over the
+		// window). Asymmetric blend: seed evidence raises velocity, never lowers.
+		const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000).toISOString();
+		const baseline = evaluate(summary({ price: { value: "60.00", currency: "USD" } }), {
+			sold: SOLD,
+			outboundShippingCents: 0,
+		});
+		const withSeed = evaluate(
+			summary({
+				price: { value: "60.00", currency: "USD" },
+				itemCreationDate: tenDaysAgo,
+				// ItemSummary fallback path — adapter reads totalSoldQuantity when
+				// `estimatedAvailabilities` is absent.
+				totalSoldQuantity: 30,
+			}),
+			{ sold: SOLD, outboundShippingCents: 0 },
+		);
+		// Both should still be buy. The seed-signal version has a higher
+		// queue rate, so expectedDaysToSell should be lower.
+		expect(baseline.recommendedExit?.expectedDaysToSell).toBeDefined();
+		expect(withSeed.recommendedExit?.expectedDaysToSell).toBeDefined();
+		expect(withSeed.recommendedExit!.expectedDaysToSell).toBeLessThan(baseline.recommendedExit!.expectedDaysToSell);
+	});
+
+	it("slow seed listing does NOT lower the forecast (asymmetric blend floor)", () => {
+		// Seed shipped only 1 unit in 60 days (0.017/day) — way below the
+		// comp-pool rate. The forecast must stay at the comp rate; we're
+		// going to relist under our own listing, so the seller's slow
+		// performance shouldn't drag our forecast down.
+		const sixtyDaysAgo = new Date(Date.now() - 60 * 86_400_000).toISOString();
+		const baseline = evaluate(summary({ price: { value: "60.00", currency: "USD" } }), {
+			sold: SOLD,
+			outboundShippingCents: 0,
+		});
+		const withSlowSeed = evaluate(
+			summary({
+				price: { value: "60.00", currency: "USD" },
+				itemCreationDate: sixtyDaysAgo,
+				totalSoldQuantity: 1,
+			}),
+			{ sold: SOLD, outboundShippingCents: 0 },
+		);
+		expect(withSlowSeed.recommendedExit?.expectedDaysToSell).toBe(baseline.recommendedExit?.expectedDaysToSell);
+	});
+
+	it("empty comp pool still routes through the blend (niche-SKU consistency)", () => {
+		// Pre-fix `opts.sold = []` short-circuited to a hand-rolled
+		// EMPTY_MARKET that bypassed the seed blend — a niche listing with
+		// no comps but a known seller velocity got "no market activity →
+		// skip" with the seed signal silently dropped. Now we always go
+		// through `marketFromSold`, whose `marketRate=0` branch in
+		// `blendSalesPerDay` returns the seed rate verbatim. Outcome stays
+		// skip (price/buy math), but the call must not throw and must
+		// produce a stable rating regardless of seed presence.
+		const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000).toISOString();
+		const empty = evaluate(summary(), {});
+		const emptyWithSeed = evaluate(summary({ itemCreationDate: tenDaysAgo, totalSoldQuantity: 30 }), { sold: [] });
+		expect(empty.rating).toBe("skip");
+		expect(emptyWithSeed.rating).toBe("skip");
 	});
 
 	it("recommends skip when no sold listings available", () => {

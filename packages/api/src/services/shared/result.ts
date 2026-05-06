@@ -19,7 +19,7 @@
  *     leaking into every type
  */
 
-export type SourceKind = "rest" | "scrape" | "bridge" | "trading" | "llm";
+export type SourceKind = "rest" | "scrape" | "bridge" | "trading" | "llm" | "url";
 
 export interface FlipagentResult<T> {
 	body: T;
@@ -42,6 +42,7 @@ export function coerceSourceKind(raw: string): SourceKind {
 		case "bridge":
 		case "trading":
 		case "llm":
+		case "url":
 			return raw;
 		case "capture":
 			// `capture` is the internal source label for cache rows pushed by

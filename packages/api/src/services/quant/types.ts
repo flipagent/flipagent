@@ -105,16 +105,43 @@ export interface MarketStats {
 	p75Cents: number;
 	nObservations: number;
 	/**
-	 * Effective sales per day. Exponentially recency-weighted with a
-	 * half-life of `windowDays/3` — recent sales count more, so a SKU
-	 * heating up (or cooling off) shifts this rate toward the current
-	 * pace rather than the average over the full lookback. Collapses to
-	 * the bare `nObservations / windowDays` when sales are uniformly
-	 * distributed in the window or when most observations lack
-	 * `soldAt` timestamps. Used as λ in the Erlang queue model in
-	 * `recommendListPrice` (time = (queueAhead + 1) / λ).
+	 * Effective sales per day fed into the Erlang queue model in
+	 * `recommendListPrice` (time = (queueAhead + 1) / λ). Two contributors:
+	 *
+	 *   1. Comp-pool rate — exponentially recency-weighted (half-life
+	 *      `windowDays/3`). Collapses to `n / windowDays` when sales are
+	 *      uniformly distributed in the window or when most observations
+	 *      lack `soldAt` timestamps. Stored separately as
+	 *      `salesPerDayBaseline` when the seed-listing blend kicks in.
+	 *   2. Seed listing per-listing rate — `soldQuantity / days_active`,
+	 *      stored as `salesPerDaySeed`. Surfaces multi-quantity listings
+	 *      whose sell-through is faster than the comp average (e.g. a
+	 *      seller has shipped 10 from THIS listing in 30d while the comp
+	 *      pool reads 0.2/day). Blend uses geometric-mean dampening so a
+	 *      single hot seed doesn't catapult the forecast.
+	 *
+	 * The blend is asymmetric — the seed signal can RAISE the rate but
+	 * never lower it (we'll relist under our own listing, so a slow seed
+	 * doesn't constrain our forecast). When the seed has no usable data
+	 * the blend is a no-op and `salesPerDay === salesPerDayBaseline`.
 	 */
 	salesPerDay: number;
+	/**
+	 * Pre-blend comp-pool rate. Set when seed-listing blending was
+	 * applied (i.e., `salesPerDaySeed` is also set). Absent when no
+	 * blending happened — `salesPerDay` is the baseline in that case.
+	 */
+	salesPerDayBaseline?: number;
+	/**
+	 * Seed listing's own per-listing rate
+	 * (`soldQuantity / clamp(days_since_creation, 1..60)`). The window
+	 * is capped at 60 days to avoid GTC stale-chain distortion — beyond
+	 * that the average rate underestimates the listing's current pace
+	 * since eBay's "X sold" badge tracks recent cycles, not original
+	 * creation. Absent when the seed lacked `estimatedSoldQuantity` or
+	 * `itemCreationDate`, or when the listing is too fresh (<1d).
+	 */
+	salesPerDaySeed?: number;
 	/**
 	 * Time-to-sell statistics — populated when at least one PriceObservation
 	 * carried `durationDays`. Undefined when no comparable had duration data.

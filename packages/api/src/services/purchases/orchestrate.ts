@@ -1,14 +1,26 @@
 /**
  * `POST /v1/purchases` — initiate + place_order in one shot.
  *
- * The actual eBay-side mechanics (REST passthrough vs bridge queue +
- * BIN-click recipe) live in `services/purchases/bridge-session.ts` already;
- * this module is the thin orchestrator that drives both stages and
- * returns the flipagent `Purchase` shape.
+ * Three transports surface through the same `Purchase` shape:
+ *   - "rest"   eBay's Buy Order REST places the order server-side
+ *              (gated by EBAY_ORDER_APPROVED + user OAuth)
+ *   - "bridge" paired Chrome extension claims a tracking row, opens
+ *              the ebay.com/itm tab, shows a cap-validation banner,
+ *              and captures the orderId off /vod/ for fast
+ *              reconciliation
+ *   - "url"    deeplink mode (no extension needed): the API returns
+ *              `nextAction.url` pointing at the ebay.com/itm page;
+ *              the user clicks Buy It Now → Confirm and pay on
+ *              eBay's own UI. The Trading-API reconciler matches the
+ *              resulting order against a snapshot captured at queue
+ *              time so the agent's next `GET /v1/purchases/{id}`
+ *              flips the row from `processing` → `completed` once
+ *              eBay confirms.
  *
- * Cancel + status-poll + list reuse the existing `getPurchaseOrder` /
- * `cancelJob` paths so a single source of truth for the eBay-shape
- * order is preserved.
+ * `selectTransport` picks rest → bridge → url in that order based on
+ * EBAY_ORDER_APPROVED + extension pairing. All three persist a
+ * tracking row (via `bridge-session.ts`) so cancel + status-poll +
+ * list reuse the same code.
  */
 
 import type { Purchase, PurchaseCreate } from "@flipagent/types";
@@ -16,7 +28,7 @@ import type { LineItem } from "@flipagent/types/ebay/buy";
 import { config } from "../../config.js";
 import { cancelJob } from "../bridge-jobs.js";
 import { reconcileJob } from "../bridge-reconciler.js";
-import type { NextActionKind } from "../shared/next-action.js";
+import { type NextAction, openUrlAction } from "../shared/next-action.js";
 import type { FlipagentResult, SourceKind } from "../shared/result.js";
 import { selectTransport, TransportUnavailableError } from "../shared/transport.js";
 import { BridgeCheckoutError, getPurchaseOrder, initiateCheckoutSession, placeOrder } from "./bridge-session.js";
@@ -25,13 +37,11 @@ import { ebayToPurchase } from "./transform.js";
 export class PurchaseError extends Error {
 	readonly status: number;
 	readonly code: string;
-	readonly nextActionKind: NextActionKind | undefined;
-	constructor(code: string, status: number, message: string, nextActionKind?: NextActionKind) {
+	constructor(code: string, status: number, message: string) {
 		super(message);
 		this.name = "PurchaseError";
 		this.code = code;
 		this.status = status;
-		this.nextActionKind = nextActionKind;
 	}
 }
 
@@ -41,56 +51,35 @@ export interface PurchaseContext {
 	bridgePaired?: boolean;
 }
 
-/**
- * Maximum age of a `humanReviewedAt` attestation accepted by createPurchase.
- * eBay's User Agreement requires "human review" of each order before
- * placement; we operationalise that with a fresh-attestation requirement
- * so a caller can't grandfather an indefinite "I always confirm" flag.
- * Five minutes is enough to cover legitimate confirm-then-submit lag
- * (network, two-factor, slow extension) without admitting unattended
- * pipelines.
- */
-const HUMAN_REVIEW_MAX_AGE_MS = 5 * 60 * 1000;
+function ebayItemUrl(itemId: string, variationId: string | undefined): string {
+	const base = `https://www.ebay.com/itm/${encodeURIComponent(itemId)}`;
+	return variationId ? `${base}?var=${encodeURIComponent(variationId)}` : base;
+}
+
+function buyDeeplinkAction(itemId: string, variationId: string | undefined): NextAction {
+	return openUrlAction(
+		ebayItemUrl(itemId, variationId),
+		'Direct the user to this URL to complete the purchase. They click Buy It Now → Confirm and pay on eBay\'s own UI. flipagent reconciles completion against the buyer\'s WonList — call GET /v1/purchases/{id} a few seconds after the user clicks through to see status flip from "processing" to "completed".',
+	);
+}
 
 export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext): Promise<FlipagentResult<Purchase>> {
 	const transport = pickTransport(input, ctx);
 
-	// eBay UA Feb-2026 buy-bot ban — bridge transport requires per-order
-	// human-review attestation; REST requires it unless the developer
-	// account holds Order API approval (in which case the attestation is
-	// satisfied at the eBay-relationship level, not per call).
-	const humanReviewRequired = transport === "bridge" || !config.EBAY_ORDER_APPROVED;
-	if (humanReviewRequired) {
-		const ts = input.humanReviewedAt ? Date.parse(input.humanReviewedAt) : NaN;
-		if (!Number.isFinite(ts)) {
-			throw new PurchaseError(
-				"human_review_required",
-				412,
-				"`/v1/purchases` requires a fresh `humanReviewedAt` ISO timestamp on every call. eBay's User Agreement (effective Feb 20, 2026) prohibits placing orders without human review; this field is your attestation that a human in your interface confirmed THIS specific order. Apply for eBay Order API approval to satisfy the requirement at the developer-account level instead.",
-			);
-		}
-		const age = Date.now() - ts;
-		if (age < 0 || age > HUMAN_REVIEW_MAX_AGE_MS) {
-			throw new PurchaseError(
-				"human_review_stale",
-				412,
-				`\`humanReviewedAt\` must be within the last ${HUMAN_REVIEW_MAX_AGE_MS / 1000} seconds. Re-confirm the order in your UI and resubmit.`,
-			);
-		}
-	}
-
-	if (input.shipTo && transport === "bridge") {
+	// REST-only fields. Bridge + url both rely on the buyer's stored
+	// eBay defaults (the user is on eBay's own UI for the actual click).
+	if (input.shipTo && transport !== "rest") {
 		throw new PurchaseError(
-			"shipTo_unsupported_in_bridge_mode",
+			"shipTo_unsupported_outside_rest",
 			412,
-			"`shipTo` overrides only work in REST transport — bridge transport uses the buyer's stored eBay default. Set `transport='rest'` (requires EBAY_ORDER_APPROVED=1) or remove `shipTo`.",
+			`\`shipTo\` overrides only work in REST transport — ${transport} transport uses the buyer's stored eBay default. Set \`transport='rest'\` (requires EBAY_ORDER_APPROVED=1) or remove \`shipTo\`.`,
 		);
 	}
-	if (input.couponCode && transport === "bridge") {
+	if (input.couponCode && transport !== "rest") {
 		throw new PurchaseError(
-			"coupon_unsupported_in_bridge_mode",
+			"coupon_unsupported_outside_rest",
 			412,
-			"`couponCode` only works in REST transport. Set `transport='rest'` or remove the field.",
+			`\`couponCode\` only works in REST transport. Set \`transport='rest'\` or remove the field.`,
 		);
 	}
 
@@ -102,8 +91,8 @@ export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext
 
 	try {
 		// Stage 1 — initiate. Same call for both transports; in REST mode
-		// the underlying service forwards to api.ebay.com, in bridge mode
-		// it inserts a `buy_checkout_sessions` row.
+		// the underlying service forwards to api.ebay.com, in bridge/url
+		// mode it inserts a `buy_checkout_sessions` row.
 		const session = await initiateCheckoutSession({
 			apiKeyId: ctx.apiKeyId,
 			userId: ctx.userId,
@@ -111,10 +100,24 @@ export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext
 			...(input.shipTo ? { shippingAddresses: [input.shipTo] } : {}),
 		});
 
-		// Stage 2 — place_order. Bridge enqueues the BIN task; REST hits
-		// eBay synchronously. Either way returns an `EbayPurchaseOrder`.
-		const order = await placeOrder(session.checkoutSessionId, ctx.apiKeyId, ctx.userId);
+		// Stage 2 — place_order. Bridge + url both enqueue a tracking
+		// row (the picked transport is stashed in metadata so polling
+		// reads can recover it); REST hits eBay synchronously. Either
+		// way returns an `EbayPurchaseOrder`.
+		const order = await placeOrder(session.checkoutSessionId, ctx.apiKeyId, ctx.userId, transport);
 		const body = ebayToPurchase({ order, transport, marketplace: input.marketplace });
+
+		// `nextAction` is only meaningful for url transport — agent/UI
+		// shows the deeplink to drive the user to the listing. Bridge
+		// already opens the tab in the user's browser; REST placed the
+		// order server-side.
+		if (transport === "url") {
+			const first = lineItems[0];
+			if (first) {
+				body.nextAction = buyDeeplinkAction(first.itemId, first.variationId);
+			}
+		}
+
 		return { body, source: transport, fromCache: false };
 	} catch (err) {
 		if (err instanceof BridgeCheckoutError) {
@@ -125,22 +128,18 @@ export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext
 }
 
 export async function getPurchase(id: string, apiKeyId: string): Promise<FlipagentResult<Purchase> | null> {
-	// Lazy reconcile: if this is an in-flight bridge job for an eBay
+	// Lazy reconcile: if this is an in-flight tracking row for an eBay
 	// buy, run one Trading API check first. Converts polling agents
 	// into the reconciliation engine — no dependency on the worker
 	// tick — so a happy-path purchase flips from `processing` →
 	// `completed` on the very next GET after the user clicks
-	// "Confirm and pay". No-op for terminal jobs and for jobs handled
-	// by a different adapter (or no adapter — REST orders skip).
+	// "Confirm and pay". No-op for terminal jobs.
 	await reconcileJob(id, apiKeyId).catch((err) => console.warn("[getPurchase] inline reconcile failed:", err));
 
-	const order = await getPurchaseOrder(id, apiKeyId);
-	if (!order) return null;
-	const body = ebayToPurchase({ order });
-	// Source = whichever transport originally placed this order; falls
-	// back to "rest" when the recorded transport is missing (legacy
-	// rows pre-dating the `transport` column).
-	const source: SourceKind = body.transport ?? "rest";
+	const record = await getPurchaseOrder(id, apiKeyId);
+	if (!record) return null;
+	const body = ebayToPurchase({ order: record.order, ...(record.transport ? { transport: record.transport } : {}) });
+	const source: SourceKind = record.transport ?? "url";
 	return { body, source, fromCache: false };
 }
 
@@ -152,8 +151,8 @@ export async function cancelPurchase(id: string, apiKeyId: string): Promise<Flip
 /**
  * Multi-stage update endpoints — REST transport only. eBay's Buy
  * Order REST exposes shipping_address, payment_instrument, coupon
- * patches mid-checkout. Bridge transport returns 412 because the
- * extension uses the buyer's stored eBay defaults.
+ * patches mid-checkout. Bridge + url transports return 412 because
+ * the user uses their stored eBay defaults on eBay's own UI.
  */
 
 import type { Address, PurchasePaymentInstrument } from "@flipagent/types";
@@ -243,26 +242,24 @@ function addressToEbay(a: Address): Record<string, unknown> {
 	};
 }
 
-function pickTransport(input: PurchaseCreate, ctx: PurchaseContext): "rest" | "bridge" {
+function pickTransport(input: PurchaseCreate, ctx: PurchaseContext): "rest" | "bridge" | "url" {
 	try {
 		const picked = selectTransport("orders.checkout", {
 			explicit: input.transport,
 			oauthBound: true,
-			bridgePaired: ctx.bridgePaired ?? true,
+			bridgePaired: ctx.bridgePaired ?? false,
 			envFlags: { EBAY_ORDER_APPROVED: config.EBAY_ORDER_APPROVED },
 		});
-		// `orders.checkout` only declares rest+bridge in the capability
-		// matrix, so the broader `Transport` union narrows to these two
-		// at runtime — the cast is sound.
-		return picked as "rest" | "bridge";
+		// `orders.checkout` only declares rest+bridge+url in the
+		// capability matrix, so the broader `Transport` union narrows
+		// to these three at runtime — the cast is sound.
+		return picked as "rest" | "bridge" | "url";
 	} catch (err) {
 		if (err instanceof TransportUnavailableError) {
-			throw new PurchaseError(
-				"transport_unavailable",
-				412,
-				`No available transport: ${err.message}. Set EBAY_ORDER_APPROVED=1 for REST, or pair the Chrome extension for bridge.`,
-				"rest_or_extension",
-			);
+			// `url` is unconditional in the capability matrix, so this
+			// branch is unreachable today — the typed throw stays so
+			// future capability changes surface clearly.
+			throw new PurchaseError("transport_unavailable", 412, err.message);
 		}
 		throw err;
 	}

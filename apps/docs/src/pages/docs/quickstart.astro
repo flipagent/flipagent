@@ -1,6 +1,7 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import DocsSidebar from "../../components/DocsSidebar.astro";
+import AgentInstall from "../../components/AgentInstall.tsx";
 ---
 <Layout
 	title="Quickstart · flipagent docs"
@@ -13,21 +14,13 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 				<h1>Let's try it</h1>
 				<p class="lead">Three small examples, each one a real flipagent flow. Pick the one that sounds useful and follow it through.</p>
 
-				<h2>Set it up first</h2>
-				<p>Drop this into your MCP host's config and restart it:</p>
-				<div class="code">
-					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>mcp config</span></div>
-<pre><code>{`{
-  "mcpServers": {
-    "flipagent": {
-      "command": "npx",
-      "args": ["-y", "flipagent-mcp"],
-      "env": { "FLIPAGENT_API_KEY": "fa_..." }
-    }
-  }
-}`}</code></pre>
-				</div>
-				<p style="font-size:13.5px;">No key? <a href="/signup/">Grab one</a>. No MCP host? Each example below has a button that opens the playground with the question pre-filled.</p>
+				<h2 id="mcp">Take the MCP path</h2>
+				<p>One command writes the MCP entry into your AI client's config, or paste the JSON yourself:</p>
+				<AgentInstall client:visible />
+				<p style="font-size:13.5px;">No key? <a href="/signup/">Grab one</a>.</p>
+
+				<h2 id="playground">Or use the playground</h2>
+				<p>Open <a href="/dashboard/?view=agent">the dashboard</a> in your browser — each example below has a button that opens it with the question pre-filled. Nothing to install.</p>
 
 				<h2>Pick what to try</h2>
 				<div class="features" style="margin:18px 0 8px;">

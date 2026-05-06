@@ -5,24 +5,24 @@
  *   flipagent_get_purchase      GET    /v1/purchases/{id}
  *   flipagent_cancel_purchase   POST   /v1/purchases/{id}/cancel
  *
- * Transport: REST when `EBAY_ORDER_APPROVED=1` is set on the api
- * operator + the api key has eBay OAuth bound; otherwise bridge —
- * which drives the user's paired Chrome extension to BIN inside
- * their real Chrome session.
+ * Transport (auto-picked rest → bridge → url):
+ *   rest    when `EBAY_ORDER_APPROVED=1` + eBay OAuth bound
+ *   bridge  when the Chrome extension is paired (extension opens the
+ *           ebay.com tab, shows a cap-validation banner, captures the
+ *           orderId off /vod/ for fast reconciliation)
+ *   url     deeplink fallback — response carries `nextAction.url`
+ *           pointing at the ebay.com listing for the user to click
+ *           Buy It Now → Confirm and pay on eBay's own UI
  *
- * Async model (bridge): create returns immediately with `status:
- * "queued"` (or `"processing"` if the extension claims it within
- * the 5 s fast wait). The agent polls `flipagent_get_purchase`
- * until terminal (`completed | failed | cancelled`); each poll
- * runs the Trading-API reconciler inline (~300-700 ms) which
- * diffs the user's WonList for a new OrderLineItemID — so polling
- * IS what closes the loop, no need to wait for the 30 s worker
- * tick. Bridge jobs the user never confirms expire after 30 min.
- * Mirrors the bid pattern in `bids.ts` (BidList diff).
- *
- * Without the extension paired AND REST not approved, the api
- * returns 412 `transport_unavailable` with `next_action.kind:
- * "rest_or_extension"`. Install + setup at /docs/extension/.
+ * Async model: create returns immediately with `status: "queued"`
+ * (or `"processing"` if the extension claims the bridge job within
+ * the 5 s fast wait). The agent polls `flipagent_get_purchase` until
+ * terminal (`completed | failed | cancelled`); each poll runs the
+ * Trading-API reconciler inline (~300-700 ms) which diffs the user's
+ * WonList for a new OrderLineItemID — polling IS what closes the
+ * loop, no need to wait for the 30 s worker tick. Tracking rows the
+ * user never confirms expire after 30 min. Mirrors the bid pattern
+ * in `bids.ts` (BidList diff).
  */
 
 import { Type } from "@sinclair/typebox";
@@ -40,18 +40,12 @@ export const ebayBuyItemInput = Type.Object(
 		}),
 		quantity: Type.Optional(Type.Integer({ minimum: 1, default: 1 })),
 		variationId: Type.Optional(Type.String({ description: "eBay variation id when the listing has variants." })),
-		humanReviewedAt: Type.Optional(
-			Type.String({
-				description:
-					"ISO-8601 timestamp from when a human in your interface confirmed THIS specific order, not older than 5 minutes. Required for bridge transport (and for REST unless `EBAY_ORDER_APPROVED=1` is set on the api operator's developer account). The api returns 412 `human_review_required` / `human_review_stale` if missing or stale.",
-			}),
-		),
 	},
 	{ $id: "EbayBuyItemInput" },
 );
 
 export const ebayBuyItemDescription =
-	'Buy an item (one-shot Buy-It-Now). Calls POST /v1/purchases. **When to use** — direct purchase of a fixed-price listing or auction\'s BIN ceiling; for auctions use `flipagent_place_bid` instead. Compresses eBay\'s initiate + place_order into one call. **Inputs** — `itemId` (legacy 12-digit / `v1|n|v` / full ebay.com/itm URL), optional `quantity` (default 1), optional `variationId` (multi-variant listings), and `humanReviewedAt` (ISO-8601, ≤5 min old — human-review attestation; required for bridge transport, and for REST unless the operator sets `EBAY_ORDER_APPROVED=1`). **Output** — `Purchase { id, marketplace, status, items, transport, createdAt, ebayOrderId?, totalCents?, receiptUrl? }` plus `poll_with: "flipagent_get_purchase"` + `terminal_states`. Initial `status` is `queued` or `processing`. **Async** — bridge transport opens the eBay tab and waits for the user to click Buy It Now → Confirm and pay. The Trading-API reconciler diffs the user\'s WonList for a new OrderLineItemID and transitions to `completed`. Bridge jobs the user never confirms expire after 30 min. **Polling cadence** — 2-5 s between `flipagent_get_purchase` calls (each runs the reconciler inline); stop on terminal status (`completed | failed | cancelled`). **Prereqs** — bridge: paired Chrome extension; REST: `EBAY_ORDER_APPROVED=1` on the operator + eBay OAuth bound to the api key. eBay UA (Feb 20 2026) requires `humanReviewedAt`; missing/stale → 412 `human_review_required` / `human_review_stale`. On transport failure the response carries `next_action` (extension install / OAuth start). **Example** — `{ itemId: "206252358068", humanReviewedAt: "2026-05-04T22:30:00.000Z" }`.';
+	"Buy an item (one-shot Buy-It-Now). Calls POST /v1/purchases. **When to use** — direct purchase of a fixed-price listing or auction's BIN ceiling; for auctions use `flipagent_place_bid` instead. Compresses eBay's initiate + place_order into one call. **Inputs** — `itemId` (legacy 12-digit / `v1|n|v` / full ebay.com/itm URL), optional `quantity` (default 1), optional `variationId` (multi-variant listings). **Output** — `Purchase { id, marketplace, status, items, transport, createdAt, ebayOrderId?, totalCents?, receiptUrl?, nextAction? }` plus `poll_with: \"flipagent_get_purchase\"` + `terminal_states`. Initial `status` is `queued` or `processing`. **Transport auto-pick** — REST when `EBAY_ORDER_APPROVED=1` + eBay OAuth bound (server places); bridge when the Chrome extension is paired (extension opens the eBay tab + cap-validation banner + fast orderId capture); otherwise url (response carries `nextAction.url` pointing at the ebay.com listing — direct the user to that URL to click Buy It Now → Confirm and pay on eBay's own UI). **Async** — for bridge + url, the Trading-API reconciler diffs the user's WonList for a new OrderLineItemID and transitions to `completed` once eBay confirms. Tracking rows the user never confirms expire after 30 min. **Polling cadence** — 2-5 s between `flipagent_get_purchase` calls (each runs the reconciler inline); stop on terminal status (`completed | failed | cancelled`). **Prereqs** — none for url transport (always works); REST needs `EBAY_ORDER_APPROVED=1` + eBay OAuth bound. **Example** — `{ itemId: \"206252358068\" }`.";
 
 const LEGACY_ITEM_ID = /^\d{9,15}$/;
 const V1_ITEM_ID = /^v1\|(\d{9,15})\|(\d+)$/i;
@@ -89,10 +83,8 @@ export async function ebayBuyItemExecute(config: Config, args: Record<string, un
 		const { itemId, variationId: parsedVariation } = normalizeItemId(String(args.itemId));
 		const quantity = (args.quantity as number | undefined) ?? 1;
 		const variationId = (args.variationId as string | undefined) ?? parsedVariation;
-		const humanReviewedAt = args.humanReviewedAt as string | undefined;
 		const result = await client.purchases.create({
 			items: [{ itemId, quantity, ...(variationId ? { variationId } : {}) }],
-			...(humanReviewedAt ? { humanReviewedAt } : {}),
 		});
 		// Pin the polling tool name into the response so the agent
 		// doesn't have to remember the verb_noun convention. Mirrors

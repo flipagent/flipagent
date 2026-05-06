@@ -18,6 +18,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
+import { NextAction } from "./_common.js";
 
 export const ForwarderProvider = Type.Union([Type.Literal("planetexpress")], { $id: "ForwarderProvider" });
 export type ForwarderProvider = Static<typeof ForwarderProvider>;
@@ -232,6 +233,14 @@ export const ForwarderJobResponse = Type.Object(
 		shipment: Type.Optional(ForwarderShipment),
 		/** Set when this job's task was `forwarder.address`. Some forwarders (Planet Express, MyUS, …) operate multiple warehouses and the user can ship to any of them; the array holds them all. Exactly one entry has `isPrimary: true`. */
 		addresses: Type.Optional(Type.Array(ForwarderAddress)),
+		/**
+		 * Deeplink to drive the action forward when no Chrome extension
+		 * is paired. Currently emitted only for `forwarder.dispatch`
+		 * jobs (the user clicks Send Mailout on the forwarder's own UI).
+		 * Refresh / photos / address scrapes are extension-only because
+		 * they require authenticated DOM access, not a single click.
+		 */
+		nextAction: Type.Optional(NextAction),
 		failureReason: Type.Union([Type.String(), Type.Null()]),
 		createdAt: Type.String({ format: "date-time" }),
 		updatedAt: Type.String({ format: "date-time" }),

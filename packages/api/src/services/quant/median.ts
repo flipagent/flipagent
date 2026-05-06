@@ -67,6 +67,50 @@ export function stdDev(values: number[]): number | null {
 }
 
 /**
+ * Weighted median over `(value, weight)` pairs. Step CDF — returns the
+ * smallest `value` whose cumulative weight reaches half the total. Returns
+ * null when total weight is 0 (no usable signal).
+ */
+export function weightedMedian(samples: ReadonlyArray<{ value: number; weight: number }>): number | null {
+	if (samples.length === 0) return null;
+	const sorted = [...samples].filter((s) => s.weight > 0).sort((a, b) => a.value - b.value);
+	const total = sorted.reduce((s, x) => s + x.weight, 0);
+	if (total === 0) return null;
+	const target = total / 2;
+	let acc = 0;
+	for (const s of sorted) {
+		acc += s.weight;
+		if (acc >= target) return s.value;
+	}
+	return sorted[sorted.length - 1]?.value ?? null;
+}
+
+/**
+ * Weighted population standard deviation over `(value, weight)` pairs.
+ * `var = Σ w_i (x_i − μ_w)² / Σ w_i`. Returns null on empty / zero-weight
+ * input. Used by trust-weighted reference distributions where the
+ * cohort's contribution is graded by seller credibility rather than 0/1.
+ */
+export function weightedStd(samples: ReadonlyArray<{ value: number; weight: number }>): number | null {
+	if (samples.length === 0) return null;
+	let totalW = 0;
+	let weightedSum = 0;
+	for (const s of samples) {
+		if (s.weight <= 0) continue;
+		totalW += s.weight;
+		weightedSum += s.value * s.weight;
+	}
+	if (totalW === 0) return null;
+	const mu = weightedSum / totalW;
+	let varAcc = 0;
+	for (const s of samples) {
+		if (s.weight <= 0) continue;
+		varAcc += s.weight * (s.value - mu) * (s.value - mu);
+	}
+	return Math.round(Math.sqrt(varAcc / totalW));
+}
+
+/**
  * Time-decay weighted median. More recent sales count more — useful when
  * the market is moving quickly. `halfLifeDays` is the time after which a
  * sample's weight halves.

@@ -4,4 +4,5 @@ export * from "./margin.js";
 export * from "./median.js";
 export * from "./quality.js";
 export * from "./risk.js";
+export * from "./sales-rate.js";
 export * from "./types.js";

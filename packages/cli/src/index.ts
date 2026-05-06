@@ -570,12 +570,7 @@ async function runBuy(args: ParsedArgs): Promise<void> {
 	if (args.values.variation ?? args.values.variationId) {
 		item.variationId = args.values.variation ?? args.values.variationId;
 	}
-	// `humanReviewedAt` is the eBay-UA-Feb-2026 attestation — bridge
-	// transport requires it on every call (REST too unless the operator
-	// has Order API approval). The CLI invocation with an explicit
-	// itemId arg counts as the human's per-order review, so send the
-	// current timestamp; the orchestrator's freshness window is 5 min.
-	const out = await api("POST", "/v1/purchases", { items: [item], humanReviewedAt: new Date().toISOString() }, opts);
+	const out = await api("POST", "/v1/purchases", { items: [item] }, opts);
 	printJson(out);
 }
 

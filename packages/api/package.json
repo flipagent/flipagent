@@ -22,7 +22,7 @@
 		"dev": "tsx watch src/server.ts",
 		"dev:worker": "tsx watch src/worker.ts",
 		"dev:all": "concurrently -n api,worker -c green,magenta \"tsx watch src/server.ts\" \"tsx watch src/worker.ts\"",
-		"dev:tunnel": "concurrently -n api,tunnel -c green,blue --hide '' \"tsx watch src/server.ts\" \"bash scripts/dev-tunnel.sh\"",
+		"dev:tunnel": "concurrently -n api,tunnel -c green,blue --hide '' \"tsx watch src/server.ts\" \"DASHBOARD_PORT=4321 bash scripts/dev-tunnel.sh\"",
 		"start": "node dist/server.js",
 		"start:worker": "node dist/worker.js",
 		"db:generate": "drizzle-kit generate",

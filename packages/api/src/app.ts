@@ -98,11 +98,7 @@ app.onError((err, c) => {
 		);
 	}
 	if (err instanceof PurchaseError) {
-		const next_action = err.nextActionKind ? nextAction(c, err.nextActionKind) : undefined;
-		return c.json(
-			{ error: err.code, message: err.message, ...(next_action ? { next_action } : {}) },
-			err.status as 400 | 401 | 404 | 412 | 502,
-		);
+		return c.json({ error: err.code, message: err.message }, err.status as 400 | 401 | 404 | 412 | 502);
 	}
 	if (err instanceof TradingApiError) {
 		return c.json({ error: "trading_call_failed", callName: err.callName, errors: err.errors }, 502);

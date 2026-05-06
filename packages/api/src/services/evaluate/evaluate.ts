@@ -5,31 +5,26 @@ import {
 	feeBreakdown,
 	filterIqrOutliers,
 	veto as listingVeto,
-	type MarketStats,
 	percentile,
 	recommendListPrice,
 } from "../quant/index.js";
 import { toCents } from "../shared/money.js";
 import { landedCost } from "../ship.js";
-import { marketFromSold, toQuantListing } from "./adapter.js";
+import { legitMarketReference, marketFromSold, toQuantListing } from "./adapter.js";
 import type { EvaluableItem, EvaluateOptions, Evaluation, NetRangeCents } from "./types.js";
-
-const EMPTY_MARKET: MarketStats = {
-	keyword: "",
-	marketplace: "EBAY_US",
-	windowDays: 0,
-	meanCents: 0,
-	stdDevCents: 0,
-	medianCents: 0,
-	p25Cents: 0,
-	p75Cents: 0,
-	nObservations: 0,
-	salesPerDay: 0,
-	asOf: new Date(0).toISOString(),
-};
 
 // Below this, percentile estimates are noise — IQR cleaning needs ≥4 anyway.
 const MIN_SOLD_FOR_DISTRIBUTION = 4;
+
+/**
+ * Below this many sold comparables we refuse to recommend "buy". The
+ * advice (recommended list price, expectedNet) may still compute on
+ * very thin data, but a single sale is not a market — a reseller with
+ * the raw data would say "skip, not enough signal" rather than trust
+ * a one-shot recommendation. Surface the underlying sold/active pools
+ * unchanged so the human can override.
+ */
+const MIN_SOLD_FOR_RATING = 6;
 
 /**
  * Default outbound shipping when no forwarder leg supplied. $10 reflects
@@ -66,8 +61,14 @@ const DEFAULT_MIN_NET_CENTS = 3000;
  */
 export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evaluation {
 	const listing = toQuantListing(item);
-	const market =
-		opts.sold && opts.sold.length > 0 ? marketFromSold(opts.sold, undefined, undefined, opts.asks) : EMPTY_MARKET;
+	// Always go through `marketFromSold` so the seed-velocity blend applies
+	// uniformly — even when `opts.sold` is empty. The blend's niche-SKU
+	// branch (marketRate=0 → seedRate verbatim) is what rescues that case;
+	// short-circuiting to a hand-crafted EMPTY_MARKET would silently drop
+	// the only signal we have. Multi-quantity listings (PDP "10 sold of 17")
+	// carry the strongest single-listing demand evidence — the blend
+	// surfaces it whether or not comps came back.
+	const market = marketFromSold(opts.sold ?? [], undefined, undefined, opts.asks, item);
 
 	let outboundShippingCents: number;
 	let landedCostCents: number | null = null;
@@ -159,6 +160,12 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 			: returns?.returnShippingCostPayer === "SELLER"
 				? "seller"
 				: undefined;
+	// Legit reference for the price-anomaly Bayes update — trust-weighted
+	// over the full sold pool (each comparable contributes proportional to
+	// its seller's credibility). Falls back to null when no credible cohort
+	// exists, in which case the price signal is suppressed and P_fraud
+	// derives purely from the candidate's own feedback.
+	const legit = legitMarketReference(opts.sold ?? []);
 	const risk = advice
 		? assessRisk({
 				sellerFeedbackScore: seller?.feedbackScore,
@@ -170,6 +177,8 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 				returnWindowDays,
 				returnShipPaidBy,
 				expectedDaysToSell: advice.expectedDaysToSell,
+				marketMedianCents: legit?.medianCents,
+				marketStdDevCents: legit?.stdDevCents,
 			})
 		: null;
 
@@ -220,16 +229,25 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 	//   - expectedNet < minNet                    → skip
 	//   - else                                     → buy
 	const minNet = opts.minNetCents ?? DEFAULT_MIN_NET_CENTS;
+	const nSold = opts.sold?.length ?? 0;
 	let rating: "buy" | "skip";
+	let reasonCode: Evaluation["reasonCode"];
 	let reason: string;
 	if (vetoReason) {
 		rating = "skip";
+		reasonCode = "vetoed";
 		reason = `vetoed: ${vetoReason}`;
 	} else if (advice == null) {
 		rating = "skip";
+		reasonCode = "no_market";
 		reason = "no market activity (no sold pool or zero velocity)";
+	} else if (nSold < MIN_SOLD_FOR_RATING) {
+		rating = "skip";
+		reasonCode = "insufficient_data";
+		reason = `insufficient market data (${nSold} sold; min ${MIN_SOLD_FOR_RATING}) — see raw pools`;
 	} else if (expectedNetCents < minNet) {
 		rating = "skip";
+		reasonCode = "below_min_net";
 		if (risk && successNetCents != null) {
 			const fraudPct = (risk.P_fraud * 100).toFixed(1);
 			reason = `(1−${fraudPct}%) × $${(successNetCents / 100).toFixed(0)} − ${fraudPct}% × $${(risk.maxLossCents / 100).toFixed(0)} = $${(expectedNetCents / 100).toFixed(0)} below $${(minNet / 100).toFixed(0)} threshold`;
@@ -238,6 +256,7 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		}
 	} else {
 		rating = "buy";
+		reasonCode = "cleared";
 		const dollarsStr = `$${(expectedNetCents / 100).toFixed(0)}`;
 		reason =
 			risk && risk.P_fraud > 0.001
@@ -284,6 +303,7 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		maxLossCents: risk?.maxLossCents ?? null,
 		landedCostCents,
 		rating,
+		reasonCode,
 		reason,
 		bidCeilingCents,
 		safeBidBreakdown,

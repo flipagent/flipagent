@@ -131,9 +131,11 @@ export type SetupHints = Static<typeof SetupHints>;
  *   - `nextStep` is the id of the highest-priority `active` step
  *     (the one the surface should highlight first). Null when every
  *     required step is `done`.
- *   - `required: true` steps belong to the canonical resell loop
- *     (sell + buy via bridge). Optional steps (e.g. forwarder) only
- *     gate specific workflows and should be tagged that way in UI.
+ *   - `required: true` steps gate the canonical sell-side resell loop
+ *     (the seller OAuth handshake — without it you can't list, ship,
+ *     or read sales). Optional steps (extension pairing, eBay-buyer
+ *     sign-in) only enrich UX or unlock specific workflows; the API
+ *     stays usable without them via the url-deeplink fallback.
  */
 export const SetupStepId = Type.Union(
 	[Type.Literal("pair_extension"), Type.Literal("ebay_signin"), Type.Literal("seller_oauth")],

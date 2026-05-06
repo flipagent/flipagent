@@ -1,7 +1,7 @@
 /**
  * buy/offer — auction proxy bidding.
  *
- * Two transports, mirroring `/v1/purchases`:
+ * Three transports, mirroring `/v1/purchases`:
  *
  *   REST — eBay's Buy Offer (Bidding) API (Limited Release).
  *     POST `/buy/offer/v1_beta/bidding/{itemId}/place_proxy_bid`
@@ -12,8 +12,13 @@
  *     ebay.com inside the buyer's real session. Task name
  *     `ebay_place_bid`; metadata carries `listingId` + `maxAmount` so
  *     the extension's recipe runtime can dispatch by URL pattern.
- *     Used as the universal fallback when REST isn't approved (or as
- *     an explicit `?transport=bridge` override).
+ *
+ *   URL — no extension required. The API returns `nextAction.url`
+ *     pointing at the ebay.com/itm page; the user clicks Place Bid
+ *     on eBay's own UI. Reconciler matches via `BidList` diff against
+ *     a snapshot captured at queue time (same path as bridge).
+ *
+ * Auto-pick order: REST → BRIDGE (if paired) → URL.
  *
  * There is no REST endpoint that returns "all my bids" — Trading
  * `GetMyeBayBuying.BidList` is the only path. The list view here
@@ -38,15 +43,8 @@ import { getUserAccessToken } from "./ebay/oauth.js";
 import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
 import { getMyEbayBuying } from "./ebay/trading/myebay.js";
 import { toCents, toDollarString } from "./shared/money.js";
-import type { NextActionKind } from "./shared/next-action.js";
+import { type NextAction, type NextActionKind, openUrlAction } from "./shared/next-action.js";
 import { selectTransport, TransportUnavailableError } from "./shared/transport.js";
-
-/**
- * Maximum age of a `humanReviewedAt` attestation accepted by `placeBid`.
- * Mirrors the value in `services/purchases/orchestrate.ts` so the
- * agent-side UX (confirm-then-submit) is consistent across buy + bid.
- */
-const HUMAN_REVIEW_MAX_AGE_MS = 5 * 60 * 1000;
 
 /**
  * Short fast-path wait — POST /v1/bids blocks for this many ms before
@@ -72,8 +70,7 @@ const STATUS_BRIDGE_WAIT_MS = 25_000;
 
 /**
  * Thrown by `placeBid` / `getBidStatus` when the Buy Offer (Bidding)
- * surface is unavailable — REST not approved AND no bridge paired,
- * stale human-review attestation, or upstream eBay/extension failure.
+ * surface is unavailable, or upstream eBay/extension failure.
  */
 export class BidError extends Error {
 	readonly status: number;
@@ -96,50 +93,36 @@ export interface BidsContext {
 
 function pickTransport(
 	resource: "bids.place" | "bids.status",
-	input: { transport?: "rest" | "bridge" },
+	input: { transport?: "rest" | "bridge" | "url" },
 	ctx: BidsContext,
-): "rest" | "bridge" {
+): "rest" | "bridge" | "url" {
 	try {
 		const picked = selectTransport(resource, {
 			explicit: input.transport,
 			oauthBound: true,
-			bridgePaired: ctx.bridgePaired ?? true,
+			bridgePaired: ctx.bridgePaired ?? false,
 			envFlags: { EBAY_BIDDING_APPROVED: config.EBAY_BIDDING_APPROVED },
 		});
-		// `bids.place` / `bids.status` only declare rest+bridge in the
-		// capability matrix, so the broader `Transport` union narrows to
-		// these two at runtime — the cast is sound.
-		return picked as "rest" | "bridge";
+		// `bids.place` / `bids.status` declare rest+bridge+url in the
+		// capability matrix, so the broader `Transport` union narrows
+		// to these three at runtime — the cast is sound.
+		return picked as "rest" | "bridge" | "url";
 	} catch (err) {
 		if (err instanceof TransportUnavailableError) {
-			throw new BidError(
-				"bidding_unavailable",
-				412,
-				"No available transport for auction bidding. Apply at developer.ebay.com → Buy APIs → Buy Offer and set EBAY_BIDDING_APPROVED=1 for REST, or pair the Chrome extension for bridge.",
-				"configure_bidding_api",
-			);
+			// `url` is unconditional in the capability matrix, so this
+			// branch is unreachable today — kept so future capability
+			// changes surface clearly.
+			throw new BidError("bidding_unavailable", 412, err.message, "configure_bidding_api");
 		}
 		throw err;
 	}
 }
 
-function ensureFreshHumanReview(input: { humanReviewedAt?: string }): void {
-	const ts = input.humanReviewedAt ? Date.parse(input.humanReviewedAt) : NaN;
-	if (!Number.isFinite(ts)) {
-		throw new BidError(
-			"human_review_required",
-			412,
-			"`/v1/bids` requires a fresh `humanReviewedAt` ISO timestamp on every call. eBay's User Agreement (effective Feb 20, 2026) prohibits placing bids without human review; this field is your attestation that a human in your interface confirmed THIS specific bid. Apply for eBay Buy Offer (Bidding) API approval to satisfy the requirement at the developer-account level instead.",
-		);
-	}
-	const age = Date.now() - ts;
-	if (age < 0 || age > HUMAN_REVIEW_MAX_AGE_MS) {
-		throw new BidError(
-			"human_review_stale",
-			412,
-			`\`humanReviewedAt\` must be within the last ${HUMAN_REVIEW_MAX_AGE_MS / 1000} seconds. Re-confirm the bid in your UI and resubmit.`,
-		);
-	}
+function bidDeeplinkAction(itemId: string): NextAction {
+	return openUrlAction(
+		`https://www.ebay.com/itm/${encodeURIComponent(itemId)}`,
+		'Direct the user to this URL to place the bid. They click "Place bid" on eBay\'s own UI and confirm. flipagent reconciles completion against the buyer\'s BidList — call GET /v1/bids/{listingId} a few seconds after the user clicks through to see status flip from "pending" to "active" or "outbid".',
+	);
 }
 
 // eBay's `auctionStatus` enum values per OAS3 spec
@@ -292,9 +275,15 @@ async function findInflightPlaceBidJob(itemId: string, apiKeyId: string): Promis
 }
 
 /** Map a bridge job row → Bid for the polling agent. Picks the right
- * status based on the row's terminal state + result payload. */
+ * status based on the row's terminal state + result payload. Pending
+ * rows whose origin transport was "url" carry `nextAction.url` so the
+ * agent can re-prompt the user to click through if they walked away. */
 function jobToBid(job: DbBridgeJob, listingId: string): Bid {
-	const meta = (job.metadata ?? {}) as { maxAmountCents?: number; currency?: string };
+	const meta = (job.metadata ?? {}) as {
+		maxAmountCents?: number;
+		currency?: string;
+		transport?: "bridge" | "url";
+	};
 	const result = (job.result ?? {}) as BridgeBidResult;
 	const currency = result.currency ?? meta.currency ?? "USD";
 	const requestedMax = meta.maxAmountCents ?? job.maxPriceCents ?? 0;
@@ -321,6 +310,7 @@ function jobToBid(job: DbBridgeJob, listingId: string): Bid {
 		...(baseMaxBid ? { maxBid: baseMaxBid } : {}),
 		status,
 		placedAt: job.createdAt.toISOString(),
+		...(status === "pending" && meta.transport === "url" ? { nextAction: bidDeeplinkAction(listingId) } : {}),
 	};
 }
 
@@ -373,52 +363,73 @@ export async function getBidStatus(itemId: string, ctx: BidsContext): Promise<Bi
 		}).catch(swallowEbay404);
 		return res ? ebayBidToFlipagent(res, itemId) : null;
 	}
-	// Bridge — ask the extension to read the current Place-Bid panel.
-	const job = await createBridgeJob({
-		apiKeyId: ctx.apiKeyId,
-		userId: ctx.userId,
-		source: "ebay",
-		itemId,
-		quantity: 1,
-		maxPriceCents: null,
-		idempotencyKey: null,
-		metadata: { task: BRIDGE_TASKS.EBAY_PLACE_BID, op: "status", listingId: itemId },
-	});
-	const final = await waitForTerminal(job.id, ctx.apiKeyId, STATUS_BRIDGE_WAIT_MS);
-	if (!final) {
-		throw new BidError("bridge_timeout", 504, "Bridge client did not respond.", "extension_install");
-	}
-	if (final.status === "failed" || final.status === "cancelled" || final.status === "expired") {
-		// `failed` with a "no bids on this item" reason → null (matches
-		// REST 404 semantics). Anything else surfaces as 502.
-		const reason = final.failureReason ?? "";
-		if (reason.toLowerCase().includes("no_bid") || reason.toLowerCase().includes("not_found")) return null;
-		throw new BidError("bridge_failed", 502, reason || `Bridge bid status read ${final.status}.`);
-	}
-	if (final.status !== "completed") {
-		throw new BidError(
-			"bridge_pending",
-			504,
-			`Bid status read still in progress (status: ${final.status}). Retry shortly.`,
+	if (transport === "bridge") {
+		// Bridge — ask the extension to read the current Place-Bid panel.
+		const job = await createBridgeJob({
+			apiKeyId: ctx.apiKeyId,
+			userId: ctx.userId,
+			source: "ebay",
+			itemId,
+			quantity: 1,
+			maxPriceCents: null,
+			idempotencyKey: null,
+			metadata: { task: BRIDGE_TASKS.EBAY_PLACE_BID, op: "status", listingId: itemId },
+		});
+		const final = await waitForTerminal(job.id, ctx.apiKeyId, STATUS_BRIDGE_WAIT_MS);
+		if (!final) {
+			throw new BidError("bridge_timeout", 504, "Bridge client did not respond.", "extension_install");
+		}
+		if (final.status === "failed" || final.status === "cancelled" || final.status === "expired") {
+			// `failed` with a "no bids on this item" reason → null
+			// (matches REST 404 semantics). Anything else surfaces as 502.
+			const reason = final.failureReason ?? "";
+			if (reason.toLowerCase().includes("no_bid") || reason.toLowerCase().includes("not_found")) return null;
+			throw new BidError("bridge_failed", 502, reason || `Bridge bid status read ${final.status}.`);
+		}
+		if (final.status !== "completed") {
+			throw new BidError(
+				"bridge_pending",
+				504,
+				`Bid status read still in progress (status: ${final.status}). Retry shortly.`,
+			);
+		}
+		const result = (final.result ?? {}) as BridgeBidResult;
+		if (!result.proxyBidId && result.currentPriceCents == null) return null;
+		return bridgeResultToFlipagent(
+			{ listingId: itemId, amount: { value: 0, currency: result.currency ?? "USD" } },
+			result,
 		);
 	}
-	const result = (final.result ?? {}) as BridgeBidResult;
-	if (!result.proxyBidId && result.currentPriceCents == null) return null;
-	return bridgeResultToFlipagent(
-		{ listingId: itemId, amount: { value: 0, currency: result.currency ?? "USD" } },
-		result,
-	);
+	// url — read the live BidList via Trading and find the matching
+	// listing. No tracking row needed; this is a pure status read.
+	const token = await getUserAccessToken(ctx.apiKeyId);
+	const buying = await getMyEbayBuying(token);
+	const row = buying.bidding.items.find((r) => r.itemId === itemId);
+	if (!row) return null;
+	const currency = row.priceCurrency ?? row.maxBidCurrency ?? "USD";
+	const amount = row.priceValue
+		? { value: toCents(row.priceValue), currency }
+		: row.maxBidValue
+			? { value: toCents(row.maxBidValue), currency }
+			: { value: 0, currency };
+	const maxBid = row.maxBidValue
+		? { value: toCents(row.maxBidValue), currency: row.maxBidCurrency ?? currency }
+		: undefined;
+	const status: BidStatus = row.highBidder === false ? "outbid" : "active";
+	return {
+		id: row.itemId,
+		marketplace: "ebay_us",
+		listingId: row.itemId,
+		amount,
+		...(maxBid ? { maxBid } : {}),
+		status,
+		placedAt: row.startDate ?? "",
+		...(row.endDate ? { auctionEndsAt: row.endDate } : {}),
+	};
 }
 
 export async function placeBid(input: BidCreate, ctx: BidsContext): Promise<Bid> {
 	const transport = pickTransport("bids.place", input, ctx);
-
-	// Buy-bot ban (eBay UA Feb-2026): bridge transport requires per-bid
-	// human-review attestation; REST requires it unless the developer
-	// account holds Buy Offer approval (in which case the attestation is
-	// satisfied at the eBay-relationship level, not per call).
-	const humanReviewRequired = transport === "bridge" || !config.EBAY_BIDDING_APPROVED;
-	if (humanReviewRequired) ensureFreshHumanReview(input);
 
 	if (transport === "rest") {
 		// `PlaceProxyBidResponse` per spec returns `{ proxyBidId }` only —
@@ -447,25 +458,22 @@ export async function placeBid(input: BidCreate, ctx: BidsContext): Promise<Bid>
 		};
 	}
 
-	// Bridge transport — async-first.
-	//
-	// The reconciler in `bridge-reconciler.ts` is the completion oracle:
-	// it diffs the user's `bidList` (Trading API) against a snapshot
-	// captured here at job creation, and transitions the job once eBay
-	// confirms the bid landed. So this branch:
-	//   1. captures `beforeSnapshot` (one Trading call, ~300-700 ms),
-	//   2. queues the bridge job with the snapshot in metadata,
-	//   3. waits a SHORT fast-path window (5 s) — happy paths close
-	//      inline without making the agent poll,
-	//   4. otherwise returns a `pending` Bid carrying the job id so the
-	//      agent can poll `GET /v1/bids/{listingId}` (which runs the
-	//      reconciler inline on every read).
-	//
-	// No more long-poll, no more `bridge_pending` 504s, no more "click
-	// fast or get a confusing error" — bridges that drag on for minutes
-	// (user paged into a 2FA flow, IRL distraction, etc.) just stay
-	// `pending` until either the reconciler matches or `expires_at`
-	// (30 min) sweeps it.
+	// Bridge + url transports both queue a tracking row backed by the
+	// reconciler in `bridge-reconciler.ts` (the completion oracle: it
+	// diffs the user's `bidList` against a snapshot captured here at
+	// job creation, transitioning the job once eBay confirms the bid
+	// landed). Differences:
+	//   - bridge waits a SHORT fast-path window (5 s) for the paired
+	//     extension to drive the click + report inline — happy paths
+	//     close without making the agent poll
+	//   - url skips the fast-path wait (no extension to claim the row)
+	//     and returns a `pending` Bid + `nextAction.url` immediately so
+	//     the agent can prompt the user to click on ebay.com themselves
+	// Either way the agent polls `GET /v1/bids/{listingId}` (which
+	// runs the reconciler inline) until terminal; the worker also
+	// reconciles on a 30s tick. Rows that drag on for minutes (user
+	// paged into 2FA, IRL distraction) just stay `pending` until the
+	// reconciler matches or `expires_at` (30 min) sweeps them.
 	const cap = input.maxBid ?? input.amount;
 	const beforeSnapshot = await captureMyEbaySnapshot(ctx.apiKeyId).catch((err) => {
 		console.warn("[placeBid] beforeSnapshot capture failed:", err);
@@ -482,22 +490,37 @@ export async function placeBid(input: BidCreate, ctx: BidsContext): Promise<Bid>
 		metadata: {
 			task: BRIDGE_TASKS.EBAY_PLACE_BID,
 			op: "place",
+			transport,
 			listingId: input.listingId,
 			maxAmountCents: cap.value,
 			currency: cap.currency,
 			...(beforeSnapshot ? { beforeSnapshot } : {}),
 		},
 	});
-	const fast = await waitForTerminal(job.id, ctx.apiKeyId, PLACE_BID_FAST_WAIT_MS);
-	if (fast?.status === "completed") {
-		return bridgeResultToFlipagent(input, (fast.result ?? {}) as BridgeBidResult);
+
+	if (transport === "bridge") {
+		const fast = await waitForTerminal(job.id, ctx.apiKeyId, PLACE_BID_FAST_WAIT_MS);
+		if (fast?.status === "completed") {
+			return bridgeResultToFlipagent(input, (fast.result ?? {}) as BridgeBidResult);
+		}
+		if (fast?.status === "failed" || fast?.status === "cancelled" || fast?.status === "expired") {
+			throw new BidError("bridge_failed", 502, fast.failureReason || `Bridge bid placement ${fast.status}.`);
+		}
+		// Still in flight after the fast window — fall through to the
+		// pending Bid below (no nextAction; extension is on it).
+		return {
+			id: job.id,
+			marketplace: "ebay_us",
+			listingId: input.listingId,
+			amount: input.amount,
+			...(input.maxBid ? { maxBid: input.maxBid } : {}),
+			status: "pending",
+			placedAt: job.createdAt.toISOString(),
+		};
 	}
-	if (fast?.status === "failed" || fast?.status === "cancelled" || fast?.status === "expired") {
-		throw new BidError("bridge_failed", 502, fast.failureReason || `Bridge bid placement ${fast.status}.`);
-	}
-	// Still in flight after the fast window — return a pending Bid.
-	// The agent polls `GET /v1/bids/{listingId}`, which calls the
-	// reconciler inline; the worker also reconciles on a 30s tick.
+
+	// url transport — return immediately with the deeplink so the
+	// agent can prompt the user to click Place Bid on ebay.com.
 	return {
 		id: job.id,
 		marketplace: "ebay_us",
@@ -506,5 +529,6 @@ export async function placeBid(input: BidCreate, ctx: BidsContext): Promise<Bid>
 		...(input.maxBid ? { maxBid: input.maxBid } : {}),
 		status: "pending",
 		placedAt: job.createdAt.toISOString(),
+		nextAction: bidDeeplinkAction(input.listingId),
 	};
 }

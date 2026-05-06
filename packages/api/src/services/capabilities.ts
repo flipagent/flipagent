@@ -134,19 +134,19 @@ function computeSetupChecklist(input: {
 	const pair: SetupStep = {
 		id: "pair_extension",
 		status: input.extensionPaired ? "done" : "active",
-		required: true,
-		title: "Pair this Chrome",
+		required: false,
+		title: "Pair this Chrome (optional)",
 		description:
-			"Paste a flipagent API key in the extension popup, or sign in via the dashboard. Required for buying via bridge and any browser-driven workflow.",
-		unlocks: ["buy", "bridge", "forwarder"],
+			"Paste a flipagent API key in the extension popup, or sign in via the dashboard. Adds in-page UX for buying (cap-validation banner, fast orderId capture) and unlocks the Planet Express inbox / authenticated reads. Without it, /v1/purchases and /v1/bids still work — they fall back to a deeplink the user clicks on ebay.com themselves.",
+		unlocks: ["bridge", "forwarder"],
 	};
 	const ebaySignin: SetupStep = {
 		id: "ebay_signin",
 		status: !input.extensionPaired ? "locked" : input.ebayLoggedIn ? "done" : "active",
-		required: true,
+		required: false,
 		title: "Sign in to eBay",
 		description:
-			"Sign in to ebay.com in this Chrome. flipagent reads the existing session — no password ever leaves your browser.",
+			"Sign in to ebay.com in this Chrome. flipagent reads the existing session — no password ever leaves your browser. Only meaningful when the extension is paired (we detect login state via the extension); url-deeplink purchases just open ebay.com and let eBay handle login on demand.",
 		unlocks: ["buy"],
 	};
 	const sellerOauth: SetupStep = {
@@ -192,16 +192,12 @@ function ebayCapabilities(input: EbayInputs): MarketplaceCapabilities {
 	// (rate-limit is enforced upstream, not here).
 	const evaluate: CapabilityStatus = "ok";
 
-	// Buy-side: needs bridge client paired AND user signed into eBay
-	// in their browser. Order API approval (`EBAY_ORDER_APPROVED`)
-	// is the alternative path that doesn't need the extension.
-	const buy: CapabilityStatus = config.EBAY_ORDER_APPROVED
-		? "ok"
-		: !input.extensionPaired
-			? "unavailable"
-			: input.ebayLoggedIn
-				? "ok"
-				: "needs_signin";
+	// Buy-side: always reachable. REST when `EBAY_ORDER_APPROVED=1`;
+	// bridge when the extension is paired (richer UX — banner + orderId
+	// capture); url deeplink otherwise (response carries `nextAction.url`
+	// pointing at the ebay.com listing for the user to click). The
+	// reconciler matches completion in all three cases.
+	const buy: CapabilityStatus = "ok";
 
 	// Sell-side: passthrough requires the user's seller OAuth tokens.
 	const sell: CapabilityStatus = input.sellerConnected ? "ok" : "needs_oauth";
@@ -210,20 +206,21 @@ function ebayCapabilities(input: EbayInputs): MarketplaceCapabilities {
 }
 
 /**
- * Planet Express has no public API; everything goes through the user's
- * logged-in session via the Chrome extension. We don't track buyer-login
- * state per-forwarder yet — `needs_signin` would require a PE-specific
- * cookie/DOM probe in the content script. v1 reports `ok` whenever the
- * extension is paired and lets the actual call surface a real-time
- * "please sign in to planetexpress.com" if cookies are missing.
+ * Planet Express has no public API. Authenticated reads (inbox refresh,
+ * package photos, warehouse address scrape) require the Chrome
+ * extension; outbound dispatch can fall back to a deeplink so it works
+ * without pairing too. Capability surface reflects this split.
  */
 function planetExpressCapabilities(input: { extensionPaired: boolean }): ForwarderCapabilities {
-	const base: CapabilityStatus = input.extensionPaired ? "ok" : "unavailable";
+	const authedRead: CapabilityStatus = input.extensionPaired ? "ok" : "unavailable";
 	return {
-		packages: base,
-		consolidate: base,
-		// Real money commit — interactive (user clicks). Status `ok` here
-		// just means we can drive the UI; the user still confirms.
-		ship: base,
+		// inbox + photo scrape — extension-only (DOM access required)
+		packages: authedRead,
+		consolidate: authedRead,
+		// Outbound ship-out — bridge when paired (extension drives the
+		// mailout form), url deeplink otherwise (user clicks Send Mailout
+		// on the PE UI; reconciler picks up the result on inbox refresh).
+		// Reachable in either case.
+		ship: "ok",
 	};
 }

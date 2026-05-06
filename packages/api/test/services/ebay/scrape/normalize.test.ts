@@ -44,6 +44,9 @@ const baseRaw: EbayItemDetail = {
 	conditionDescriptors: null,
 	marketingPrice: null,
 	primaryItemGroup: null,
+	availableQuantity: null,
+	availabilityThreshold: null,
+	soldQuantity: null,
 };
 
 describe("ebayDetailToBrowse — image mapping", () => {
@@ -431,5 +434,153 @@ describe("reconcileBuyingOptions — REST passthrough fix", () => {
 			estimatedAvailabilities: [{ estimatedAvailabilityStatus: "OUT_OF_STOCK" }],
 		};
 		expect(reconcileBuyingOptions(detail).buyingOptions).toEqual(["FIXED_PRICE"]);
+	});
+});
+
+describe("ebayDetailToBrowse — estimatedAvailabilities synthesis", () => {
+	it("populates available + sold counts on a multi-quantity ACTIVE listing", () => {
+		// The user's real listing 405993262109 — 17 available, 10 sold. Both
+		// numbers must reach `estimatedAvailabilities[0]` so evaluate's
+		// `item` carries the live demand signal end-to-end.
+		const out = ebayDetailToBrowse({
+			...baseRaw,
+			listingStatus: "ACTIVE",
+			availableQuantity: 17,
+			soldQuantity: 10,
+		});
+		expect(out?.estimatedAvailabilities).toEqual([
+			{
+				estimatedAvailabilityStatus: "IN_STOCK",
+				estimatedAvailableQuantity: 17,
+				estimatedRemainingQuantity: 17,
+				estimatedSoldQuantity: 10,
+			},
+		]);
+	});
+
+	it("emits IN_STOCK even at availableQuantity=1 (REST never emits LIMITED_STOCK in practice)", () => {
+		// Verified against live REST 2026-05: 135 sampled listings, zero
+		// LIMITED_STOCK responses, even at qty=1. Don't synthesise an enum
+		// REST itself doesn't emit — keeps parity exact.
+		const out = ebayDetailToBrowse({
+			...baseRaw,
+			listingStatus: "ACTIVE",
+			availableQuantity: 1,
+			soldQuantity: 2,
+		});
+		expect(out?.estimatedAvailabilities?.[0]?.estimatedAvailabilityStatus).toBe("IN_STOCK");
+		expect(out?.estimatedAvailabilities?.[0]?.estimatedAvailableQuantity).toBe(1);
+	});
+
+	it("'More than 10 available' maps to availabilityThreshold + threshold type (REST parity)", () => {
+		// REST's response on these listings: drop estimatedAvailableQuantity,
+		// emit `availabilityThreshold: 10, availabilityThresholdType: "MORE_THAN"`.
+		// Mirror that exact shape so consumers see the same structure regardless
+		// of transport.
+		const out = ebayDetailToBrowse({
+			...baseRaw,
+			listingStatus: "ACTIVE",
+			availableQuantity: null,
+			availabilityThreshold: 10,
+			soldQuantity: 1746,
+		});
+		const entry = out?.estimatedAvailabilities?.[0];
+		expect(entry?.estimatedAvailabilityStatus).toBe("IN_STOCK");
+		expect(entry?.estimatedAvailableQuantity).toBeUndefined();
+		expect(entry?.availabilityThreshold).toBe(10);
+		expect(entry?.availabilityThresholdType).toBe("MORE_THAN");
+		expect(entry?.estimatedSoldQuantity).toBe(1746);
+	});
+
+	it("emits OUT_OF_STOCK when availableQuantity is 0 (the 'Out of Stock' badge)", () => {
+		const out = ebayDetailToBrowse({
+			...baseRaw,
+			listingStatus: "ACTIVE",
+			availableQuantity: 0,
+			soldQuantity: 40,
+		});
+		expect(out?.estimatedAvailabilities?.[0]?.estimatedAvailabilityStatus).toBe("OUT_OF_STOCK");
+		expect(out?.estimatedAvailabilities?.[0]?.estimatedAvailableQuantity).toBe(0);
+		expect(out?.estimatedAvailabilities?.[0]?.estimatedSoldQuantity).toBe(40);
+	});
+
+	it("drops the available-quantity field when only sold count is known ('627 sold')", () => {
+		// Listings where eBay hides the count or shows only "X sold" — the
+		// availability number stays absent (null on raw → omitted on
+		// browse), matching REST behaviour for the same shape.
+		const out = ebayDetailToBrowse({
+			...baseRaw,
+			listingStatus: "ACTIVE",
+			availableQuantity: null,
+			soldQuantity: 627,
+		});
+		expect(out?.estimatedAvailabilities).toEqual([
+			{ estimatedAvailabilityStatus: "IN_STOCK", estimatedSoldQuantity: 627 },
+		]);
+	});
+
+	it("emits status-only IN_STOCK when neither count is known (auctions, no badge)", () => {
+		const out = ebayDetailToBrowse({
+			...baseRaw,
+			listingStatus: "ACTIVE",
+			availableQuantity: null,
+			soldQuantity: null,
+		});
+		expect(out?.estimatedAvailabilities).toEqual([{ estimatedAvailabilityStatus: "IN_STOCK" }]);
+	});
+
+	it("ENDED listing carries scraped soldQuantity into the OUT_OF_STOCK envelope", () => {
+		// Sold comps go through this path: when scrape captured a real
+		// rolling sold count, surface it on the envelope.
+		const out = ebayDetailToBrowse({
+			...baseRaw,
+			listingStatus: "ENDED",
+			soldOut: true,
+			soldQuantity: 27,
+		});
+		expect(out?.estimatedAvailabilities?.[0]).toEqual({
+			estimatedAvailabilityStatus: "OUT_OF_STOCK",
+			estimatedAvailableQuantity: 0,
+			estimatedSoldQuantity: 27,
+			estimatedRemainingQuantity: 0,
+		});
+	});
+
+	it("ENDED listing without scraped soldQuantity leaves estimatedSoldQuantity unset (no fabrication)", () => {
+		// Pre-fix this path emitted `estimatedSoldQuantity: 1` whenever
+		// `soldOut === true` even when no count was scraped — fabricating a
+		// number eBay doesn't actually expose. Now we omit the field so
+		// consumers can detect "unknown" via field presence, matching REST
+		// behaviour on listings with no count badge.
+		const out = ebayDetailToBrowse({
+			...baseRaw,
+			listingStatus: "ENDED",
+			soldOut: true,
+			soldQuantity: null,
+		});
+		expect(out?.estimatedAvailabilities?.[0]).toEqual({
+			estimatedAvailabilityStatus: "OUT_OF_STOCK",
+			estimatedAvailableQuantity: 0,
+			estimatedRemainingQuantity: 0,
+		});
+		expect(out?.estimatedAvailabilities?.[0]?.estimatedSoldQuantity).toBeUndefined();
+	});
+
+	it("emits deliveryOptions ['SHIP_TO_HOME'] when scrape captured a shipping cost (REST parity)", () => {
+		// Verified against live REST 2026-05: every shippable listing
+		// REST returns carries `deliveryOptions: ["SHIP_TO_HOME"]`. Mirror
+		// 1:1 from the same `shippingCents != null` signal scrape already
+		// produces.
+		const out = ebayDetailToBrowse({ ...baseRaw, shippingCents: 599 });
+		expect(out?.estimatedAvailabilities?.[0]?.deliveryOptions).toEqual(["SHIP_TO_HOME"]);
+	});
+
+	it("omits deliveryOptions on local-pickup-only listings (no shipping signal)", () => {
+		// REST also omits the field on these — scrape mirrors that. Without
+		// shippingCents the listing is either pickup-only or eBay didn't
+		// surface a carrier service; in both cases the right answer is
+		// "no deliveryOptions field."
+		const out = ebayDetailToBrowse({ ...baseRaw, shippingCents: null, shipToLocations: null });
+		expect(out?.estimatedAvailabilities?.[0]?.deliveryOptions).toBeUndefined();
 	});
 });

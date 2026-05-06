@@ -445,6 +445,22 @@ export interface RawEbayDetail {
 		itemGroupTitle?: string;
 		itemGroupHref?: string;
 	} | null;
+	/**
+	 * Raw "X available" / "Last one" / "Out of Stock" / "More than X
+	 * available" text from the page's `availabilitySignal` model
+	 * (or the `#qtyAvailability` DOM element as fallback). Null on
+	 * pages that omit the block — typically auctions and listings
+	 * where eBay chose to hide the count. Parsed into a numeric
+	 * `availableQuantity` at the `EbayItemDetail` boundary.
+	 */
+	availabilityText: string | null;
+	/**
+	 * Raw "X sold" / "1,746 sold" text from the same
+	 * `availabilitySignal` model. Surfaces a fixed-price listing's
+	 * rolling sold count (Browse REST `estimatedSoldQuantity`). Null
+	 * when the page doesn't render the badge.
+	 */
+	soldQuantityText: string | null;
 }
 
 /**
@@ -492,6 +508,51 @@ export interface EbayVariation {
  */
 function extractSemanticData(root: ParentNode): Record<string, unknown> | null {
 	return extractScriptObject(root, "SEMANTIC_DATA");
+}
+
+/**
+ * Pull the two textspans out of the page's `availabilitySignal` model
+ * — the multi-quantity badge eBay renders next to BIN/quantity. Two
+ * forms appear in the same `textSpans[]` array:
+ *
+ *   - availability: `"17 available"`, `"Last one"`, `"Out of Stock"`,
+ *     `"More than 10 available"`
+ *   - sold count:   `"10 sold"`, `"1,746 sold"`
+ *
+ * Either or both can be absent (627-sold listings show only the sold
+ * span; auctions and single-item listings render nothing). Auction +
+ * sold/ended pages omit the model entirely. We classify by content
+ * (regex on the text) rather than positional index because eBay swaps
+ * order across listings: high-stock listings put sold first, low-stock
+ * listings put availability first.
+ */
+function extractAvailabilitySignal(root: ParentNode): {
+	availabilityText: string | null;
+	soldQuantityText: string | null;
+} {
+	const out = { availabilityText: null as string | null, soldQuantityText: null as string | null };
+	const classify = (text: string) => {
+		if (!text) return;
+		if (!out.soldQuantityText && /\bsold\b/i.test(text)) out.soldQuantityText = text;
+		else if (!out.availabilityText && /(available|last\s+one|out\s+of\s+stock)/i.test(text))
+			out.availabilityText = text;
+	};
+
+	const block = extractScriptObject(root, "availabilitySignal") as { textSpans?: Array<{ text?: unknown }> } | null;
+	for (const span of block?.textSpans ?? []) {
+		if (typeof span.text === "string") classify(span.text.trim());
+	}
+	if (out.availabilityText || out.soldQuantityText) return out;
+	// Fallback: walk the rendered DOM (`#qtyAvailability`). Same two
+	// textspans, just unwrapped by eBay's renderer. Used when the inline
+	// model is missing but the markup made it through (older layouts /
+	// regional skins).
+	const dom = root.querySelector("#qtyAvailability, .x-quantity__availability");
+	if (!dom) return out;
+	for (const span of Array.from(dom.querySelectorAll(".ux-textspans"))) {
+		classify((span.textContent ?? "").trim());
+	}
+	return out;
 }
 
 /**
@@ -1227,6 +1288,7 @@ export function extractEbayDetail(root: ParentNode, sourceUrl: string, html?: st
 	const soldOutValue = semantic?.singleSkuOutOfStock;
 	const aspects = extractItemAspects(root);
 	const msku = extractMskuModel(root);
+	const availability = extractAvailabilitySignal(root);
 
 	return {
 		itemId: extractItemIdFromUrl(sourceUrl),
@@ -1284,6 +1346,8 @@ export function extractEbayDetail(root: ParentNode, sourceUrl: string, html?: st
 		conditionDescriptors: extractConditionDescriptorsFromHtml(html),
 		marketingPrice: extractMarketingPriceFromHtml(html),
 		primaryItemGroup: extractPrimaryItemGroupFromHtml(html),
+		availabilityText: availability.availabilityText,
+		soldQuantityText: availability.soldQuantityText,
 	};
 }
 
@@ -1493,15 +1557,69 @@ export function splitSubtitle(text: string | null): {
 }
 
 /**
- * Parse "5 sold", "5 sold of 10", "9 sold this week" into an integer.
- * Used for active listings to surface popularity (Marketplace Insights
- * exposes this as `totalSoldQuantity`).
+ * Parse "5 sold", "5 sold of 10", "9 sold this week", "1,746 sold"
+ * into an integer. Used for both search-card popularity and the PDP
+ * `availabilitySignal` rolling sold count. Browse REST surfaces this
+ * as `estimatedSoldQuantity` on detail and `totalSoldQuantity` on
+ * search summaries. Comma-grouped numbers are accepted because the
+ * PDP renders thousands with grouping ("1,746 sold").
+ *
+ * EBAY_US-locale only by intent — non-US marketplaces (EBAY_DE, EBAY_FR,
+ * etc.) localize the verb and the thousands separator. The project only
+ * wires `ebay_us` today; expand here when other adapters land.
  */
 export function parseSoldQuantity(text: string | null): number | null {
 	if (!text) return null;
-	const match = text.match(/^(\d+)\s+sold/i);
+	const match = text.match(/^([\d,]+)\s+sold/i);
 	if (!match) return null;
-	return Number.parseInt(match[1] ?? "0", 10);
+	const digits = (match[1] ?? "").replace(/,/g, "");
+	const n = Number.parseInt(digits, 10);
+	return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Parsed shape of the PDP `availabilitySignal` availability text.
+ * Discriminated by `kind` so consumers branch on case rather than
+ * reading three optional fields:
+ *
+ *   - `count`     concrete remaining stock ("17 available", "Last one")
+ *   - `out`       depleted listing ("Out of Stock")
+ *   - `threshold` count is masked behind a "More than X" badge
+ */
+export type AvailabilityParse =
+	| { kind: "count"; quantity: number }
+	| { kind: "out" }
+	| { kind: "threshold"; threshold: number };
+
+/**
+ * Parse the PDP `availabilitySignal` availability text. eBay renders
+ * five shapes on EBAY_US:
+ *
+ *   - `"17 available"` / `"1,234 available"`  → { kind: "count", quantity }
+ *   - `"Last one"`                            → { kind: "count", quantity: 1 }
+ *   - `"Out of Stock"`                        → { kind: "out" }
+ *   - `"More than 10 available"`              → { kind: "threshold", threshold: 10 }
+ *
+ * Mirror of Browse REST `estimatedAvailabilities[0]`. The "More than"
+ * case maps to REST's `availabilityThreshold + availabilityThresholdType`
+ * pair — REST drops `estimatedAvailableQuantity` on those listings AND
+ * carries the threshold integer, so we extract the integer here.
+ *
+ * Returns null when the text doesn't match a known availability shape.
+ */
+export function parseAvailableQuantity(text: string | null): AvailabilityParse | null {
+	if (!text) return null;
+	if (/^last\s+one\b/i.test(text)) return { kind: "count", quantity: 1 };
+	if (/^out\s+of\s+stock\b/i.test(text)) return { kind: "out" };
+	const more = text.match(/^more\s+than\s+([\d,]+)\s+available/i);
+	if (more) {
+		const n = Number.parseInt((more[1] ?? "").replace(/,/g, ""), 10);
+		return Number.isFinite(n) ? { kind: "threshold", threshold: n } : null;
+	}
+	const m = text.match(/^([\d,]+)\s+available/i);
+	if (!m) return null;
+	const n = Number.parseInt((m[1] ?? "").replace(/,/g, ""), 10);
+	return Number.isFinite(n) ? { kind: "count", quantity: n } : null;
 }
 
 /**
