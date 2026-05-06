@@ -10,9 +10,11 @@
  * the selected user's detail and the table row in place.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import * as RxDialog from "@radix-ui/react-dialog";
+import { type ReactNode, useEffect, useId, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { apiFetch } from "../lib/authClient";
+import { FormSelect } from "./compose/FormSelect";
 import "./Admin.css";
 
 type Tier = "free" | "hobby" | "standard" | "growth";
@@ -97,6 +99,28 @@ type Stats = {
 
 const TIERS: Tier[] = ["free", "hobby", "standard", "growth"];
 const PAGE_SIZE = 50;
+
+const TIER_FILTER_OPTIONS = [
+	{ value: "", label: "All tiers" },
+	...TIERS.map((t) => ({ value: t, label: t })),
+] as const;
+const ROLE_FILTER_OPTIONS = [
+	{ value: "", label: "All roles" },
+	{ value: "user", label: "user" },
+	{ value: "admin", label: "admin" },
+] as const;
+const TIER_OPTIONS = TIERS.map((t) => ({ value: t, label: t }));
+const ROLE_OPTIONS = [
+	{ value: "user", label: "user" },
+	{ value: "admin", label: "admin" },
+] as const;
+const EXPIRY_OPTIONS = [
+	{ value: "none", label: "never" },
+	{ value: "this_month", label: "end of this month" },
+	{ value: "30d", label: "in 30 days" },
+	{ value: "90d", label: "in 90 days" },
+] as const;
+type Expiry = (typeof EXPIRY_OPTIONS)[number]["value"];
 
 export default function Admin() {
 	const [me, setMe] = useState<MeProfile | null>(null);
@@ -239,33 +263,24 @@ export default function Admin() {
 							value={search}
 							onChange={(e) => setSearch(e.target.value)}
 						/>
-						<select
-							className="admin-select"
+						<FormSelect
 							value={tierFilter}
-							onChange={(e) => {
-								const v = e.target.value as "" | Tier;
-								setTierFilter(v);
-								void refreshUsers(0, search, v, roleFilter);
+							options={TIER_FILTER_OPTIONS}
+							onChange={(v) => {
+								setTierFilter(v as "" | Tier);
+								void refreshUsers(0, search, v as "" | Tier, roleFilter);
 							}}
-						>
-							<option value="">All tiers</option>
-							{TIERS.map((t) => (
-								<option key={t} value={t}>{t}</option>
-							))}
-						</select>
-						<select
-							className="admin-select"
+							width={140}
+						/>
+						<FormSelect
 							value={roleFilter}
-							onChange={(e) => {
-								const v = e.target.value as "" | Role;
-								setRoleFilter(v);
-								void refreshUsers(0, search, tierFilter, v);
+							options={ROLE_FILTER_OPTIONS}
+							onChange={(v) => {
+								setRoleFilter(v as "" | Role);
+								void refreshUsers(0, search, tierFilter, v as "" | Role);
 							}}
-						>
-							<option value="">All roles</option>
-							<option value="user">user</option>
-							<option value="admin">admin</option>
-						</select>
+							width={140}
+						/>
 						<button type="submit" className="admin-btn">Search</button>
 					</form>
 
@@ -310,8 +325,18 @@ export default function Admin() {
 function StatsStrip({ stats }: { stats: Stats }) {
 	return (
 		<div className="admin-stats">
-			<Stat label="Users" value={fmt(stats.users.total)} sub={`${stats.users.signedUpLast30d} new · 30d`} />
-			<Stat label="Admins" value={fmt(stats.users.admins)} />
+			<div className="admin-stat">
+				<div className="admin-stat-label">Users</div>
+				<div className="admin-stat-value">{fmt(stats.users.total)}</div>
+				<div className="admin-tier-row">
+					{TIERS.map((t) => (
+						<span key={t}>
+							{t}<b>{fmt(stats.users.byTier[t] ?? 0)}</b>
+						</span>
+					))}
+				</div>
+			</div>
+			<Stat label="New · 30d" value={fmt(stats.users.signedUpLast30d)} sub={`${fmt(stats.users.admins)} admins`} />
 			<Stat label="Active keys" value={fmt(stats.keys.active)} sub={`${fmt(stats.keys.revoked)} revoked`} />
 			<Stat
 				label="Active grants"
@@ -319,21 +344,10 @@ function StatsStrip({ stats }: { stats: Stats }) {
 				sub={`+${fmt(stats.grants.activeBonusCredits)} cr · ${stats.grants.grantedLast30d} new · 30d`}
 			/>
 			<Stat
-				label="Credits this month"
+				label="Credits · month"
 				value={fmt(stats.usage.creditsThisMonth)}
 				sub={`${fmt(stats.usage.callsThisMonth)} calls`}
 			/>
-			<div className="admin-stat admin-stat--tiers">
-				<div className="admin-stat-label">Tiers</div>
-				<div className="admin-tier-bars">
-					{TIERS.map((t) => (
-						<div key={t} className="admin-tier-bar">
-							<span className="admin-tier-bar-label">{t}</span>
-							<span className="admin-tier-bar-value">{fmt(stats.users.byTier[t] ?? 0)}</span>
-						</div>
-					))}
-				</div>
-			</div>
 		</div>
 	);
 }
@@ -467,11 +481,20 @@ function UserDetailPanel({
 
 	const [grantAmount, setGrantAmount] = useState<string>("1000");
 	const [grantReason, setGrantReason] = useState("");
-	const [grantExpiry, setGrantExpiry] = useState<"none" | "this_month" | "30d" | "90d">("none");
+	const [grantExpiry, setGrantExpiry] = useState<Expiry>("none");
 	const [grantSubmitting, setGrantSubmitting] = useState(false);
 
 	const [issued, setIssued] = useState<{ plaintext: string; prefix: string } | null>(null);
-	const [issuingKey, setIssuingKey] = useState(false);
+
+	// Radix Dialog drives the three destructive / prompting flows below;
+	// `*Target` carries the row being acted on, `dialogPending` locks
+	// the action button while the API call is in-flight.
+	const [revokeGrantTarget, setRevokeGrantTarget] = useState<Grant | null>(null);
+	const [revokeGrantReason, setRevokeGrantReason] = useState("");
+	const [revokeKeyTarget, setRevokeKeyTarget] = useState<Key | null>(null);
+	const [issueKeyOpen, setIssueKeyOpen] = useState(false);
+	const [issueKeyName, setIssueKeyName] = useState("");
+	const [dialogPending, setDialogPending] = useState(false);
 
 	useEffect(() => {
 		setTierDraft(u.tier);
@@ -480,6 +503,11 @@ function UserDetailPanel({
 		setGrantReason("");
 		setGrantAmount("1000");
 		setGrantExpiry("none");
+		setRevokeGrantTarget(null);
+		setRevokeGrantReason("");
+		setRevokeKeyTarget(null);
+		setIssueKeyOpen(false);
+		setIssueKeyName("");
 	}, [u.id]);
 
 	const dirty = tierDraft !== u.tier || roleDraft !== u.role;
@@ -534,47 +562,58 @@ function UserDetailPanel({
 		}
 	}
 
-	async function revokeGrant(g: Grant) {
-		if (!confirm(`Revoke grant of ${fmt(g.creditsDelta)} credits — "${g.reason}"?`)) return;
+	async function performRevokeGrant() {
+		if (!revokeGrantTarget) return;
+		setDialogPending(true);
 		try {
-			const reason = window.prompt("Optional revoke reason:") ?? undefined;
-			await apiFetch(`/v1/admin/grants/${encodeURIComponent(g.id)}`, {
+			const reason = revokeGrantReason.trim();
+			await apiFetch(`/v1/admin/grants/${encodeURIComponent(revokeGrantTarget.id)}`, {
 				method: "DELETE",
-				body: JSON.stringify({ reason }),
+				body: JSON.stringify({ reason: reason || undefined }),
 			});
 			toast.success("Grant revoked.");
-			await onMutated();
-		} catch (err) {
-			toast.error((err as Error).message);
-		}
-	}
-
-	async function issueKeyForUser() {
-		const name = window.prompt("Optional key name:") ?? undefined;
-		setIssuingKey(true);
-		try {
-			const res = await apiFetch<{ plaintext: string; prefix: string }>(
-				`/v1/admin/users/${encodeURIComponent(u.id)}/keys`,
-				{ method: "POST", body: JSON.stringify({ name }) },
-			);
-			setIssued(res);
-			toast.success("Key issued. Copy now — it will not be shown again.");
+			setRevokeGrantTarget(null);
+			setRevokeGrantReason("");
 			await onMutated();
 		} catch (err) {
 			toast.error((err as Error).message);
 		} finally {
-			setIssuingKey(false);
+			setDialogPending(false);
 		}
 	}
 
-	async function revokeKey(k: Key) {
-		if (!confirm(`Force-revoke key ${k.prefix}…${k.suffix ?? ""}?`)) return;
+	async function performIssueKey() {
+		setDialogPending(true);
 		try {
-			await apiFetch(`/v1/admin/keys/${encodeURIComponent(k.id)}`, { method: "DELETE" });
-			toast.success("Key revoked.");
+			const name = issueKeyName.trim();
+			const res = await apiFetch<{ plaintext: string; prefix: string }>(
+				`/v1/admin/users/${encodeURIComponent(u.id)}/keys`,
+				{ method: "POST", body: JSON.stringify({ name: name || undefined }) },
+			);
+			setIssued(res);
+			toast.success("Key issued. Copy now — it will not be shown again.");
+			setIssueKeyOpen(false);
+			setIssueKeyName("");
 			await onMutated();
 		} catch (err) {
 			toast.error((err as Error).message);
+		} finally {
+			setDialogPending(false);
+		}
+	}
+
+	async function performRevokeKey() {
+		if (!revokeKeyTarget) return;
+		setDialogPending(true);
+		try {
+			await apiFetch(`/v1/admin/keys/${encodeURIComponent(revokeKeyTarget.id)}`, { method: "DELETE" });
+			toast.success("Key revoked.");
+			setRevokeKeyTarget(null);
+			await onMutated();
+		} catch (err) {
+			toast.error((err as Error).message);
+		} finally {
+			setDialogPending(false);
 		}
 	}
 
@@ -598,21 +637,28 @@ function UserDetailPanel({
 			<section className="admin-section">
 				<h3 className="admin-section-title">Tier &amp; role</h3>
 				<div className="admin-patch-row">
-					<label className="admin-field">
-						<span>Tier</span>
-						<select className="admin-select" value={tierDraft} onChange={(e) => setTierDraft(e.target.value as Tier)}>
-							{TIERS.map((t) => (
-								<option key={t} value={t}>{t}</option>
-							))}
-						</select>
-					</label>
-					<label className="admin-field">
-						<span>Role</span>
-						<select className="admin-select" value={roleDraft} onChange={(e) => setRoleDraft(e.target.value as Role)}>
-							<option value="user">user</option>
-							<option value="admin">admin</option>
-						</select>
-					</label>
+					<LabeledField label="Tier">
+						{(id) => (
+							<FormSelect
+								value={tierDraft}
+								options={TIER_OPTIONS}
+								onChange={(v) => setTierDraft(v as Tier)}
+								width={140}
+								aria-labelledby={id}
+							/>
+						)}
+					</LabeledField>
+					<LabeledField label="Role">
+						{(id) => (
+							<FormSelect
+								value={roleDraft}
+								options={ROLE_OPTIONS}
+								onChange={(v) => setRoleDraft(v as Role)}
+								width={140}
+								aria-labelledby={id}
+							/>
+						)}
+					</LabeledField>
 					<button className="admin-btn admin-btn--primary" disabled={!dirty || savingPatch} onClick={savePatch}>
 						{savingPatch ? "Saving…" : "Save"}
 					</button>
@@ -637,19 +683,17 @@ function UserDetailPanel({
 							placeholder="1000 (or -500 to claw back)"
 						/>
 					</label>
-					<label className="admin-field admin-field--expires">
-						<span>Expires</span>
-						<select
-							className="admin-select"
-							value={grantExpiry}
-							onChange={(e) => setGrantExpiry(e.target.value as typeof grantExpiry)}
-						>
-							<option value="none">never</option>
-							<option value="this_month">end of this month</option>
-							<option value="30d">in 30 days</option>
-							<option value="90d">in 90 days</option>
-						</select>
-					</label>
+					<LabeledField label="Expires" className="admin-field--expires">
+						{(id) => (
+							<FormSelect
+								value={grantExpiry}
+								options={EXPIRY_OPTIONS}
+								onChange={(v) => setGrantExpiry(v as Expiry)}
+								width="100%"
+								aria-labelledby={id}
+							/>
+						)}
+					</LabeledField>
 					<button
 						className="admin-btn admin-btn--primary admin-grant-submit"
 						type="submit"
@@ -709,7 +753,7 @@ function UserDetailPanel({
 									</td>
 									<td>
 										{g.active && (
-											<button className="admin-link-btn" onClick={() => revokeGrant(g)}>Revoke</button>
+											<button className="admin-link-btn" onClick={() => setRevokeGrantTarget(g)}>Revoke</button>
 										)}
 									</td>
 								</tr>
@@ -722,8 +766,8 @@ function UserDetailPanel({
 			<section className="admin-section">
 				<div className="admin-section-head">
 					<h3 className="admin-section-title">API keys</h3>
-					<button className="admin-btn" disabled={issuingKey} onClick={issueKeyForUser}>
-						{issuingKey ? "Issuing…" : "Issue key"}
+					<button className="admin-btn" onClick={() => setIssueKeyOpen(true)}>
+						Issue key
 					</button>
 				</div>
 				{issued && (
@@ -769,7 +813,7 @@ function UserDetailPanel({
 									</td>
 									<td>
 										{!k.revokedAt && (
-											<button className="admin-link-btn" onClick={() => revokeKey(k)}>Revoke</button>
+											<button className="admin-link-btn" onClick={() => setRevokeKeyTarget(k)}>Revoke</button>
 										)}
 									</td>
 								</tr>
@@ -778,6 +822,77 @@ function UserDetailPanel({
 					</table>
 				)}
 			</section>
+
+			<ConfirmDialog
+				open={revokeGrantTarget != null}
+				onOpenChange={(o) => {
+					if (!o) {
+						setRevokeGrantTarget(null);
+						setRevokeGrantReason("");
+					}
+				}}
+				title="Revoke grant?"
+				description={
+					revokeGrantTarget
+						? `${revokeGrantTarget.creditsDelta > 0 ? "+" : ""}${fmt(revokeGrantTarget.creditsDelta)} credits — “${revokeGrantTarget.reason}”. The user's effective limit drops immediately.`
+						: undefined
+				}
+				confirmLabel="Revoke"
+				confirmKind="danger"
+				pending={dialogPending}
+				onConfirm={performRevokeGrant}
+			>
+				<input
+					className="rx-dialog-input"
+					autoFocus
+					value={revokeGrantReason}
+					onChange={(e) => setRevokeGrantReason(e.target.value)}
+					placeholder="Optional revoke reason"
+					maxLength={280}
+				/>
+			</ConfirmDialog>
+
+			<ConfirmDialog
+				open={revokeKeyTarget != null}
+				onOpenChange={(o) => {
+					if (!o) setRevokeKeyTarget(null);
+				}}
+				title="Revoke key?"
+				description={
+					revokeKeyTarget
+						? `${revokeKeyTarget.prefix}…${revokeKeyTarget.suffix ?? ""} — any client using it will start getting 401 immediately.`
+						: undefined
+				}
+				confirmLabel="Revoke"
+				confirmKind="danger"
+				pending={dialogPending}
+				onConfirm={performRevokeKey}
+			/>
+
+			<ConfirmDialog
+				open={issueKeyOpen}
+				onOpenChange={(o) => {
+					if (!o) {
+						setIssueKeyOpen(false);
+						setIssueKeyName("");
+					}
+				}}
+				title="Issue API key"
+				description="The plaintext is shown once after issuance. The user inherits the key's tier from their current account tier."
+				confirmLabel="Issue"
+				confirmKind="primary"
+				pending={dialogPending}
+				onConfirm={performIssueKey}
+			>
+				<input
+					className="rx-dialog-input"
+					autoFocus
+					value={issueKeyName}
+					onChange={(e) => setIssueKeyName(e.target.value)}
+					placeholder="Optional key name (e.g. “laptop”)"
+					maxLength={120}
+				/>
+			</ConfirmDialog>
 		</div>
 	);
 }
@@ -796,6 +911,85 @@ function MetricBlock({ label, value, sub }: { label: string; value: string; sub?
 
 function Pill({ kind, children }: { kind: string; children: React.ReactNode }) {
 	return <span className={`admin-pill admin-pill--${kind}`}>{children}</span>;
+}
+
+/**
+ * Stacked label + control. Uses a span+id (not <label htmlFor>) because
+ * the control may be a Radix Select, whose trigger isn't a real form
+ * element — `aria-labelledby` is the correct wire-up.
+ */
+function LabeledField({
+	label,
+	className,
+	children,
+}: {
+	label: ReactNode;
+	className?: string;
+	children: (labelId: string) => ReactNode;
+}) {
+	const id = useId();
+	const labelId = `${id}-label`;
+	return (
+		<div className={className ? `admin-field ${className}` : "admin-field"}>
+			<span id={labelId}>{label}</span>
+			{children(labelId)}
+		</div>
+	);
+}
+
+/**
+ * Generic confirm dialog backed by Radix Dialog. Optional `children`
+ * slot lets the caller drop a prompt input (revoke reason, key name)
+ * between the description and the action row.
+ */
+function ConfirmDialog({
+	open,
+	onOpenChange,
+	title,
+	description,
+	confirmLabel,
+	confirmKind = "primary",
+	pending,
+	onConfirm,
+	children,
+}: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	title: string;
+	description?: ReactNode;
+	confirmLabel: string;
+	confirmKind?: "primary" | "danger";
+	pending: boolean;
+	onConfirm: () => void;
+	children?: ReactNode;
+}) {
+	return (
+		<RxDialog.Root open={open} onOpenChange={onOpenChange}>
+			<RxDialog.Portal>
+				<RxDialog.Overlay className="rx-dialog-overlay" />
+				<RxDialog.Content className="rx-dialog-content">
+					<RxDialog.Title className="rx-dialog-title">{title}</RxDialog.Title>
+					{description && (
+						<RxDialog.Description className="rx-dialog-desc">{description}</RxDialog.Description>
+					)}
+					{children}
+					<div className="rx-dialog-actions">
+						<RxDialog.Close asChild>
+							<button type="button" className="rx-dialog-btn">Cancel</button>
+						</RxDialog.Close>
+						<button
+							type="button"
+							className={`rx-dialog-btn rx-dialog-btn-${confirmKind}`}
+							disabled={pending}
+							onClick={onConfirm}
+						>
+							{pending ? "Working…" : confirmLabel}
+						</button>
+					</div>
+				</RxDialog.Content>
+			</RxDialog.Portal>
+		</RxDialog.Root>
+	);
 }
 
 function fmt(n: number): string {

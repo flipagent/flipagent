@@ -27,6 +27,7 @@ export function FormSelect<V extends string>({
 	onChange,
 	placeholder,
 	width = 200,
+	disabled,
 	"aria-labelledby": ariaLabelledBy,
 }: {
 	value: V;
@@ -34,16 +35,22 @@ export function FormSelect<V extends string>({
 	onChange: (v: V) => void;
 	/** Shown when no option matches the current value. */
 	placeholder?: string;
-	/** px width of the trigger box. Match siblings in the Field row for tidy alignment. */
-	width?: number;
+	/** Trigger width. Number → px; string → CSS value (e.g. `"100%"`,
+	 *  `"min-content"`). Match siblings in the Field row for tidy alignment. */
+	width?: number | string;
+	disabled?: boolean;
 	"aria-labelledby"?: string;
 }) {
 	const selected = options.find((o) => o.value === value);
 	return (
-		<RxSelect.Root value={toRadix(value)} onValueChange={(v) => onChange(fromRadix(v) as V)}>
+		<RxSelect.Root
+			value={toRadix(value)}
+			onValueChange={(v) => onChange(fromRadix(v) as V)}
+			disabled={disabled}
+		>
 			<RxSelect.Trigger
 				aria-labelledby={ariaLabelledBy}
-				style={{ width }}
+				style={{ width: typeof width === "number" ? `${width}px` : width }}
 				className="flex items-center justify-between gap-2 text-[13px] px-3 py-1.5 border border-[var(--border)] rounded-[6px] bg-[var(--surface)] text-[var(--text)] cursor-pointer outline-none transition-colors duration-100 hover:border-[var(--text-3)] hover:bg-[var(--surface-2)] focus:border-[var(--text-3)] data-[state=open]:border-[var(--text-3)] data-[state=open]:bg-[var(--surface-2)]"
 			>
 				<RxSelect.Value placeholder={placeholder ?? ""}>

@@ -1,9 +1,9 @@
 /* Shared modal extras for the Connections flow. Base `.rx-dialog-*`
- * styles live in Dashboard.css (used by sidebar thread rename/delete);
- * this file only adds the bits the eBay-connect modal needs on top —
- * a wider content variant, a bulleted disclosure list, and the consent
- * checkbox row. Reusing the same vocabulary keeps the modal feel
- * consistent across the dashboard. */
+ * styles live in global.css (shared by every confirm/prompt across the
+ * app); this file only adds the bits the eBay-connect modal needs on
+ * top — a wider content variant, a bulleted disclosure list, and the
+ * consent checkbox row. Reusing the same vocabulary keeps the modal
+ * feel consistent everywhere. */
 
 .rx-dialog-content-wide {
 	max-width: 520px;

@@ -7,7 +7,7 @@
 	min-height: var(--vh-full, 100dvh);
 	background: var(--surface);
 	color: var(--text);
-	font-family: var(--font, system-ui, -apple-system, sans-serif);
+	font-family: var(--sans);
 }
 
 .admin-loading,
@@ -25,11 +25,22 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	gap: 12px;
 	padding: 14px 24px;
 	border-bottom: 1px solid var(--border-faint);
 	background: var(--surface);
 }
-.admin-top-left { display: flex; align-items: center; gap: 16px; }
+.admin-top-left {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	min-width: 0;
+}
+.admin-top-right {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
 .admin-back {
 	font-size: 13px;
 	color: var(--text-3);
@@ -43,23 +54,25 @@
 	margin: 0;
 }
 .admin-me {
-	font-size: 12px;
+	font-size: 12.5px;
 	color: var(--text-3);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* ───────── Stats strip ───────── */
 
 .admin-stats {
 	display: grid;
-	grid-template-columns: repeat(6, 1fr);
-	gap: 0;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 	border-bottom: 1px solid var(--border-faint);
 	background: var(--bg-soft);
 }
 .admin-stat {
-	padding: 14px 16px;
+	padding: 14px 18px;
 	border-right: 1px solid var(--border-faint);
-	min-height: 76px;
+	min-width: 0;
 }
 .admin-stat:last-child { border-right: 0; }
 .admin-stat-label {
@@ -81,28 +94,25 @@
 	margin-top: 4px;
 	font-size: 11.5px;
 	color: var(--text-3);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
-.admin-stat--tiers .admin-tier-bars {
-	display: grid;
-	grid-template-columns: repeat(4, 1fr);
-	gap: 6px;
+.admin-tier-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px 14px;
 	margin-top: 6px;
 }
-.admin-tier-bar {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
-.admin-tier-bar-label {
-	font-size: 10px;
+.admin-tier-row > span {
+	font-size: 11.5px;
 	color: var(--text-3);
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
-}
-.admin-tier-bar-value {
-	font-size: 14px;
-	font-weight: 500;
 	font-variant-numeric: tabular-nums;
+}
+.admin-tier-row b {
+	font-weight: 500;
+	color: var(--text);
+	margin-left: 4px;
 }
 
 /* ───────── Two-pane grid ───────── */
@@ -110,7 +120,6 @@
 .admin-grid {
 	display: grid;
 	grid-template-columns: minmax(0, 1.4fr) minmax(420px, 1fr);
-	gap: 0;
 	flex: 1;
 	min-height: 0;
 }
@@ -119,63 +128,93 @@
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
+	min-width: 0;
 }
 .admin-detail-pane {
 	background: var(--bg-soft);
 	overflow-y: auto;
+	min-width: 0;
 }
 
 /* ───────── Filters ───────── */
 
 .admin-filters {
 	display: flex;
+	flex-wrap: wrap;
 	gap: 8px;
 	padding: 12px 16px;
 	border-bottom: 1px solid var(--border-faint);
 	background: var(--surface);
 }
-.admin-input,
-.admin-select {
-	height: 32px;
-	padding: 0 10px;
+.admin-filters .admin-input {
+	flex: 1 1 220px;
+	min-width: 0;
+}
+
+/* ───────── Inputs ─────────
+ * Selects use Radix (`FormSelect`) — no native `<select>` styling here.
+ * Native text/number/search inputs share this skin. */
+
+.admin-input {
 	font: inherit;
 	font-size: 13px;
+	padding: 7px 12px;
 	color: var(--text);
 	background: var(--surface);
-	border: 1px solid var(--border-faint);
-	border-radius: 6px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
 	outline: none;
+	transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
-.admin-input:focus,
-.admin-select:focus {
-	border-color: var(--text-4);
+.admin-input::placeholder { color: var(--text-4); }
+.admin-input:hover:not(:focus) { border-color: var(--border-strong); }
+.admin-input:focus {
+	border-color: var(--text);
+	box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
 }
-.admin-input { flex: 1; min-width: 0; }
-.admin-select { background-image: none; }
+.admin-input:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+@media (max-width: 720px) {
+	/* Global rule auto-bumps font to 16px on small screens to kill iOS
+	 * zoom-on-focus; lift vertical padding to keep the visual proportion. */
+	.admin-input { padding: 9px 12px; }
+}
+
+/* ───────── Buttons ───────── */
 
 .admin-btn {
-	height: 32px;
-	padding: 0 12px;
 	font: inherit;
 	font-size: 13px;
 	font-weight: 500;
 	letter-spacing: -0.005em;
+	padding: 7px 14px;
 	color: var(--text);
 	background: var(--surface);
-	border: 1px solid var(--border-faint);
-	border-radius: 6px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
 	cursor: pointer;
-	transition: background 0.12s ease, border-color 0.12s ease;
+	transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
-.admin-btn:hover:not(:disabled) { background: var(--surface-2); }
+.admin-btn:hover:not(:disabled) {
+	background: var(--surface-2);
+	border-color: var(--border-strong);
+}
 .admin-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .admin-btn--primary {
 	background: var(--text);
 	color: var(--surface);
 	border-color: var(--text);
 }
-.admin-btn--primary:hover:not(:disabled) { background: var(--text-2); border-color: var(--text-2); }
-.admin-btn--small { height: 26px; padding: 0 8px; font-size: 12px; }
+.admin-btn--primary:hover:not(:disabled) {
+	background: #1f1f1f;
+	border-color: #1f1f1f;
+}
+.admin-btn--small {
+	padding: 4px 10px;
+	font-size: 12px;
+}
 
 .admin-link-btn {
 	background: transparent;
@@ -190,24 +229,30 @@
 
 .admin-icon-btn {
 	background: transparent;
-	border: 1px solid var(--border-faint);
-	border-radius: 6px;
-	width: 28px;
-	height: 28px;
+	border: 0;
+	border-radius: var(--radius);
+	width: 32px;
+	height: 32px;
 	display: grid;
 	place-items: center;
 	cursor: pointer;
 	color: var(--text-3);
-	font-size: 18px;
+	font-size: 20px;
 	line-height: 1;
+	flex-shrink: 0;
+	transition: background 0.12s ease, color 0.12s ease;
 }
 .admin-icon-btn:hover { background: var(--surface-2); color: var(--text); }
+@media (max-width: 720px) {
+	.admin-icon-btn { width: 36px; height: 36px; }
+}
 
 /* ───────── Table ───────── */
 
 .admin-table-wrap {
 	flex: 1;
 	overflow-y: auto;
+	overflow-x: auto;
 	min-height: 0;
 }
 .admin-list-empty {
@@ -228,8 +273,8 @@
 	border-bottom: 1px solid var(--border-faint);
 	text-align: left;
 	font-weight: 500;
-	font-size: 11px;
-	letter-spacing: 0.04em;
+	font-size: 10.5px;
+	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--text-3);
 	padding: 10px 12px;
@@ -252,7 +297,6 @@
 .admin-table--compact { font-size: 12.5px; }
 .admin-table--compact thead th {
 	padding: 8px 10px;
-	font-size: 10.5px;
 	background: transparent;
 }
 .admin-table--compact tbody td { padding: 8px 10px; }
@@ -264,7 +308,7 @@
 	font-size: 12.5px;
 }
 
-.admin-user-cell { display: flex; align-items: center; gap: 10px; }
+.admin-user-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .admin-avatar {
 	width: 28px;
 	height: 28px;
@@ -277,9 +321,23 @@
 	color: var(--text-2);
 	flex-shrink: 0;
 }
-.admin-avatar--fallback { color: var(--text-2); }
-.admin-user-cell-name { font-weight: 500; line-height: 1.2; }
-.admin-user-cell-email { color: var(--text-3); font-size: 11.5px; line-height: 1.3; margin-top: 2px; }
+.admin-user-cell-text { min-width: 0; }
+.admin-user-cell-name {
+	font-weight: 500;
+	line-height: 1.2;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.admin-user-cell-email {
+	color: var(--text-3);
+	font-size: 11.5px;
+	line-height: 1.3;
+	margin-top: 2px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
 
 .admin-muted { color: var(--text-3); }
 
@@ -287,25 +345,28 @@
 .admin-bonus--pos { color: var(--success); }
 .admin-bonus--neg { color: var(--danger); }
 
-/* ───────── Pills ───────── */
+/* ───────── Pills ─────────
+ * Visual vocabulary mirrors `.dash-status--*` in Dashboard.css so the
+ * two operator surfaces share the same green/red/amber/brand palette. */
 
 .admin-pill {
 	display: inline-block;
 	padding: 2px 8px;
-	font-size: 10.5px;
+	font-size: 11px;
 	font-weight: 500;
 	letter-spacing: 0.02em;
-	border-radius: 4px;
+	border-radius: 999px;
 	text-transform: lowercase;
+	font-variant-numeric: tabular-nums;
 }
-.admin-pill--tier-free   { background: var(--surface-3); color: var(--text-2); }
-.admin-pill--tier-hobby  { background: #eef2ff; color: #3730a3; }
-.admin-pill--tier-standard { background: #ecfdf5; color: #047857; }
-.admin-pill--tier-growth { background: var(--brand-soft); color: var(--brand); }
-.admin-pill--role-admin  { background: #fef3c7; color: #92400e; }
-.admin-pill--grant-active   { background: #ecfdf5; color: #047857; }
-.admin-pill--grant-revoked  { background: #fee2e2; color: #991b1b; }
-.admin-pill--grant-expired  { background: var(--surface-3); color: var(--text-3); }
+.admin-pill--tier-free      { background: var(--surface-2);     color: var(--text-2); }
+.admin-pill--tier-hobby     { background: #eef2ff;              color: #3730a3; }
+.admin-pill--tier-standard  { background: rgba(74, 222, 128, 0.14); color: #16a34a; }
+.admin-pill--tier-growth    { background: var(--brand-soft);    color: var(--brand); }
+.admin-pill--role-admin     { background: #fef3c7;              color: #b45309; }
+.admin-pill--grant-active   { background: rgba(74, 222, 128, 0.14); color: #16a34a; }
+.admin-pill--grant-revoked  { background: #fee2e2;              color: #b91c1c; }
+.admin-pill--grant-expired  { background: var(--surface-2);     color: var(--text-3); }
 
 /* ───────── Pager ───────── */
 
@@ -313,6 +374,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	gap: 12px;
 	padding: 12px 16px;
 	border-top: 1px solid var(--border-faint);
 	background: var(--surface);
@@ -335,7 +397,7 @@
 	padding: 20px 24px 40px;
 	display: flex;
 	flex-direction: column;
-	gap: 24px;
+	gap: 18px;
 }
 .admin-detail-head {
 	display: flex;
@@ -345,10 +407,14 @@
 	padding-bottom: 16px;
 	border-bottom: 1px solid var(--border-faint);
 }
+.admin-detail-head > div:first-child { min-width: 0; }
 .admin-detail-title {
 	font-size: 18px;
 	font-weight: 500;
 	letter-spacing: -0.01em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 .admin-detail-subtitle {
 	margin-top: 4px;
@@ -359,19 +425,18 @@
 .admin-detail-summary {
 	display: grid;
 	grid-template-columns: repeat(4, 1fr);
-	gap: 0;
 	border: 1px solid var(--border-faint);
-	border-radius: 8px;
-	overflow: hidden;
 	background: var(--surface);
 }
 .admin-metric {
 	padding: 12px 14px;
 	border-right: 1px solid var(--border-faint);
+	min-width: 0;
 }
 .admin-metric:last-child { border-right: 0; }
 .admin-metric-label {
 	font-size: 10.5px;
+	font-weight: 500;
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--text-3);
@@ -381,6 +446,9 @@
 	font-size: 16px;
 	font-weight: 500;
 	font-variant-numeric: tabular-nums;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 .admin-metric-sub {
 	margin-top: 2px;
@@ -388,14 +456,15 @@
 	color: var(--text-3);
 }
 
+/* Card: same square edges as `.dash-card` so the two operator surfaces
+   read at the same visual weight. */
 .admin-section {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
 	background: var(--surface);
 	border: 1px solid var(--border-faint);
-	border-radius: 8px;
-	padding: 16px 18px;
+	padding: 18px 20px;
 }
 .admin-section-head {
 	display: flex;
@@ -404,9 +473,9 @@
 	gap: 12px;
 }
 .admin-section-title {
-	font-size: 12px;
+	font-size: 11px;
 	font-weight: 500;
-	letter-spacing: 0.05em;
+	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--text-3);
 	margin: 0;
@@ -421,7 +490,7 @@
 	padding-top: 12px;
 	border-top: 1px solid var(--border-faint);
 	font-size: 11px;
-	letter-spacing: 0.05em;
+	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--text-3);
 }
@@ -447,14 +516,14 @@
 .admin-field {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	font-size: 11px;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
-	color: var(--text-3);
-	min-width: 120px;
+	gap: 5px;
+	min-width: 140px;
 }
-.admin-field--grow { flex: 1; min-width: 200px; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--text-3); }
+.admin-field > span {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--text);
+}
 
 /* Reason gets its own row so it has room to actually read the placeholder /
    typed value. Amount + Expires + Grant share the top row. */
@@ -467,61 +536,88 @@
 	gap: 10px 12px;
 	align-items: end;
 }
-.admin-grant-form .admin-field { text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--text-3); }
-.admin-grant-form .admin-field--amount  { grid-area: amount; }
+.admin-grant-form .admin-field--amount  { grid-area: amount; min-width: 0; }
 .admin-grant-form .admin-field--reason  { grid-area: reason; min-width: 0; }
-.admin-grant-form .admin-field--expires { grid-area: expires; }
-.admin-grant-form .admin-grant-submit   { grid-area: grant; }
+.admin-grant-form .admin-field--expires { grid-area: expires; min-width: 0; }
+.admin-grant-form .admin-grant-submit   { grid-area: grant; align-self: end; }
 
 .admin-issued {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 10px;
 	padding: 10px 12px;
 	background: var(--brand-soft);
 	border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent);
-	border-radius: 6px;
+	border-radius: var(--radius);
+	flex-wrap: wrap;
 }
 .admin-issued-label {
 	font-size: 11px;
 	color: var(--text-3);
-	letter-spacing: 0.04em;
+	letter-spacing: 0.06em;
 	text-transform: uppercase;
+	flex-shrink: 0;
 }
 .admin-issued-code {
-	font-family: var(--mono, ui-monospace, SFMono-Regular, monospace);
+	font-family: var(--mono);
 	font-size: 13px;
 	color: var(--text);
 	background: var(--surface);
 	padding: 4px 8px;
-	border-radius: 4px;
+	border-radius: var(--radius-sm);
 	user-select: all;
-	flex: 1;
+	flex: 1 1 200px;
+	min-width: 0;
 	overflow-x: auto;
+	white-space: nowrap;
 }
 
 .admin-key-prefix {
-	font-family: var(--mono, ui-monospace, SFMono-Regular, monospace);
+	font-family: var(--mono);
 	font-size: 12px;
 	color: var(--text-2);
 	background: var(--surface-3);
 	padding: 1px 6px;
-	border-radius: 3px;
+	border-radius: var(--radius-sm);
 }
 
-@media (max-width: 1100px) {
+/* ───────── Mobile ladder (matches STYLEGUIDE §12) ───────── */
+
+@media (max-width: 960px) {
 	.admin-grid { grid-template-columns: 1fr; }
-	.admin-list-pane { border-right: 0; border-bottom: 1px solid var(--border-faint); }
-	.admin-stats { grid-template-columns: repeat(3, 1fr); }
+	.admin-list-pane {
+		border-right: 0;
+		border-bottom: 1px solid var(--border-faint);
+	}
 	.admin-detail-summary { grid-template-columns: repeat(2, 1fr); }
+	.admin-detail-summary .admin-metric:nth-child(2) { border-right: 0; }
+	.admin-detail-summary .admin-metric:nth-child(-n+2) {
+		border-bottom: 1px solid var(--border-faint);
+	}
 }
 
-/* Narrow detail panes (right rail under ~640px): stack the grant form
-   into one column so the Grant button doesn't squeeze the inputs. */
-@media (max-width: 640px) {
+@media (max-width: 720px) {
+	.admin-top { padding: 12px 16px; }
+	.admin-detail { padding: 16px 16px 32px; }
+	.admin-stat { padding: 12px 16px; }
+	.admin-section { padding: 16px; }
+	/* Stack the grant form into one column so the Grant button doesn't
+	   squeeze the inputs on narrow screens. */
 	.admin-grant-form {
 		grid-template-columns: 1fr;
 		grid-template-areas: "amount" "expires" "reason" "grant";
 	}
 	.admin-grant-form .admin-grant-submit { justify-self: start; }
+	.admin-detail-summary { grid-template-columns: 1fr; }
+	.admin-detail-summary .admin-metric {
+		border-right: 0;
+		border-bottom: 1px solid var(--border-faint);
+	}
+	.admin-detail-summary .admin-metric:last-child { border-bottom: 0; }
+}
+
+@media (max-width: 480px) {
+	.admin-top-left { gap: 10px; }
+	.admin-title { font-size: 15px; }
+	.admin-stat-value { font-size: 19px; }
 }
