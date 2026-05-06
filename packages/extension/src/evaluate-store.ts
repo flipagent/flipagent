@@ -223,7 +223,15 @@ export async function startEvaluate(itemId: string): Promise<void> {
 		// run progresses; this is the panel's view-state, not a long-
 		// lived cache. The persistent cache lives server-side in
 		// `compute_jobs` (per the data-lake = cache architecture).
-		void writePartialOutcome(itemId, result as unknown as Record<string, unknown>, steps).catch(() => {});
+		// `EvaluateResponse` schema has no `preliminary` field, but the
+		// side panel's `<EvaluateResult>` reads `outcome.preliminary !==
+		// false` to drive the per-value shimmer. Stamp `false` on the
+		// final write so completed runs stop shimmering.
+		void writePartialOutcome(
+			itemId,
+			{ ...(result as unknown as Record<string, unknown>), preliminary: false },
+			steps,
+		).catch(() => {});
 		setState(itemId, { kind: "done", result, cached: false, jobId });
 	} catch (err) {
 		const apiErr = err instanceof EvaluateApiError ? err : null;

@@ -94,16 +94,26 @@ function shippingCents(item: ItemSummary): { cents: number; isFree: boolean } | 
  * all buyer-trust signals are read together at decision time. Returns
  * `null` when no signal is available.
  */
-function sellerMetaText(seller: ItemSummary["seller"]): string | null {
+function sellerMetaText(seller: ItemSummary["seller"]): { text: string; level?: "caution" | "warn" } | null {
 	if (!seller) return null;
 	const pct = seller.feedbackPercentage ? trimTrailingZero(seller.feedbackPercentage) : null;
-	const score = typeof seller.feedbackScore === "number" ? compactNum(seller.feedbackScore) : null;
-	if (!pct && !score) return null;
-	return pct
-		? score
-			? `${pct}% feedback (${score})`
+	const score = typeof seller.feedbackScore === "number" ? seller.feedbackScore : null;
+	if (!pct && score == null) return null;
+	const text = pct
+		? score != null
+			? `${pct}% feedback (${compactNum(score)})`
 			: `${pct}% feedback`
-		: `${score} sales`;
+		: `${compactNum(score ?? 0)} sales`;
+	// Risk tiers, mirroring `assessRisk`'s sensitivity to count + percent:
+	//   warn (red): zero feedback — actively suspicious, especially on
+	//     high-value items (burner accounts, banned-and-relisted).
+	//   caution (orange): thin feedback (<10) or sub-95% positive — model
+	//     trusts these less; surface so the buyer notices.
+	let level: "caution" | "warn" | undefined;
+	const pctNum = pct ? Number.parseFloat(pct) : null;
+	if (score === 0) level = "warn";
+	else if ((score != null && score < 10) || (pctNum != null && pctNum < 95)) level = "caution";
+	return { text, level };
 }
 
 function trimTrailingZero(s: string): string {
@@ -113,18 +123,18 @@ function trimTrailingZero(s: string): string {
 
 /**
  * Compact returns indicator — short label ("30-day returns" / "No returns")
- * for the Buy-at row's aside chain. `warn` flips on for negative states so
- * the caller can color-code risk.
+ * for the Buy-at row's aside chain. `level=warn` flips on for explicit
+ * "no returns" so the caller can color-code that fraud-loss exposure.
+ * Returns null when `returnTerms` wasn't surfaced by upstream — the
+ * model assumes worst case internally, but the UI stays silent rather
+ * than guessing.
  */
-function returnsMetaText(returns: Returns | null): { text: string; warn: boolean } | null {
+function returnsMetaText(returns: Returns | null): { text: string; level?: "warn" } | null {
 	if (!returns) return null;
 	if (returns.accepted) {
-		return {
-			text: returns.periodDays != null ? `${returns.periodDays}-day returns` : "Returns OK",
-			warn: false,
-		};
+		return { text: returns.periodDays != null ? `${returns.periodDays}-day returns` : "Returns OK" };
 	}
-	return { text: "No returns", warn: true };
+	return { text: "No returns", level: "warn" };
 }
 
 export function EvaluateResult({
@@ -822,13 +832,13 @@ function Facts({
 					(() => {
 						const item = outcome.item!;
 						const ship = shippingCents(item);
-						const sellerText = sellerMetaText(item.seller);
+						const sellerInfo = sellerMetaText(item.seller);
 						const returnsInfo = returnsMetaText(returns);
 						const headlineCents =
 							ship && !ship.isFree && candCents != null
 								? candCents + ship.cents
 								: candCents;
-						const asides: Array<{ text: string; warn?: boolean }> = [];
+						const asides: Array<{ text: string; level?: "caution" | "warn" }> = [];
 						if (ship?.isFree) {
 							asides.push({ text: "free shipping" });
 						} else if (ship && candCents != null) {
@@ -836,15 +846,21 @@ function Facts({
 								text: `${fmtUsd(candCents)} + ${fmtUsd(ship.cents)} ship`,
 							});
 						}
-						if (sellerText) asides.push({ text: sellerText });
-						if (returnsInfo) asides.push({ text: returnsInfo.text, warn: returnsInfo.warn });
+						if (sellerInfo) asides.push(sellerInfo);
+						if (returnsInfo) asides.push(returnsInfo);
 						return (
 							<>
 								<span className="pg-result-facts-val">{fmtUsd(headlineCents)}</span>
 								{asides.map((a, i) => (
 									<span
 										key={a.text}
-										className={`pg-result-facts-aside${a.warn ? " pg-result-facts-aside--warn" : ""}`}
+										className={`pg-result-facts-aside${
+											a.level === "warn"
+												? " pg-result-facts-aside--warn"
+												: a.level === "caution"
+													? " pg-result-facts-aside--caution"
+													: ""
+										}`}
 									>
 										{i > 0 ? "· " : ""}
 										{a.text}

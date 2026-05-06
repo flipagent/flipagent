@@ -564,6 +564,10 @@
 
 .pg-result-facts-aside--good { color: var(--success); }
 .pg-result-facts-aside--warn { color: var(--danger); }
+/* `--caution` is the soft risk tier — brand orange. Use for signals
+   that warrant attention but aren't disqualifying on their own
+   (low-feedback seller, missing return policy, deep-discount price). */
+.pg-result-facts-aside--caution { color: var(--brand); }
 
 /* ---------- narrow-viewport responsive ---------- */
 
