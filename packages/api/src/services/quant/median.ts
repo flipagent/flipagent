@@ -227,6 +227,23 @@ export function summarizeSold(
 	const enoughPrices = cleanedPrices.length >= 5;
 	const ci = enoughPrices ? bootstrapMedianCi(cleanedPrices) : null;
 
+	// Recent-14d median — unbiased estimator of current WTP. Computed from
+	// RAW observations (not the IQR-cleaned set): the whole point of
+	// recent14d is to capture regime shifts, and a market that's actually
+	// moved up/down would have recent prices flagged as outliers vs the
+	// 90d baseline. Filtering them out would defeat the signal.
+	// Local mild guard: drop only the most extreme outliers within the
+	// 14d window itself (1.5×IQR over the recent slice alone).
+	const cutoff14d = Date.now() - 14 * 24 * 60 * 60 * 1000;
+	const rawRecent14d: number[] = [];
+	for (const o of observations) {
+		if (!o.soldAt) continue;
+		const ts = typeof o.soldAt === "string" ? Date.parse(o.soldAt) : o.soldAt.getTime();
+		if (Number.isFinite(ts) && ts >= cutoff14d) rawRecent14d.push(o.priceCents);
+	}
+	const recentCleaned = rawRecent14d.length >= 4 ? filterIqrOutliers(rawRecent14d) : rawRecent14d;
+	const recent14dMedianCents = recentCleaned.length >= 4 ? (median(recentCleaned) ?? undefined) : undefined;
+
 	return {
 		keyword: context.keyword,
 		marketplace: context.marketplace,
@@ -234,6 +251,7 @@ export function summarizeSold(
 		meanCents: mean(cleanedPrices) ?? 0,
 		stdDevCents: stdDev(cleanedPrices) ?? 0,
 		medianCents: median(cleanedPrices) ?? 0,
+		recent14dMedianCents,
 		medianCiLowCents: ci?.lo,
 		medianCiHighCents: ci?.hi,
 		p25Cents: percentile(cleanedPrices, 0.25) ?? 0,

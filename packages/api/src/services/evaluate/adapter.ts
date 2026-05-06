@@ -1,19 +1,12 @@
 /**
- * eBay-shape → QuantListing adapter. Pulls the fields quant cares about out
- * of an `ItemSummary` (search result) or `ItemDetail` (single fetch). Caller
- * gets richer confidence scores when feeding ItemDetail because description
- * length + full image count are present there.
+ * eBay-shape → QuantListing adapter. Pulls the fields quant cares about
+ * out of an `ItemSummary` (search result) or `ItemDetail` (single fetch).
  */
 
 import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
 import type { ActiveAsk, MarketStats, PriceObservation, QuantListing } from "../quant/index.js";
 import { summarizeMarket } from "../quant/index.js";
 import { toCents } from "../shared/money.js";
-
-/** eBay returns dollar strings on the wire; quant wants cents. Round, not floor. */
-export function isItemDetail(item: ItemSummary | ItemDetail): item is ItemDetail {
-	return "description" in item || "categoryPath" in item || "additionalImages" in item;
-}
 
 function pickBuyingFormat(item: ItemSummary | ItemDetail): "AUCTION" | "FIXED_PRICE" | undefined {
 	const opts = item.buyingOptions ?? [];
@@ -22,21 +15,8 @@ function pickBuyingFormat(item: ItemSummary | ItemDetail): "AUCTION" | "FIXED_PR
 	return undefined;
 }
 
-function imageCountOf(item: ItemSummary | ItemDetail): number {
-	if (isItemDetail(item)) {
-		const extra = item.additionalImages?.length ?? 0;
-		return (item.image ? 1 : 0) + extra;
-	}
-	return item.thumbnailImages?.length ?? 0;
-}
-
-function descriptionLengthOf(item: ItemSummary | ItemDetail): number | undefined {
-	return isItemDetail(item) && item.description ? item.description.length : undefined;
-}
-
 /** Convert an eBay-shaped item to the QuantListing shape used by every algorithm. */
 export function toQuantListing(item: ItemSummary | ItemDetail): QuantListing {
-	const seller = item.seller;
 	return {
 		itemId: item.itemId,
 		title: item.title,
@@ -49,10 +29,6 @@ export function toQuantListing(item: ItemSummary | ItemDetail): QuantListing {
 		bidCount: item.bidCount,
 		watchCount: item.watchCount,
 		endTime: item.itemEndDate,
-		sellerFeedback: seller?.feedbackScore,
-		sellerFeedbackPercent: seller?.feedbackPercentage ? Number.parseFloat(seller.feedbackPercentage) : undefined,
-		imageCount: imageCountOf(item),
-		descriptionLength: descriptionLengthOf(item),
 	};
 }
 
@@ -69,8 +45,8 @@ export function toQuantListing(item: ItemSummary | ItemDetail): QuantListing {
  * price stats without duration.
  *
  * `active` is optional too — when provided the returned `MarketStats`
- * carries `asks` populated, which unlocks the `below_asks` signal in
- * `computeScore()` and lets `optimalListPrice` price competitively.
+ * carries `asks` populated, which feeds the cooling-drift detection and
+ * queue-position calculation in `recommendListPrice`.
  */
 export function marketFromSold(
 	sold: ReadonlyArray<ItemSummary>,

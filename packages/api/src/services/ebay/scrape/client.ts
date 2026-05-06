@@ -81,14 +81,55 @@ export interface ScrapeSearchInput {
 }
 
 /**
- * eBay's web search results page renders ~60 cards per page. The
- * exact number drifts (older categories, sponsored injections), but
- * 60 is the modal page size and what `_pgn` advances by. Used here
- * only for offset → page number math; we still slice to the caller's
- * `limit` after parsing.
+ * eBay web SRP page size: cards rendered per `_pgn` step.
+ *
+ * Live-verified 2026-05-05 against `/sch/i.html?LH_Sold=1` (see
+ * `scripts/scrape-pagination-probe.ts`):
+ *   - `_DEFAULT = 60`  — what eBay renders when `_ipg` is omitted
+ *                         or set to an invalid value (`480`, etc.).
+ *                         Modal page size; what `_pgn` advances by.
+ *   - `_MAX     = 240` — largest `_ipg` eBay honors. One fetch yields
+ *                         ~4× the data at the same Oxylabs cost
+ *                         (~$0.005, ~6 s parse-clean). 120 also works
+ *                         but is dominated by 240.
+ *
+ * `EBAY_SRP_PAGE_SIZE_DEFAULT` is also used as the fallback for
+ * offset→page math on paths where we have not yet probed `_ipg`
+ * support (browse-layout `/b/<slug>/<id>`, active-listings SRP).
  */
-const EBAY_SRP_PAGE_SIZE = 60;
-const SCRAPE_PAGINATION_CAP = 10000;
+export const EBAY_SRP_PAGE_SIZE_DEFAULT = 60;
+export const EBAY_SRP_PAGE_SIZE_MAX = 240;
+
+/**
+ * Hard ceiling on eBay pagination depth, in *items*. Same value
+ * across REST (documented `offset+limit ≤ 10000`) and web SRP
+ * (live-verified). Above this offset eBay clamps to the last valid
+ * page and serves the same ids for every deeper request — looks like
+ * a successful response, but every row is a duplicate of the prior
+ * tail page. Callers paginating past this MUST dedupe by
+ * `legacyItemId` to detect the wall, not rely on row count.
+ *
+ * With `_ipg=240`:
+ *   - `_pgn` 1..30  → fresh 240 each (offset 0..6960)
+ *   - `_pgn` 40..41 → fresh ~165 each (offset 9360..9600)
+ *   - `_pgn` 42+    → clamped, repeats the same tail page
+ *
+ * So **per-query reachable unique items ≈ 9700**, regardless of how
+ * many sold rows the `total` widget claims.
+ */
+export const EBAY_PAGINATION_OFFSET_CEILING = 10000;
+
+/**
+ * Deep-page ceiling for soldOnly searches at `_ipg=240`. The last
+ * `_pgn` that returns fresh (non-clamped) data. Beyond this every
+ * page is a duplicate of `_pgn=41`. Callers that loop pages
+ * sequentially can stop here without paying for redundant fetches.
+ *
+ * Derivation: `floor(EBAY_PAGINATION_OFFSET_CEILING / EBAY_SRP_PAGE_SIZE_MAX) + 1 = 42`
+ * but the 42nd page already starts repeating, so the practical
+ * fresh-data wall is 41.
+ */
+export const EBAY_SRP_DEEP_PAGE_CEILING_AT_MAX_IPG = 41;
 
 /**
  * Parse eBay's `aspect_filter` expression into the categoryId + per-
@@ -128,7 +169,7 @@ export function parseAspectFilter(input: string): {
 
 export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSearchResponse> {
 	const offset = Math.max(0, input.offset ?? 0);
-	if (offset > SCRAPE_PAGINATION_CAP) {
+	if (offset > EBAY_PAGINATION_OFFSET_CEILING) {
 		// Match REST's behaviour: deep paging beyond 10K is not exposed.
 		// Surface as an empty page rather than 4xx — the route layer
 		// already handles the friendly framing.
@@ -150,8 +191,10 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 		const [leafCategory, ...restCategories] = input.categoryIds.split("|");
 		if (leafCategory) {
 			const offset = Math.max(0, input.offset ?? 0);
-			const page = Math.floor(offset / EBAY_SRP_PAGE_SIZE) + 1;
-			const sliceStart = offset % EBAY_SRP_PAGE_SIZE;
+			// Browse-layout `/b/...` `_ipg` support is not yet probed —
+			// keep at the default 60.
+			const page = Math.floor(offset / EBAY_SRP_PAGE_SIZE_DEFAULT) + 1;
+			const sliceStart = offset % EBAY_SRP_PAGE_SIZE_DEFAULT;
 			const url = buildBrowseLayoutUrl(leafCategory, {
 				page,
 				...(input.sort ? { sort: input.sort } : {}),
@@ -171,8 +214,13 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 			};
 		}
 	}
-	const ebayPage = Math.floor(offset / EBAY_SRP_PAGE_SIZE) + 1;
-	const sliceStart = offset % EBAY_SRP_PAGE_SIZE;
+	// Sold queries use `_ipg=240` — live-verified 4× more data per fetch
+	// at the same Oxylabs cost. Active queries stick at the default 60
+	// (untested at 240, and active SRP usage is interactive-browsing not
+	// bulk capture). Update both branches at once if active is probed.
+	const pageSize = input.soldOnly ? EBAY_SRP_PAGE_SIZE_MAX : EBAY_SRP_PAGE_SIZE_DEFAULT;
+	const ebayPage = Math.floor(offset / pageSize) + 1;
+	const sliceStart = offset % pageSize;
 	// Translate eBay-spec mirror params to web-SRP equivalents.
 	//   - `_dcat` (category) + `LH_*` (sold / BIN / auction / condition)
 	//     are honoured by eBay's web SRP one-to-one.
@@ -203,6 +251,7 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 		categoryId,
 		aspectParams: aspect?.aspects,
 		extraKeywords: input.gtin,
+		...(input.soldOnly ? { itemsPerPage: EBAY_SRP_PAGE_SIZE_MAX as 240 } : {}),
 	};
 	const url = buildEbayUrl(params, ebayPage);
 	const html = await fetchHtmlViaScraperApi(url);

@@ -1,18 +1,18 @@
 import {
+	assessRisk,
 	bidCeiling,
-	categoryBeta,
-	computeScore,
 	DEFAULT_FEES,
 	feeBreakdown,
 	filterIqrOutliers,
+	veto as listingVeto,
 	type MarketStats,
-	optimalListPrice,
 	percentile,
+	recommendListPrice,
 } from "../quant/index.js";
 import { toCents } from "../shared/money.js";
 import { landedCost } from "../ship.js";
 import { marketFromSold, toQuantListing } from "./adapter.js";
-import type { EvaluableItem, EvaluateOptions, Evaluation, FiredSignal, NetRangeCents } from "./types.js";
+import type { EvaluableItem, EvaluateOptions, Evaluation, NetRangeCents } from "./types.js";
 
 const EMPTY_MARKET: MarketStats = {
 	keyword: "",
@@ -41,12 +41,20 @@ const MIN_SOLD_FOR_DISTRIBUTION = 4;
 const DEFAULT_OUTBOUND_SHIPPING_CENTS = 1000;
 
 /**
+ * Default minimum expected-net per trade. Below this, a deal is "skip"
+ * regardless of how clean the rest of the math looks — flippers don't
+ * pick up dimes. $30 matches `netMargin`'s default `cleared` floor.
+ */
+const DEFAULT_MIN_NET_CENTS = 3000;
+
+/**
  * Evaluate one listing against a sold pool and an optional forwarder leg.
- * Wraps `services/quant`'s `computeScore`, then attaches a landed-cost breakdown
- * when `opts.forwarder` is supplied.
+ * Combines `recommendListPrice` (queue-based exit), `assessRisk` (P_fraud +
+ * return-window math), and `landedCost` (forwarder breakdown when supplied)
+ * into a single reseller-facing `Evaluation`.
  *
  * Without sold listings no margin signal is possible — the evaluation will be
- * `skip` with `netCents: 0`. Pass at least a handful.
+ * `skip` with `expectedNetCents: 0`. Pass at least a handful.
  *
  * `bidCeilingCents` is derived from `recommendedExit.listPriceCents` —
  * the same competition-aware price the UI surfaces in "resell at $X in
@@ -66,8 +74,13 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 	if (opts.forwarder) {
 		const breakdown = landedCost(item, opts.forwarder);
 		landedCostCents = breakdown.totalCents;
-		// The forwarder + tax leg is cost the *re-seller* pays after acquiring,
-		// so it slots into outbound shipping for margin math.
+		// Forwarder + customs are inbound costs (seller → forwarder → us)
+		// the reseller pays before listing. We add them to the same outbound
+		// slot the margin math uses because, once the buyer pays for final
+		// shipping (the typical flow when listing post-forwarder), the
+		// reseller's only out-of-pocket shipping IS the forwarder leg —
+		// "outbound" here is reseller-side shipping cost regardless of
+		// direction. Net = sale − fees − buy − this number.
 		outboundShippingCents = breakdown.forwarderCents + breakdown.taxCents;
 	} else if (opts.outboundShippingCents != null) {
 		outboundShippingCents = opts.outboundShippingCents;
@@ -75,19 +88,10 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		outboundShippingCents = DEFAULT_OUTBOUND_SHIPPING_CENTS;
 	}
 
-	const s = computeScore(listing, market, {
-		expectedSaleMultiplier: opts.expectedSaleMultiplier,
-		minNetCents: opts.minNetCents,
-		minConfidence: opts.minConfidence,
-		minSalesPerDay: opts.minSalesPerDay,
-		outboundShippingCents,
-	});
-
-	const signals: FiredSignal[] = s.signals.map((sig) => ({
-		name: sig.kind,
-		weight: sig.strength,
-		reason: sig.reason,
-	}));
+	// Factual veto only — descriptive net + days come from
+	// `recommendListPrice` below, which prices at the actual list price
+	// (anchor × 0.98) and runs the queue model.
+	const vetoReason = listingVeto(listing);
 
 	const buyPriceCents = listing.priceCents + (listing.shippingCents ?? 0);
 	const outbound = outboundShippingCents;
@@ -109,82 +113,153 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		}
 	}
 
-	// Recommended exit — runs the full hazard model + competition factor
-	// + active-blend search to pick the price that maximises $/day. Then
-	// subtract buy cost so the surfaced net is true flipping profit, not
-	// gross sale-side net (which is what optimalListPrice returns natively).
+	// Recommended exit — `recommendListPrice` picks the list price from a
+	// cooling-aware sold/ask blend, then computes Erlang queue time at
+	// that price. `netCents` already nets out the buy cost, so it flows
+	// to the wire directly as flipping profit (not gross sale-side net).
 	//
 	// Exclude the candidate itself from the post-purchase competition
 	// pool. If the user buys this listing, it leaves the active set —
 	// they become the new seller, and their competition is everyone
 	// else. Leaving the candidate in double-counts: the same listing
-	// shows up as the buy target AND as a competitor in the resale
-	// hazard model, biasing both `blendedCenter` and `competitionFactor`.
-	// (The pre-purchase market summary at line above keeps the candidate
-	// in — that's descriptive "what's the live market right now," not
+	// shows up as the buy target AND as a competitor in the queue model.
+	// (The pre-purchase market summary above keeps the candidate in —
+	// that's descriptive "what's the live market right now," not
 	// post-purchase forecast.)
 	const candidateId = item.itemId;
 	const askPriceCents = (opts.asks ?? [])
 		.filter((a) => a.itemId !== candidateId)
 		.map((a) => toCents(a.price?.value))
 		.filter((p) => p > 0);
-	// EvaluableItem is the union of ItemSummary | ItemDetail; categoryId
-	// only lives on the detail shape, so guard the access.
-	const categoryId = "categoryId" in item ? item.categoryId : undefined;
-	const beta = opts.beta ?? categoryBeta(categoryId);
-	const advice = optimalListPrice(market, {
+	const advice = recommendListPrice(market, {
 		fees: DEFAULT_FEES,
 		outboundShippingCents: outbound,
 		activeAskPrices: askPriceCents,
-		// Default 30d — the realistic horizon for a flip. Without a tight
-		// cap, the max-yield ranker drifts into the high-β tail and picks
-		// "least loss" prices that take 5–6 months to clear (positive net
-		// per sale, near-zero $/day, miserable hold). 30d matches typical
-		// reseller turnover; the user-supplied `opts.maxDaysToSell` (Sell
-		// within filter) always overrides for slower SKUs.
-		maxDaysToSell: opts.maxDaysToSell ?? 30,
-		beta,
-		// Rank candidate list prices by net-after-buy yield, not gross.
-		// Without this, the ranker can recommend a fast-flipping cheap
-		// price (high gross yield) even when every flip loses money.
 		buyPriceCents,
 	});
-	// Surface the optimum exit whenever the model can run. The yield
-	// ranking inside `optimalListPrice` accounts for buy cost, so the
-	// recommended price is the best $/day for the reseller — positive
-	// when a profitable flip exists, negative ("least-loss" frame) when
-	// the buy price was above the achievable exit. The 180-day default
-	// time cap keeps the search away from absurd "list for 5000 days"
-	// extremes that arise at the high-β tail when no profitable price
-	// exists; callers can override via `opts.maxDaysToSell`.
-	let recommendedExit: Evaluation["recommendedExit"] = null;
-	if (advice) {
-		const flippingNetCents = advice.netCents - buyPriceCents;
-		recommendedExit = {
-			listPriceCents: advice.listPriceCents,
-			expectedDaysToSell: advice.expectedDaysToSell,
-			sellProb7d: advice.sellProb7d,
-			sellProb14d: advice.sellProb14d,
-			sellProb30d: advice.sellProb30d,
-			netCents: flippingNetCents,
-			dollarsPerDay: Math.round(flippingNetCents / Math.max(advice.expectedDaysToSell, 1)),
-		};
+
+	// Risk assessment: P_fraud × max-loss with cycle-vs-return-window
+	// gating. Only meaningful when we have an exit prediction (need
+	// expectedDaysToSell to compute the cycle). Computed before
+	// recommendedExit so its cycleDays can re-base dollarsPerDay.
+	const seller = item.seller;
+	const returns = "returnTerms" in item ? item.returnTerms : undefined;
+	// eBay's returnPeriod is { value, unit }. Normalize to days. Common
+	// units: "DAY" (most), "MONTH" (rare). Anything else falls through
+	// to undefined and risk treats as no-returns-window.
+	const returnWindowDays =
+		returns?.returnPeriod?.unit === "DAY"
+			? returns.returnPeriod.value
+			: returns?.returnPeriod?.unit === "MONTH"
+				? returns.returnPeriod.value * 30
+				: undefined;
+	const returnShipPaidBy =
+		returns?.returnShippingCostPayer === "BUYER"
+			? "buyer"
+			: returns?.returnShippingCostPayer === "SELLER"
+				? "seller"
+				: undefined;
+	const risk = advice
+		? assessRisk({
+				sellerFeedbackScore: seller?.feedbackScore,
+				sellerFeedbackPercent: seller?.feedbackPercentage
+					? Number.parseFloat(seller.feedbackPercentage)
+					: undefined,
+				buyPriceCents,
+				acceptsReturns: returns?.returnsAccepted ?? false,
+				returnWindowDays,
+				returnShipPaidBy,
+				expectedDaysToSell: advice.expectedDaysToSell,
+			})
+		: null;
+
+	// Surface recommended exit. dollarsPerDay is re-based on the FULL
+	// buy→cash cycle (inbound + list-prep + sell + outbound + claim) —
+	// `recommendListPrice` only knows the sell leg, but reseller capital
+	// is locked across the whole cycle. Without this, fast SKUs look
+	// disproportionately efficient because the fixed ~11d non-sell
+	// overhead disappears. risk owns the cycle math, so we read it from
+	// there.
+	const recommendedExit: Evaluation["recommendedExit"] =
+		advice && risk
+			? {
+					listPriceCents: advice.listPriceCents,
+					expectedDaysToSell: advice.expectedDaysToSell,
+					daysLow: advice.daysLow,
+					daysHigh: advice.daysHigh,
+					netCents: advice.netCents,
+					dollarsPerDay: Math.round(advice.netCents / Math.max(risk.cycleDays, 1)),
+					queueAhead: advice.queueAhead,
+					asksAbove: advice.asksAbove,
+				}
+			: null;
+
+	// Three honest numbers (each tells a different story to the reseller):
+	//
+	//   successNet   = gross flip net IF the sale succeeds.
+	//                  "If it sells, what do I net?" Happy-path headline.
+	//
+	//   expectedNet  = TRUE probabilistic E[net per trade]
+	//                = (1 − P_fraud) × successNet − P_fraud × maxLoss
+	//                  Folds fraud probability + maxLoss into a single
+	//                  honest expectation. THIS is what the rating uses.
+	//
+	//   maxLoss      = worst case downside (capital-preservation focus).
+	//
+	// When advice is null (no market velocity), there's no price to net
+	// against — surface 0 and the rating gate below catches it. `risk`
+	// is always non-null when advice is non-null (set together above), so
+	// the probabilistic branch fires whenever there's anything to score.
+	const successNetCents = advice?.netCents ?? null;
+	const expectedNetCents =
+		advice && risk ? Math.round((1 - risk.P_fraud) * advice.netCents - risk.P_fraud * risk.maxLossCents) : 0;
+
+	// Rating: single criterion on risk-adjusted expectedNet.
+	//   - veto (factual broken condition)         → skip
+	//   - no market activity (advice is null)     → skip
+	//   - expectedNet < minNet                    → skip
+	//   - else                                     → buy
+	const minNet = opts.minNetCents ?? DEFAULT_MIN_NET_CENTS;
+	let rating: "buy" | "skip";
+	let reason: string;
+	if (vetoReason) {
+		rating = "skip";
+		reason = `vetoed: ${vetoReason}`;
+	} else if (advice == null) {
+		rating = "skip";
+		reason = "no market activity (no sold pool or zero velocity)";
+	} else if (expectedNetCents < minNet) {
+		rating = "skip";
+		if (risk && successNetCents != null) {
+			const fraudPct = (risk.P_fraud * 100).toFixed(1);
+			reason = `(1−${fraudPct}%) × $${(successNetCents / 100).toFixed(0)} − ${fraudPct}% × $${(risk.maxLossCents / 100).toFixed(0)} = $${(expectedNetCents / 100).toFixed(0)} below $${(minNet / 100).toFixed(0)} threshold`;
+		} else {
+			reason = `expected net $${(expectedNetCents / 100).toFixed(0)} below $${(minNet / 100).toFixed(0)} threshold`;
+		}
+	} else {
+		rating = "buy";
+		const dollarsStr = `$${(expectedNetCents / 100).toFixed(0)}`;
+		reason =
+			risk && risk.P_fraud > 0.001
+				? `${dollarsStr} expected (success $${((successNetCents ?? 0) / 100).toFixed(0)} × ${(100 * (1 - risk.P_fraud)).toFixed(1)}%); ${risk.reason}`
+				: `${dollarsStr} expected net`;
 	}
 
 	// Bid ceiling derives from the SAME exit price the recommendation row
 	// shows ("resell at $X in ~Yd"), not the naive sold mean. That price
-	// already accounts for current competition (`blendedCenter`,
-	// `competitionFactor`) and active-ask drift, so the buy ceiling stays
-	// in lockstep with the realistic exit. Falls back to `market.meanCents`
-	// when the hazard model can't run (no duration data, σ=0, no asks) so
-	// callers without time-to-sell data still get a number.
+	// already incorporates the cooling-drift blend between sold reference
+	// and active-ask median, so the buy ceiling stays in lockstep with the
+	// realistic exit. Falls back to `market.meanCents` when no recommendation
+	// could be computed (zero velocity, no sold pool) so callers still get
+	// a number.
 	//
-	// `opts.minNetCents ?? 0` — true break-even by default. Callers wanting
-	// a profit floor pass `opts.minNetCents` explicitly.
+	// Bid ceiling targets the same `minNet` floor the rating uses, so the
+	// "highest you can pay and still earn $X" answer matches the rating
+	// gate. Default $30 — pair it with the rating threshold.
 	const exitBasisCents = advice?.listPriceCents ?? market.meanCents;
 	const bidCeilingCents =
 		exitBasisCents > 0
-			? bidCeiling(exitBasisCents, opts.minNetCents ?? 0, {
+			? bidCeiling(exitBasisCents, minNet, {
 					fees: DEFAULT_FEES,
 					outboundShippingCents: outbound,
 				})
@@ -199,20 +274,28 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 					estimatedSaleCents: exitBasisCents,
 					feesCents: feeBreakdown(exitBasisCents, DEFAULT_FEES).totalCents,
 					shippingCents: outbound,
-					targetNetCents: opts.minNetCents ?? 0,
+					targetNetCents: minNet,
 				}
 			: null;
 
 	return {
-		expectedNetCents: s.netCents,
-		confidence: s.confidence,
+		successNetCents,
+		expectedNetCents,
+		maxLossCents: risk?.maxLossCents ?? null,
 		landedCostCents,
-		signals,
-		rating: s.rating,
-		reason: s.reason,
+		rating,
+		reason,
 		bidCeilingCents,
 		safeBidBreakdown,
 		netRangeCents,
 		recommendedExit,
+		risk: risk
+			? {
+					P_fraud: risk.P_fraud,
+					withinReturnWindow: risk.withinReturnWindow,
+					cycleDays: risk.cycleDays,
+					reason: risk.reason,
+				}
+			: null,
 	};
 }

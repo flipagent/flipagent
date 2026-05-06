@@ -113,7 +113,7 @@ Available namespaces (every endpoint at `api.flipagent.dev/v1/*`):
 | `client.items.*` | active + sold marketplace search + detail |
 | `client.categories.*` | taxonomy tree + suggestions + per-category aspects |
 | `client.products.*` | universal product lookup by EPID + product summary search |
-| `client.evaluate.*` | score one listing → buy/hold/skip + signals (Decisions pillar) |
+| `client.evaluate.*` | score one listing → buy/skip + expectedNet + risk + recommendedExit (Decisions pillar) |
 | `client.ship.*` | forwarder quote + provider catalog (Operations pillar) |
 | `client.purchases.*` | buy flow — REST passthrough or bridge transport (needs `/v1/connect/ebay`) |
 | `client.listings.*` | seller-side inventory + offer + publish (needs `/v1/connect/ebay`) |
@@ -181,8 +181,8 @@ After verified setup, summarize the agent's new capabilities:
   query level.
 - **Decide on a single listing**: `client.evaluate.listing({ itemId })`
   → composite (server fetches detail + sold + active) → rating
-  buy/hold/skip + signals + recommendedExit. This is the scoring
-  primitive — call it per-candidate to rank.
+  buy/skip + successNet/expectedNet/maxLoss + risk + recommendedExit.
+  This is the scoring primitive — call it per-candidate to rank.
 - **Estimate landed cost**: `client.ship.quote({ item, forwarder })` →
   total delivered cost via Planet Express (more forwarders coming).
 - **Sell-side** (after `/v1/connect/ebay`): create inventory items,
@@ -195,7 +195,7 @@ lenses under $100 with positive margin"). The full chain looks like:
 items.search({ q: "canon lens", filter: "price:[..100]", limit: 20 })
   ↓                                  (active candidates)
 for each candidate: evaluate.listing({ itemId })
-  ↓                                  (server scores buy/hold/skip + recommendedExit)
+  ↓                                  (server scores buy/skip + recommendedExit + risk)
 ship.quote({ item: top.item, forwarder: { destState, weightG } })
   ↓
 present top 3 to user with rationale

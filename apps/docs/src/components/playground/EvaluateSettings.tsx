@@ -5,9 +5,11 @@
  *   - Min profit  → minNetCents floor (cents below which a flip isn't a flip)
  *   - Shipping    → outbound shipping cost (default $10, US 1-2lb box)
  *
- * Sell within (the maxDaysToSell window) lives in the main filter row —
- * it's the same "time" axis as Look back / Sample size and reads as a
- * primary search input, not a hidden detail knob.
+ * Sell within (the client-side over-budget warning threshold) lives in
+ * the main filter row — it's the same "time" axis as Look back / Sample
+ * size and reads as a primary search input, not a hidden detail knob.
+ * Does not affect the server-side recommendation: time is emergent from
+ * queue position + salesPerDay, not capped.
  *
  * Evaluate-only — Sourcing has its own SearchFilters surface for actual
  * eBay-side query params. Field + FormSelect own their own styling.
@@ -20,20 +22,9 @@ import type { SelectOption } from "../compose/FilterPill";
 export const MIN_PROFIT_OPTIONS: ReadonlyArray<SelectOption<string>> = [
 	{ value: "5", label: "$5" },
 	{ value: "10", label: "$10" },
-	{ value: "25", label: "$25" },
+	{ value: "30", label: "$30" },
 	{ value: "50", label: "$50" },
 	{ value: "100", label: "$100" },
-];
-
-export const SELL_WITHIN_OPTIONS: ReadonlyArray<SelectOption<string>> = [
-	{ value: "1", label: "1 day" },
-	{ value: "3", label: "3 days" },
-	{ value: "7", label: "7 days" },
-	{ value: "14", label: "14 days" },
-	{ value: "30", label: "1 month" },
-	{ value: "60", label: "2 months" },
-	{ value: "90", label: "3 months" },
-	{ value: "180", label: "6 months" },
 ];
 
 export const SHIPPING_OPTIONS: ReadonlyArray<SelectOption<string>> = [
@@ -44,8 +35,10 @@ export const SHIPPING_OPTIONS: ReadonlyArray<SelectOption<string>> = [
 	{ value: "50", label: "$50" },
 ];
 
+// minProfit "30" matches the backend's DEFAULT_MIN_NET_CENTS — flippers
+// don't pick up dimes, and the rating gate uses this floor.
 export const EVALUATE_SETTINGS_DEFAULTS = {
-	minProfit: "10",
+	minProfit: "30",
 	shipping: "10",
 } as const;
 

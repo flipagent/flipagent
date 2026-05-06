@@ -16,10 +16,10 @@ function fakeFetchOk(body: unknown): { calls: Captured[]; fetch: typeof globalTh
 }
 
 const STUB_EVALUATION = {
-	netCents: 1840,
-	confidence: 0.82,
+	successNetCents: 1840,
+	expectedNetCents: 1820,
+	maxLossCents: 1500,
 	landedCostCents: 4280,
-	signals: [{ name: "under_median", weight: 1, reason: "stubbed" }],
 	rating: "buy" as const,
 	reason: "stubbed",
 };

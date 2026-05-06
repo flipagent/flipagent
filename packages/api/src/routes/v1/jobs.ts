@@ -90,7 +90,7 @@ function toJobSummary(job: ComputeJob): JobSummary {
 		const params = job.params as { itemId?: string };
 		const result = job.result as null | {
 			item?: { title?: string; image?: { imageUrl?: string } };
-			evaluation?: { rating?: "buy" | "hold" | "skip" };
+			evaluation?: { rating?: "buy" | "skip" };
 		};
 		return {
 			...base,

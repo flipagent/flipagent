@@ -176,7 +176,7 @@ const GROUPS: Group[] = [
 					<>
 						The full reseller cycle under <code>/v1/*</code>. Sourcing without an eBay account:{" "}
 						<code>/v1/items/search</code> for active or sold listings, <code>/v1/categories</code>
-						{" "}for taxonomy, <code>/v1/evaluate</code> for a one-call buy/hold/skip verdict on a
+						{" "}for taxonomy, <code>/v1/evaluate</code> for a one-call buy/skip verdict on a
 						listing. Selling on your eBay account after OAuth: <code>/v1/listings</code>,{" "}
 						<code>/v1/sales</code>, <code>/v1/payouts</code>, <code>/v1/transactions</code>,{" "}
 						<code>/v1/policies</code>. Buying and fulfillment through the Chrome extension:{" "}

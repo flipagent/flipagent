@@ -415,7 +415,7 @@ export const listingObservations = pgTable(
 		imageUrl: text("image_url"),
 		// Structured aspects (Brand, Color, Size, Style Code, …).
 		aspects: jsonb("aspects"),
-		// Listing lifecycle dates — drives hazard model duration math.
+		// Listing lifecycle dates — drives time-to-sell aggregates (queue model + capital-cycle math).
 		itemCreationDate: timestamp("item_creation_date", { withTimezone: true }),
 		itemEndDate: timestamp("item_end_date", { withTimezone: true }),
 		// Takedown flag — non-null hides row from all archive queries.
@@ -443,22 +443,6 @@ export const listingObservations = pgTable(
 		soldDateIdx: index("listing_obs_sold_date_idx").on(t.lastSoldDate),
 	}),
 );
-
-/**
- * Per-category fitted elasticity (β). Nightly worker regresses observed
- * duration vs price-z over `listing_observations`; result lands here.
- * `categoryBeta()` reads from this table when present, falls back to the
- * hardcoded map. Hosted-only: self-host has no observations to fit, stays
- * on defaults — but the hosted version's recommendations grow more
- * accurate with every additional row of data.
- */
-export const categoryCalibration = pgTable("category_calibration", {
-	categoryId: text("category_id").primaryKey(),
-	betaEstimate: text("beta_estimate").notNull(), // numeric stored as text — drizzle doesn't have a numeric type that round-trips well; toFloat at read site
-	nObservations: integer("n_observations").notNull(),
-	fitQuality: text("fit_quality"),
-	lastFitAt: timestamp("last_fit_at", { withTimezone: true }).notNull().defaultNow(),
-});
 
 /**
  * Anonymized query frequency by hour × category × query-hash. Drives the
@@ -1237,8 +1221,6 @@ export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 export type NewWebhookDelivery = typeof webhookDeliveries.$inferInsert;
 export type ListingObservation = typeof listingObservations.$inferSelect;
 export type NewListingObservation = typeof listingObservations.$inferInsert;
-export type CategoryCalibration = typeof categoryCalibration.$inferSelect;
-export type NewCategoryCalibration = typeof categoryCalibration.$inferInsert;
 export type QueryPulse = typeof queryPulse.$inferSelect;
 export type NewQueryPulse = typeof queryPulse.$inferInsert;
 export type MatchDecision = typeof matchDecisions.$inferSelect;

@@ -150,12 +150,12 @@ export interface MarketStats {
 export interface ListPriceRecommendation {
 	listPriceCents: number;
 	expectedDaysToSell: number;
-	sellProb7d: number;
-	sellProb14d: number;
-	sellProb30d: number;
+	daysLow: number;
+	daysHigh: number;
 	netCents: number;
 	dollarsPerDay: number;
-	annualizedRoi: number;
+	queueAhead: number;
+	asksAbove: number;
 }
 
 export interface MarketSummary {
@@ -163,18 +163,18 @@ export interface MarketSummary {
 	listPriceRecommendation: ListPriceRecommendation | null;
 }
 
-export interface RecoveryResponse {
-	probability: number;
-	minSellPriceCents: number;
-	expectedDaysToSell?: number;
-	nDurations: number;
-	confidence: "high" | "medium" | "low" | "none";
-	reason: string;
-}
 
 export interface Evaluation {
 	rating?: string;
+	successNetCents?: number | null;
 	expectedNetCents?: number;
+	maxLossCents?: number | null;
+	risk?: {
+		P_fraud: number;
+		withinReturnWindow: boolean;
+		cycleDays: number;
+		reason: string;
+	} | null;
 	bidCeilingCents?: number;
 	/** Cost components behind bidCeilingCents — surfaced under Safe bid. */
 	safeBidBreakdown?: {
@@ -183,19 +183,22 @@ export interface Evaluation {
 		shippingCents: number;
 		targetNetCents: number;
 	} | null;
-	confidence?: number;
 	reason?: string;
-	signals?: Array<{ name: string; reason: string }>;
 	/**
-	 * Single recommended exit plan: list at this price, expected to sell
-	 * in this many days, with this much in your pocket after fees + ship +
-	 * buy. Driven by hazard model + competition factor + active-mean blend.
+	 * Single recommended exit plan from the queue-based recommender:
+	 * list at this price, expected to sell in this band of days, with
+	 * this much net after fees + ship + buy. `queueAhead` / `asksAbove`
+	 * surface where the price lands relative to current competition.
 	 */
 	recommendedExit?: {
 		listPriceCents: number;
 		expectedDaysToSell: number;
+		daysLow: number;
+		daysHigh: number;
 		netCents: number;
 		dollarsPerDay: number;
+		queueAhead: number;
+		asksAbove: number;
 	} | null;
 }
 

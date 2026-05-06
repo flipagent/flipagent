@@ -16,7 +16,7 @@ import {
 	type ComposeTab,
 } from "../compose/ComposeCard";
 import { FilterPill, type SelectOption } from "../compose/FilterPill";
-import { EvaluateSettings, SELL_WITHIN_OPTIONS } from "./EvaluateSettings";
+import { EvaluateSettings } from "./EvaluateSettings";
 import { EvaluateResult } from "./EvaluateResult";
 import {
 	cancelComputeJob,
@@ -45,7 +45,6 @@ interface EvaluateQuery {
 	lookbackDays: number;
 	sampleLimit: number;
 	minProfit: number;
-	recoveryDays: number;
 }
 
 /**
@@ -54,7 +53,7 @@ interface EvaluateQuery {
  * stored in `compute_jobs.params`. Used by `reopen` so a row clicked
  * from the Recent strip rehydrates the panel inputs unchanged.
  *
- *   wire `{ itemId, lookbackDays, soldLimit, opts: { minNetCents, maxDaysToSell } }`
+ *   wire `{ itemId, lookbackDays, soldLimit, opts: { minNetCents, outboundShippingCents } }`
  *   ↓
  *   panel `{ input, lookbackDays, sampleLimit, minProfit (dollars), recoveryDays }`
  *
@@ -71,7 +70,6 @@ function wireToEvaluateQuery(input: unknown): EvaluateQuery {
 		lookbackDays: typeof w.lookbackDays === "number" ? w.lookbackDays : 90,
 		sampleLimit: typeof w.soldLimit === "number" ? w.soldLimit : 50,
 		minProfit: Math.round(minNetCents / 100),
-		recoveryDays: typeof opts.maxDaysToSell === "number" ? (opts.maxDaysToSell as number) : 0,
 	};
 }
 
@@ -102,14 +100,6 @@ const IconStack = (
 		<path d="M3 8l5 2 5-2M3 11l5 2 5-2" />
 	</svg>
 );
-const IconHourglass = (
-	<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-		<path d="M4 2h8M4 14h8" />
-		<path d="M4 2c0 3 4 4 4 6s-4 3-4 6" />
-		<path d="M12 2c0 3-4 4-4 6s4 3 4 6" />
-	</svg>
-);
-
 /**
  * Hardcoded fallback. Used (a) on first paint before
  * `/v1/evaluate/featured` resolves, and (b) in `mockMode` since the
@@ -219,7 +209,6 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 	const [lookbackDays, setLookbackDays] = useState("90");
 	const [sampleLimit, setSampleLimit] = useState("50");
 	const [minProfit, setMinProfit] = useState("10");
-	const [recoveryDays, setRecoveryDays] = useState("30");
 	// More panel — detail-level cost assumptions. "" means "use server
 	// default" (currently $10 shipping, $0 floor); typing a number
 	// overrides per-call. The pill row keeps coarse presets; this panel
@@ -304,7 +293,7 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 
 	async function run(
 		rawInput: string,
-		override?: { lookbackDays?: number; sampleLimit?: number; minProfit?: number; recoveryDays?: number },
+		override?: { lookbackDays?: number; sampleLimit?: number; minProfit?: number },
 	) {
 		const itemId = parseItemId(rawInput);
 		if (!itemId) {
@@ -333,18 +322,16 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 		const lb = override?.lookbackDays ?? Number.parseInt(lookbackDays, 10);
 		const sl = override?.sampleLimit ?? Number.parseInt(sampleLimit, 10);
 		const mp = override?.minProfit ?? Number.parseInt(minProfit, 10);
-		const rd = override?.recoveryDays ?? Number.parseInt(recoveryDays, 10);
 		const shipDollars = Number.parseFloat(shippingDollars);
 		const shipCents = Number.isFinite(shipDollars) && shipDollars >= 0 ? Math.round(shipDollars * 100) : undefined;
 		const recentBase = {
-			id: `${itemId}|${lb}|${sl}|${mp}|${rd}`,
+			id: `${itemId}|${lb}|${sl}|${mp}`,
 			mode: "evaluate" as const,
 			query: {
 				input: rawInput.trim(),
 				lookbackDays: lb,
 				sampleLimit: sl,
 				minProfit: mp,
-				recoveryDays: rd,
 			},
 		};
 		// Drop an in-progress placeholder immediately so the user sees the
@@ -374,7 +361,6 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 					soldLimit: sl,
 					minNetCents: mp > 0 ? mp * 100 : undefined,
 					outboundShippingCents: shipCents,
-					maxDaysToSell: rd > 0 ? rd : undefined,
 				},
 				{
 					onJobCreated: (id) => {
@@ -480,14 +466,12 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 		setLookbackDays(String(q.lookbackDays));
 		setSampleLimit(String(q.sampleLimit));
 		setMinProfit(String(q.minProfit));
-		setRecoveryDays(String(q.recoveryDays));
 
 		if (!rec.jobId) {
 			void run(q.input, {
 				lookbackDays: q.lookbackDays,
 				sampleLimit: q.sampleLimit,
 				minProfit: q.minProfit,
-				recoveryDays: q.recoveryDays,
 			});
 			return;
 		}
@@ -618,14 +602,6 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 									label="Look back"
 								/>
 								<FilterPill
-									value={recoveryDays}
-									defaultValue="30"
-									options={SELL_WITHIN_OPTIONS}
-									onChange={setRecoveryDays}
-									icon={IconHourglass}
-									label="Sell within"
-								/>
-								<FilterPill
 									value={sampleLimit}
 									defaultValue="50"
 									options={SAMPLE_OPTIONS}
@@ -704,7 +680,6 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 							<EvaluateResult
 								outcome={outcome}
 								steps={steps}
-								sellWithinDays={Number.parseInt(recoveryDays, 10) || undefined}
 								pending={pending}
 								onCancel={cancel}
 								onRerun={() => run(input)}

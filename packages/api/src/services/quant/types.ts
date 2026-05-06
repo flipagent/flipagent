@@ -27,10 +27,6 @@ export interface QuantListing {
 	watchCount?: number;
 	/** ISO 8601 string, only meaningful for AUCTION. */
 	endTime?: string;
-	sellerFeedback?: number;
-	sellerFeedbackPercent?: number;
-	imageCount?: number;
-	descriptionLength?: number;
 }
 
 /**
@@ -44,8 +40,8 @@ export interface PriceObservation {
 	 * Optional — populated when caller has list→sold duration data
 	 * (Browse API `itemCreationDate` + `itemEndDate`, or SPRD's own
 	 * record_listing/record_transaction tables). When present on enough
-	 * obs, `summarizeSold` aggregates into MarketStats time fields and
-	 * `optimalListPrice` becomes computable.
+	 * obs, `summarizeSold` aggregates them into `meanDaysToSell` for
+	 * downstream time-to-sell + capital-efficiency math.
 	 */
 	durationDays?: number;
 	/**
@@ -100,8 +96,15 @@ export interface MarketStats {
 	meanCents: number;
 	/** Population std-dev of cleaned sold prices. Uncertainty around `meanCents`. */
 	stdDevCents: number;
-	/** Robust quantiles (kept for display + signals like under_median). */
+	/** Robust quantiles (kept for display + descriptive stats). */
 	medianCents: number;
+	/**
+	 * Median over the last 14 days only (n ≥ 4). Used as the unbiased
+	 * sold reference in `recommendListPrice` when available — avoids the
+	 * baseline mismatch that `medianCents × (1 + trend × 0.5)` produces
+	 * when full-window median lags the recent state.
+	 */
+	recent14dMedianCents?: number;
 	/** Bootstrap 90% CI on the median (n ≥ 5). Undefined for tiny samples. */
 	medianCiLowCents?: number;
 	medianCiHighCents?: number;
@@ -115,8 +118,8 @@ export interface MarketStats {
 	 * pace rather than the average over the full lookback. Collapses to
 	 * the bare `nObservations / windowDays` when sales are uniformly
 	 * distributed in the window or when most observations lack
-	 * `soldAt` timestamps. Liquidity proxy and the baseline rate λ₀
-	 * for the lifecycle hazard model.
+	 * `soldAt` timestamps. Used as λ in the Erlang queue model in
+	 * `recommendListPrice` (time = (queueAhead + 1) / λ).
 	 */
 	salesPerDay: number;
 	/**
@@ -134,53 +137,6 @@ export interface MarketStats {
 	/** Active-side stats (current asks). Populated when caller passed asks. */
 	asks?: AskStats;
 	asOf: string;
-}
-
-export interface Signal {
-	kind: "under_median" | "below_asks" | "ending_soon_low_watchers" | "brand_typo" | "category_mismatch" | "poor_title";
-	/** 0..1 — how strongly this listing matches the signal. */
-	strength: number;
-	reason: string;
-}
-
-/**
- * Output of `computeScore(listing, market)`. The full quant view of a deal:
- * expected return, risk-adjusted ranking metrics, factor exposures
- * (signals), listing-quality confidence, and the bottom-line rating.
- */
-export interface Score {
-	listing: QuantListing;
-	market: MarketStats;
-	/**
-	 * Expected net in cents — the single answer to "what'll I make on
-	 * this trade." Computed from `market.meanCents` (the probability-
-	 * weighted expectation over the empirical sold-price distribution),
-	 * netted out for fees and shipping.
-	 */
-	netCents: number;
-	/** netCents / cost basis = return on investment per trade. */
-	roi: number;
-	/**
-	 * Capital efficiency: E[net] / E[T_sell] in cents/day. Tells you how
-	 * much profit each dollar of locked capital earns per day. Populated
-	 * only when `market.meanDaysToSell` is available (caller has duration
-	 * data); undefined otherwise.
-	 */
-	dollarsPerDay?: number;
-	/**
-	 * Annualized IRR using market's mean days-to-sell:
-	 *   (1 + roi)^(365 / E[T_sell]) − 1
-	 * Capped at a sane ceiling to avoid headline numbers in the millions
-	 * for fast-turnover SKUs. Populated only when meanDaysToSell available.
-	 */
-	annualizedRoi?: number;
-	/** True iff `market.salesPerDay >= options.minSalesPerDay`. */
-	liquid: boolean;
-	/** 0..1 multiplier from listing-level signals (seller feedback, photos, description). */
-	confidence: number;
-	signals: Signal[];
-	rating: "buy" | "hold" | "skip";
-	reason: string;
 }
 
 export interface FeeModel {
@@ -227,54 +183,30 @@ export interface MarginInputs {
 /* ─────────────────────── Lifecycle (Phase 3 + Phase 4) ─────────────────────── */
 
 /**
- * Output of `optimalListPrice` — the recommended listing price + the
- * expected outcomes at that price. Returns null from the function when
- * the market lacks `meanDaysToSell` (no time-to-sell data).
+ * Output of `recommendListPrice` — the recommended list price plus the
+ * expected outcomes at that price. Returns null when the market lacks
+ * a velocity signal (`salesPerDay <= 0`).
+ *
+ * Time prediction follows Erlang(k = queueAhead + 1, λ = salesPerDay):
+ * mean = k/λ, σ = √k/λ. The ±σ band approximates a 68% CI; in fast or
+ * narrow markets the band collapses, in slow / large-queue markets it
+ * widens — honest about uncertainty rather than projecting a false
+ * point estimate.
  */
 export interface ListPriceRecommendation {
 	listPriceCents: number;
-	/** Days expected to wait for sale at `listPriceCents`. */
+	/** Mean days-to-sell at `listPriceCents` under the queue model. */
 	expectedDaysToSell: number;
-	/** P(sell ≤ 7 days) at `listPriceCents`. */
-	sellProb7d: number;
-	/** P(sell ≤ 14 days). */
-	sellProb14d: number;
-	/** P(sell ≤ 30 days). */
-	sellProb30d: number;
-	/** Net cents at this list price (sale − fees − shipping). */
+	/** Lower edge of ±σ Erlang band (floored at 0.5d). */
+	daysLow: number;
+	/** Upper edge of ±σ Erlang band. */
+	daysHigh: number;
+	/** Net cents at this list price (sale − fees − shipping − buy). */
 	netCents: number;
 	/** Capital efficiency in cents/day = netCents / expectedDaysToSell. */
 	dollarsPerDay: number;
-	/** Annualized IRR. Same cap semantics as `Score.annualizedRoi`. */
-	annualizedRoi: number;
-}
-
-/* ─────────────────────────── Calibration (Phase 5) ─────────────────────────── */
-
-/** One predicted-vs-actual record. Fed in batches to `calibrate`. */
-export interface PredictionRecord {
-	predictedNetCents: number;
-	actualNetCents: number;
-	predictedDaysToSell?: number;
-	actualDaysToSell?: number;
-}
-
-/**
- * Calibration summary from a batch of `PredictionRecord`s. Used to
- * detect bias in our model (e.g. consistently underestimating net) and
- * to derive a multiplicative correction factor.
- */
-export interface Calibration {
-	n: number;
-	/** Mean(predicted − actual). Positive ⇒ over-prediction. */
-	netBiasCents: number;
-	/** Mean(|predicted − actual|). */
-	netMaeCents: number;
-	/** P(actual > predicted) — fraction of pessimistic predictions. */
-	underestimateRate: number;
-	/** Sum(actual) / Sum(predicted). Multiply predictions by this for unbiased estimate. */
-	netCalibration: number;
-	/** Same metrics for time-to-sell, when both fields populated on records. */
-	daysBias?: number;
-	daysMae?: number;
+	/** Realistic asks at or below `listPriceCents` (in queue ahead of mine). */
+	queueAhead: number;
+	/** Realistic asks above `listPriceCents` (room above me). */
+	asksAbove: number;
 }

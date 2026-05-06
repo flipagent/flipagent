@@ -47,6 +47,7 @@ export const MarketStats = Type.Object(
 		meanCents: Type.Integer(),
 		stdDevCents: Type.Integer(),
 		medianCents: Type.Integer(),
+		recent14dMedianCents: Type.Optional(Type.Integer()),
 		medianCiLowCents: Type.Optional(Type.Integer()),
 		medianCiHighCents: Type.Optional(Type.Integer()),
 		p25Cents: Type.Integer(),
@@ -139,6 +140,7 @@ export const SoldDigest = Type.Object(
 		priceHistogram: Type.Array(PriceHistogramBin),
 		conditionMix: ConditionMix,
 		recentTrend: Type.Union([RecentTrend, Type.Null()]),
+		recent14dMedianCents: Type.Union([Type.Integer(), Type.Null()]),
 		lastSaleAt: Type.Union([Type.String(), Type.Null()]),
 		lastSalePriceCents: Type.Union([Type.Integer(), Type.Null()]),
 	},
@@ -202,9 +204,7 @@ export type FilterSummary = Static<typeof FilterSummary>;
 export const EvaluateOpts = Type.Object(
 	{
 		forwarder: Type.Optional(ForwarderInput),
-		expectedSaleMultiplier: Type.Optional(Type.Number({ minimum: 0, maximum: 2 })),
 		minNetCents: Type.Optional(Type.Integer({ minimum: 0 })),
-		minConfidence: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
 		/**
 		 * Outbound shipping in cents. When omitted (and no `forwarder` is
 		 * provided), defaults to $10 — typical USPS Ground Advantage for
@@ -212,34 +212,12 @@ export const EvaluateOpts = Type.Object(
 		 * `forwarder` block for a real landed-cost calc.
 		 */
 		outboundShippingCents: Type.Optional(Type.Integer({ minimum: 0 })),
-		/**
-		 * Hard ceiling on expected-days-to-sell when picking the recommended
-		 * exit. Honours the user's "Sell within X days" filter — prices
-		 * whose predicted hold exceeds this are excluded from the grid.
-		 * When the feasible set is empty, `recommendedExit` is null.
-		 */
-		maxDaysToSell: Type.Optional(Type.Number({ minimum: 1 })),
-		/**
-		 * Override hazard elasticity β. When omitted, derived from the
-		 * listing's `categoryId` (per-category default) or 1.5 fallback.
-		 */
-		beta: Type.Optional(Type.Number({ minimum: 0, maximum: 10 })),
 	},
 	{ $id: "EvaluateOpts" },
 );
 export type EvaluateOpts = Static<typeof EvaluateOpts>;
 
 /* ------------------------------ evaluation ------------------------------ */
-
-export const FiredSignal = Type.Object(
-	{
-		name: Type.String(),
-		weight: Type.Number(),
-		reason: Type.String(),
-	},
-	{ $id: "FiredSignal" },
-);
-export type FiredSignal = Static<typeof FiredSignal>;
 
 /**
  * p10/p90 of expected net (cents) across the IQR-cleaned sold pool.
@@ -258,11 +236,31 @@ export type NetRangeCents = Static<typeof NetRangeCents>;
 
 export const Evaluation = Type.Object(
 	{
+		/**
+		 * Gross flip net IF the sale goes through: salePrice − fees − ship − buy.
+		 * The "happy path" number — answers "if I sell, what's my margin?"
+		 * Doesn't include fraud risk. Null when no recommendation could be
+		 * computed (no sold pool / no velocity).
+		 */
+		successNetCents: Type.Union([Type.Integer(), Type.Null()]),
+		/**
+		 * True probabilistic expected net per trade:
+		 *   E[net] = (1 − P_fraud) × successNet − P_fraud × maxLoss
+		 *
+		 * This is THE number the rating uses. Folds fraud probability and
+		 * worst-case downside into one honest expectation. When P_fraud=0
+		 * (no risk data or perfectly safe seller), collapses to successNet.
+		 */
 		expectedNetCents: Type.Integer(),
-		confidence: Type.Number(),
+		/**
+		 * Worst-case downside in cents:
+		 *   - cycle fits in return window: just the return shipping cost
+		 *   - else: full buy price (item gone, no recovery path)
+		 * Null when no recommendation could be computed.
+		 */
+		maxLossCents: Type.Union([Type.Integer(), Type.Null()]),
 		landedCostCents: Type.Union([Type.Integer(), Type.Null()]),
-		signals: Type.Array(FiredSignal),
-		rating: Type.Union([Type.Literal("buy"), Type.Literal("hold"), Type.Literal("skip")]),
+		rating: Type.Union([Type.Literal("buy"), Type.Literal("skip")]),
 		reason: Type.String(),
 		bidCeilingCents: Type.Union([Type.Integer(), Type.Null()]),
 		safeBidBreakdown: Type.Union([
@@ -278,20 +276,50 @@ export const Evaluation = Type.Object(
 		recommendedExit: Type.Union([
 			Type.Object({
 				listPriceCents: Type.Integer(),
+				/** Mean days-to-sell at `listPriceCents` (Erlang queue model). */
 				expectedDaysToSell: Type.Number(),
 				/**
-				 * Probability of sale within 7 / 14 / 30 days under the
-				 * MNL hazard model. Together with `expectedDaysToSell`
-				 * they describe the predicted distribution rather than a
-				 * single point — useful for callers that want to surface
-				 * "70% in 7d, 95% in 30d" alongside the mean. Values
-				 * are in [0, 1]; rounded for display by clients.
+				 * Lower / upper edge of ±σ Erlang band, where
+				 * σ = √(queueAhead+1) / salesPerDay. The band approximates
+				 * a 68% CI: narrow when queue is long (more samples), wide
+				 * when queue is short. Floors at 0.5d.
 				 */
-				sellProb7d: Type.Number(),
-				sellProb14d: Type.Number(),
-				sellProb30d: Type.Number(),
+				daysLow: Type.Number(),
+				daysHigh: Type.Number(),
 				netCents: Type.Integer(),
+				/**
+				 * Capital efficiency in cents/day, denominated over the FULL
+				 * buy→cash cycle (inbound + list-prep + sell + outbound +
+				 * buyer-claim, ~11d of fixed overhead on top of the queue
+				 * model's `expectedDaysToSell`). This is what the reseller
+				 * actually earns per day of locked capital — list-leg-only
+				 * `$/day` would over-credit fast SKUs by ignoring the
+				 * non-sell overhead.
+				 */
 				dollarsPerDay: Type.Integer(),
+				/** Realistic asks at or below `listPriceCents`. */
+				queueAhead: Type.Integer(),
+				/** Realistic asks above `listPriceCents`. */
+				asksAbove: Type.Integer(),
+			}),
+			Type.Null(),
+		]),
+		/**
+		 * Buyer-side risk assessment. Combines seller-feedback signals
+		 * (P_fraud) with return-window math (cycle vs window) to produce
+		 * a probabilistic worst-case loss the reseller can plan around.
+		 * Null when no recommendation could be computed.
+		 */
+		risk: Type.Union([
+			Type.Object({
+				/** Probability of fraud / not-as-described / undelivered. */
+				P_fraud: Type.Number(),
+				/** Cycle (buy → list → sell → return) fits in seller's return window. */
+				withinReturnWindow: Type.Boolean(),
+				/** Total cycle days used in the window check. */
+				cycleDays: Type.Integer(),
+				/** Human-readable summary. */
+				reason: Type.String(),
 			}),
 			Type.Null(),
 		]),

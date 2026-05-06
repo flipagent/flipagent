@@ -3,13 +3,10 @@
  * `rankCandidates` (the N-item ranker) with N=1, so per-item ranking
  * changes land in a single code path.
  *
- * Pre-flight:
- *   1. enrich sold + active listings with `itemCreationDate` / `itemEndDate`
- *      so the hazard model can fit (sold-search and Browse summaries
- *      omit start dates — they live only on detail). Items where the
- *      matcher already spliced dates (Option B) short-circuit.
- *   2. delegate to `rankCandidates`, which resolves per-category fitted β
- *      once and runs synchronous `evaluate()` per item.
+ * Pre-flight: enrich sold + active listings with `itemCreationDate` /
+ * `itemEndDate` so duration aggregates fit (sold-search and Browse
+ * summaries omit start dates — they live only on detail). Items where
+ * the matcher already spliced dates (Option B) short-circuit.
  *
  * Async — enrichment may scrape detail pages.
  */
@@ -24,8 +21,9 @@ import type { EvaluableItem, EvaluateOptions, Evaluation } from "./types.js";
 /**
  * Pre-fill `itemCreationDate` / `itemEndDate` on listings whose summaries
  * came back without them — sold-search and Browse search both omit start
- * dates, but the hazard model needs them. Resolves to a new array with the
- * same shape; missing detail lookups silently leave the entry as-is.
+ * dates, but the time-to-sell aggregator needs them. Resolves to a new
+ * array with the same shape; missing detail lookups silently leave the
+ * entry as-is.
  *
  * Items the matcher's verify pass already fetched detail for (Option B
  * splice) carry dates inline and short-circuit on the `if (creation &&
@@ -55,8 +53,8 @@ export async function enrichWithDuration<T extends ItemSummary>(items: ReadonlyA
 
 /**
  * Score a single listing against a sold pool. Thin wrapper over
- * `rankCandidates` — same enrichment + same fitted-β + same `evaluate()`
- * math, just N=1. Used by `/v1/evaluate` route.
+ * `rankCandidates` — same enrichment + same `evaluate()` math, just
+ * N=1. Used by `/v1/evaluate` route.
  */
 export async function evaluateWithContext(item: EvaluableItem, opts: EvaluateOptions = {}): Promise<Evaluation> {
 	const enrichedSold = opts.sold ? await enrichWithDuration(opts.sold) : opts.sold;

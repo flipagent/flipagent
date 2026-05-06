@@ -1,4 +1,4 @@
-import type { BrowseSearchResponse, ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
+import type { BrowseSearchResponse, ItemSummary } from "@flipagent/types/ebay/buy";
 import { describe, expect, it } from "vitest";
 import { toQuantListing } from "../../../src/services/evaluate/adapter.js";
 import { evaluate } from "../../../src/services/evaluate/evaluate.js";
@@ -57,57 +57,17 @@ describe("toQuantListing", () => {
 		expect(l.priceCents).toBe(6000);
 		expect(l.shippingCents).toBe(500);
 		expect(l.buyingFormat).toBe("FIXED_PRICE");
-		expect(l.sellerFeedback).toBe(1200);
-		expect(l.sellerFeedbackPercent).toBe(99.5);
-		expect(l.imageCount).toBe(3);
-		expect(l.descriptionLength).toBeUndefined();
-	});
-
-	it("counts ItemDetail images correctly", () => {
-		const detail: ItemDetail = {
-			itemId: "v1|999|0",
-			title: "Canon EF 50mm f/1.8",
-			itemWebUrl: "https://www.ebay.com/itm/999",
-			price: { value: "60.00", currency: "USD" },
-			image: { imageUrl: "https://i.ebayimg.com/main.jpg" },
-			additionalImages: [{ imageUrl: "https://i.ebayimg.com/2.jpg" }, { imageUrl: "https://i.ebayimg.com/3.jpg" }],
-			description: "A".repeat(200),
-		};
-		const l = toQuantListing(detail);
-		expect(l.imageCount).toBe(3); // image + 2 additional
-		expect(l.descriptionLength).toBe(200);
 	});
 });
 
 describe("evaluate", () => {
-	it("flags under-median listing as a buy when confidence threshold is relaxed", () => {
-		// ItemSummary lacks `description`, so quant's confidence component for
-		// description is floored at 0.1 — pulling overall confidence below the
-		// default 0.4 minimum and forcing a "hold" rating despite the margin
-		// being there. Real callers either pass an ItemDetail or override the
-		// confidence threshold; this test exercises the second path.
+	it("flags under-median listing as buy", () => {
 		const v = evaluate(summary({ price: { value: "60.00", currency: "USD" } }), {
 			sold: SOLD,
-			minConfidence: 0,
-			minSalesPerDay: 0, // small fixture market — bypass liquidity floor
 			outboundShippingCents: 0, // pin outbound to 0 so margin math is independent of evaluate's $10 default
 		});
 		expect(v.rating).toBe("buy");
 		expect(v.expectedNetCents).toBeGreaterThan(0);
-		expect(v.signals.some((s) => s.name === "under_median")).toBe(true);
-	});
-
-	it("downgrades to hold when confidence is below threshold", () => {
-		// Same ItemSummary but with the default minConfidence of 0.4. Margin
-		// still clears; the rating drops to "hold" because we're missing
-		// description-length data.
-		const v = evaluate(summary({ price: { value: "60.00", currency: "USD" } }), {
-			sold: SOLD,
-			minSalesPerDay: 0, // small fixture market — bypass liquidity floor
-			outboundShippingCents: 0, // pin outbound to 0 so margin math is independent of evaluate's $10 default
-		});
-		expect(v.rating).toBe("hold");
-		expect(v.expectedNetCents).toBeGreaterThan(0); // margin math still ran
 	});
 
 	it("recommends skip when no sold listings available", () => {
@@ -129,8 +89,7 @@ describe("evaluate", () => {
 	it("populates bidCeilingCents and netRangeCents when sold pool suffices", () => {
 		const v = evaluate(summary({ price: { value: "60.00", currency: "USD" } }), {
 			sold: SOLD, // 5 sold listings clustered at $115–125
-			minConfidence: 0,
-			minSalesPerDay: 0,
+			minNetCents: 0, // pin to break-even so the ceiling math is independent of the $30 default floor
 		});
 		// Bid ceiling: invert mean (~$120) ⇒ ceiling > buy price ($65) for trade to clear.
 		expect(v.bidCeilingCents).not.toBeNull();
@@ -143,8 +102,6 @@ describe("evaluate", () => {
 	it("returns null distribution fields with too few sold listings", () => {
 		const v = evaluate(summary(), {
 			sold: SOLD.slice(0, 2), // below MIN_SOLD_FOR_DISTRIBUTION
-			minConfidence: 0,
-			minSalesPerDay: 0,
 		});
 		expect(v.netRangeCents).toBeNull();
 	});
@@ -172,7 +129,7 @@ describe("find", () => {
 		const okDeal = summary({ itemId: "v1|ok|0", price: { value: "70.00", currency: "USD" } });
 		const results: BrowseSearchResponse = { itemSummaries: [tooExpensive, okDeal, cheapDeal] };
 
-		const ranked = await rankCandidates(results, { sold: SOLD, minConfidence: 0, minSalesPerDay: 0 });
+		const ranked = await rankCandidates(results, { sold: SOLD });
 
 		// Ranker is non-filtering: callers (or UI) decide what counts as a buyable candidate.
 		expect(ranked.length).toBe(3);

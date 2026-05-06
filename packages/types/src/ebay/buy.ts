@@ -316,8 +316,8 @@ export const ItemSummary = Type.Object(
 		itemEndDate: Type.Optional(Type.String()),
 		/**
 		 * ISO 8601 listing creation timestamp. Paired with `itemEndDate` or
-		 * `lastSoldDate`, this gives the list-to-sell duration that the
-		 * hazard model reads directly from summaries — no per-listing detail
+		 * `lastSoldDate`, this gives the list-to-sell duration the queue
+		 * model uses for time-to-sell aggregates — no per-listing detail
 		 * fetch required.
 		 */
 		itemCreationDate: Type.Optional(Type.String()),

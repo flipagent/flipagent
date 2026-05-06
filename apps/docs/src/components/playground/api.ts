@@ -281,7 +281,6 @@ export const playgroundApi = {
 		opts?: {
 			minNetCents?: number;
 			outboundShippingCents?: number;
-			maxDaysToSell?: number;
 		};
 	}) => plan<EvaluateResponse>("POST", "/v1/evaluate", req),
 

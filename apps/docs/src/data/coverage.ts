@@ -670,7 +670,7 @@ export const TRADING_ROWS: TradingRow[] = [
 ];
 
 export const NATIVE_ROWS: NativeRow[] = [
-	{ flipagent: "POST /v1/evaluate", composes: "One call returns a buy/hold/skip verdict on a listing, with profit, demand, and risk signals.", tier: "T1" },
+	{ flipagent: "POST /v1/evaluate", composes: "One call returns a buy/skip verdict on a listing, with profit, demand, and fraud-risk numbers.", tier: "T1" },
 	{ flipagent: "GET /v1/items/search", composes: "Active listings search across the marketplace.", tier: "T1" },
 	{ flipagent: "GET /v1/items/search?status=sold", composes: "What items actually sold for, recently.", tier: "T1" },
 	{ flipagent: "GET /v1/items/{id}", composes: "Full listing detail: aspects, description, photos, seller, shipping, returns.", tier: "T1" },

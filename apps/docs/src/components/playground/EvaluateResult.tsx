@@ -583,10 +583,8 @@ function Facts({
 	// is one place to edit.
 	const exitCents =
 		evaluation?.recommendedExit?.listPriceCents ?? evaluation?.safeBidBreakdown?.estimatedSaleCents ?? null;
-	const myRankAmongAsks =
-		exitCents != null && askCents.length > 0
-			? askCents.filter((c) => c < exitCents).length + 1
-			: null;
+	const queueAhead = evaluation?.recommendedExit?.queueAhead ?? null;
+	const asksAbove = evaluation?.recommendedExit?.asksAbove ?? null;
 	const vsAvgPct =
 		exitCents != null && referenceSaleCents != null && referenceSaleCents > 0
 			? Math.round(((exitCents - referenceSaleCents) / referenceSaleCents) * 100)
@@ -861,8 +859,8 @@ function Facts({
 			</Row>
 
 			{/* Resells at — directive recommendation: the price our
-			    `optimalListPrice` model picked given current competition +
-			    hazard model (same number Profit's arithmetic uses). Three
+			    `recommendListPrice` model picked given current competition
+			    + queue model (same number Profit's arithmetic uses). Three
 			    asides answer the three questions a reseller asks the
 			    moment they see a price: where would I rank against the
 			    active competition (#N of M+1), how does it compare to
@@ -889,9 +887,9 @@ function Facts({
 				) : (
 					<>
 						<span className="pg-result-facts-val">{fmtUsdRound(exitCents)}</span>
-						{myRankAmongAsks != null && (
+						{queueAhead != null && asksAbove != null && (
 							<span className="pg-result-facts-aside">
-								#{myRankAmongAsks} of {askCents.length + 1} active
+								{queueAhead} cheaper · {asksAbove} above
 							</span>
 						)}
 						{vsAvgPct != null && (
@@ -899,9 +897,9 @@ function Facts({
 								· {vsAvgPct >= 0 ? "+" : ""}{vsAvgPct}% vs avg sold
 							</span>
 						)}
-						{evaluation?.recommendedExit?.expectedDaysToSell != null && (
+						{evaluation?.recommendedExit && (
 							<span className="pg-result-facts-aside">
-								· ~{Math.round(evaluation.recommendedExit.expectedDaysToSell)}d to sell
+								· ~{Math.round(evaluation.recommendedExit.expectedDaysToSell)}d
 							</span>
 						)}
 					</>
@@ -940,7 +938,7 @@ function Facts({
 			{/* Est. profit — the bottom-line answer. Color-coded sign on
 			    the value carries the verdict directionally (red = loss,
 			    green = profit) so the user reads good-or-bad at a glance
-			    without needing a separate BUY/HOLD/SKIP chip; the number
+			    without needing a separate BUY/SKIP chip; the number
 			    itself is the conclusion. The only aside is the
 			    window-overrun warning when the user set a sell-within
 			    budget and the recommended exit blows it. */}

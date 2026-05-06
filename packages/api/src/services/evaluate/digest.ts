@@ -152,6 +152,24 @@ function recentTrend(sold: readonly ItemSummary[]): RecentTrend | null {
 	return { direction, change14dPct: Number(change.toFixed(1)) };
 }
 
+/**
+ * Median over the last 14 days only — unbiased estimator of current WTP.
+ * Returns null when fewer than 4 sales fall within the recent window.
+ */
+function recent14dMedian(sold: readonly ItemSummary[]): number | null {
+	const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+	const recent: number[] = [];
+	for (const it of sold) {
+		const t = soldAtMs(it);
+		const c = soldPriceCents(it);
+		if (t == null || c == null) continue;
+		if (t >= cutoff) recent.push(c);
+	}
+	if (recent.length < 4) return null;
+	const sorted = [...recent].sort((a, b) => a - b);
+	return percentile(sorted, 0.5);
+}
+
 function lastSale(sold: readonly ItemSummary[]): { lastSaleAt: string | null; lastSalePriceCents: number | null } {
 	let bestT = -Infinity;
 	let bestAt: string | null = null;
@@ -203,6 +221,7 @@ export function buildSoldDigest(
 		priceHistogram: histogram(prices, dist),
 		conditionMix: conditionMix(sold),
 		recentTrend: recentTrend(sold),
+		recent14dMedianCents: recent14dMedian(sold),
 		lastSaleAt: last.lastSaleAt,
 		lastSalePriceCents: last.lastSalePriceCents,
 	};

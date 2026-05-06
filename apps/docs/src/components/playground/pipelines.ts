@@ -116,11 +116,6 @@ export interface EvaluateInputs {
 	minNetCents?: number;
 	/** Outbound shipping cost in cents. Defaults server-side to $10 when omitted. */
 	outboundShippingCents?: number;
-	/**
-	 * Hard ceiling on expected days-to-sell — feeds the user's "Sell within
-	 * X days" filter into the recommended-exit grid search.
-	 */
-	maxDaysToSell?: number;
 }
 
 /* ------------------------- compute-job helpers ------------------------- */
@@ -217,7 +212,6 @@ function pickEvaluateOpts(params: EvaluateInputs): Record<string, unknown> | und
 	const opts: Record<string, unknown> = {};
 	if (params.minNetCents != null) opts.minNetCents = params.minNetCents;
 	if (params.outboundShippingCents != null) opts.outboundShippingCents = params.outboundShippingCents;
-	if (params.maxDaysToSell != null) opts.maxDaysToSell = params.maxDaysToSell;
 	return Object.keys(opts).length > 0 ? opts : undefined;
 }
 

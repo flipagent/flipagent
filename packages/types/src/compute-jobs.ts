@@ -87,7 +87,7 @@ export type ComputeJobAck = Static<typeof ComputeJobAck>;
  *
  * `label` / `subLabel` are pre-rendered for the UI:
  *   - evaluate → label = listing title (or itemId if title missing),
- *                subLabel = `evaluation.rating` (`buy` / `hold` / `skip`)
+ *                subLabel = `evaluation.rating` (`buy` / `skip`)
  *   - search   → label = `q` or category id, subLabel = `${count} results`
  *
  * Click-through hits `GET /v1/jobs/{id}` (TODO) or per-kind get

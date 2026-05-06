@@ -212,26 +212,23 @@ const CANON_EVALUATE_OUTCOME = {
 		reason: "Steady margin, lots of recent sales to compare against, prices flat for 2 weeks.",
 		expectedNetCents: 1498,
 		bidCeilingCents: 7100,
-		confidence: 0.84,
 		netRangeCents: { p10Cents: 800, p90Cents: 2100 },
-		signals: [
-			{ name: "thick_comp_pool", reason: "n=25 sold last 30d; std dev tight", weight: 0.7 },
-			{ name: "flat_trend", reason: "14-day price change ±0%", weight: 0.5 },
-		],
 		safeBidBreakdown: {
 			feesCents: 1153,
 			shippingCents: 850,
 			estimatedSaleCents: 8700,
-			targetNetCents: 0,
+			targetNetCents: 3000,
 		},
 		recommendedExit: {
 			listPriceCents: 8700,
 			expectedDaysToSell: 9,
-			sellProb7d: 0.42,
-			sellProb14d: 0.71,
-			sellProb30d: 0.92,
+			daysLow: 5,
+			daysHigh: 13,
 			netCents: 1498,
-			dollarsPerDay: 166,
+			// $/day on the full buy→cash cycle (11d overhead + 9d sell = 20d).
+			dollarsPerDay: 75,
+			queueAhead: 8,
+			asksAbove: 4,
 		},
 	},
 	returns: {

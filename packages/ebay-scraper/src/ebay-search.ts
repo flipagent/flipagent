@@ -56,6 +56,25 @@ export interface EbaySearchParams {
 	 * dedicated GTIN axis.
 	 */
 	extraKeywords?: string;
+	/**
+	 * eBay web SRP `_ipg` (items-per-page) override. Live-verified
+	 * (2026-05-05, sold queries on `/sch/i.html`):
+	 *   - `60`  — eBay default. What `_pgn` advances by when omitted.
+	 *   - `120` — honored. ~2× the default span on a single page.
+	 *   - `240` — honored. Maximum legal value. One fetch covers the
+	 *             same data as 4 default pages at the same Oxylabs
+	 *             cost (~$0.005, ~6 s) and parses cleanly.
+	 *   - `480` (or any other value) — silently falls back to 60.
+	 *             eBay does not error; it just renders the default.
+	 *
+	 * The corresponding deep-page ceiling is `_pgn × _ipg ≤ ~10000`
+	 * (matches the REST `offset+limit ≤ 10000` cap). Beyond that eBay
+	 * clamps to the last valid page and serves the same ids for any
+	 * deeper request — callers must dedupe by `legacyItemId` to detect
+	 * the wall, see `EBAY_SRP_DEEP_PAGE_CEILING` in
+	 * `packages/api/src/services/ebay/scrape/client.ts`.
+	 */
+	itemsPerPage?: 60 | 120 | 240;
 }
 
 /**
@@ -137,6 +156,10 @@ export function buildEbayUrl(params: EbaySearchParams, page: number): string {
 		u.searchParams.set("LH_ItemCondition", params.conditionIds.join("|"));
 	}
 	if (params.sort) u.searchParams.set("_sop", SORT_MAP[params.sort]);
+	// `_ipg` controls cards-per-page. Only 60/120/240 are honored;
+	// any other value silently renders the default 60. See JSDoc on
+	// `EbaySearchParams.itemsPerPage` for the live-verified probe.
+	if (params.itemsPerPage) u.searchParams.set("_ipg", String(params.itemsPerPage));
 	// Aspect facets — each entry becomes one URL-encoded query param.
 	// eBay's web SRP keys aspects by the visible aspect name (`Color`,
 	// `US Shoe Size`, `Brand`); URLSearchParams handles encoding.

@@ -1,5 +1,4 @@
 import type { BrowseSearchResponse } from "@flipagent/types/ebay/buy";
-import { fittedBetaFor } from "../calibration.js";
 import { evaluate } from "./evaluate.js";
 import type { EvaluateOptions, Evaluation } from "./types.js";
 
@@ -44,26 +43,10 @@ export async function rankCandidates(
 	const items = results.itemSummaries ?? results.itemSales ?? [];
 	if (items.length === 0) return [];
 
-	// Resolve fitted-β once per unique categoryId. Most active search
-	// results share a category, so this collapses 50 lookups to 1 in the
-	// typical case.
-	const uniqueCategoryIds = Array.from(
-		new Set(items.map((i) => ("categoryId" in i ? i.categoryId : undefined)).filter((c): c is string => !!c)),
-	);
-	const betaByCategory = new Map<string, number | undefined>();
-	await Promise.all(
-		uniqueCategoryIds.map(async (cid) => {
-			const b = await fittedBetaFor(cid).catch(() => undefined);
-			betaByCategory.set(cid, b);
-		}),
-	);
-
-	const ranked = items.map((item) => {
-		const categoryId = "categoryId" in item ? item.categoryId : undefined;
-		const beta = categoryId ? betaByCategory.get(categoryId) : undefined;
-		const evaluation = evaluate(item, { ...opts, beta: opts.beta ?? beta });
-		return { itemId: item.itemId, evaluation };
-	});
+	const ranked = items.map((item) => ({
+		itemId: item.itemId,
+		evaluation: evaluate(item, opts),
+	}));
 
 	return ranked.sort((a, b) => {
 		const yieldA = a.evaluation.recommendedExit?.dollarsPerDay ?? Number.NEGATIVE_INFINITY;
