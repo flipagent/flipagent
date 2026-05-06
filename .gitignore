@@ -67,3 +67,6 @@ packages/api/scripts/.cloudflared.yml
 
 # Local bench/audit run artifacts — written by scripts/match-bench*, audit-labels, etc.
 packages/api/scripts/.bench-out/
+
+# Personal exploratory notes / design docs — same treatment as references/.
+research/
