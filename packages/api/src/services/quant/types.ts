@@ -98,13 +98,6 @@ export interface MarketStats {
 	stdDevCents: number;
 	/** Robust quantiles (kept for display + descriptive stats). */
 	medianCents: number;
-	/**
-	 * Median over the last 14 days only (n ≥ 4). Used as the unbiased
-	 * sold reference in `recommendListPrice` when available — avoids the
-	 * baseline mismatch that `medianCents × (1 + trend × 0.5)` produces
-	 * when full-window median lags the recent state.
-	 */
-	recent14dMedianCents?: number;
 	/** Bootstrap 90% CI on the median (n ≥ 5). Undefined for tiny samples. */
 	medianCiLowCents?: number;
 	medianCiHighCents?: number;

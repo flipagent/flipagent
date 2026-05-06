@@ -516,19 +516,6 @@ function Facts({
 	const stats = outcome.soldPool ? soldStats(outcome.soldPool) : null;
 	const referenceSaleCents =
 		market?.medianCents ?? stats?.medianCents ?? evaluation?.safeBidBreakdown?.estimatedSaleCents ?? null;
-	// The model's actual sale anchor — recent14d when present (heating /
-	// cooling shifts), else full-window median. Used for the
-	// `+/− % vs anchor` comparison so the UI's percentage matches what the
-	// recommender actually compared against.
-	const recent14dCents = market?.recent14dMedianCents ?? null;
-	const anchorSaleCents = recent14dCents ?? referenceSaleCents;
-	// Show recent14d as a separate aside only when it materially diverges
-	// from the full-window median (>10% in either direction). Otherwise it's
-	// just noise.
-	const recent14dDivergent =
-		recent14dCents != null && referenceSaleCents != null && referenceSaleCents > 0
-			? Math.abs(recent14dCents - referenceSaleCents) / referenceSaleCents > 0.1
-			: false;
 	const p25 = market?.p25Cents ?? stats?.p25Cents ?? null;
 	const p75 = market?.p75Cents ?? stats?.p75Cents ?? null;
 	// `meta` is no longer used in the row text — the LLM filter ratio
@@ -598,15 +585,10 @@ function Facts({
 		evaluation?.recommendedExit?.listPriceCents ?? evaluation?.safeBidBreakdown?.estimatedSaleCents ?? null;
 	const queueAhead = evaluation?.recommendedExit?.queueAhead ?? null;
 	const asksAbove = evaluation?.recommendedExit?.asksAbove ?? null;
-	// vs the model's actual anchor (recent14d if present), not blindly the
-	// full-window median — when the market has heated or cooled the user
-	// would otherwise see "+63% vs avg sold" while the recommendation is
-	// −2% vs the heated baseline that drove it.
 	const vsAvgPct =
-		exitCents != null && anchorSaleCents != null && anchorSaleCents > 0
-			? Math.round(((exitCents - anchorSaleCents) / anchorSaleCents) * 100)
+		exitCents != null && referenceSaleCents != null && referenceSaleCents > 0
+			? Math.round(((exitCents - referenceSaleCents) / referenceSaleCents) * 100)
 			: null;
-	const vsAvgLabel = recent14dCents != null && recent14dDivergent ? "vs recent" : "vs avg sold";
 
 	return (
 		<dl className="pg-result-facts">
@@ -632,11 +614,6 @@ function Facts({
 						)}
 						{outcome.soldPool && outcome.soldPool.length > 0 && (
 							<span className="pg-result-facts-aside">· {outcome.soldPool.length} sales</span>
-						)}
-						{recent14dDivergent && recent14dCents != null && (
-							<span className="pg-result-facts-aside">
-								· recent {fmtUsd(recent14dCents)}
-							</span>
 						)}
 						{lowSample && (
 							<span className="pg-result-facts-warn">low sample</span>
@@ -917,7 +894,7 @@ function Facts({
 						)}
 						{vsAvgPct != null && (
 							<span className="pg-result-facts-aside">
-								· {vsAvgPct >= 0 ? "+" : ""}{vsAvgPct}% {vsAvgLabel}
+								· {vsAvgPct >= 0 ? "+" : ""}{vsAvgPct}% vs avg sold
 							</span>
 						)}
 						{evaluation?.recommendedExit && (

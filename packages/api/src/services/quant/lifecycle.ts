@@ -7,9 +7,9 @@
  * lower price), and required β calibration data we don't have. This
  * version trades that precision for simplicity:
  *
- *   1. Sold reference. Prefer `recent14dMedianCents` (unbiased estimator
- *      of current WTP) when available; else full-window median with
- *      half-strength trend adjustment as fallback.
+ *   1. Sold reference. Full-window median (caller controls window via
+ *      `lookbackDays` — shorter for fast-moving markets, longer for
+ *      stable ones).
  *
  *   2. Realistic asks. Drop scams (< 50% of soldRef) and moonshots
  *      (> 200%). Log-symmetric around the reference.
@@ -17,9 +17,10 @@
  *   3. Anchor with smooth blend. When ≥3 realistic asks exist, detect
  *      cooling drift (asks below sold reference) and linearly ramp
  *      blend weight 10%→30% drift. Max blend strength 50/50 (don't
- *      fully follow asks at extreme). Heating (asks above) is captured
- *      automatically by `recent14dMedianCents` — the recent reference
- *      already encodes the up-trend, no separate branch needed.
+ *      fully follow asks at extreme). Heating (asks above) is left to
+ *      the caller — listing at sold reference when buyers are paying
+ *      above is a conservative default, and runaway aspirational asks
+ *      shouldn't drag the recommendation up automatically.
  *
  *   4. Undercut by 2% (industry convention).
  *
@@ -67,16 +68,10 @@ export function recommendListPrice(
 	if (v <= 0) return null;
 	if (market.medianCents <= 0) return null;
 
-	// 1) Sold reference. Prefer recent14d (no baseline mismatch).
-	let soldRef: number;
-	if (market.recent14dMedianCents != null && market.recent14dMedianCents > 0) {
-		soldRef = market.recent14dMedianCents;
-	} else {
-		// recentTrend is on `RecentTrend` shape but MarketStats doesn't carry
-		// it directly — that lives on `SoldDigest`. Without trend or recent
-		// median, fall back to bare full-window median.
-		soldRef = market.medianCents;
-	}
+	// 1) Sold reference. Full-window median — caller's `lookbackDays`
+	// already controls how recent the window is (default 90, shorter for
+	// fast-moving markets).
+	const soldRef = market.medianCents;
 
 	// 2) Filter realistic asks (50%-200% of soldRef).
 	const asks = (options.activeAskPrices ?? []).slice().sort((a, b) => a - b);
@@ -88,13 +83,9 @@ export function recommendListPrice(
 		const askMed = realAsks[Math.floor(realAsks.length / 2)] ?? soldRef;
 		const drift = (soldRef - askMed) / soldRef;
 		// Cooling: drift > 0 (asks below sold). Linear ramp 10%→30%.
+		// Heating (drift < 0) intentionally not auto-blended — see header.
 		const coolingW = Math.max(0, Math.min(1, (drift - 0.1) / 0.2));
-		// Heating: drift < 0 + trend up confirmation. Ramp -5%→-20%.
-		// We don't have direct access to recentTrend on MarketStats; the
-		// caller should set it via the heating signal explicitly if needed.
-		// For now, only cooling auto-blends.
-		const blendW = coolingW;
-		anchor = Math.round(soldRef * (1 - blendW * 0.5) + askMed * (blendW * 0.5));
+		anchor = Math.round(soldRef * (1 - coolingW * 0.5) + askMed * (coolingW * 0.5));
 	}
 
 	// 4) Undercut by 2%.

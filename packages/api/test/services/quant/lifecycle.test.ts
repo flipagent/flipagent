@@ -38,14 +38,6 @@ describe("recommendListPrice", () => {
 		expect(advice!.expectedDaysToSell).toBe(0.5);
 	});
 
-	it("prefers recent14d median when available (no baseline mismatch)", () => {
-		// Full window says $100, but recent 14d says $90. Recent should win.
-		const m: MarketStats = { ...baseMarket, medianCents: 10_000, recent14dMedianCents: 9_000 };
-		const advice = recommendListPrice(m)!;
-		// 9000 × 0.98 = 8820
-		expect(advice.listPriceCents).toBe(8820);
-	});
-
 	it("undercuts the active floor by 2% on inflated asks", () => {
 		// sold $100, asks all above ($110-130). Anchor sold, undercut 2%.
 		const advice = recommendListPrice(baseMarket, {
