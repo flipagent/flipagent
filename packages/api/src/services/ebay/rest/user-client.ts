@@ -61,9 +61,7 @@ export async function sellRequest<T = unknown>(opts: SellRequestOpts): Promise<T
 		throw new EbayApiError(
 			503,
 			"ebay_not_configured",
-			"eBay OAuth credentials are not set on this api instance.",
-			undefined,
-			"configure_ebay",
+			"This api instance does not have eBay configured. Contact the operator.",
 		);
 	}
 	let token: string;
@@ -144,9 +142,7 @@ export async function sellRequestWithLocation<T = unknown>(
 		throw new EbayApiError(
 			503,
 			"ebay_not_configured",
-			"eBay OAuth credentials are not set on this api instance.",
-			undefined,
-			"configure_ebay",
+			"This api instance does not have eBay configured. Contact the operator.",
 		);
 	}
 	let token: string;

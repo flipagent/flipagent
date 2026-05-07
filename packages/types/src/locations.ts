@@ -4,7 +4,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Address, ResponseSource } from "./_common.js";
+import { Address } from "./_common.js";
 
 export const LocationStatus = Type.Union([Type.Literal("enabled"), Type.Literal("disabled")], {
 	$id: "LocationStatus",
@@ -53,8 +53,5 @@ export const LocationCreate = Type.Object(
 );
 export type LocationCreate = Static<typeof LocationCreate>;
 
-export const LocationsListResponse = Type.Object(
-	{ locations: Type.Array(Location), source: Type.Optional(ResponseSource) },
-	{ $id: "LocationsListResponse" },
-);
+export const LocationsListResponse = Type.Object({ locations: Type.Array(Location) }, { $id: "LocationsListResponse" });
 export type LocationsListResponse = Static<typeof LocationsListResponse>;

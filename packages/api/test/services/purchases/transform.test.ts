@@ -53,13 +53,10 @@ describe("ebayToPurchase", () => {
 		expect(out.items[0]).toEqual({ itemId: "v1|9|0", quantity: 1, variationId: "VAR-1" });
 	});
 
-	it("forwards transport + completedAt for terminal states", () => {
+	it("forwards completedAt for terminal states", () => {
 		const completedAt = "2026-04-01T13:00:00Z";
-		for (const transport of ["rest", "bridge", "url"] as const) {
-			const out = ebayToPurchase({ order: baseOrder, transport, completedAt });
-			expect(out.transport).toBe(transport);
-			expect(out.completedAt).toBe(completedAt);
-		}
+		const out = ebayToPurchase({ order: baseOrder, completedAt });
+		expect(out.completedAt).toBe(completedAt);
 	});
 	it("does NOT set completedAt for non-terminal states", () => {
 		const out = ebayToPurchase({

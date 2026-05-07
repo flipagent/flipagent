@@ -16,6 +16,6 @@ Aspect noise to IGNORE when title is clear (these aspects are unreliable on phon
 
 Re-flashed device scam pattern — REJECT regardless of brand:
 - "TikTok", "CapCut", or "installed" in the title (re-flashed device sold as new).
-- Multi-capacity title ("256GB 512GB 1TB" together) at one low price — wrong product offering.
+- Multi-capacity title ("256GB 512GB 1TB" together) — bundle / wrong product offering.
 
 Color discipline: when the candidate's color name is implausible for the model line (i.e. seller miscoded the candidate itself), treat candidate's color as UNDETERMINED and accept any of the model line's actual colors that the item names.`;

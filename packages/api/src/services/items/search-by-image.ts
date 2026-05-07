@@ -38,6 +38,5 @@ export async function searchItemsByImage(input: ItemSearchByImageRequest): Promi
 		limit: res?.limit ?? limit,
 		offset: res?.offset ?? offset,
 		...(res?.total !== undefined ? { total: res.total } : {}),
-		source: "rest" as const,
 	};
 }

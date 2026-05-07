@@ -81,6 +81,55 @@ describe("eBay search extractor — modern s-card layout (2025+)", () => {
 	});
 });
 
+describe("eBay search extractor — Authenticity Guarantee", () => {
+	// Minimal modern `.s-card` listing carrying an AG icon ref but no
+	// seller-feedback row — eBay's actual SRP shape for AG-routed
+	// luxury watches / sneakers / handbags. Production data is 0/N
+	// "X% positive" rows in this layout, so the AG badge is the only
+	// trust signal available.
+	const AG_CARD_HTML = `
+<html><body><ul class="srp-results srp-list">
+  <li class="s-card s-card--vertical" data-listingid="377153137412">
+    <div>
+      <a class="s-card__link" href="https://www.ebay.com/itm/377153137412">
+        <span class="s-card__title">Breitling Colt Automatic A17380 Black Dial 41mm</span>
+      </a>
+      <div class="s-card__price">$890.00</div>
+      <div class="s-card__subtitle">Pre-Owned · Breitling</div>
+      <div class="s-card__attribute-row">+$17.09 delivery</div>
+      <div class="s-card__attribute-row">19 bids · Ends in 18h 6m</div>
+      <div class="s-card__footer">
+        <svg><use href="#icon-legacy-authenticity-guarantee-48-colored" /></svg>
+        <span>Authenticity Guarantee</span>
+      </div>
+    </div>
+  </li>
+</ul></body></html>`;
+
+	it("populates authenticityGuarantee + qualifiedPrograms when the AG icon is present", () => {
+		const items = parseEbaySearchHtml(AG_CARD_HTML, { keyword: "breitling" }, jsdomFactory);
+		expect(items).toHaveLength(1);
+		const item = items[0]!;
+		expect(item.authenticityGuarantee).toEqual({ description: "Authenticity Guarantee" });
+		expect(item.qualifiedPrograms).toEqual(["AUTHENTICITY_GUARANTEE"]);
+		// Seller block should remain absent — the SRP layout swaps the
+		// feedback line for the AG badge entirely. We verify the absence
+		// rather than synthesize a placeholder.
+		expect(item.seller).toBeUndefined();
+	});
+
+	it("leaves AG fields undefined on non-AG modern cards", () => {
+		const noAgHtml = AG_CARD_HTML.replace(/icon-legacy-authenticity-guarantee-48-colored/, "icon-other").replace(
+			/Authenticity Guarantee/,
+			"Free returns",
+		);
+		const items = parseEbaySearchHtml(noAgHtml, { keyword: "breitling" }, jsdomFactory);
+		expect(items).toHaveLength(1);
+		expect(items[0]!.authenticityGuarantee).toBeUndefined();
+		expect(items[0]!.qualifiedPrograms).toBeUndefined();
+	});
+});
+
 describe("ebay-extract pure helpers", () => {
 	it("parseFeedbackScore: handles parenthesized count with K/M suffix and plain digits", () => {
 		expect(parseFeedbackScore("robertscamera 99.7% positive (280.1K)")).toBe(280_100);

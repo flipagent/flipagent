@@ -16,43 +16,41 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { ResponseSource } from "./_common.js";
 
 const Untyped = Type.Unknown();
-const SourceField = Type.Object({ source: Type.Optional(ResponseSource) });
 
 /* ---------------- packages ---------------- */
 
-export const EDeliveryPackagesListResponse = Type.Composite(
-	[Type.Object({ packages: Type.Array(Untyped), total: Type.Optional(Type.Integer()) }), SourceField],
+export const EDeliveryPackagesListResponse = Type.Object(
+	{ packages: Type.Array(Untyped), total: Type.Optional(Type.Integer()) },
 	{ $id: "EDeliveryPackagesListResponse" },
 );
 export type EDeliveryPackagesListResponse = Static<typeof EDeliveryPackagesListResponse>;
 
-export const EDeliveryPackageCreateResponse = Type.Composite([Type.Object({ id: Type.String() }), SourceField], {
+export const EDeliveryPackageCreateResponse = Type.Composite([Type.Object({ id: Type.String() })], {
 	$id: "EDeliveryPackageCreateResponse",
 });
 export type EDeliveryPackageCreateResponse = Static<typeof EDeliveryPackageCreateResponse>;
 
-export const EDeliveryPackageResponse = Type.Composite([Type.Object({ package: Untyped }), SourceField], {
+export const EDeliveryPackageResponse = Type.Composite([Type.Object({ package: Untyped })], {
 	$id: "EDeliveryPackageResponse",
 });
 export type EDeliveryPackageResponse = Static<typeof EDeliveryPackageResponse>;
 
 /* ---------------- bundles ---------------- */
 
-export const EDeliveryBundlesListResponse = Type.Composite(
-	[Type.Object({ bundles: Type.Array(Untyped), total: Type.Optional(Type.Integer()) }), SourceField],
+export const EDeliveryBundlesListResponse = Type.Object(
+	{ bundles: Type.Array(Untyped), total: Type.Optional(Type.Integer()) },
 	{ $id: "EDeliveryBundlesListResponse" },
 );
 export type EDeliveryBundlesListResponse = Static<typeof EDeliveryBundlesListResponse>;
 
-export const EDeliveryBundleCreateResponse = Type.Composite([Type.Object({ id: Type.String() }), SourceField], {
+export const EDeliveryBundleCreateResponse = Type.Composite([Type.Object({ id: Type.String() })], {
 	$id: "EDeliveryBundleCreateResponse",
 });
 export type EDeliveryBundleCreateResponse = Static<typeof EDeliveryBundleCreateResponse>;
 
-export const EDeliveryBundleResponse = Type.Composite([Type.Object({ bundle: Untyped }), SourceField], {
+export const EDeliveryBundleResponse = Type.Composite([Type.Object({ bundle: Untyped })], {
 	$id: "EDeliveryBundleResponse",
 });
 export type EDeliveryBundleResponse = Static<typeof EDeliveryBundleResponse>;
@@ -65,12 +63,12 @@ export type EDeliveryBundleResponse = Static<typeof EDeliveryBundleResponse>;
  * specific that flipagent doesn't reshape. We expose them under a
  * `data` envelope + `source` so the wire contract is consistent.
  */
-export const EDeliveryRawResponse = Type.Composite([Type.Object({ data: Untyped }), SourceField], {
+export const EDeliveryRawResponse = Type.Composite([Type.Object({ data: Untyped })], {
 	$id: "EDeliveryRawResponse",
 });
 export type EDeliveryRawResponse = Static<typeof EDeliveryRawResponse>;
 
-export const EDeliveryOkResponse = Type.Composite([Type.Object({ ok: Type.Boolean() }), SourceField], {
+export const EDeliveryOkResponse = Type.Composite([Type.Object({ ok: Type.Boolean() })], {
 	$id: "EDeliveryOkResponse",
 });
 export type EDeliveryOkResponse = Static<typeof EDeliveryOkResponse>;

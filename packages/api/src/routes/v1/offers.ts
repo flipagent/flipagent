@@ -67,7 +67,7 @@ offersRoute.get(
 			createdAt: row.expirationTime ?? "",
 		}));
 		const filtered = status ? offers.filter((o) => o.status === status) : offers;
-		return c.json({ offers: filtered, limit, offset: 0, source: "trading" as const });
+		return c.json({ offers: filtered, limit, offset: 0 });
 	}),
 );
 
@@ -97,7 +97,7 @@ offersRoute.get(
 	requireApiKey,
 	async (c) => {
 		const result = await findEligibleItems({ apiKeyId: c.var.apiKey.id });
-		return c.json({ ...result, source: "rest" as const });
+		return c.json({ ...result });
 	},
 );
 

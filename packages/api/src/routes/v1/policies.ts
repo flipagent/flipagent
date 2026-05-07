@@ -49,7 +49,7 @@ policiesRoute.get(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ policies: r.policies, limit: r.limit, offset: r.offset, source: "rest" as const });
+		return c.json({ policies: r.policies, limit: r.limit, offset: r.offset });
 	},
 );
 
@@ -74,7 +74,7 @@ policiesRoute.get(
 			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "policy_not_found", message: `No ${type} policy named '${name}'.` }, 404);
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -94,7 +94,6 @@ policiesRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		}),
 );
 
@@ -115,7 +114,6 @@ policiesRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		});
 	},
 );
@@ -177,7 +175,7 @@ policiesRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const }, 201);
+		return c.json({ ...r }, 201);
 	},
 );
 
@@ -225,7 +223,7 @@ policiesRoute.put(
 				marketplace: ebayMarketplaceId(),
 			},
 		);
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -246,6 +244,6 @@ policiesRoute.delete(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ok: true, source: "rest" as const });
+		return c.json({ ok: true });
 	},
 );

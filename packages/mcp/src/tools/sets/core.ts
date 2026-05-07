@@ -79,6 +79,9 @@ import {
 	ebayTaxonomySuggestInput,
 } from "../ebay-taxonomy.js";
 import {
+	evaluateCancelDescription,
+	evaluateCancelExecute,
+	evaluateCancelInput,
 	evaluateJobDescription,
 	evaluateJobExecute,
 	evaluateJobInput,
@@ -254,6 +257,13 @@ export const coreTools: Tool[] = [
 		description: evaluateJobDescription,
 		inputSchema: evaluateJobInput,
 		execute: evaluateJobExecute,
+		toolset: "core",
+	},
+	{
+		name: "flipagent_cancel_evaluate_job",
+		description: evaluateCancelDescription,
+		inputSchema: evaluateCancelInput,
+		execute: evaluateCancelExecute,
 		toolset: "core",
 	},
 	{

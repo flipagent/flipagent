@@ -111,31 +111,6 @@ describe("/v1/keys", () => {
 	});
 });
 
-describe("/v1/health/features", () => {
-	it("returns env-based capability flags without auth", async () => {
-		const res = await call("/v1/health/features");
-		expect(res.status).toBe(200);
-		const body = (await res.json()) as Record<string, boolean>;
-		// setup.ts wipes EBAY_CLIENT_ID/SECRET/RU_NAME so ebayOAuth must be false here.
-		expect(body.ebayOAuth).toBe(false);
-		// Every flag is a boolean — no nulls.
-		for (const v of Object.values(body)) expect(typeof v).toBe("boolean");
-		// All ten flags present.
-		expect(Object.keys(body).sort()).toEqual([
-			"betterAuth",
-			"biddingApi",
-			"ebayOAuth",
-			"email",
-			"googleOAuth",
-			"insightsApi",
-			"llm",
-			"orderApi",
-			"scraperApi",
-			"stripe",
-		]);
-	});
-});
-
 describe("/v1/keys/permissions", () => {
 	it("rejects calls without an api key", async () => {
 		const res = await call("/v1/keys/permissions");
@@ -160,16 +135,15 @@ describe("/v1/keys/permissions", () => {
 	});
 });
 
-describe("/v1/items/search?status=sold (scrape with source field)", () => {
-	it("returns source: 'scrape' in body and X-Flipagent-Source header", async () => {
+describe("/v1/items/search?status=sold", () => {
+	it("returns 200 with items page", async () => {
 		const key = await issueFreeKey("integration+sold@example.com");
 		const res = await call("/v1/items/search?q=widget&status=sold&limit=5", {
 			headers: { authorization: `Bearer ${key}` },
 		});
 		expect(res.status).toBe(200);
-		expect(res.headers.get("x-flipagent-source")).toMatch(/^(scrape|cache:scrape)$/);
-		const body = (await res.json()) as { source?: string };
-		expect(body.source).toMatch(/^(scrape|cache:scrape)$/);
+		const body = (await res.json()) as { items: unknown[] };
+		expect(Array.isArray(body.items)).toBe(true);
 	});
 });
 
@@ -187,7 +161,6 @@ describe("/v1/items (mocked scrape)", () => {
 		expect(res.status).toBe(200);
 		// Free tier: 1,000 credits one-time (auth/limits.ts TIER_LIMITS.free).
 		expect(res.headers.get("x-ratelimit-limit")).toBe("1000");
-		expect(res.headers.get("x-flipagent-source")).toMatch(/^(scrape|cache:scrape)$/);
 		const body = (await res.json()) as { items: Array<{ id: string; status: string }> };
 		expect(body.items.length).toBe(1);
 		// Test fixture uses non-numeric itemId; transformer's regex requires digits, so passes through.

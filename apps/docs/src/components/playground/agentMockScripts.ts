@@ -240,12 +240,9 @@ const CANON_EVALUATE_OUTCOME = {
 		soldKept: CANON_SOLD_POOL.length,
 		soldRejected: 0,
 		soldCount: CANON_SOLD_POOL.length,
-		soldSource: "scrape",
 		activeKept: CANON_ACTIVE_POOL.length,
 		activeRejected: 0,
 		activeCount: CANON_ACTIVE_POOL.length,
-		activeSource: "scrape",
-		itemSource: "scrape",
 	},
 };
 

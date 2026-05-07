@@ -35,9 +35,7 @@ meOverviewRoute.get(
 		responses: { 200: jsonResponse("Selling overview.", SellingOverview), ...COMMON },
 	}),
 	requireApiKey,
-	withTradingAuth(async (c, accessToken) =>
-		c.json({ ...(await fetchSellingOverview(accessToken)), source: "trading" as const }),
-	),
+	withTradingAuth(async (c, accessToken) => c.json({ ...(await fetchSellingOverview(accessToken)) })),
 );
 
 meOverviewRoute.get(
@@ -48,9 +46,7 @@ meOverviewRoute.get(
 		responses: { 200: jsonResponse("Buying overview.", BuyingOverview), ...COMMON },
 	}),
 	requireApiKey,
-	withTradingAuth(async (c, accessToken) =>
-		c.json({ ...(await fetchBuyingOverview(accessToken)), source: "trading" as const }),
-	),
+	withTradingAuth(async (c, accessToken) => c.json({ ...(await fetchBuyingOverview(accessToken)) })),
 );
 
 meOverviewRoute.get(
@@ -63,7 +59,7 @@ meOverviewRoute.get(
 		responses: { 200: jsonResponse("Quota.", MeQuotaResponse), 401: errorResponse("Auth missing.") },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await getMeQuota(c.var.apiKey.id)), source: "rest" as const }),
+	async (c) => c.json({ ...(await getMeQuota(c.var.apiKey.id)) }),
 );
 
 meOverviewRoute.get(
@@ -74,7 +70,7 @@ meOverviewRoute.get(
 		responses: { 200: jsonResponse("Programs.", MeProgramsResponse), 401: errorResponse("Auth missing.") },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await getOptedInPrograms(c.var.apiKey.id)), source: "rest" as const }),
+	async (c) => c.json({ ...(await getOptedInPrograms(c.var.apiKey.id)) }),
 );
 
 meOverviewRoute.post(
@@ -88,7 +84,7 @@ meOverviewRoute.post(
 	tbBody(ProgramOptRequest),
 	async (c) => {
 		const body = c.req.valid("json");
-		return c.json({ ...(await optInToProgram(c.var.apiKey.id, body.programType)), source: "rest" as const });
+		return c.json({ ...(await optInToProgram(c.var.apiKey.id, body.programType)) });
 	},
 );
 
@@ -103,6 +99,6 @@ meOverviewRoute.post(
 	tbBody(ProgramOptRequest),
 	async (c) => {
 		const body = c.req.valid("json");
-		return c.json({ ...(await optOutOfProgram(c.var.apiKey.id, body.programType)), source: "rest" as const });
+		return c.json({ ...(await optOutOfProgram(c.var.apiKey.id, body.programType)) });
 	},
 );

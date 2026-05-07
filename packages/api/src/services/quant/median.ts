@@ -10,6 +10,34 @@ function cmp(a: number, b: number): number {
 }
 
 /**
+ * Bayes-Stein shrinkage of a sample mean toward a prior. Pulls the
+ * sample estimate toward the prior in proportion to how thin the
+ * sample is — exactly the reseller's intuition that "1 sale isn't a
+ * market; lean on a different anchor when you don't have comps."
+ *
+ *   λ           = n / (n + κ)
+ *   shrunken    = λ · sample + (1 − λ) · prior
+ *
+ * Anchors with κ=5:
+ *   - n=0    → 100% prior (no sample at all)
+ *   - n=1    → 17% / 83%   (one comp barely shifts off the prior)
+ *   - n=5    → 50 / 50
+ *   - n=20   → 80 / 20     (sample dominates)
+ *   - n=100  → 95 / 5      (asymptotically sample-only)
+ *
+ * κ is calibratable: smaller = trust thin samples sooner, larger =
+ * lean longer on the prior. κ=5 was chosen against 157 stored
+ * evaluations (see scripts/audit-enet-liquidity.ts) — collapses
+ * single-auction false positives without regressing healthy n≥30
+ * cases. Returns the prior verbatim on n=0 (sample is unusable).
+ */
+export function shrinkPosteriorMean(n: number, sample: number, prior: number, kappa: number): number {
+	if (n <= 0 || !Number.isFinite(sample)) return Math.round(prior);
+	const lambda = n / (n + kappa);
+	return Math.round(lambda * sample + (1 - lambda) * prior);
+}
+
+/**
  * Compute the unweighted median of a numeric array. Returns null if the
  * input is empty. Uses the conventional definition: average of the two
  * middle values when length is even.

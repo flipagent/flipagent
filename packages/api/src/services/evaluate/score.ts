@@ -27,10 +27,10 @@ export interface ScoreInput {
 	cancelCheck?: () => Promise<void>;
 }
 
-export async function scoreFromDigest(input: ScoreInput): Promise<{ evaluation: unknown }> {
+export async function scoreFromDigest(input: ScoreInput): Promise<{ evaluation: unknown; evaluationAll: unknown }> {
 	const { digest, opts, itemId, onStep, cancelCheck } = input;
 
-	const evaluation = await withStep(
+	const result = await withStep(
 		{
 			key: "evaluate",
 			label: "Evaluate",
@@ -39,18 +39,37 @@ export async function scoreFromDigest(input: ScoreInput): Promise<{ evaluation: 
 			cancelCheck,
 		},
 		async () => {
+			// Default view — suspicious comps already excluded from
+			// `matchedSold` / `matchedActive` upstream.
 			const ev = await evaluateWithContext(digest.item as ItemSummary, {
 				...opts,
 				sold: digest.matchedSold,
 				asks: digest.matchedActive,
 			});
+			// Toggle view — same scoring against the full pool. The UI's
+			// "show suspicious" switch flips display + headline numbers
+			// (recommended exit, expected net, queue position) in lockstep
+			// with which comps are visible. Pure quant math; no extra IO
+			// because the duration-enriched dates ride along on the comp
+			// objects from the first call.
+			const evAll = await evaluateWithContext(digest.item as ItemSummary, {
+				...opts,
+				sold: digest.matchedSoldAll,
+				asks: digest.matchedActiveAll,
+			});
 			// Hydrate the verdict card the moment scoring resolves —
 			// don't make the UI wait for the route's terminal `done`
 			// event to render BUY/HOLD/SKIP + expected net.
-			emitPartial(onStep, { evaluation: ev as EvaluatePartial["evaluation"] });
-			return { value: ev, result: { evaluation: ev, market: digest.market } };
+			emitPartial(onStep, {
+				evaluation: ev as EvaluatePartial["evaluation"],
+				evaluationAll: evAll as EvaluatePartial["evaluation"],
+			});
+			return {
+				value: { evaluation: ev, evaluationAll: evAll },
+				result: { evaluation: ev, evaluationAll: evAll, market: digest.market },
+			};
 		},
 	);
 
-	return { evaluation };
+	return result;
 }

@@ -6,8 +6,6 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { ResponseSource } from "./_common.js";
-
 export const NotificationSubscription = Type.Object(
 	{
 		id: Type.String(),
@@ -31,7 +29,7 @@ export const NotificationSubscriptionCreate = Type.Object(
 export type NotificationSubscriptionCreate = Static<typeof NotificationSubscriptionCreate>;
 
 export const NotificationSubscriptionsListResponse = Type.Object(
-	{ subscriptions: Type.Array(NotificationSubscription), source: Type.Optional(ResponseSource) },
+	{ subscriptions: Type.Array(NotificationSubscription) },
 	{ $id: "NotificationSubscriptionsListResponse" },
 );
 export type NotificationSubscriptionsListResponse = Static<typeof NotificationSubscriptionsListResponse>;

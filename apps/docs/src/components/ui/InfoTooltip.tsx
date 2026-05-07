@@ -1,46 +1,24 @@
 /**
- * InfoTooltip — shadcn-style info hint built on @radix-ui/react-tooltip.
- *
- * Renders a small ⓘ trigger that opens a styled popup on hover/focus.
- * Provider lives at module scope so multiple tooltips share one
- * delay-duration timer (matches the shadcn/Radix recommended setup).
+ * InfoTooltip — shadcn-style info hint. Renders a small ⓘ trigger that
+ * opens the standard `<Tooltip>` popup on hover/focus.
  *
  * Usage:
  *   <InfoTooltip>Explanation text here.</InfoTooltip>
  *
- * The styled popup classes (`ui-info-tooltip`, `ui-info-tooltip-trigger`)
- * live in `ui.css` so the visual weight (size, contrast, shadow) is
- * tunable without touching component code.
+ * For tooltips on existing elements (cells, pills, prices), wrap with
+ * the underlying `<Tooltip content={…}>` directly — this component is
+ * specifically the "ⓘ-icon next to a label" idiom.
  */
 
-import * as RxTooltip from "@radix-ui/react-tooltip";
+import { Tooltip } from "./Tooltip";
 
 export function InfoTooltip({ children }: { children: React.ReactNode }) {
 	return (
-		<RxTooltip.Provider delayDuration={150}>
-			<RxTooltip.Root>
-				<RxTooltip.Trigger asChild>
-					<button
-						type="button"
-						className="ui-info-tooltip-trigger"
-						aria-label="More info"
-					>
-						<InfoIcon />
-					</button>
-				</RxTooltip.Trigger>
-				<RxTooltip.Portal>
-					<RxTooltip.Content
-						side="top"
-						align="center"
-						sideOffset={6}
-						className="ui-info-tooltip"
-					>
-						{children}
-						<RxTooltip.Arrow className="ui-info-tooltip-arrow" />
-					</RxTooltip.Content>
-				</RxTooltip.Portal>
-			</RxTooltip.Root>
-		</RxTooltip.Provider>
+		<Tooltip content={children}>
+			<button type="button" className="ui-info-tooltip-trigger" aria-label="More info">
+				<InfoIcon />
+			</button>
+		</Tooltip>
 	);
 }
 

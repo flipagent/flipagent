@@ -258,7 +258,16 @@ export const AdminEvaluationRow = Type.Object(
 		successNetCents: Type.Union([Type.Integer(), Type.Null()]),
 		maxLossCents: Type.Union([Type.Integer(), Type.Null()]),
 		medianSoldCents: Type.Integer(),
+		/** Number of sold comparables in the cohort (post-IQR filter).
+		 *  Critical reseller gut-check: a +$30 E[net] computed off n=1 is
+		 *  noise; the same number off n=40 is signal. Surface alongside
+		 *  median so the operator can read the sample weight at a glance. */
+		nSold: Type.Integer(),
 		salesPerDay: Type.Number(),
+		/** Active asks count (size of the post-purchase queue we'd join).
+		 *  Combined with `salesPerDay` gives the reseller "how saturated
+		 *  is this category?" without needing to open the drawer. */
+		nActive: Type.Integer(),
 		expectedDaysToSell: Type.Union([Type.Number(), Type.Null()]),
 		recommendedListPriceCents: Type.Union([Type.Integer(), Type.Null()]),
 		/** Probability of fraud / not-as-described, derived from seller

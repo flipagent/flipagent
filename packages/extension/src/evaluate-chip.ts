@@ -262,6 +262,13 @@ function findBuyboxAnchor(): HTMLElement | null {
 		'[data-testid="x-bin-action"]',
 		'[data-testid="d-binbtn"]',
 		"#x-bin-action",
+		// Auction listings — primary CTA is Place Bid, not BIN. Same buybox
+		// position as binBtn_btn so the chip drops in cleanly above it.
+		'button[id^="bidBtn_btn"]',
+		'a[id^="bidBtn_btn"]',
+		'[data-testid="x-bid-action"]',
+		'[data-testid="d-bidbtn"]',
+		"#x-bid-action",
 		'a[id^="atcBtn_btn"]',
 		'[data-testid="x-atc-action"]',
 		'[data-testid="d-atcbtn"]',

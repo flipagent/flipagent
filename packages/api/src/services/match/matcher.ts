@@ -87,8 +87,15 @@ function summariseForTriage(item: ItemSummary): string {
 	const parts: string[] = [];
 	parts.push(`title: ${item.title}`);
 	if (item.condition) parts.push(`condition: ${item.condition}`);
-	const price = item.lastSoldPrice?.value ?? item.price?.value;
-	if (price) parts.push(`price: $${price}`);
+	// Price intentionally omitted. The matcher decides product identity only;
+	// price-based fraud / "too cheap to be real" reasoning belongs to the
+	// downstream `evaluate/suspicious.ts` filter (Bayesian P_fraud over
+	// seller feedback + price-anomaly vs trust-weighted market median).
+	// Showing price here primes the LLM to rationalize low-price comps as
+	// "different model" — the BoomX seed showed this exact failure mode
+	// (same title, $70 → match with reason "Pro often omitted", $79 →
+	// reject with reason "model differs"; the only differentiator was
+	// price).
 	return parts.join(" | ");
 }
 
@@ -355,12 +362,10 @@ function summariseDetail(d: DetailLike): string {
 	}
 	if (typeof d.lotSize === "number" && d.lotSize > 1) lines.push(`lotSize: ${d.lotSize} units`);
 	if (d.categoryPath) lines.push(`category: ${d.categoryPath}`);
-	if (d.price) lines.push(`price: $${d.price.value}`);
-	if (d.marketingPrice?.originalPrice?.value) {
-		const op = d.marketingPrice.originalPrice.value;
-		const pct = d.marketingPrice.discountPercentage ? ` (${d.marketingPrice.discountPercentage}% off)` : "";
-		lines.push(`marketingPrice: was $${op}${pct}`);
-	}
+	// Top-level price + marketingPrice intentionally omitted — see
+	// `summariseForTriage` for rationale. Variation-level aspects below
+	// stay (without prices) so multi-SKU listings still expose the
+	// seed's specific variant for confirmation per Rule 3.
 	if (d.localizedAspects && d.localizedAspects.length > 0) {
 		lines.push("aspects:");
 		for (const a of d.localizedAspects) lines.push(`  - ${a.name}: ${a.value}`);
@@ -371,16 +376,15 @@ function summariseDetail(d: DetailLike): string {
 	if (d.shortDescription) {
 		lines.push(`description: ${d.shortDescription.slice(0, 300)}`);
 	}
-	// Multi-SKU listings: list every variation as one line — `axis: value`
-	// for each axis, plus the variation's own price. Lets the LLM pick the
-	// SKU the seed actually matches (by price tier or stated variation
-	// aspects), and reject when the seed's variation isn't represented.
+	// Multi-SKU listings: list every variation as one line by aspects only —
+	// per-variation price omitted to keep the matcher off price reasoning.
+	// Lets the LLM see whether the seed's variant exists inside this listing
+	// (Rule 3 path 2) without leaking absolute price as a signal.
 	if (d.variations && d.variations.length > 0) {
 		lines.push(`variations (${d.variations.length} SKUs in this listing):`);
 		for (const v of d.variations) {
 			const aspectStr = v.aspects.map((a) => `${a.name}: ${a.value}`).join(", ");
-			const priceStr = v.priceCents != null ? `$${(v.priceCents / 100).toFixed(2)}` : "n/a";
-			lines.push(`  - ${aspectStr || "(no aspect)"} — ${priceStr}`);
+			lines.push(`  - ${aspectStr || "(no aspect)"}`);
 		}
 	}
 	return lines.join("\n");

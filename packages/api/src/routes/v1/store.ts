@@ -32,7 +32,7 @@ storeRoute.get(
 	withTradingAuth(async (c, accessToken) => {
 		const r = await getStoreInfo({ apiKeyId: c.var.apiKey.id, marketplace: ebayMarketplaceId() }, accessToken);
 		if (!r) return c.json({ error: "store_not_found", message: "No eBay Store on this account." }, 404);
-		return c.json({ ...r, source: "trading" as const });
+		return c.json({ ...r });
 	}),
 );
 
@@ -50,7 +50,6 @@ storeRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		}),
 );
 
@@ -69,6 +68,5 @@ storeRoute.put(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		}),
 );

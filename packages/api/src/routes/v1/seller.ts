@@ -55,7 +55,7 @@ sellerRoute.get(
 		responses: { 200: jsonResponse("Privilege.", SellerPrivilege), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await getSellerPrivilege({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await getSellerPrivilege({ apiKeyId: c.var.apiKey.id })) }),
 );
 
 sellerRoute.get(
@@ -66,7 +66,7 @@ sellerRoute.get(
 		responses: { 200: jsonResponse("KYC.", SellerKyc), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await getSellerKyc({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await getSellerKyc({ apiKeyId: c.var.apiKey.id })) }),
 );
 
 sellerRoute.get(
@@ -77,7 +77,7 @@ sellerRoute.get(
 		responses: { 200: jsonResponse("Subscriptions.", SellerSubscription), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await getSellerSubscription({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await getSellerSubscription({ apiKeyId: c.var.apiKey.id })) }),
 );
 
 sellerRoute.get(
@@ -94,7 +94,6 @@ sellerRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		}),
 );
 
@@ -112,7 +111,6 @@ sellerRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		}),
 );
 
@@ -127,7 +125,6 @@ sellerRoute.get(
 	async (c) =>
 		c.json({
 			...(await getSalesTax(c.req.param("country"), { apiKeyId: c.var.apiKey.id })),
-			source: "rest" as const,
 		}),
 );
 
@@ -144,7 +141,7 @@ sellerRoute.put(
 	async (c) => {
 		const body = (await c.req.json()) as { salesTaxPercentage: number; shippingAndHandlingTaxed?: boolean };
 		await upsertSalesTax(c.req.param("country"), c.req.param("jurisdiction"), body, { apiKeyId: c.var.apiKey.id });
-		return c.json({ ok: true, source: "rest" as const });
+		return c.json({ ok: true });
 	},
 );
 
@@ -158,7 +155,7 @@ sellerRoute.delete(
 	requireApiKey,
 	async (c) => {
 		await deleteSalesTax(c.req.param("country"), c.req.param("jurisdiction"), { apiKeyId: c.var.apiKey.id });
-		return c.json({ ok: true, source: "rest" as const });
+		return c.json({ ok: true });
 	},
 );
 
@@ -174,7 +171,7 @@ sellerRoute.get(
 		responses: { 200: jsonResponse("Payout settings.", PayoutSettings), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await getPayoutSettings({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await getPayoutSettings({ apiKeyId: c.var.apiKey.id })) }),
 );
 
 sellerRoute.post(
@@ -193,7 +190,7 @@ sellerRoute.post(
 		const r = await updatePayoutPercentage((body.raw as Record<string, unknown>) ?? {}, {
 			apiKeyId: c.var.apiKey.id,
 		});
-		return c.json({ raw: r.raw, source: "rest" as const });
+		return c.json({ raw: r.raw });
 	},
 );
 
@@ -208,8 +205,7 @@ sellerRoute.get(
 		responses: { 200: jsonResponse("Rate table.", RateTableV2Response), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) =>
-		c.json({ ...(await getRateTableV2(c.req.param("id"), { apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await getRateTableV2(c.req.param("id"), { apiKeyId: c.var.apiKey.id })) }),
 );
 
 sellerRoute.post(
@@ -228,6 +224,6 @@ sellerRoute.post(
 		const r = await updateRateTableShippingCost(c.req.param("id"), (body.raw as Record<string, unknown>) ?? {}, {
 			apiKeyId: c.var.apiKey.id,
 		});
-		return c.json({ id: c.req.param("id"), raw: r.raw, source: "rest" as const });
+		return c.json({ id: c.req.param("id"), raw: r.raw });
 	},
 );

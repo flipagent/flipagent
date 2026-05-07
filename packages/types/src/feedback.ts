@@ -5,7 +5,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Page } from "./_common.js";
 
 export const FeedbackRating = Type.Union(
 	[Type.Literal("positive"), Type.Literal("neutral"), Type.Literal("negative")],
@@ -55,8 +55,7 @@ export const FeedbackListQuery = Type.Object(
 );
 export type FeedbackListQuery = Static<typeof FeedbackListQuery>;
 
-export const FeedbackListResponse = Type.Composite(
-	[Page, Type.Object({ feedback: Type.Array(Feedback), source: Type.Optional(ResponseSource) })],
-	{ $id: "FeedbackListResponse" },
-);
+export const FeedbackListResponse = Type.Composite([Page, Type.Object({ feedback: Type.Array(Feedback) })], {
+	$id: "FeedbackListResponse",
+});
 export type FeedbackListResponse = Static<typeof FeedbackListResponse>;

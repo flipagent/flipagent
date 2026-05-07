@@ -169,4 +169,91 @@ describe("assessRisk (Bayesian P_fraud)", () => {
 		expect(r.withinReturnWindow).toBe(false);
 		expect(r.maxLossCents).toBe(50000);
 	});
+
+	describe("authenticityGuaranteed", () => {
+		// Active SRP cards on AG categories (luxury watches, sneakers,
+		// handbags) usually omit the seller-feedback line entirely; the
+		// AG badge replaces it. Without the override, missing seller
+		// fields read as zero-trust, the price-anomaly BF stays untempered,
+		// and a deeply-discounted listing scores ~57% fraud risk on noise.
+		it("AG + missing seller + 50%-of-median price → low P (badge overrides anonymity)", () => {
+			const r = assessRisk({
+				// no sellerFeedbackScore / sellerFeedbackPercent
+				buyPriceCents: 89_000, // $890
+				acceptsReturns: true,
+				returnWindowDays: 30,
+				returnShipPaidBy: "seller",
+				expectedDaysToSell: 19,
+				marketMedianCents: 164_728, // $1647 — r ≈ 0.54
+				marketStdDevCents: 19_502,
+				authenticityGuaranteed: true,
+			});
+			// Without AG: same inputs would produce ~57% (Breitling case).
+			// With AG: candidateTrust=1 collapses temperedBF→1, leaving the
+			// posterior at the no-data Beta prior (~5%).
+			expect(r.P_fraud).toBeLessThan(0.1);
+		});
+
+		it("AG flag does NOT override real bad-feedback signal", () => {
+			// AG eligibility is upstream of price; it doesn't whitewash a
+			// genuinely sketchy seller record. Posterior over the feedback
+			// fields still drives P_fraud — AG only suppresses the price
+			// evidence.
+			const noAg = assessRisk({
+				sellerFeedbackScore: 100,
+				sellerFeedbackPercent: 90, // 10% negative
+				buyPriceCents: 50_000,
+				acceptsReturns: false,
+				expectedDaysToSell: 10,
+			});
+			const withAg = assessRisk({
+				sellerFeedbackScore: 100,
+				sellerFeedbackPercent: 90,
+				buyPriceCents: 50_000,
+				acceptsReturns: false,
+				expectedDaysToSell: 10,
+				authenticityGuaranteed: true,
+			});
+			// With or without AG, posterior over 10/100 negatives should
+			// stay materially > prior. AG flag drops the price BF (= 1 here
+			// anyway since no median supplied) but does not erase feedback.
+			expect(noAg.P_fraud).toBeGreaterThan(0.1);
+			expect(withAg.P_fraud).toBeGreaterThan(0.1);
+			// Same inputs minus price BF → identical posterior.
+			expect(Math.abs(noAg.P_fraud - withAg.P_fraud)).toBeLessThan(1e-9);
+		});
+
+		it("AG + low price + good seller behaves the same as good seller alone", () => {
+			// Symmetric companion to the previous test: trusted-seller
+			// already tempers the BF to ~1, so AG flag adds nothing
+			// numerically. Asserts AG never DECREASES trust.
+			const trusted = assessRisk({
+				sellerFeedbackScore: 14_847,
+				sellerFeedbackPercent: 99.7,
+				buyPriceCents: 89_000,
+				acceptsReturns: true,
+				returnWindowDays: 30,
+				returnShipPaidBy: "seller",
+				expectedDaysToSell: 19,
+				marketMedianCents: 164_728,
+				marketStdDevCents: 19_502,
+			});
+			const trustedPlusAg = assessRisk({
+				sellerFeedbackScore: 14_847,
+				sellerFeedbackPercent: 99.7,
+				buyPriceCents: 89_000,
+				acceptsReturns: true,
+				returnWindowDays: 30,
+				returnShipPaidBy: "seller",
+				expectedDaysToSell: 19,
+				marketMedianCents: 164_728,
+				marketStdDevCents: 19_502,
+				authenticityGuaranteed: true,
+			});
+			// Trusted alone is already ≈ AG-protected — both should land
+			// near the seller-feedback prior, well below 1%.
+			expect(trusted.P_fraud).toBeLessThan(0.01);
+			expect(trustedPlusAg.P_fraud).toBeLessThanOrEqual(trusted.P_fraud);
+		});
+	});
 });

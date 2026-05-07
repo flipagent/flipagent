@@ -56,7 +56,6 @@ export async function listAdCampaigns(
 		campaigns: (res?.campaigns ?? []).map(ebayCampaignToFlipagent),
 		limit,
 		offset,
-		source: "rest",
 	};
 }
 

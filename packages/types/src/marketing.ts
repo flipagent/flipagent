@@ -4,7 +4,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Money, Page } from "./_common.js";
 
 /* ----------------------------- Promotions ---------------------------- */
 
@@ -77,10 +77,9 @@ export const PromotionCreate = Type.Object(
 );
 export type PromotionCreate = Static<typeof PromotionCreate>;
 
-export const PromotionsListResponse = Type.Composite(
-	[Page, Type.Object({ promotions: Type.Array(Promotion), source: Type.Optional(ResponseSource) })],
-	{ $id: "PromotionsListResponse" },
-);
+export const PromotionsListResponse = Type.Composite([Page, Type.Object({ promotions: Type.Array(Promotion) })], {
+	$id: "PromotionsListResponse",
+});
 export type PromotionsListResponse = Static<typeof PromotionsListResponse>;
 
 /* ------------------------------- Ads --------------------------------- */
@@ -131,10 +130,9 @@ export const Ad = Type.Object(
 );
 export type Ad = Static<typeof Ad>;
 
-export const AdsListResponse = Type.Composite(
-	[Page, Type.Object({ campaigns: Type.Array(AdCampaign), source: Type.Optional(ResponseSource) })],
-	{ $id: "AdsListResponse" },
-);
+export const AdsListResponse = Type.Composite([Page, Type.Object({ campaigns: Type.Array(AdCampaign) })], {
+	$id: "AdsListResponse",
+});
 export type AdsListResponse = Static<typeof AdsListResponse>;
 
 export const AdCampaignCreate = Type.Object(
@@ -219,7 +217,6 @@ export const BulkAdsResponse = Type.Object(
 				errors: Type.Optional(Type.Unknown()),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "BulkAdsResponse" },
 );
@@ -265,7 +262,7 @@ export const PriceMarkdownCreate = Type.Object(
 export type PriceMarkdownCreate = Static<typeof PriceMarkdownCreate>;
 
 export const PriceMarkdownsListResponse = Type.Composite(
-	[Page, Type.Object({ markdowns: Type.Array(PriceMarkdown), source: Type.Optional(ResponseSource) })],
+	[Page, Type.Object({ markdowns: Type.Array(PriceMarkdown) })],
 	{ $id: "PriceMarkdownsListResponse" },
 );
 export type PriceMarkdownsListResponse = Static<typeof PriceMarkdownsListResponse>;
@@ -299,10 +296,7 @@ export const AdGroupCreate = Type.Object(
 );
 export type AdGroupCreate = Static<typeof AdGroupCreate>;
 
-export const AdGroupsListResponse = Type.Object(
-	{ groups: Type.Array(AdGroup), source: Type.Optional(ResponseSource) },
-	{ $id: "AdGroupsListResponse" },
-);
+export const AdGroupsListResponse = Type.Object({ groups: Type.Array(AdGroup) }, { $id: "AdGroupsListResponse" });
 export type AdGroupsListResponse = Static<typeof AdGroupsListResponse>;
 
 /* ----------------------------- Reports ------------------------------- */
@@ -348,7 +342,7 @@ export const ReportTaskCreate = Type.Object(
 export type ReportTaskCreate = Static<typeof ReportTaskCreate>;
 
 export const ReportTasksListResponse = Type.Object(
-	{ tasks: Type.Array(ReportTask), source: Type.Optional(ResponseSource) },
+	{ tasks: Type.Array(ReportTask) },
 	{ $id: "ReportTasksListResponse" },
 );
 export type ReportTasksListResponse = Static<typeof ReportTasksListResponse>;
@@ -357,7 +351,6 @@ export const ReportMetadata = Type.Object(
 	{
 		dimensions: Type.Array(Type.Object({ name: Type.String(), description: Type.Optional(Type.String()) })),
 		metrics: Type.Array(Type.Object({ name: Type.String(), description: Type.Optional(Type.String()) })),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ReportMetadata" },
 );

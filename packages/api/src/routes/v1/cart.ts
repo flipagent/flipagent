@@ -39,7 +39,6 @@ cartRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		}),
 );
 
@@ -58,7 +57,6 @@ cartRoute.post(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		}),
 );
 
@@ -78,7 +76,6 @@ cartRoute.patch(
 				{ cartItemId: c.req.param("cartItemId"), quantity: body.quantity },
 				{ apiKeyId: c.var.apiKey.id, marketplace: ebayMarketplaceId() },
 			)),
-			source: "rest" as const,
 		});
 	},
 );
@@ -97,6 +94,5 @@ cartRoute.delete(
 				{ cartItemId: c.req.param("cartItemId") },
 				{ apiKeyId: c.var.apiKey.id, marketplace: ebayMarketplaceId() },
 			)),
-			source: "rest" as const,
 		}),
 );

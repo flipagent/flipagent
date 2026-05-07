@@ -1,37 +1,23 @@
 /**
  * `/v1/bids/*` — buyer-side proxy bidding.
+ *
+ * Same contract as `/v1/purchases`: terminal status (the bid is on
+ * file with eBay) or non-terminal with `nextAction.url` (open the URL
+ * for the user to click Place Bid on the marketplace UI). The server
+ * picks how the bid flows internally; the response shape is identical.
  */
 
 import { BidCreate, BidsListResponse } from "@flipagent/types";
-import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { isExtensionPaired } from "../../auth/bridge-tokens.js";
 import { requireApiKey } from "../../middleware/auth.js";
 import { BidError, cancelBid, getBidStatus, listBids, placeBid } from "../../services/bids.js";
-import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
 export const bidsRoute = new Hono();
 
 const COMMON = { 401: errorResponse("Auth missing.") };
-
-/**
- * `BidError` carries `nextActionKind` when the Buy Offer (Bidding) API
- * isn't approved on this tenant. Build the absolute remediation URL
- * from the request origin so self-hosted deploys point at their own
- * `/v1/health`, not api.flipagent.dev.
- */
-function bidErrorBody(c: Context, err: BidError) {
-	if (err.nextActionKind) {
-		return {
-			error: err.code,
-			message: err.message,
-			next_action: nextAction(c, err.nextActionKind),
-		};
-	}
-	return { error: err.code, message: err.message };
-}
 
 bidsRoute.get(
 	"/",
@@ -45,11 +31,7 @@ bidsRoute.get(
 		},
 	}),
 	requireApiKey,
-	async (c) =>
-		c.json({
-			...(await listBids({ apiKeyId: c.var.apiKey.id, userId: c.var.apiKey.userId })),
-			source: "rest" as const,
-		}),
+	async (c) => c.json(await listBids({ apiKeyId: c.var.apiKey.id, userId: c.var.apiKey.userId })),
 );
 
 bidsRoute.post(
@@ -58,11 +40,10 @@ bidsRoute.post(
 		tags: ["Bids"],
 		summary: "Place a (proxy) bid on an auction",
 		description:
-			"Three transports — REST (Buy Offer Limited Release, gated by `EBAY_BIDDING_APPROVED=1`), bridge (paired Chrome extension drives the click in the buyer's logged-in session), and url (deeplink — response carries `nextAction.url` pointing at the ebay.com listing for the user to click Place Bid). Auto-picks REST → bridge (if paired) → url. Override with `transport`.",
+			"Place a proxy bid. The response is either terminal (bid is on file with eBay) or non-terminal with `nextAction.url` (direct the user to that URL to click Place Bid on the marketplace UI, then poll `GET /v1/bids/{listingId}`). Either way the response shape is identical.",
 		responses: {
 			201: jsonResponse("Created.", BidCreate),
-			412: errorResponse("No transport available."),
-			502: errorResponse("Bridge bid placement failed."),
+			502: errorResponse("Upstream marketplace failed."),
 			504: errorResponse("Bridge client did not respond in time."),
 			...COMMON,
 		},
@@ -81,7 +62,8 @@ bidsRoute.post(
 				201,
 			);
 		} catch (err) {
-			if (err instanceof BidError) return c.json(bidErrorBody(c, err), err.status as 412);
+			if (err instanceof BidError)
+				return c.json({ error: err.code, message: err.message }, err.status as 412 | 502 | 504);
 			throw err;
 		}
 	},
@@ -95,8 +77,7 @@ bidsRoute.get(
 		responses: {
 			200: { description: "Bid." },
 			404: errorResponse("Not found."),
-			412: errorResponse("No transport available."),
-			502: errorResponse("Bridge bid status read failed."),
+			502: errorResponse("Upstream marketplace failed."),
 			504: errorResponse("Bridge client did not respond in time."),
 			...COMMON,
 		},
@@ -113,7 +94,8 @@ bidsRoute.get(
 			if (!r) return c.json({ error: "no_bid" }, 404);
 			return c.json(r);
 		} catch (err) {
-			if (err instanceof BidError) return c.json(bidErrorBody(c, err), err.status as 412);
+			if (err instanceof BidError)
+				return c.json({ error: err.code, message: err.message }, err.status as 412 | 502 | 504);
 			throw err;
 		}
 	},
@@ -123,9 +105,9 @@ bidsRoute.post(
 	"/:listingId/cancel",
 	describeRoute({
 		tags: ["Bids"],
-		summary: "Cancel an in-flight bridge bid for this listing",
+		summary: "Cancel an in-flight bid for this listing",
 		description:
-			"Cancels the most recent bridge place-bid job that's still queued / claimed / placing for this listing. Cannot retract a bid that already landed on eBay (eBay's retraction rules are narrow and require a manual ebay.com flow). Returns the cancelled Bid, or 404 if there's no in-flight job.",
+			"Cancels the most recent place-bid tracking row that's still queued / claimed / placing for this listing. Cannot retract a bid that already landed on eBay (eBay's retraction rules are narrow and require a manual ebay.com flow). Returns the cancelled Bid, or 404 if there's no in-flight job.",
 		responses: {
 			200: { description: "Bid (now cancelled)." },
 			404: errorResponse("No in-flight bid for this listing."),

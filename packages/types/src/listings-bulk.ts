@@ -4,7 +4,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Money, ResponseSource } from "./_common.js";
+import { Money } from "./_common.js";
 import { ListingAspects, ListingCondition, ListingPolicies } from "./listings.js";
 
 /* ----- bulk price/quantity update ------------------------------------ */
@@ -73,7 +73,6 @@ export const ListingBulkResult = Type.Object(
 				),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ListingBulkResult" },
 );
@@ -121,7 +120,6 @@ export const ListingGroup = Type.Object(
 		// Read them from the linked SKU's inventory_item instead.
 		subtitle: Type.Optional(Type.String()),
 		videoIds: Type.Optional(Type.Array(Type.String())),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ListingGroup" },
 );
@@ -179,7 +177,6 @@ export const ListingMigrateResult = Type.Object(
 				errors: Type.Optional(Type.Array(Type.Object({ message: Type.String() }))),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ListingMigrateResult" },
 );

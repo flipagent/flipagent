@@ -152,7 +152,8 @@ export function pickProvider(): LlmProvider {
 	};
 }
 
-/** True when at least one LLM provider key is set. Used by /v1/health/features. */
+/** True when at least one LLM provider key is set. Used by the
+ * same-product matcher to decide whether to short-circuit. */
 export function isAnyLlmConfigured(): boolean {
 	return Boolean(config.ANTHROPIC_API_KEY || config.OPENAI_API_KEY || config.GOOGLE_API_KEY);
 }

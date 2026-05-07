@@ -157,7 +157,7 @@ describe("evaluate", () => {
 	it("populates bidCeilingCents and netRangeCents when sold pool suffices", () => {
 		const v = evaluate(summary({ price: { value: "60.00", currency: "USD" } }), {
 			sold: SOLD, // 5 sold listings clustered at $115–125
-			minNetCents: 0, // pin to break-even so the ceiling math is independent of the $30 default floor
+			minNetCents: 0, // pin to break-even so the ceiling math is independent of any future floor changes
 		});
 		// Bid ceiling: invert mean (~$120) ⇒ ceiling > buy price ($65) for trade to clear.
 		expect(v.bidCeilingCents).not.toBeNull();
@@ -178,6 +178,61 @@ describe("evaluate", () => {
 		const v = evaluate(summary(), {});
 		expect(v.bidCeilingCents).toBeNull();
 		expect(v.netRangeCents).toBeNull();
+	});
+
+	it("shrinks the sale-price anchor toward an ask floor when n is small", () => {
+		// One pricey "comp" + a low active ask: a reseller looking at this
+		// would not anchor on the lone $400 sale. Bayes-Stein shrinkage
+		// pulls the anchor toward the ask floor when the sample is thin.
+		// At n=1, λ=1/(1+5)≈0.17 → ~83% weight on the ask prior.
+		const oneSold: ItemSummary[] = [
+			summary({ itemId: "c1", price: { value: "400.00", currency: "USD" }, lastSoldDate: "2026-04-20T00:00:00Z" }),
+		];
+		const cheapAsk: ItemSummary[] = [summary({ itemId: "a1", price: { value: "180.00", currency: "USD" } })];
+		const v = evaluate(summary({ price: { value: "180.00", currency: "USD" } }), {
+			sold: oneSold,
+			asks: cheapAsk,
+			outboundShippingCents: 0,
+		});
+		// Reseller decision: skip — n=1 isn't a market. Insufficient-data
+		// gate fires below MIN_SOLD_FOR_RATING=6.
+		expect(v.rating).toBe("skip");
+		expect(v.reasonCode).toBe("insufficient_data");
+		// Critical: the recommended list price must collapse toward the
+		// ask floor, not the lone-sale median. Without shrinkage this
+		// would land near $400; with shrinkage it lands much closer to $180.
+		expect(v.recommendedExit?.listPriceCents).toBeLessThan(30000);
+		// And expectedNet is no longer wildly positive — the listing
+		// can no longer claim a +$100 trade off a single auction.
+		expect(v.expectedNetCents).toBeLessThan(5000);
+	});
+
+	it("NPV-discounts the inflow when the cycle is years long (capital lockup is real)", () => {
+		// Synthetic: tight sold pool but salesPerDay so low that
+		// expectedDaysToSell explodes — the buy→cash cycle drags into
+		// years. The discount factor must drag E[net] toward −buy
+		// (capital essentially evaporates), NOT toward zero (which would
+		// make slow losses look LESS bad than fast losses — backwards).
+		const longAgo = "2024-01-01T00:00:00Z"; // sold ~2y before today, kills salesPerDay
+		const ancientPool: ItemSummary[] = Array.from({ length: 8 }, (_, i) =>
+			summary({
+				itemId: `old${i}`,
+				price: { value: "120.00", currency: "USD" },
+				lastSoldDate: longAgo,
+			}),
+		);
+		const slow = evaluate(summary({ price: { value: "60.00", currency: "USD" } }), {
+			sold: ancientPool,
+			outboundShippingCents: 0,
+		});
+		const fast = evaluate(summary({ price: { value: "60.00", currency: "USD" } }), {
+			sold: SOLD,
+			outboundShippingCents: 0,
+		});
+		// Slow market should grade strictly worse than the fast one — same
+		// item economics, just locked-up capital. This is the property
+		// that the previous (1−P_F)·net − P_F·maxLoss model violated.
+		expect(slow.expectedNetCents).toBeLessThan(fast.expectedNetCents);
 	});
 });
 

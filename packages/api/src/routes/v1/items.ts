@@ -50,7 +50,7 @@ itemsRoute.post(
 	}),
 	requireApiKey,
 	tbBody(CompatibilityCheckRequest),
-	async (c) => c.json({ ...(await checkCompatibility(c.req.valid("json"))), source: "rest" as const }),
+	async (c) => c.json({ ...(await checkCompatibility(c.req.valid("json"))) }),
 );
 
 itemsRoute.post(
@@ -86,7 +86,7 @@ itemsRoute.get(
 			412: errorResponse("Configured source unavailable (e.g. bridge not paired)."),
 			429: errorResponse("Tier monthly limit reached."),
 			502: errorResponse("Upstream marketplace or bridge transport failed."),
-			503: errorResponse("Required source not configured (e.g. status=sold without EBAY_INSIGHTS_APPROVED)."),
+			503: errorResponse("Required source not configured on this server."),
 		},
 	}),
 	requireApiKey,
@@ -158,9 +158,6 @@ itemsRoute.get(
 				limit: result.body.limit ?? query.limit ?? 50,
 				offset: result.body.offset ?? query.offset ?? 0,
 				...(result.body.total !== undefined ? { total: result.body.total } : {}),
-				source: result.fromCache
-					? (`cache:${result.source}` as ItemSearchResponse["source"])
-					: (result.source as ItemSearchResponse["source"]),
 			};
 			return c.json(body);
 		} catch (err) {
@@ -215,13 +212,7 @@ itemsRoute.get(
 				return c.json({ error: "item_not_found", message: `No listing for id '${parsed.legacyId}'.` }, 404);
 			}
 			renderResultHeaders(c, result);
-			const item = ebayItemToFlipagent(result.body);
-			const body: ItemDetailResponse = {
-				...item,
-				source: result.fromCache
-					? (`cache:${result.source}` as ItemDetailResponse["source"])
-					: (result.source as ItemDetailResponse["source"]),
-			};
+			const body: ItemDetailResponse = ebayItemToFlipagent(result.body);
 			return c.json(body);
 		} catch (err) {
 			if (err instanceof ListingsError) {

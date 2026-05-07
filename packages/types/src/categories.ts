@@ -4,7 +4,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, ResponseSource } from "./_common.js";
+import { Marketplace } from "./_common.js";
 
 export const CategoryNode = Type.Object(
 	{
@@ -38,7 +38,6 @@ export type CategoriesListQuery = Static<typeof CategoriesListQuery>;
 export const CategoriesListResponse = Type.Object(
 	{
 		categories: Type.Array(CategoryNode),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "CategoriesListResponse" },
 );
@@ -67,7 +66,6 @@ export type CategorySuggestion = Static<typeof CategorySuggestion>;
 export const CategorySuggestResponse = Type.Object(
 	{
 		suggestions: Type.Array(CategorySuggestion),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "CategorySuggestResponse" },
 );
@@ -89,7 +87,6 @@ export const CategoryAspectsResponse = Type.Object(
 	{
 		categoryId: Type.String(),
 		aspects: Type.Array(CategoryAspect),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "CategoryAspectsResponse" },
 );
@@ -109,7 +106,6 @@ export const CategoryFetchItemAspectsResponse = Type.Object(
 				aspects: Type.Array(CategoryAspect),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "CategoryFetchItemAspectsResponse" },
 );

@@ -1,15 +1,15 @@
 /**
  * Shared header rendering for routes that return a `FlipagentResult`.
- * One canonical mapping from envelope → response headers:
+ * Emits cache state only — caller-actionable info ("you got stale data
+ * from cache" → caller can decide to retry):
  *
- *   X-Flipagent-Source      always set, the data origin
  *   X-Flipagent-From-Cache  "true" when fromCache, omitted otherwise
  *   X-Flipagent-Cached-At   ISO timestamp when fromCache
  *
- * Also stashes `result.source` in the Hono context as `flipagentSource`
- * for `usage_events.source` telemetry — pricing itself is now
- * transport-uniform (one credit cost per logical request, regardless
- * of scrape/rest/bridge), so the field is informational, not billing.
+ * Transport origin (`result.source`) is stashed in the Hono context as
+ * `flipagentSource` for internal telemetry (`usage_events.source`) but
+ * never emitted to the response — consumers shouldn't depend on which
+ * upstream pipe served them, and pricing is transport-uniform.
  *
  * Routes call this exactly once before `c.json(result.body)`.
  */
@@ -20,17 +20,16 @@ import type { FlipagentResult, SourceKind } from "./result.js";
 declare module "hono" {
 	interface ContextVariableMap {
 		/**
-		 * Origin transport of the response body, set by `renderResultHeaders`.
-		 * Read by `requireApiKey` to compute `credits_charged` per call. Stays
-		 * undefined for routes that don't return a `FlipagentResult` (e.g.
-		 * /v1/me/*, /v1/keys/*) — those have no upstream and bill 0.
+		 * Origin transport of the response body, stashed by
+		 * `renderResultHeaders` for internal telemetry only — never emitted
+		 * to the response. Stays undefined for routes that don't return a
+		 * `FlipagentResult` (e.g. /v1/me/*, /v1/keys/*).
 		 */
 		flipagentSource?: SourceKind;
 	}
 }
 
 export function renderResultHeaders<T>(c: Context, result: FlipagentResult<T>): void {
-	c.header("X-Flipagent-Source", result.source);
 	c.set("flipagentSource", result.source);
 	if (result.fromCache) {
 		c.header("X-Flipagent-From-Cache", "true");

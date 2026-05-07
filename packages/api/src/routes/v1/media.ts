@@ -63,7 +63,7 @@ mediaRoute.post(
 			201: { description: "Picture uploaded; URL ready to use in `imageUrls[]`." },
 			401: errorResponse("API key missing or eBay account not connected (POST /v1/connect/ebay)."),
 			502: errorResponse("Upstream eBay request failed."),
-			503: errorResponse("EBAY_CLIENT_ID/SECRET/RU_NAME unset on this api instance."),
+			503: errorResponse("This api instance does not have eBay configured."),
 		},
 	}),
 	requireApiKey,

@@ -34,7 +34,7 @@ violationsRoute.get(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -58,7 +58,7 @@ violationsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ok: true, source: "rest" as const } satisfies ViolationSuppressResponse);
+		return c.json({ ok: true } satisfies ViolationSuppressResponse);
 	},
 );
 
@@ -86,7 +86,6 @@ violationsRoute.get(
 			limit: r.limit,
 			offset: r.offset,
 			...(r.total !== undefined ? { total: r.total } : {}),
-			source: "rest" as const,
 		} satisfies ViolationsListResponse);
 	},
 );

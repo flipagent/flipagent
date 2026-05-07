@@ -101,16 +101,15 @@ export async function placeOrder(
 		if (order) return toEbayPurchaseOrder(order, row.lineItems as LineItem[]);
 	}
 
-	// Bridge + url transports both drive one item per task. eBay can
-	// handle multi-item carts, but the BIN flow on ebay.com is
-	// per-listing. Take the first item; surface a 412 if the caller
-	// actually wants multi-item carting (REST-only).
+	// Bridge + url modes both drive one item per task — the BIN flow
+	// on ebay.com is per-listing. Take the first item; surface a 412
+	// for multi-item carts (only supported in server-side REST mode).
 	const items = row.lineItems as LineItem[];
-	if (items.length > 1) {
+	if (items.length > 1 && transport !== "rest") {
 		throw new BridgeCheckoutError(
-			"multi_item_unsupported_outside_rest",
+			"multi_item_unsupported",
 			412,
-			"bridge + url transports place one line item per call; submit a separate session per item or set EBAY_ORDER_APPROVED=1",
+			"This server places orders one line item per call; submit a separate purchase per item.",
 		);
 	}
 	const first = items[0];

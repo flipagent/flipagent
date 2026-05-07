@@ -10,7 +10,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, ResponseSource } from "./_common.js";
+import { Marketplace, Money } from "./_common.js";
 
 export const CartLineItem = Type.Object(
 	{
@@ -32,7 +32,6 @@ export const Cart = Type.Object(
 		marketplace: Marketplace,
 		lineItems: Type.Array(CartLineItem),
 		subtotal: Type.Optional(Money),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "Cart" },
 );

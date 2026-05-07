@@ -199,7 +199,6 @@ rootRoute.get(
 				// Capabilities + health
 				"GET /v1/capabilities",
 				"GET /v1/health",
-				"GET /v1/health/features",
 				// Admin (operator-only)
 				"ALL /v1/admin/*",
 				// flipagent: ToS hygiene + regulatory compliance

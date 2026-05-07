@@ -38,7 +38,7 @@ export async function findEligibleItems(ctx: OutboundContext): Promise<{ items: 
 export async function sendOfferToWatchers(
 	input: OfferCreate,
 	ctx: OutboundContext,
-): Promise<{ offers: Array<{ id: string; listingId: string; status: string }>; source: "rest" }> {
+): Promise<{ offers: Array<{ id: string; listingId: string; status: string }> }> {
 	const body: Record<string, unknown> = {
 		offeredItems: [
 			{
@@ -66,6 +66,5 @@ export async function sendOfferToWatchers(
 			listingId: o.listingId,
 			status: o.offerCreationStatus ?? "PENDING",
 		})),
-		source: "rest",
 	};
 }

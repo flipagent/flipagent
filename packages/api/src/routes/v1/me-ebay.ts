@@ -58,7 +58,13 @@ meEbayRoute.get(
 	}),
 	async (c) => {
 		if (!isEbayOAuthConfigured()) {
-			return c.json({ error: "ebay_not_configured" as const, message: "EBAY_CLIENT_ID/SECRET/RU_NAME unset." }, 503);
+			return c.json(
+				{
+					error: "ebay_not_configured" as const,
+					message: "This api instance does not have eBay configured.",
+				},
+				503,
+			);
 		}
 		const user = c.var.user;
 		const apiKeyId = await pickPrimaryKey(user.email);

@@ -15,7 +15,7 @@ export const payoutsRoute = new Hono();
 const COMMON = {
 	401: errorResponse("API key missing or eBay account not connected."),
 	502: errorResponse("Upstream eBay request failed."),
-	503: errorResponse("EBAY_CLIENT_ID/SECRET/RU_NAME unset."),
+	503: errorResponse("This api instance does not have eBay configured."),
 };
 
 payoutsRoute.get(
@@ -34,7 +34,6 @@ payoutsRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		} satisfies PayoutSummary);
 	},
 );
@@ -60,7 +59,6 @@ payoutsRoute.get(
 			limit: r.limit,
 			offset: r.offset,
 			...(r.total !== undefined ? { total: r.total } : {}),
-			source: "rest" as const,
 		} satisfies PayoutsListResponse);
 	},
 );

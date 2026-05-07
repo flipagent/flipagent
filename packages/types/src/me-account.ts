@@ -5,8 +5,6 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { ResponseSource } from "./_common.js";
-
 export const QuotaResource = Type.Object(
 	{
 		name: Type.String({ description: "API method name." }),
@@ -34,7 +32,6 @@ export const MeQuotaResponse = Type.Object(
 	{
 		apiQuota: Type.Array(QuotaApi, { description: "App-wide rate limits (rate_limit endpoint)." }),
 		userQuota: Type.Array(QuotaApi, { description: "Per-user rate limits (user_rate_limit endpoint)." }),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "MeQuotaResponse" },
 );
@@ -54,7 +51,6 @@ export type ProgramType = Static<typeof ProgramType>;
 export const MeProgramsResponse = Type.Object(
 	{
 		programs: Type.Array(Type.Object({ programType: Type.String() })),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "MeProgramsResponse" },
 );
@@ -67,7 +63,6 @@ export const ProgramOptResponse = Type.Object(
 	{
 		programType: Type.String(),
 		ok: Type.Boolean(),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ProgramOptResponse" },
 );

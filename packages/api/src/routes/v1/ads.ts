@@ -111,7 +111,7 @@ adsRoute.get(
 			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "campaign_not_found" }, 404);
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -181,7 +181,7 @@ adsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const }, 201);
+		return c.json({ ...r }, 201);
 	},
 );
 
@@ -219,7 +219,7 @@ adsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -239,7 +239,7 @@ adsRoute.post(
 			body.requests.map((row) => ({ listingId: row.listingId, bidPercentage: row.bidPercentage ?? "" })),
 			{ apiKeyId: c.var.apiKey.id, marketplace: ebayMarketplaceId() },
 		);
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -258,7 +258,7 @@ adsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -284,7 +284,7 @@ adsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -308,7 +308,7 @@ adsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -331,7 +331,7 @@ adsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -369,7 +369,7 @@ adsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -383,7 +383,7 @@ adsRoute.get(
 		responses: { 200: jsonResponse("Metadata.", ReportMetadata), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await getReportMetadata({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await getReportMetadata({ apiKeyId: c.var.apiKey.id })) }),
 );
 
 adsRoute.get(
@@ -400,7 +400,6 @@ adsRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		}),
 );
 
@@ -456,7 +455,7 @@ adsRoute.get(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ads, source: "rest" as const });
+		return c.json({ ads });
 	},
 );
 
@@ -474,7 +473,6 @@ adsRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		}),
 );
 

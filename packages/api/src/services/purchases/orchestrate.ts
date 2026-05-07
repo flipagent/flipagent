@@ -1,36 +1,31 @@
 /**
  * `POST /v1/purchases` — initiate + place_order in one shot.
  *
- * Three transports surface through the same `Purchase` shape:
- *   - "rest"   eBay's Buy Order REST places the order server-side
- *              (gated by EBAY_ORDER_APPROVED + user OAuth)
- *   - "bridge" paired Chrome extension claims a tracking row, opens
- *              the ebay.com/itm tab, shows a cap-validation banner,
- *              and captures the orderId off /vod/ for fast
- *              reconciliation
- *   - "url"    deeplink mode (no extension needed): the API returns
- *              `nextAction.url` pointing at the ebay.com/itm page;
- *              the user clicks Buy It Now → Confirm and pay on
- *              eBay's own UI. The Trading-API reconciler matches the
- *              resulting order against a snapshot captured at queue
- *              time so the agent's next `GET /v1/purchases/{id}`
- *              flips the row from `processing` → `completed` once
- *              eBay confirms.
+ * Public contract from a caller's perspective:
+ *   - terminal status (`completed`/`failed`) → done; render the receipt
+ *   - non-terminal status with `nextAction` → user action needed; agent
+ *     directs the user to `nextAction.url` and polls
+ *     `GET /v1/purchases/{id}` until terminal
  *
- * `selectTransport` picks rest → bridge → url in that order based on
- * EBAY_ORDER_APPROVED + extension pairing. All three persist a
- * tracking row (via `bridge-session.ts`) so cancel + status-poll +
- * list reuse the same code.
+ * Internally we pick one of three modes (the `orders.checkout` matrix
+ * entry exposes rest+bridge+url) — server-side REST, paired Chrome
+ * extension, or url deeplink — based on operator config + extension
+ * pairing. The picked mode is never exposed on the response shape;
+ * callers see the same `Purchase` regardless. The choice is recorded
+ * in `bridge_jobs.metadata.transport` for internal observability so
+ * the inline-reconcile path on GET can re-attach the right
+ * `nextAction` after restarts.
  */
 
-import type { Purchase, PurchaseCreate } from "@flipagent/types";
+import type { Address, Purchase, PurchaseCreate, PurchasePaymentInstrument } from "@flipagent/types";
 import type { LineItem } from "@flipagent/types/ebay/buy";
 import { config } from "../../config.js";
 import { cancelJob } from "../bridge-jobs.js";
 import { reconcileJob } from "../bridge-reconciler.js";
+import { sellRequest } from "../ebay/rest/user-client.js";
 import { type NextAction, openUrlAction } from "../shared/next-action.js";
 import type { FlipagentResult, SourceKind } from "../shared/result.js";
-import { selectTransport, TransportUnavailableError } from "../shared/transport.js";
+import { selectTransport } from "../shared/transport.js";
 import { BridgeCheckoutError, getPurchaseOrder, initiateCheckoutSession, placeOrder } from "./bridge-session.js";
 import { ebayToPurchase } from "./transform.js";
 
@@ -64,22 +59,17 @@ function buyDeeplinkAction(itemId: string, variationId: string | undefined): Nex
 }
 
 export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext): Promise<FlipagentResult<Purchase>> {
-	const transport = pickTransport(input, ctx);
+	const mode = pickMode(ctx);
 
-	// REST-only fields. Bridge + url both rely on the buyer's stored
-	// eBay defaults (the user is on eBay's own UI for the actual click).
-	if (input.shipTo && transport !== "rest") {
+	// Advanced fields are only honored when the server can place the
+	// order directly. Anywhere else they're a no-op risk (the deeplink
+	// flow uses the buyer's stored eBay defaults), so 412 with a clean
+	// message rather than silently ignoring.
+	if (mode !== "rest" && (input.shipTo || input.couponCode || input.paymentInstruments || input.guest)) {
 		throw new PurchaseError(
-			"shipTo_unsupported_outside_rest",
+			"advanced_fields_not_supported",
 			412,
-			`\`shipTo\` overrides only work in REST transport — ${transport} transport uses the buyer's stored eBay default. Set \`transport='rest'\` (requires EBAY_ORDER_APPROVED=1) or remove \`shipTo\`.`,
-		);
-	}
-	if (input.couponCode && transport !== "rest") {
-		throw new PurchaseError(
-			"coupon_unsupported_outside_rest",
-			412,
-			`\`couponCode\` only works in REST transport. Set \`transport='rest'\` or remove the field.`,
+			"This server can't honor advanced order fields (shipTo / couponCode / paymentInstruments / guest). Submit the items only — the buyer's stored eBay defaults are used.",
 		);
 	}
 
@@ -90,9 +80,7 @@ export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext
 	}));
 
 	try {
-		// Stage 1 — initiate. Same call for both transports; in REST mode
-		// the underlying service forwards to api.ebay.com, in bridge/url
-		// mode it inserts a `buy_checkout_sessions` row.
+		// Stage 1 — initiate. Inserts a `buy_checkout_sessions` row.
 		const session = await initiateCheckoutSession({
 			apiKeyId: ctx.apiKeyId,
 			userId: ctx.userId,
@@ -100,25 +88,25 @@ export async function createPurchase(input: PurchaseCreate, ctx: PurchaseContext
 			...(input.shipTo ? { shippingAddresses: [input.shipTo] } : {}),
 		});
 
-		// Stage 2 — place_order. Bridge + url both enqueue a tracking
-		// row (the picked transport is stashed in metadata so polling
-		// reads can recover it); REST hits eBay synchronously. Either
-		// way returns an `EbayPurchaseOrder`.
-		const order = await placeOrder(session.checkoutSessionId, ctx.apiKeyId, ctx.userId, transport);
-		const body = ebayToPurchase({ order, transport, marketplace: input.marketplace });
+		// Stage 2 — place_order. Bridge + url enqueue a tracking row;
+		// REST hits eBay synchronously. Either way returns an
+		// `EbayPurchaseOrder`. The picked mode is stashed in
+		// `bridge_jobs.metadata.transport` so polling reads can recover
+		// it (and re-attach `nextAction` on url-mode rows).
+		const order = await placeOrder(session.checkoutSessionId, ctx.apiKeyId, ctx.userId, mode);
+		const body = ebayToPurchase({ order, marketplace: input.marketplace });
 
-		// `nextAction` is only meaningful for url transport — agent/UI
-		// shows the deeplink to drive the user to the listing. Bridge
-		// already opens the tab in the user's browser; REST placed the
-		// order server-side.
-		if (transport === "url") {
+		// `nextAction` only appears on url-mode rows. Bridge already
+		// opens the tab in the user's browser; REST placed the order
+		// server-side.
+		if (mode === "url") {
 			const first = lineItems[0];
 			if (first) {
 				body.nextAction = buyDeeplinkAction(first.itemId, first.variationId);
 			}
 		}
 
-		return { body, source: transport, fromCache: false };
+		return { body, source: mode, fromCache: false };
 	} catch (err) {
 		if (err instanceof BridgeCheckoutError) {
 			throw new PurchaseError(err.code, err.status, err.message);
@@ -138,7 +126,15 @@ export async function getPurchase(id: string, apiKeyId: string): Promise<Flipage
 
 	const record = await getPurchaseOrder(id, apiKeyId);
 	if (!record) return null;
-	const body = ebayToPurchase({ order: record.order, ...(record.transport ? { transport: record.transport } : {}) });
+	const body = ebayToPurchase({ order: record.order });
+
+	// Re-attach `nextAction` for non-terminal url-mode rows so the
+	// agent can re-prompt the user if they walked away from the tab.
+	const isTerminal = body.status === "completed" || body.status === "failed" || body.status === "cancelled";
+	if (record.transport === "url" && !isTerminal && body.items[0]) {
+		body.nextAction = buyDeeplinkAction(body.items[0].itemId, body.items[0].variationId);
+	}
+
 	const source: SourceKind = record.transport ?? "url";
 	return { body, source, fromCache: false };
 }
@@ -148,22 +144,31 @@ export async function cancelPurchase(id: string, apiKeyId: string): Promise<Flip
 	return getPurchase(id, apiKeyId);
 }
 
-/**
- * Multi-stage update endpoints — REST transport only. eBay's Buy
- * Order REST exposes shipping_address, payment_instrument, coupon
- * patches mid-checkout. Bridge + url transports return 412 because
- * the user uses their stored eBay defaults on eBay's own UI.
- */
+function pickMode(ctx: PurchaseContext): "rest" | "bridge" | "url" {
+	// `orders.checkout` declares rest+bridge+url; url is unconditional,
+	// so `selectTransport` always succeeds. The cast narrows the wider
+	// `Transport` union to the three modes the resource exposes.
+	const picked = selectTransport("orders.checkout", {
+		oauthBound: true,
+		bridgePaired: ctx.bridgePaired ?? false,
+		envFlags: { EBAY_ORDER_APPROVED: config.EBAY_ORDER_APPROVED },
+	});
+	return picked as "rest" | "bridge" | "url";
+}
 
-import type { Address, PurchasePaymentInstrument } from "@flipagent/types";
-import { sellRequest } from "../ebay/rest/user-client.js";
+/* ----- Multi-stage update endpoints ----------------------------------- */
+/* Honored only when the server can place the order directly. Otherwise
+ * 412 with a clean message — same posture as the advanced-field gate
+ * on createPurchase. Intentionally lightweight so flipping server
+ * config from "url-only" to "direct placement" doesn't require any
+ * client changes. */
 
-function requireRest(): void {
+function requireDirectPlacement(): void {
 	if (!config.EBAY_ORDER_APPROVED) {
 		throw new PurchaseError(
-			"multi_stage_rest_only",
+			"mid_checkout_updates_not_supported",
 			412,
-			"Multi-stage updates only work in REST transport. Set EBAY_ORDER_APPROVED=1 once eBay grants Buy Order API access.",
+			"This server can't update orders mid-checkout. Submit the items in one call instead.",
 		);
 	}
 }
@@ -173,7 +178,7 @@ export async function updatePurchaseShipping(
 	shipTo: Address,
 	apiKeyId: string,
 ): Promise<FlipagentResult<Purchase> | null> {
-	requireRest();
+	requireDirectPlacement();
 	await sellRequest({
 		apiKeyId,
 		method: "POST",
@@ -188,7 +193,7 @@ export async function updatePurchasePayment(
 	paymentInstruments: PurchasePaymentInstrument[],
 	apiKeyId: string,
 ): Promise<FlipagentResult<Purchase> | null> {
-	requireRest();
+	requireDirectPlacement();
 	await sellRequest({
 		apiKeyId,
 		method: "POST",
@@ -209,7 +214,7 @@ export async function updatePurchaseCoupon(
 	couponCode: string | null,
 	apiKeyId: string,
 ): Promise<FlipagentResult<Purchase> | null> {
-	requireRest();
+	requireDirectPlacement();
 	if (couponCode) {
 		await sellRequest({
 			apiKeyId,
@@ -240,27 +245,4 @@ function addressToEbay(a: Address): Record<string, unknown> {
 		},
 		...(a.phone ? { primaryPhone: { phoneNumber: a.phone } } : {}),
 	};
-}
-
-function pickTransport(input: PurchaseCreate, ctx: PurchaseContext): "rest" | "bridge" | "url" {
-	try {
-		const picked = selectTransport("orders.checkout", {
-			explicit: input.transport,
-			oauthBound: true,
-			bridgePaired: ctx.bridgePaired ?? false,
-			envFlags: { EBAY_ORDER_APPROVED: config.EBAY_ORDER_APPROVED },
-		});
-		// `orders.checkout` only declares rest+bridge+url in the
-		// capability matrix, so the broader `Transport` union narrows
-		// to these three at runtime — the cast is sound.
-		return picked as "rest" | "bridge" | "url";
-	} catch (err) {
-		if (err instanceof TransportUnavailableError) {
-			// `url` is unconditional in the capability matrix, so this
-			// branch is unreachable today — the typed throw stays so
-			// future capability changes surface clearly.
-			throw new PurchaseError("transport_unavailable", 412, err.message);
-		}
-		throw err;
-	}
 }

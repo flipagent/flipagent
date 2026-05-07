@@ -48,7 +48,7 @@ export type PipelineEvent =
 			key: string;
 			result: unknown;
 			durationMs: number;
-			source?: "rest" | "scrape" | "bridge";
+			source?: string;
 	  }
 	| {
 			kind: "failed";
@@ -138,7 +138,7 @@ interface WithStepOptions {
  */
 export async function withStep<T>(
 	opts: WithStepOptions,
-	body: () => Promise<{ result: unknown; value: T; source?: "rest" | "scrape" | "bridge" }>,
+	body: () => Promise<{ result: unknown; value: T; source?: string }>,
 ): Promise<T> {
 	if (opts.cancelCheck) await opts.cancelCheck();
 	opts.onStep?.({

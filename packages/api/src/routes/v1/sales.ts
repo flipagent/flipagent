@@ -19,7 +19,7 @@ export const salesRoute = new Hono();
 const COMMON = {
 	401: errorResponse("API key missing or eBay account not connected."),
 	502: errorResponse("Upstream eBay request failed."),
-	503: errorResponse("EBAY_CLIENT_ID/SECRET/RU_NAME unset."),
+	503: errorResponse("This api instance does not have eBay configured."),
 };
 
 function mapErr(c: Context, err: unknown) {
@@ -59,7 +59,6 @@ salesRoute.get(
 				limit: r.limit,
 				offset: r.offset,
 				...(r.total !== undefined ? { total: r.total } : {}),
-				source: "rest" as const,
 			} satisfies SalesListResponse);
 		} catch (err) {
 			const mapped = mapErr(c, err);

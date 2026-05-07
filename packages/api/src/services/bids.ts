@@ -43,8 +43,8 @@ import { getUserAccessToken } from "./ebay/oauth.js";
 import { sellRequest, swallowEbay404 } from "./ebay/rest/user-client.js";
 import { getMyEbayBuying } from "./ebay/trading/myebay.js";
 import { toCents, toDollarString } from "./shared/money.js";
-import { type NextAction, type NextActionKind, openUrlAction } from "./shared/next-action.js";
-import { selectTransport, TransportUnavailableError } from "./shared/transport.js";
+import { type NextAction, openUrlAction } from "./shared/next-action.js";
+import { selectTransport } from "./shared/transport.js";
 
 /**
  * Short fast-path wait — POST /v1/bids blocks for this many ms before
@@ -68,20 +68,16 @@ const PLACE_BID_FAST_WAIT_MS = 5_000;
  */
 const STATUS_BRIDGE_WAIT_MS = 25_000;
 
-/**
- * Thrown by `placeBid` / `getBidStatus` when the Buy Offer (Bidding)
- * surface is unavailable, or upstream eBay/extension failure.
- */
+/** Thrown by `placeBid` / `getBidStatus` on upstream marketplace or
+ * extension failure. */
 export class BidError extends Error {
 	readonly status: number;
 	readonly code: string;
-	readonly nextActionKind: NextActionKind | undefined;
-	constructor(code: string, status: number, message: string, nextActionKind?: NextActionKind) {
+	constructor(code: string, status: number, message: string) {
 		super(message);
 		this.name = "BidError";
 		this.code = code;
 		this.status = status;
-		this.nextActionKind = nextActionKind;
 	}
 }
 
@@ -91,31 +87,17 @@ export interface BidsContext {
 	bridgePaired?: boolean;
 }
 
-function pickTransport(
-	resource: "bids.place" | "bids.status",
-	input: { transport?: "rest" | "bridge" | "url" },
-	ctx: BidsContext,
-): "rest" | "bridge" | "url" {
-	try {
-		const picked = selectTransport(resource, {
-			explicit: input.transport,
-			oauthBound: true,
-			bridgePaired: ctx.bridgePaired ?? false,
-			envFlags: { EBAY_BIDDING_APPROVED: config.EBAY_BIDDING_APPROVED },
-		});
-		// `bids.place` / `bids.status` declare rest+bridge+url in the
-		// capability matrix, so the broader `Transport` union narrows
-		// to these three at runtime — the cast is sound.
-		return picked as "rest" | "bridge" | "url";
-	} catch (err) {
-		if (err instanceof TransportUnavailableError) {
-			// `url` is unconditional in the capability matrix, so this
-			// branch is unreachable today — kept so future capability
-			// changes surface clearly.
-			throw new BidError("bidding_unavailable", 412, err.message, "configure_bidding_api");
-		}
-		throw err;
-	}
+function pickTransport(resource: "bids.place" | "bids.status", ctx: BidsContext): "rest" | "bridge" | "url" {
+	// `bids.place` / `bids.status` declare rest+bridge+url in the
+	// capability matrix; url is unconditional, so `selectTransport`
+	// always succeeds for these resources. The cast narrows the
+	// broader `Transport` union to the three we actually expose.
+	const picked = selectTransport(resource, {
+		oauthBound: true,
+		bridgePaired: ctx.bridgePaired ?? false,
+		envFlags: { EBAY_BIDDING_APPROVED: config.EBAY_BIDDING_APPROVED },
+	});
+	return picked as "rest" | "bridge" | "url";
 }
 
 function bidDeeplinkAction(itemId: string): NextAction {
@@ -354,7 +336,7 @@ export async function getBidStatus(itemId: string, ctx: BidsContext): Promise<Bi
 		if (refreshed) return jobToBid(refreshed, itemId);
 	}
 
-	const transport = pickTransport("bids.status", {}, ctx);
+	const transport = pickTransport("bids.status", ctx);
 	if (transport === "rest") {
 		const res = await sellRequest<EbayBidding>({
 			apiKeyId: ctx.apiKeyId,
@@ -377,7 +359,7 @@ export async function getBidStatus(itemId: string, ctx: BidsContext): Promise<Bi
 		});
 		const final = await waitForTerminal(job.id, ctx.apiKeyId, STATUS_BRIDGE_WAIT_MS);
 		if (!final) {
-			throw new BidError("bridge_timeout", 504, "Bridge client did not respond.", "extension_install");
+			throw new BidError("bridge_timeout", 504, "Bridge client did not respond.");
 		}
 		if (final.status === "failed" || final.status === "cancelled" || final.status === "expired") {
 			// `failed` with a "no bids on this item" reason → null
@@ -429,7 +411,7 @@ export async function getBidStatus(itemId: string, ctx: BidsContext): Promise<Bi
 }
 
 export async function placeBid(input: BidCreate, ctx: BidsContext): Promise<Bid> {
-	const transport = pickTransport("bids.place", input, ctx);
+	const transport = pickTransport("bids.place", ctx);
 
 	if (transport === "rest") {
 		// `PlaceProxyBidResponse` per spec returns `{ proxyBidId }` only —

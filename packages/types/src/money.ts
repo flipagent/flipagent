@@ -5,7 +5,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Money, Page } from "./_common.js";
 
 export const PayoutStatus = Type.Union(
 	[
@@ -91,16 +91,14 @@ export const TransactionsListQuery = Type.Object(
 );
 export type TransactionsListQuery = Static<typeof TransactionsListQuery>;
 
-export const PayoutsListResponse = Type.Composite(
-	[Page, Type.Object({ payouts: Type.Array(Payout), source: Type.Optional(ResponseSource) })],
-	{ $id: "PayoutsListResponse" },
-);
+export const PayoutsListResponse = Type.Composite([Page, Type.Object({ payouts: Type.Array(Payout) })], {
+	$id: "PayoutsListResponse",
+});
 export type PayoutsListResponse = Static<typeof PayoutsListResponse>;
 
-export const TransactionsListResponse = Type.Composite(
-	[Page, Type.Object({ transactions: Type.Array(Transaction), source: Type.Optional(ResponseSource) })],
-	{ $id: "TransactionsListResponse" },
-);
+export const TransactionsListResponse = Type.Composite([Page, Type.Object({ transactions: Type.Array(Transaction) })], {
+	$id: "TransactionsListResponse",
+});
 export type TransactionsListResponse = Static<typeof TransactionsListResponse>;
 
 /* ----- /v1/payouts/summary ------------------------------------------- */
@@ -115,7 +113,6 @@ export const PayoutSummary = Type.Object(
 		transactionCount: Type.Integer({ minimum: 0 }),
 		from: Type.String(),
 		to: Type.String(),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "PayoutSummary" },
 );

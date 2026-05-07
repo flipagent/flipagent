@@ -63,7 +63,7 @@ const COMMON_RESPONSES = {
 	401: errorResponse("API key missing or eBay account not connected (POST /v1/connect/ebay)."),
 	412: errorResponse("Missing prerequisite — policies or merchant location not set."),
 	502: errorResponse("Upstream eBay request failed."),
-	503: errorResponse("EBAY_CLIENT_ID/SECRET/RU_NAME unset on this api instance."),
+	503: errorResponse("This api instance does not have eBay configured."),
 };
 
 function mapEbayError(c: Context, err: unknown) {
@@ -118,7 +118,7 @@ listingsRoute.post(
 	tbBody(ListingVerifyRequest),
 	withTradingAuth(async (c, accessToken) => {
 		const body = (await c.req.json()) as ListingVerifyRequest;
-		return c.json({ ...(await verifyListing(accessToken, body)), source: "trading" as const });
+		return c.json({ ...(await verifyListing(accessToken, body)) });
 	}),
 );
 
@@ -143,7 +143,7 @@ listingsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const } satisfies ListingDraftResponse);
+		return c.json({ ...r } satisfies ListingDraftResponse);
 	},
 );
 
@@ -202,7 +202,6 @@ listingsRoute.get(
 				limit: result.limit,
 				offset: result.offset,
 				...(result.total !== undefined ? { total: result.total } : {}),
-				source: "rest",
 			};
 			return c.json(body);
 		} catch (err) {
@@ -331,7 +330,7 @@ listingsRoute.post(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: body.marketplaceId,
 			});
-			return c.json({ ...result, source: "rest" as const });
+			return c.json({ ...result });
 		} catch (err) {
 			const mapped = mapEbayError(c, err);
 			if (mapped) return mapped;
@@ -359,7 +358,7 @@ listingsRoute.post(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: body.marketplaceId,
 			});
-			return c.json({ ok: true, source: "rest" as const });
+			return c.json({ ok: true });
 		} catch (err) {
 			const mapped = mapEbayError(c, err);
 			if (mapped) return mapped;
@@ -386,7 +385,7 @@ listingsRoute.get(
 			const result = await getProductCompatibility(sku, { apiKeyId: c.var.apiKey.id });
 			if (!result)
 				return c.json({ error: "compatibility_not_set", message: `No compatibility for SKU '${sku}'.` }, 404);
-			return c.json({ ...result, source: "rest" as const });
+			return c.json({ ...result });
 		} catch (err) {
 			const mapped = mapEbayError(c, err);
 			if (mapped) return mapped;
@@ -414,7 +413,7 @@ listingsRoute.put(
 		const body = c.req.valid("json");
 		try {
 			await setProductCompatibility(sku, body.compatibleProducts, { apiKeyId: c.var.apiKey.id });
-			return c.json({ ok: true, source: "rest" as const });
+			return c.json({ ok: true });
 		} catch (err) {
 			const mapped = mapEbayError(c, err);
 			if (mapped) return mapped;
@@ -461,7 +460,7 @@ listingsRoute.get(
 		try {
 			const r = await getSkuLocations(listingId, sku, { apiKeyId: c.var.apiKey.id });
 			if (!r) return c.json({ error: "no_mappings", message: `No locations mapped for SKU '${sku}'.` }, 404);
-			return c.json({ ...r, source: "rest" as const });
+			return c.json({ ...r });
 		} catch (err) {
 			const m = mapEbayError(c, err);
 			if (m) return m;
@@ -486,7 +485,7 @@ listingsRoute.put(
 		const body = c.req.valid("json");
 		try {
 			await setSkuLocations(listingId, sku, body.locations, { apiKeyId: c.var.apiKey.id });
-			return c.json({ ok: true, source: "rest" as const });
+			return c.json({ ok: true });
 		} catch (err) {
 			const m = mapEbayError(c, err);
 			if (m) return m;
@@ -534,7 +533,7 @@ listingsRoute.post(
 		const body = (await c.req.json()) as ListingPreviewFeesRequest;
 		try {
 			const result = await previewListingFees({ apiKeyId: c.var.apiKey.id, offerIds: body.offerIds });
-			return c.json({ ...result, source: "rest" as const });
+			return c.json({ ...result });
 		} catch (err) {
 			const mapped = mapEbayError(c, err);
 			if (mapped) return mapped;

@@ -39,6 +39,16 @@ export interface RawEbayItem {
 	/** True when the card carries a Top Rated Plus badge. */
 	topRatedBuyingExperience: boolean;
 	/**
+	 * True when the card carries the Authenticity Guarantee badge — eBay
+	 * routes these listings through a third-party authenticator before
+	 * delivery. Watches >$250, sneakers >$100, handbags, fine jewelry, and
+	 * recently trading cards. eBay's modern `.s-card` SRP layout swaps the
+	 * seller-feedback line for the AG badge entirely, so without this flag
+	 * downstream scoring (`legitMarketReference`, `assessRisk`) reads AG
+	 * comps as anonymous-zero-trust and over-flags them as fraud.
+	 */
+	authenticityGuaranteed: boolean;
+	/**
 	 * eBay product identifier — present when the card links to a catalog
 	 * product page (`/p/{epid}`). Roughly 30–40% of cards on a typical
 	 * search are catalog-linked. Used by composite endpoints to group
@@ -250,6 +260,7 @@ export function extractEbayItems(root: ParentNode): RawEbayItem[] {
 			imageUrl: imageUrl && !/blank|placeholder|fxxj3ttftm5ltcqnto1o4baovyl/.test(imageUrl) ? imageUrl : null,
 			soldQuantityText: classified.soldQuantityText,
 			topRatedBuyingExperience: hasTopRatedPlus(li),
+			authenticityGuaranteed: hasAuthenticityGuarantee(li),
 			epid,
 		});
 	}
@@ -859,6 +870,71 @@ function hasTopRatedPlus(root: ParentNode | Element): boolean {
 			'use[href*="top-rated-plus"], [aria-label="Top Rated Plus"], .su-icon--legacy-top-rated-seller',
 		),
 	);
+}
+
+// Detect eBay's Authenticity Guarantee badge. SRP cards reference the
+// shared icon symbol; PDP renders it as an explicit `aria-label` on the
+// trust panel. Either match = AG-routed listing.
+function hasAuthenticityGuarantee(root: ParentNode | Element): boolean {
+	const el = root as Element;
+	if (el.querySelector?.('use[href*="authenticity-guarantee"], [aria-label*="Authenticity Guarantee" i]')) {
+		return true;
+	}
+	// Text fallback — the SRP card always renders the literal label next
+	// to the icon. Cheap regex over `textContent` so test fixtures that
+	// only carry the label still match.
+	const text = el.textContent ?? "";
+	return /Authenticity\s+Guarantee/i.test(text);
+}
+
+/**
+ * eBay program enum that lands on `qualifiedPrograms` for AG-routed
+ * listings. Single source of truth — referenced wherever AG is applied
+ * to an item summary or detail (SRP scrape, browse-layout scrape, PDP
+ * scrape, REST passthrough, downstream risk-scoring).
+ */
+export const AUTHENTICITY_GUARANTEE_PROGRAM = "AUTHENTICITY_GUARANTEE";
+
+/**
+ * Default visible label when only the boolean badge presence is known
+ * (SRP card / browse-layout flag — neither carries a per-listing
+ * descriptor string). PDP scrape uses the actual AG block text instead.
+ */
+const AUTHENTICITY_GUARANTEE_DEFAULT_DESCRIPTION = "Authenticity Guarantee";
+
+/**
+ * Wire-shape mirror of `getItem.authenticityGuarantee` + `qualifiedPrograms`.
+ * One write site for all three scrape transports (SRP search, category
+ * browse-layout, PDP detail) so callers never have to special-case which
+ * source surfaced the flag.
+ *
+ * Pass `null`/`undefined` (or omit the descriptor) to leave the item
+ * untouched — call sites can hand off raw extractor output without an
+ * `if` guard.
+ */
+export function applyAuthenticityGuaranteeFields<
+	T extends {
+		authenticityGuarantee?: { description?: string; termsWebUrl?: string };
+		qualifiedPrograms?: string[];
+	},
+>(item: T, descriptor: { description?: string; termsWebUrl?: string } | null | undefined): void {
+	if (!descriptor) return;
+	const block: { description: string; termsWebUrl?: string } = {
+		description: descriptor.description ?? AUTHENTICITY_GUARANTEE_DEFAULT_DESCRIPTION,
+	};
+	if (descriptor.termsWebUrl) block.termsWebUrl = descriptor.termsWebUrl;
+	item.authenticityGuarantee = block;
+	item.qualifiedPrograms = [AUTHENTICITY_GUARANTEE_PROGRAM];
+}
+
+/**
+ * Lift a boolean badge presence to a descriptor — call site convenience
+ * for sources that only know "AG yes/no" (SRP DOM, browse-layout JSON
+ * key) without an embedded text block. Returns `null` when absent so
+ * the result feeds straight into `applyAuthenticityGuaranteeFields`.
+ */
+export function authenticityGuaranteeDescriptorFromFlag(present: boolean): { description: string } | null {
+	return present ? { description: AUTHENTICITY_GUARANTEE_DEFAULT_DESCRIPTION } : null;
 }
 
 // Read `<meta name="description" content="…">` — eBay seeds this with

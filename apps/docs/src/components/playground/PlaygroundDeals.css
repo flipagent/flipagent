@@ -91,8 +91,9 @@
 
 .pg-deals-row {
 	display: grid;
-	/* thumb / item / asking / median / E[net] / rating / risk / days / link */
-	grid-template-columns: 36px minmax(0, 1fr) 70px 70px 90px 56px 64px 56px 28px;
+	/* grid-template-columns is set inline per-row from the visible-column
+	 * registry in PlaygroundDeals.tsx — fixed thumb + flex item + each
+	 * data column's declared width + link. */
 	gap: 12px;
 	align-items: center;
 	width: 100%;
@@ -212,9 +213,13 @@
 }
 
 /* Risk pill — derived from P_fraud, color-graded so a row of "best E[net]"
- * results doesn't hide a sketchy seller. Hover shows raw fb count + %. */
+ * results doesn't hide a sketchy seller. Renders `tier · NNNk fb` inline:
+ * the tier is the verdict, the fb count is the raw evidence — both visible
+ * in-row so the column doesn't need a tooltip to be self-explanatory. */
 .pg-deals-risk {
-	display: inline-block;
+	display: inline-flex;
+	align-items: baseline;
+	gap: 4px;
 	padding: 1px 8px;
 	font-size: 10.5px;
 	font-weight: 500;
@@ -224,6 +229,9 @@
 	font-variant-numeric: tabular-nums;
 	cursor: help;
 }
+.pg-deals-risk-tier { font-weight: 600; }
+.pg-deals-risk-sep { opacity: 0.55; }
+.pg-deals-risk-fb { font-weight: 400; opacity: 0.85; }
 .pg-deals-risk--low {
 	background: rgba(74, 222, 128, 0.14);
 	color: #16a34a;
@@ -326,6 +334,6 @@
  * the trade is fine and avoids losing data on small screens. */
 @media (max-width: 720px) {
 	.pg-deals-table {
-		min-width: 640px;
+		min-width: 800px;
 	}
 }

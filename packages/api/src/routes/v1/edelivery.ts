@@ -61,7 +61,6 @@ edeliveryRoute.get(
 		return c.json({
 			packages: data?.packages ?? [],
 			...(data?.total !== undefined ? { total: data.total } : {}),
-			source: "rest" as const,
 		});
 	},
 );
@@ -77,7 +76,7 @@ edeliveryRoute.post(
 	async (c) => {
 		const body = (await c.req.json()) as Record<string, unknown>;
 		const r = await edelivery.createPackage(body, ctx(c));
-		return c.json({ id: r.id, source: "rest" as const }, 201);
+		return c.json({ id: r.id }, 201);
 	},
 );
 
@@ -89,7 +88,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Package.", EDeliveryPackageResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ package: await edelivery.getPackage(c.req.param("id"), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ package: await edelivery.getPackage(c.req.param("id"), ctx(c)) }),
 );
 
 edeliveryRoute.post(
@@ -102,7 +101,7 @@ edeliveryRoute.post(
 	requireApiKey,
 	async (c) => {
 		await edelivery.cancelPackage(c.req.param("id"), ctx(c));
-		return c.json({ ok: true, source: "rest" as const });
+		return c.json({ ok: true });
 	},
 );
 
@@ -116,7 +115,7 @@ edeliveryRoute.post(
 	requireApiKey,
 	async (c) => {
 		const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-		return c.json({ data: await edelivery.confirmPackage(c.req.param("id"), body, ctx(c)), source: "rest" as const });
+		return c.json({ data: await edelivery.confirmPackage(c.req.param("id"), body, ctx(c)) });
 	},
 );
 
@@ -131,7 +130,7 @@ edeliveryRoute.post(
 	async (c) => {
 		const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 		const r = await edelivery.clonePackage(c.req.param("id"), body, ctx(c));
-		return c.json({ id: r.id, source: "rest" as const }, 201);
+		return c.json({ id: r.id }, 201);
 	},
 );
 
@@ -143,8 +142,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Item.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) =>
-		c.json({ data: await edelivery.getPackageItem(c.req.param("orderLineItemId"), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.getPackageItem(c.req.param("orderLineItemId"), ctx(c)) }),
 );
 
 edeliveryRoute.post(
@@ -157,7 +155,7 @@ edeliveryRoute.post(
 	requireApiKey,
 	async (c) => {
 		const body = (await c.req.json()) as Record<string, unknown>;
-		return c.json({ data: await edelivery.bulkCancelPackages(body, ctx(c)), source: "rest" as const });
+		return c.json({ data: await edelivery.bulkCancelPackages(body, ctx(c)) });
 	},
 );
 
@@ -171,7 +169,7 @@ edeliveryRoute.post(
 	requireApiKey,
 	async (c) => {
 		const body = (await c.req.json()) as Record<string, unknown>;
-		return c.json({ data: await edelivery.bulkConfirmPackages(body, ctx(c)), source: "rest" as const });
+		return c.json({ data: await edelivery.bulkConfirmPackages(body, ctx(c)) });
 	},
 );
 
@@ -185,7 +183,7 @@ edeliveryRoute.post(
 	requireApiKey,
 	async (c) => {
 		const body = (await c.req.json()) as Record<string, unknown>;
-		return c.json({ data: await edelivery.bulkDeletePackages(body, ctx(c)), source: "rest" as const });
+		return c.json({ data: await edelivery.bulkDeletePackages(body, ctx(c)) });
 	},
 );
 
@@ -207,7 +205,6 @@ edeliveryRoute.get(
 		return c.json({
 			bundles: data?.bundles ?? [],
 			...(data?.total !== undefined ? { total: data.total } : {}),
-			source: "rest" as const,
 		});
 	},
 );
@@ -223,7 +220,7 @@ edeliveryRoute.post(
 	async (c) => {
 		const body = (await c.req.json()) as Record<string, unknown>;
 		const r = await edelivery.createBundle(body, ctx(c));
-		return c.json({ id: r.id, source: "rest" as const }, 201);
+		return c.json({ id: r.id }, 201);
 	},
 );
 
@@ -235,7 +232,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Bundle.", EDeliveryBundleResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ bundle: await edelivery.getBundle(c.req.param("id"), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ bundle: await edelivery.getBundle(c.req.param("id"), ctx(c)) }),
 );
 
 edeliveryRoute.post(
@@ -248,7 +245,7 @@ edeliveryRoute.post(
 	requireApiKey,
 	async (c) => {
 		await edelivery.cancelBundle(c.req.param("id"), ctx(c));
-		return c.json({ ok: true, source: "rest" as const });
+		return c.json({ ok: true });
 	},
 );
 
@@ -260,7 +257,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Label.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ data: await edelivery.getBundleLabel(c.req.param("id"), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.getBundleLabel(c.req.param("id"), ctx(c)) }),
 );
 
 /* ---------- /labels, /tracking, /handover-sheet ---------- */
@@ -273,7 +270,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Labels.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ data: await edelivery.getLabels(QUERY_KEYS_TO_RECORD(c), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.getLabels(QUERY_KEYS_TO_RECORD(c), ctx(c)) }),
 );
 
 edeliveryRoute.get(
@@ -284,7 +281,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Tracking.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ data: await edelivery.getTracking(QUERY_KEYS_TO_RECORD(c), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.getTracking(QUERY_KEYS_TO_RECORD(c), ctx(c)) }),
 );
 
 edeliveryRoute.get(
@@ -295,8 +292,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Handover sheet.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) =>
-		c.json({ data: await edelivery.getHandoverSheet(QUERY_KEYS_TO_RECORD(c), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.getHandoverSheet(QUERY_KEYS_TO_RECORD(c), ctx(c)) }),
 );
 
 /* ---------- preferences / config ---------- */
@@ -309,8 +305,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Costs.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) =>
-		c.json({ data: await edelivery.getActualCosts(QUERY_KEYS_TO_RECORD(c), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.getActualCosts(QUERY_KEYS_TO_RECORD(c), ctx(c)) }),
 );
 
 edeliveryRoute.get(
@@ -321,7 +316,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Preference.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ data: await edelivery.getAddressPreference(ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.getAddressPreference(ctx(c)) }),
 );
 
 edeliveryRoute.post(
@@ -334,7 +329,7 @@ edeliveryRoute.post(
 	requireApiKey,
 	async (c) => {
 		const body = (await c.req.json()) as Record<string, unknown>;
-		return c.json({ data: await edelivery.setAddressPreference(body, ctx(c)), source: "rest" as const });
+		return c.json({ data: await edelivery.setAddressPreference(body, ctx(c)) });
 	},
 );
 
@@ -346,7 +341,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Preference.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ data: await edelivery.getConsignPreference(ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.getConsignPreference(ctx(c)) }),
 );
 
 edeliveryRoute.post(
@@ -359,7 +354,7 @@ edeliveryRoute.post(
 	requireApiKey,
 	async (c) => {
 		const body = (await c.req.json()) as Record<string, unknown>;
-		return c.json({ data: await edelivery.setConsignPreference(body, ctx(c)), source: "rest" as const });
+		return c.json({ data: await edelivery.setConsignPreference(body, ctx(c)) });
 	},
 );
 
@@ -371,7 +366,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Agents.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ data: await edelivery.listAgents(QUERY_KEYS_TO_RECORD(c), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.listAgents(QUERY_KEYS_TO_RECORD(c), ctx(c)) }),
 );
 
 edeliveryRoute.get(
@@ -382,8 +377,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Sites.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) =>
-		c.json({ data: await edelivery.listDropoffSites(QUERY_KEYS_TO_RECORD(c), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.listDropoffSites(QUERY_KEYS_TO_RECORD(c), ctx(c)) }),
 );
 
 edeliveryRoute.get(
@@ -397,7 +391,6 @@ edeliveryRoute.get(
 	async (c) =>
 		c.json({
 			data: await edelivery.getBatteryQualifications(QUERY_KEYS_TO_RECORD(c), ctx(c)),
-			source: "rest" as const,
 		}),
 );
 
@@ -409,7 +402,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Services.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ data: await edelivery.getServices(QUERY_KEYS_TO_RECORD(c), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.getServices(QUERY_KEYS_TO_RECORD(c), ctx(c)) }),
 );
 
 edeliveryRoute.get(
@@ -420,8 +413,7 @@ edeliveryRoute.get(
 		responses: { 200: jsonResponse("Complaints.", EDeliveryRawResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) =>
-		c.json({ data: await edelivery.listComplaints(QUERY_KEYS_TO_RECORD(c), ctx(c)), source: "rest" as const }),
+	async (c) => c.json({ data: await edelivery.listComplaints(QUERY_KEYS_TO_RECORD(c), ctx(c)) }),
 );
 
 edeliveryRoute.post(
@@ -434,6 +426,6 @@ edeliveryRoute.post(
 	requireApiKey,
 	async (c) => {
 		const body = (await c.req.json()) as Record<string, unknown>;
-		return c.json({ data: await edelivery.createComplaint(body, ctx(c)), source: "rest" as const }, 201);
+		return c.json({ data: await edelivery.createComplaint(body, ctx(c)) }, 201);
 	},
 );

@@ -31,6 +31,5 @@ developerRoute.post(
 	async (c) =>
 		c.json({
 			...(await registerDeveloperApp(c.req.valid("json"))),
-			source: "rest" as const,
 		}),
 );

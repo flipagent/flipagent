@@ -22,5 +22,5 @@ translateRoute.post(
 	}),
 	requireApiKey,
 	tbBody(TranslateRequest),
-	async (c) => c.json({ ...(await translateText(c.req.valid("json"))), source: "rest" as const }),
+	async (c) => c.json({ ...(await translateText(c.req.valid("json"))) }),
 );

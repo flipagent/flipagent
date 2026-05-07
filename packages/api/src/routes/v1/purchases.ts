@@ -6,11 +6,11 @@
  *   GET    /v1/purchases/{id}         single purchase by id
  *   POST   /v1/purchases/{id}/cancel  cancel a non-terminal purchase
  *
- * `id` is eBay's `purchaseOrderId`. Three transports are first-class:
- * REST (with `EBAY_ORDER_APPROVED=1`), bridge (paired Chrome extension),
- * and url (deeplink to ebay.com when neither of the above applies).
- * `selectTransport` picks rest → bridge → url based on env approval +
- * extension pairing + the optional `transport` field on the body.
+ * The contract from a caller's perspective is two outcomes: terminal
+ * status on the response (done) or non-terminal with `nextAction.url`
+ * (open the URL for the user to complete the action on the
+ * marketplace UI). The server picks how the order flows internally;
+ * the response shape is identical across modes.
  */
 
 import {
@@ -46,9 +46,9 @@ export const purchasesRoute = new Hono();
 
 const COMMON_RESPONSES = {
 	401: errorResponse("API key missing or eBay account not connected (POST /v1/connect/ebay)."),
-	412: errorResponse("Transport unavailable, or option only valid in REST transport."),
-	502: errorResponse("Upstream eBay or bridge transport failed."),
-	503: errorResponse("EBAY_CLIENT_ID/SECRET/RU_NAME unset on this api instance."),
+	412: errorResponse("Precondition failed."),
+	502: errorResponse("Upstream marketplace failed."),
+	503: errorResponse("This api instance does not have eBay configured."),
 };
 
 function mapPurchaseError(c: Context, err: unknown) {
@@ -64,9 +64,9 @@ purchasesRoute.post(
 		tags: ["Purchases"],
 		summary: "Buy an item (one-shot)",
 		description:
-			"Compresses eBay's two-stage Buy Order flow (initiate + place_order) into one call. Auto-picks REST when `EBAY_ORDER_APPROVED=1` + eBay OAuth bound; otherwise bridge when the Chrome extension is paired; otherwise url (deeplink — response carries `nextAction.url` pointing at the ebay.com listing for the user to click Buy It Now). `shipTo` and `couponCode` only work in REST transport — bridge + url both use the buyer's stored eBay defaults.",
+			"Place a purchase. The response is either terminal (the order is fully placed; render the receipt) or non-terminal with `nextAction.url` (direct the user to that URL to complete the purchase on the marketplace UI, then poll `GET /v1/purchases/{id}`). Either way the response shape is identical.",
 		responses: {
-			201: jsonResponse("Purchase placed (status may still be `queued`/`processing`).", PurchaseResponse),
+			201: jsonResponse("Purchase (status may be terminal or pending).", PurchaseResponse),
 			400: errorResponse("Validation failed."),
 			...COMMON_RESPONSES,
 		},
@@ -83,7 +83,7 @@ purchasesRoute.post(
 				bridgePaired,
 			});
 			renderResultHeaders(c, result);
-			return c.json({ ...result.body, source: result.source }, 201);
+			return c.json(result.body, 201);
 		} catch (err) {
 			const mapped = mapPurchaseError(c, err);
 			if (mapped) return mapped;
@@ -97,8 +97,7 @@ purchasesRoute.get(
 	describeRoute({
 		tags: ["Purchases"],
 		summary: "List my purchases",
-		description:
-			"Bridge-tracked orders (and REST-placed orders flowing through the same orchestrator). Newest first.",
+		description: "Newest first. Same Purchase shape as POST + GET single.",
 		parameters: paramsFor("query", PurchasesListQuery),
 		responses: {
 			200: jsonResponse("Purchases page.", PurchasesListResponse),
@@ -112,7 +111,7 @@ purchasesRoute.get(
 		const limit = query.limit ?? 50;
 		const offset = query.offset ?? 0;
 		// We track every orchestrated purchase in `bridge_jobs` regardless
-		// of transport. List the rows for this api key, then materialise
+		// of mode. List the rows for this api key, then materialise
 		// each through the same `getPurchase` path so the shape matches.
 		const rows = await db
 			.select({ id: bridgeJobs.id })
@@ -126,17 +125,7 @@ purchasesRoute.get(
 		);
 		const purchases = results.map((r) => r.body);
 		const filtered = query.status ? purchases.filter((p) => p.status === query.status) : purchases;
-		// List is a flipagent-side DB read regardless of which transport
-		// originally placed each purchase, so the page-level source is
-		// "rest" by convention. Per-row transport is preserved on each
-		// `Purchase.transport`.
-		c.header("X-Flipagent-Source", "rest");
-		const body: PurchasesListResponse = {
-			purchases: filtered,
-			limit,
-			offset,
-			source: "rest",
-		};
+		const body: PurchasesListResponse = { purchases: filtered, limit, offset };
 		return c.json(body);
 	},
 );
@@ -158,15 +147,20 @@ purchasesRoute.get(
 		const result = await getPurchase(id, c.var.apiKey.id);
 		if (!result) return c.json({ error: "purchase_not_found", message: `No purchase '${id}'.` }, 404);
 		renderResultHeaders(c, result);
-		return c.json({ ...result.body, source: result.source });
+		return c.json(result.body);
 	},
 );
+
+/* Mid-checkout updates. Honored only when the server can place the
+ * order directly; otherwise 412 with a clean message. The schemas are
+ * stable across server states so the same client code keeps working
+ * if the server's order-placement capability is enabled later. */
 
 purchasesRoute.patch(
 	"/:id/shipping",
 	describeRoute({
 		tags: ["Purchases"],
-		summary: "Update shipping address mid-checkout (REST transport only)",
+		summary: "Update shipping address mid-checkout",
 		responses: { 200: jsonResponse("Updated purchase.", PurchaseResponse), ...COMMON_RESPONSES },
 	}),
 	requireApiKey,
@@ -177,7 +171,7 @@ purchasesRoute.patch(
 			const result = await updatePurchaseShipping(c.req.param("id"), body.shipTo, c.var.apiKey.id);
 			if (!result) return c.json({ error: "purchase_not_found" }, 404);
 			renderResultHeaders(c, result);
-			return c.json({ ...result.body, source: result.source });
+			return c.json(result.body);
 		} catch (err) {
 			const mapped = mapPurchaseError(c, err);
 			if (mapped) return mapped;
@@ -190,7 +184,7 @@ purchasesRoute.patch(
 	"/:id/payment",
 	describeRoute({
 		tags: ["Purchases"],
-		summary: "Update payment instrument mid-checkout (REST transport only)",
+		summary: "Update payment instrument mid-checkout",
 		responses: { 200: jsonResponse("Updated purchase.", PurchaseResponse), ...COMMON_RESPONSES },
 	}),
 	requireApiKey,
@@ -201,7 +195,7 @@ purchasesRoute.patch(
 			const result = await updatePurchasePayment(c.req.param("id"), body.paymentInstruments, c.var.apiKey.id);
 			if (!result) return c.json({ error: "purchase_not_found" }, 404);
 			renderResultHeaders(c, result);
-			return c.json({ ...result.body, source: result.source });
+			return c.json(result.body);
 		} catch (err) {
 			const mapped = mapPurchaseError(c, err);
 			if (mapped) return mapped;
@@ -214,7 +208,7 @@ purchasesRoute.patch(
 	"/:id/coupon",
 	describeRoute({
 		tags: ["Purchases"],
-		summary: "Apply or remove a coupon mid-checkout (REST transport only)",
+		summary: "Apply or remove a coupon mid-checkout",
 		responses: { 200: jsonResponse("Updated purchase.", PurchaseResponse), ...COMMON_RESPONSES },
 	}),
 	requireApiKey,
@@ -225,7 +219,7 @@ purchasesRoute.patch(
 			const result = await updatePurchaseCoupon(c.req.param("id"), body.couponCode || null, c.var.apiKey.id);
 			if (!result) return c.json({ error: "purchase_not_found" }, 404);
 			renderResultHeaders(c, result);
-			return c.json({ ...result.body, source: result.source });
+			return c.json(result.body);
 		} catch (err) {
 			const mapped = mapPurchaseError(c, err);
 			if (mapped) return mapped;
@@ -238,7 +232,7 @@ purchasesRoute.delete(
 	"/:id/coupon",
 	describeRoute({
 		tags: ["Purchases"],
-		summary: "Remove the applied coupon (REST transport only)",
+		summary: "Remove the applied coupon",
 		responses: { 200: jsonResponse("Updated purchase.", PurchaseResponse), ...COMMON_RESPONSES },
 	}),
 	requireApiKey,
@@ -247,7 +241,7 @@ purchasesRoute.delete(
 			const result = await updatePurchaseCoupon(c.req.param("id"), null, c.var.apiKey.id);
 			if (!result) return c.json({ error: "purchase_not_found" }, 404);
 			renderResultHeaders(c, result);
-			return c.json({ ...result.body, source: result.source });
+			return c.json(result.body);
 		} catch (err) {
 			const mapped = mapPurchaseError(c, err);
 			if (mapped) return mapped;
@@ -275,6 +269,6 @@ purchasesRoute.post(
 		const result = await cancelPurchase(id, c.var.apiKey.id);
 		if (!result) return c.json({ error: "purchase_not_found", message: `No purchase '${id}'.` }, 404);
 		renderResultHeaders(c, result);
-		return c.json({ ...result.body, source: result.source });
+		return c.json(result.body);
 	},
 );

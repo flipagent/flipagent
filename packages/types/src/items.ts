@@ -9,7 +9,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Money, Page } from "./_common.js";
 
 export const ItemStatus = Type.Union([Type.Literal("active"), Type.Literal("sold"), Type.Literal("ended")], {
 	$id: "ItemStatus",
@@ -272,7 +272,6 @@ export const ItemSearchResponse = Type.Composite(
 		Page,
 		Type.Object({
 			items: Type.Array(Item),
-			source: Type.Optional(ResponseSource),
 		}),
 	],
 	{ $id: "ItemSearchResponse" },
@@ -280,7 +279,7 @@ export const ItemSearchResponse = Type.Composite(
 export type ItemSearchResponse = Static<typeof ItemSearchResponse>;
 
 /** GET /v1/items/{id} response — single Item plus source. */
-export const ItemDetailResponse = Type.Composite([Item, Type.Object({ source: Type.Optional(ResponseSource) })], {
+export const ItemDetailResponse = Type.Composite([Item], {
 	$id: "ItemDetailResponse",
 });
 export type ItemDetailResponse = Static<typeof ItemDetailResponse>;

@@ -78,6 +78,16 @@ export interface RiskInputs {
 	 *  dispersion in the price-anomaly update — wide markets tolerate
 	 *  deeper discounts before flagging fraud. */
 	marketStdDevCents?: number;
+	/**
+	 * Listing routes through eBay's Authenticity Guarantee program (3rd-
+	 * party authenticator before delivery — watches >$250, sneakers >$100,
+	 * handbags, fine jewelry, trading cards). eBay underwrites the
+	 * authentication, so AG-routed candidates get max trust regardless of
+	 * the seller-feedback fields, which the active SRP often strips on AG
+	 * cards. The price-anomaly Bayes factor is fully suppressed for AG
+	 * listings — a credible identity (eBay itself) doesn't commit fraud.
+	 */
+	authenticityGuaranteed?: boolean;
 }
 
 export interface RiskAssessment {
@@ -254,7 +264,19 @@ function temperedBF(rawBF: number, candidateTrust: number): number {
 
 export function assessRisk(input: RiskInputs): RiskAssessment {
 	const rawPriceBF = priceAnomalyBayesFactor(input.buyPriceCents, input.marketMedianCents, input.marketStdDevCents);
-	const candidateTrust = sellerTrust(input.sellerFeedbackScore, input.sellerFeedbackPercent);
+	// AG-routed listings short-circuit seller-trust to 1. eBay underwrites
+	// the authentication, so the program enum is the trust signal — and
+	// the SRP active layout swaps the seller-feedback line for the AG
+	// badge entirely, so the feedback fields are usually empty on AG
+	// comps. Treating "missing seller" as zero-trust would over-flag AG
+	// listings as fraud (~57% on our Breitling production case).
+	//
+	// `temperedBF(_, 1)` collapses to 1 by construction, so the price-
+	// anomaly evidence is automatically suppressed without a separate
+	// branch on the BF path.
+	const candidateTrust = input.authenticityGuaranteed
+		? 1
+		: sellerTrust(input.sellerFeedbackScore, input.sellerFeedbackPercent);
 	const priceBF = temperedBF(rawPriceBF, candidateTrust);
 	const P_fraud = fraudProbability(input.sellerFeedbackScore, input.sellerFeedbackPercent, priceBF);
 

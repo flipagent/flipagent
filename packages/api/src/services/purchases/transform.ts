@@ -37,7 +37,6 @@ function pricingFrom(summary: PricingSummary | undefined): PurchasePricing | und
 
 export interface ToPurchaseInput {
 	order: EbayPurchaseOrder;
-	transport?: "rest" | "bridge" | "url";
 	marketplace?: Marketplace;
 	completedAt?: string;
 }
@@ -61,7 +60,6 @@ export function ebayToPurchase(input: ToPurchaseInput): Purchase {
 	if (order.ebayOrderId) out.marketplaceOrderId = order.ebayOrderId;
 	if (order.receiptUrl) out.receiptUrl = order.receiptUrl;
 	if (order.failureReason) out.failureReason = order.failureReason;
-	if (input.transport) out.transport = input.transport;
 	if (input.completedAt && TERMINAL.has(status)) out.completedAt = input.completedAt;
 	return out;
 }

@@ -29,6 +29,7 @@
  * is recommended — a sudden drop is the early signal of a redesign.
  */
 
+import { applyAuthenticityGuaranteeFields, authenticityGuaranteeDescriptorFromFlag } from "./ebay-extract.js";
 import type { EbayItemSummary } from "./ebay-search.js";
 
 // `g` flag is required for `String.prototype.matchAll`. Capture group 2
@@ -147,6 +148,20 @@ interface TextualDisplay {
 
 function isObject(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * eBay's hydration JSON renders the AG badge inside `__search` as an
+ * IconAndText block whose icon name is `AUTHORIZED_SELLER`. Probing the
+ * icon name (rather than the visible text) keeps the detector
+ * locale-agnostic — same shape on `.com` / `.co.uk` / `.de`.
+ */
+function hasAuthorizedSellerBadge(search: Record<string, unknown>): boolean {
+	const block = search.authorizedSeller;
+	if (!isObject(block)) return false;
+	const icon = block.icon;
+	if (!isObject(icon)) return false;
+	return typeof icon.name === "string" && icon.name === "AUTHORIZED_SELLER";
 }
 
 function textJoin(td: unknown): string | undefined {
@@ -460,6 +475,13 @@ export function browseLayoutCardToSummary(card: unknown): BrowseLayoutItem | nul
 			out.subtitle = sub.text.trim();
 		}
 		if (search.certifiedRefurbished) out.certifiedRefurbished = true;
+		// Authenticity Guarantee badge — JSON shape lives at
+		// `card.__search.authorizedSeller.icon.name === "AUTHORIZED_SELLER"`
+		// with `accessibilityText: "Authenticity Guarantee"`. The shared
+		// helper writes both `authenticityGuarantee` (descriptor) and
+		// `qualifiedPrograms` so callers read AG identically across SRP
+		// search, browse-layout, and PDP detail.
+		applyAuthenticityGuaranteeFields(out, authenticityGuaranteeDescriptorFromFlag(hasAuthorizedSellerBadge(search)));
 	}
 
 	const pr = card.productReview;

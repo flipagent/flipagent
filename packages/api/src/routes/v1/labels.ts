@@ -22,8 +22,7 @@ labelsRoute.post(
 	}),
 	requireApiKey,
 	tbBody(LabelQuoteRequest),
-	async (c) =>
-		c.json({ ...(await quoteLabel(c.req.valid("json"), { apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await quoteLabel(c.req.valid("json"), { apiKeyId: c.var.apiKey.id })) }),
 );
 
 labelsRoute.post(
@@ -35,11 +34,7 @@ labelsRoute.post(
 	}),
 	requireApiKey,
 	tbBody(LabelPurchaseRequest),
-	async (c) =>
-		c.json(
-			{ ...(await purchaseLabel(c.req.valid("json"), { apiKeyId: c.var.apiKey.id })), source: "rest" as const },
-			201,
-		),
+	async (c) => c.json({ ...(await purchaseLabel(c.req.valid("json"), { apiKeyId: c.var.apiKey.id })) }, 201),
 );
 
 labelsRoute.delete(

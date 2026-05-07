@@ -48,13 +48,13 @@ export const MarketplaceCapabilities = Type.Object(
 	{
 		/** Active-listing search (`/v1/items/search`). */
 		search: CapabilityStatus,
-		/** Sold-listing search (`/v1/items/search?status=sold`). For eBay, scrape transport when Marketplace Insights REST unapproved. */
+		/** Sold-listing search (`/v1/items/search?status=sold`). */
 		sold: CapabilityStatus,
 		/** Single-listing detail (`/v1/items/{id}`). */
 		detail: CapabilityStatus,
 		/** Score one listing (`/v1/evaluate`). */
 		evaluate: CapabilityStatus,
-		/** Buyer-side checkout (`/v1/purchases`). REST or bridge transport. */
+		/** Buyer-side checkout (`/v1/purchases`). */
 		buy: CapabilityStatus,
 		/** Sell-side ops (`/v1/listings`, `/v1/sales`, `/v1/payouts`, `/v1/policies`, …). Requires seller OAuth. */
 		sell: CapabilityStatus,

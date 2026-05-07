@@ -5,24 +5,18 @@
  *   flipagent_get_purchase      GET    /v1/purchases/{id}
  *   flipagent_cancel_purchase   POST   /v1/purchases/{id}/cancel
  *
- * Transport (auto-picked rest → bridge → url):
- *   rest    when `EBAY_ORDER_APPROVED=1` + eBay OAuth bound
- *   bridge  when the Chrome extension is paired (extension opens the
- *           ebay.com tab, shows a cap-validation banner, captures the
- *           orderId off /vod/ for fast reconciliation)
- *   url     deeplink fallback — response carries `nextAction.url`
- *           pointing at the ebay.com listing for the user to click
- *           Buy It Now → Confirm and pay on eBay's own UI
+ * Two outcomes:
+ *   - terminal status (`completed`/`failed`) → render the receipt; stop
+ *   - non-terminal status with `nextAction.url` → direct the user to
+ *     that URL on the marketplace UI; poll `flipagent_get_purchase`
+ *     until terminal
  *
- * Async model: create returns immediately with `status: "queued"`
- * (or `"processing"` if the extension claims the bridge job within
- * the 5 s fast wait). The agent polls `flipagent_get_purchase` until
- * terminal (`completed | failed | cancelled`); each poll runs the
- * Trading-API reconciler inline (~300-700 ms) which diffs the user's
- * WonList for a new OrderLineItemID — polling IS what closes the
- * loop, no need to wait for the 30 s worker tick. Tracking rows the
- * user never confirms expire after 30 min. Mirrors the bid pattern
- * in `bids.ts` (BidList diff).
+ * Async polling: each `flipagent_get_purchase` call runs the
+ * Trading-API reconciler inline (~300-700 ms), so the very next read
+ * after the user clicks Confirm and pay flips `processing` →
+ * `completed` — no need to wait for any background tick. Tracking
+ * rows the user never confirms expire after 30 min. Same pattern as
+ * `bids.ts` (BidList diff for auctions).
  */
 
 import { Type } from "@sinclair/typebox";
@@ -45,7 +39,7 @@ export const ebayBuyItemInput = Type.Object(
 );
 
 export const ebayBuyItemDescription =
-	"Buy an item (one-shot Buy-It-Now). Calls POST /v1/purchases. **When to use** — direct purchase of a fixed-price listing or auction's BIN ceiling; for auctions use `flipagent_place_bid` instead. Compresses eBay's initiate + place_order into one call. **Inputs** — `itemId` (legacy 12-digit / `v1|n|v` / full ebay.com/itm URL), optional `quantity` (default 1), optional `variationId` (multi-variant listings). **Output** — `Purchase { id, marketplace, status, items, transport, createdAt, ebayOrderId?, totalCents?, receiptUrl?, nextAction? }` plus `poll_with: \"flipagent_get_purchase\"` + `terminal_states`. Initial `status` is `queued` or `processing`. **Transport auto-pick** — REST when `EBAY_ORDER_APPROVED=1` + eBay OAuth bound (server places); bridge when the Chrome extension is paired (extension opens the eBay tab + cap-validation banner + fast orderId capture); otherwise url (response carries `nextAction.url` pointing at the ebay.com listing — direct the user to that URL to click Buy It Now → Confirm and pay on eBay's own UI). **Async** — for bridge + url, the Trading-API reconciler diffs the user's WonList for a new OrderLineItemID and transitions to `completed` once eBay confirms. Tracking rows the user never confirms expire after 30 min. **Polling cadence** — 2-5 s between `flipagent_get_purchase` calls (each runs the reconciler inline); stop on terminal status (`completed | failed | cancelled`). **Prereqs** — none for url transport (always works); REST needs `EBAY_ORDER_APPROVED=1` + eBay OAuth bound. **Example** — `{ itemId: \"206252358068\" }`.";
+	'Buy an item (one-shot Buy-It-Now). Calls POST /v1/purchases. **When to use** — direct purchase of a fixed-price listing or an auction\'s BIN ceiling; for auctions use `flipagent_place_bid` instead. **Inputs** — `itemId` (legacy 12-digit / `v1|n|v` / full ebay.com/itm URL), optional `quantity` (default 1), optional `variationId` (multi-variant listings). **Output** — `Purchase { id, marketplace, status, items, createdAt, marketplaceOrderId?, receiptUrl?, nextAction? }` plus `poll_with: "flipagent_get_purchase"` + `terminal_states`. **Outcomes** — terminal status on the response (the order is fully placed; render the receipt) **or** non-terminal status with `nextAction.url` (direct the user to that URL to click Buy It Now → Confirm and pay on the marketplace UI, then poll). The response shape is identical regardless of how the order is being driven internally. **Polling cadence** — 2-5 s between `flipagent_get_purchase` calls (each runs the Trading-API reconciler inline; the next read after the user confirms flips status to `completed`); stop on terminal (`completed | failed | cancelled`). Tracking rows the user never confirms expire after 30 min. **Example** — `{ itemId: "206252358068" }`.';
 
 const LEGACY_ITEM_ID = /^\d{9,15}$/;
 const V1_ITEM_ID = /^v1\|(\d{9,15})\|(\d+)$/i;
@@ -112,7 +106,7 @@ export const ebayOrderStatusInput = Type.Object(
 );
 
 export const ebayOrderStatusDescription =
-	"Read status + result for one purchase. Calls GET /v1/purchases/{id}. **When to use** — poll after `flipagent_create_purchase` until `status` is terminal (`completed | failed | cancelled`); also useful to re-check an old order's `ebayOrderId` / `receiptUrl`. **Inputs** — `id` (the UUID returned as `id` from `flipagent_create_purchase`). **Output** — `Purchase { id, marketplace, status, items, transport, createdAt, ebayOrderId?, totalCents?, receiptUrl? }` or 404 if no such purchase under your api key. **Polling cadence** — 2-5 s while bridge transport is in flight. Each call runs the Trading-API reconciler inline (~300-700 ms): if a new OrderLineItemID has appeared in WonList since the job was queued, the row is transitioned to `completed` immediately — no need to wait for the worker's 30 s tick. **Prereqs** — none beyond the api key. **Example** — `{ id: \"db7bd2d5-1dc4-4596-a7a1-ec9ca28a47d1\" }`.";
+	'Read status + result for one purchase. Calls GET /v1/purchases/{id}. **When to use** — poll after `flipagent_create_purchase` until `status` is terminal (`completed | failed | cancelled`); also useful to re-check an old order\'s `marketplaceOrderId` / `receiptUrl`. **Inputs** — `id` (the UUID returned as `id` from `flipagent_create_purchase`). **Output** — `Purchase { id, marketplace, status, items, createdAt, marketplaceOrderId?, receiptUrl?, nextAction? }` or 404 if no such purchase under your api key. **Polling cadence** — 2-5 s while in flight. Each call runs the Trading-API reconciler inline (~300-700 ms): once eBay confirms the order, the very next read flips status to `completed`. Non-terminal rows whose user walked away from the marketplace tab carry `nextAction.url` again so the agent can re-prompt. **Example** — `{ id: "db7bd2d5-1dc4-4596-a7a1-ec9ca28a47d1" }`.';
 
 export async function ebayOrderStatusExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const id = String(args.id);

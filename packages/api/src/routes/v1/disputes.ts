@@ -62,7 +62,6 @@ disputesRoute.get(
 			disputes: r.disputes,
 			limit: r.limit,
 			offset: r.offset,
-			source: "rest" as const,
 		} satisfies DisputesListResponse);
 	},
 );
@@ -104,7 +103,7 @@ disputesRoute.post(
 		const result = await checkCancellationEligibility(body.legacyOrderId, body.items, {
 			apiKeyId: c.var.apiKey.id,
 		});
-		return c.json({ ...result, source: "rest" as const });
+		return c.json({ ...result });
 	},
 );
 
@@ -127,7 +126,7 @@ disputesRoute.post(
 		const result = await createCancellation(body.legacyOrderId, body.reason, body.items, {
 			apiKeyId: c.var.apiKey.id,
 		});
-		return c.json({ ...result, source: "rest" as const }, 201);
+		return c.json({ ...result }, 201);
 	},
 );
 
@@ -144,7 +143,7 @@ disputesRoute.post(
 	async (c) => {
 		const r = await closeInquiry(c.req.param("id"), { apiKeyId: c.var.apiKey.id });
 		if (!r) return c.json({ error: "dispute_not_found" }, 404);
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -176,7 +175,7 @@ disputesRoute.get(
 				404,
 			);
 		}
-		return c.json({ ...result, source: "rest" as const });
+		return c.json({ ...result });
 	},
 );
 
@@ -207,7 +206,7 @@ disputesRoute.post(
 			contentType: file.type || "application/octet-stream",
 			filename: file.name,
 		});
-		return c.json({ ...result, source: "rest" as const });
+		return c.json({ ...result });
 	},
 );
 
@@ -234,7 +233,7 @@ disputesRoute.post(
 			files: body.fileIds.map((fileId) => ({ fileId })),
 			...(body.lineItems ? { lineItems: body.lineItems } : {}),
 		});
-		return c.json({ ...result, source: "rest" as const });
+		return c.json({ ...result });
 	},
 );
 

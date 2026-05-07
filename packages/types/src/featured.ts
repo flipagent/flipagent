@@ -4,7 +4,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Page, ResponseSource } from "./_common.js";
+import { Page } from "./_common.js";
 import { Item } from "./items.js";
 
 export const FeaturedDealKind = Type.Union([Type.Literal("daily_deal"), Type.Literal("event_deal")], {
@@ -28,10 +28,9 @@ export const FeaturedDeal = Type.Composite(
 );
 export type FeaturedDeal = Static<typeof FeaturedDeal>;
 
-export const FeaturedListResponse = Type.Composite(
-	[Page, Type.Object({ deals: Type.Array(FeaturedDeal), source: Type.Optional(ResponseSource) })],
-	{ $id: "FeaturedListResponse" },
-);
+export const FeaturedListResponse = Type.Composite([Page, Type.Object({ deals: Type.Array(FeaturedDeal) })], {
+	$id: "FeaturedListResponse",
+});
 export type FeaturedListResponse = Static<typeof FeaturedListResponse>;
 
 /* ---------------- Buy Marketing — merchandised + also_bought / also_viewed (LR) ---------------- */
@@ -61,7 +60,7 @@ export const MerchandisedProductsQuery = Type.Object(
 export type MerchandisedProductsQuery = Static<typeof MerchandisedProductsQuery>;
 
 export const MerchandisedProductsResponse = Type.Object(
-	{ products: Type.Array(MerchandisedProduct), source: Type.Optional(ResponseSource) },
+	{ products: Type.Array(MerchandisedProduct) },
 	{ $id: "MerchandisedProductsResponse" },
 );
 export type MerchandisedProductsResponse = Static<typeof MerchandisedProductsResponse>;
@@ -76,7 +75,7 @@ export const RelatedByProductQuery = Type.Object(
 export type RelatedByProductQuery = Static<typeof RelatedByProductQuery>;
 
 export const RelatedByProductResponse = Type.Object(
-	{ products: Type.Array(MerchandisedProduct), source: Type.Optional(ResponseSource) },
+	{ products: Type.Array(MerchandisedProduct) },
 	{ $id: "RelatedByProductResponse" },
 );
 export type RelatedByProductResponse = Static<typeof RelatedByProductResponse>;

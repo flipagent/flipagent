@@ -4,7 +4,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Money, Page } from "./_common.js";
 
 export const Product = Type.Object(
 	{
@@ -40,13 +40,12 @@ export const ProductSearchQuery = Type.Object(
 );
 export type ProductSearchQuery = Static<typeof ProductSearchQuery>;
 
-export const ProductsListResponse = Type.Composite(
-	[Page, Type.Object({ products: Type.Array(Product), source: Type.Optional(ResponseSource) })],
-	{ $id: "ProductsListResponse" },
-);
+export const ProductsListResponse = Type.Composite([Page, Type.Object({ products: Type.Array(Product) })], {
+	$id: "ProductsListResponse",
+});
 export type ProductsListResponse = Static<typeof ProductsListResponse>;
 
-export const ProductResponse = Type.Composite([Product, Type.Object({ source: Type.Optional(ResponseSource) })], {
+export const ProductResponse = Type.Composite([Product], {
 	$id: "ProductResponse",
 });
 export type ProductResponse = Static<typeof ProductResponse>;
@@ -83,7 +82,6 @@ export const ProductMetadataResponse = Type.Object(
 		epid: Type.Optional(Type.String()),
 		categoryId: Type.Optional(Type.String()),
 		aspects: Type.Array(ProductMetadataAspect),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ProductMetadataResponse" },
 );
@@ -106,7 +104,6 @@ export const ProductMetadataForCategoriesResponse = Type.Object(
 				aspects: Type.Array(ProductMetadataAspect),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ProductMetadataForCategoriesResponse" },
 );

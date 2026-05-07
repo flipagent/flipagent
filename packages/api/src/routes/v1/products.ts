@@ -49,7 +49,9 @@ productsRoute.get(
 		parameters: paramsFor("query", ProductSearchQuery),
 		responses: {
 			200: jsonResponse("Products.", ProductsListResponse),
-			503: errorResponse("Catalog search needs a connected eBay account (any user) or EBAY_CATALOG_APPROVED=1."),
+			503: errorResponse(
+				"Catalog search not available on this server (needs a connected eBay account or operator approval).",
+			),
 		},
 	}),
 	requireApiKey,
@@ -64,7 +66,6 @@ productsRoute.get(
 				limit: result.body.limit,
 				offset: result.body.offset,
 				...(result.body.total !== undefined ? { total: result.body.total } : {}),
-				source: result.source,
 			};
 			return c.json(body);
 		} catch (err) {
@@ -86,7 +87,9 @@ productsRoute.get(
 		responses: {
 			200: jsonResponse("Metadata.", ProductMetadataResponse),
 			400: errorResponse("Provide ?epid= or ?categoryId=."),
-			503: errorResponse("Catalog metadata needs eBay-connected api key or EBAY_CATALOG_APPROVED=1."),
+			503: errorResponse(
+				"Catalog metadata not available on this server (needs a connected eBay account or operator approval).",
+			),
 		},
 	}),
 	requireApiKey,
@@ -96,7 +99,7 @@ productsRoute.get(
 			const q = c.req.valid("query");
 			const result = await getProductMetadata(q, c.var.apiKey.id);
 			renderResultHeaders(c, result);
-			return c.json({ ...result.body, source: result.source } satisfies ProductMetadataResponse);
+			return c.json(result.body satisfies ProductMetadataResponse);
 		} catch (err) {
 			const mapped = mapProductsError(c, err);
 			if (mapped) return mapped;
@@ -115,7 +118,9 @@ productsRoute.get(
 		parameters: paramsFor("query", ProductMetadataForCategoriesQuery),
 		responses: {
 			200: jsonResponse("Metadata.", ProductMetadataForCategoriesResponse),
-			503: errorResponse("Catalog metadata needs eBay-connected api key or EBAY_CATALOG_APPROVED=1."),
+			503: errorResponse(
+				"Catalog metadata not available on this server (needs a connected eBay account or operator approval).",
+			),
 		},
 	}),
 	requireApiKey,
@@ -125,7 +130,7 @@ productsRoute.get(
 			const q = c.req.valid("query");
 			const result = await getProductMetadataForCategories(q, c.var.apiKey.id);
 			renderResultHeaders(c, result);
-			return c.json({ ...result.body, source: result.source } satisfies ProductMetadataForCategoriesResponse);
+			return c.json(result.body satisfies ProductMetadataForCategoriesResponse);
 		} catch (err) {
 			const mapped = mapProductsError(c, err);
 			if (mapped) return mapped;
@@ -140,7 +145,7 @@ productsRoute.get(
 		tags: ["Products"],
 		summary: "Get a product by EPID",
 		description:
-			"Works in any tenant. Tries Catalog REST via the api-key's user OAuth first (works for any connected seller — no eBay tenant approval needed); falls back to app-credential REST when `EBAY_CATALOG_APPROVED=1`; finally scrapes `/p/{epid}` JSON-LD. `X-Flipagent-Source` says which path served the response.",
+			"Resolves a product by EPID using whichever sources the server has available — connected-seller Catalog REST, app-credential REST when the operator has approval, and finally a public JSON-LD scrape.",
 		responses: {
 			200: jsonResponse("Product.", ProductResponse),
 			404: errorResponse("EPID not found."),
@@ -153,7 +158,7 @@ productsRoute.get(
 			const result = await getProductByEpid(c.req.param("epid"), undefined, c.var.apiKey.id);
 			if (!result) return c.json({ error: "product_not_found", message: "No product." }, 404);
 			renderResultHeaders(c, result);
-			return c.json({ ...result.body, source: result.source });
+			return c.json(result.body);
 		} catch (err) {
 			const mapped = mapProductsError(c, err);
 			if (mapped) return mapped;

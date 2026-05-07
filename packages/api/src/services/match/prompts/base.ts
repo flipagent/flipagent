@@ -19,7 +19,7 @@
  * not buried in a category-specific block.
  */
 
-export const SYSTEM_VERIFY_BASE = `Decide if each ITEM is the SAME PRODUCT as CANDIDATE on eBay. Frame: would a buyer expecting CANDIDATE accept ITEM as a substitute at the same price tier?
+export const SYSTEM_VERIFY_BASE = `Decide if each ITEM is the SAME PRODUCT as CANDIDATE on eBay. Frame: would a buyer expecting CANDIDATE accept ITEM as a substitute?
 
 ═══ RULE 1 — REGIONAL PACKAGING SUFFIXES ARE THE SAME PRODUCT ═══
 Many SKUs extend the same base reference with a regional packaging code. These ARE the same product. DO NOT reject for these:
@@ -45,8 +45,7 @@ DIFFERENT: an INNER digit/letter change (between alphanumeric blocks of the SKU)
 5. Edition / variant — 1st Edition ≠ Unlimited; Holo ≠ non-Holo; Limited ≠ Standard; SP / Spizike sub-models ≠ standard retro.
 6. Grade — PSA 10 ≠ PSA 9 ≠ raw; BGS 9.5 ≠ 9.
 7. Bundle / lot — "set of 3", "x5", "with extras", "lot of N" when the unit is the candidate.
-8. Authenticity signal — multi-size listings ("Size 7-12", "All Sizes") at unrealistically low prices (less than 40% of seed price) are typically replicas → reject.
-9. B Grade / damaged box / "as-is" — when seed is DS / pristine new, off-condition variants reject.
+8. B Grade / damaged box / "as-is" — when seed is DS / pristine new, off-condition variants reject.
 
 ═══ RULE 3 — VARIANT MUST BE CONFIRMED, BUT EVERY SIGNAL COUNTS ═══
 When the CANDIDATE has a product-defining variant axis (size for shoes/clothes; capacity/color for phones; grade for cards), the same axis value MUST be confirmable on the ITEM. But "confirmable" doesn't mean "in the title" — it means findable in ANY of the structured signals.
@@ -58,8 +57,8 @@ Confirmation precedence (highest trust → lowest):
      → confirmed.
 
   2. ITEM has a "variations (N SKUs)" block AND one variation matches
-     the candidate's axis values at a comparable price
-     ("variations: Color=Natural Titanium — $819.89")
+     the candidate's axis values
+     ("variations: Color=Natural Titanium")
      → confirmed (the buyer can pick that variant from this listing).
 
   3. ITEM aspects state the variant ("Manufacturer Color: Natural Titanium",
@@ -79,16 +78,18 @@ CRITICAL — description is a CONFIRMATION input, not a REJECT signal:
 - Reject for description content ONLY when description CONTRADICTS the title on the variant axis itself.
 
 ═══ RULE 4 — TITLE IS CANONICAL ═══
-Aspects, conditionDescriptors, and description are NOISY — sellers miscode them all the time. They are SUPPLEMENTAL inputs that:
+Aspects, conditionDescriptors, description, and MPN are NOISY — sellers miscode them all the time, including pasting component / placeholder part numbers into MPN. They are SUPPLEMENTAL inputs that:
   (a) confirm the variant when title is silent (rule 3 above), or
   (b) flag genuine product differences when ITEM title clearly names a different product.
 
-They are NOT grounds to reject when the title plainly matches.
+They are NOT grounds to reject when the title plainly matches. MPN difference alone, with matching titles, is not a reject.
+
+You see no prices. Do not invent price-based reasoning ("price too high/low", "unrealistically cheap", "must be a replica because of price"). Replica / fraud detection is a downstream filter's job that uses signals you can't see (seller feedback distribution, market median, std-dev). Your only job is product identity.
 
 Specifically:
-- The CANDIDATE's own aspects / conditionDescriptors / description may be contradictory (sellers list implausible colors, wrong grades). Treat the candidate's contradictory aspect as UNDETERMINED. NEVER reject an ITEM because the CANDIDATE's own metadata is messy. The candidate's TITLE is what defines the candidate.
-- ITEM aspect contradicts ITEM title → ignore the aspect, trust the title.
-- ITEM aspect names the candidate's variant when item title is silent → trust the aspect (rule 3).
+- The CANDIDATE's own aspects / conditionDescriptors / description / MPN may be contradictory (sellers list implausible colors, wrong grades, partial part numbers). Treat the candidate's contradictory metadata as UNDETERMINED. NEVER reject an ITEM because the CANDIDATE's own metadata is messy. The candidate's TITLE is what defines the candidate.
+- ITEM aspect / MPN contradicts ITEM title → ignore the aspect, trust the title.
+- ITEM aspect / MPN names the candidate's variant when item title is silent → trust it (rule 3).
 - "Network: Spectrum / Verizon / AT&T" on an unlocked phone, "Battery: 87%" on a brand-new listing, "Country of Origin" mismatches, "Chipset Model" wrong tier — IGNORE.
 - Marketing copy ("AUTHENTIC", "FAST SHIPPING", warranty card) → ignore.
 - Photo angle / wording differences → ignore.
@@ -96,16 +97,6 @@ Specifically:
 For conditionDescriptors specifically (graded items like trading cards):
 - Reject ONLY if BOTH candidate AND item conditionDescriptors are present AND they explicitly disagree on Grade or Grading Service.
 - If candidate's grade is in title (e.g. "PSA 10") and the item's title also says "PSA 10", that is sufficient.
-
-═══ AUTHENTICITY / FAKE-LISTING SIGNAL ═══
-A brand-new listing whose price is DRAMATICALLY below the candidate's price tier is a replica/scam signal. Hard rule:
-- Price ≥ 50% of candidate's price → NOT suspect. Do NOT reject for price.
-- Price < 33% of candidate's price + title fully matches → REJECT, reason "suspect price (likely replica)".
-- Price 33-50% — borderline, keep unless title also has scam signals (e.g. "All Sizes $X" sneaker parent).
-
-A multi-size sneaker listing offering any-size at one flat low price (e.g. "All Sizes $85" when adult retail is $300+) → REJECT regardless of % threshold.
-
-When in doubt on price-only signal, keep the item.
 
 (Condition tier — New / Refurbished / Used / Parts — is filtered upstream at the search layer. Only flag if title CLEARLY contradicts the condition field, e.g. "BRAND NEW SEALED" with condition=Pre-Owned.)
 
@@ -136,10 +127,10 @@ E. CAND "GA-2100-1A" vs ITEM "GA-2100-2A" → {"i":0,"same":false,"reason":"inne
 F. CAND "GA-2100-1A" vs ITEM "GA-2100-1A3ER" → {"i":0,"same":false,"reason":"inserted 3 = Utility Black colorway","category":"wrong_product"}
 G. CAND "Jordan 4 Black Cat Size 12" vs ITEM "Jordan 4 Black Cat Size 12 DS" → {"i":0,"same":true,"reason":"same shoe + size + condition"}
 H. CAND "Jordan 4 Black Cat Size 12" vs ITEM "Jordan 4 Black Cat Size 10.5" → {"i":0,"same":false,"reason":"size differs 12 vs 10.5","category":"wrong_product"}
-I. CAND "Jordan 4 Black Cat Size 12 (2025)" vs ITEM "Jordan 4 Black Cat 2025" + variations contains "US Shoe Size: 12 — $300" → {"i":0,"same":true,"reason":"size 12 confirmed via variations[]"}
+I. CAND "Jordan 4 Black Cat Size 12 (2025)" vs ITEM "Jordan 4 Black Cat 2025" + variations contains "US Shoe Size: 12" → {"i":0,"same":true,"reason":"size 12 confirmed via variations[]"}
 J. CAND "Jordan 4 Black Cat Size 12 2025" vs ITEM "Jordan 4 Black Cat 2020 CU1110-010 Size 12" → {"i":0,"same":false,"reason":"different release year","category":"wrong_product"}
 K. CAND "Jordan 4 Black Cat Size 12" vs ITEM "Spizike Jordan 4 Black Cat Size 12" → {"i":0,"same":false,"reason":"Spizike sub-model","category":"wrong_product"}
-L. CAND "Jordan 4 Black Cat Size 12 ($300)" vs ITEM "Jordan 4 Black Cat Size 7-12 ($85)" → {"i":0,"same":false,"reason":"multi-size at sub-replica price","category":"wrong_product"}
+L. CAND "Jordan 4 Black Cat Size 12" vs ITEM "Jordan 4 Black Cat Size 7-12" → {"i":0,"same":false,"reason":"multi-size listing not bound to size 12","category":"bundle_or_lot"}
 M. CAND "iPhone 15 Pro 256GB Natural Ti" vs ITEM "iPhone 15 Pro 256GB Blue Ti" → {"i":0,"same":false,"reason":"color differs","category":"wrong_product"}
 N. CAND "iPhone 15 Pro Max 256GB Natural Titanium" vs ITEM "iPhone 15 Pro Max 256GB Unlocked" + aspect "Manufacturer Color: Natural Titanium" → {"i":0,"same":true,"reason":"color confirmed via aspect"}
 O. CAND "iPhone 15 Pro 128GB" vs ITEM "iPhone 15 Pro 256GB" → {"i":0,"same":false,"reason":"capacity differs","category":"wrong_product"}

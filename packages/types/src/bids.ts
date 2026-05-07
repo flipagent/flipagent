@@ -1,31 +1,26 @@
 /**
  * `/v1/bids/*` — auction bidding (eBay buy/offer).
  *
- * Three transports surface through the same shape:
- *   - REST   (with `EBAY_BIDDING_APPROVED=1`) — eBay's Buy Offer API
- *            places the proxy bid server-side.
- *   - BRIDGE (paired Chrome extension) — extension opens the ebay.com/
- *            itm tab and surfaces a Place-Bid panel observer.
- *   - URL    (no extension, no REST approval) — the API returns
- *            `nextAction.url` pointing at the ebay.com/itm page; the
- *            user clicks Place Bid on eBay's own UI.
- *
- * Trading-API reconciler matches the resulting `BidList` diff against
- * a snapshot captured at queue time regardless of transport. Auto-pick
- * order: REST (if approved) → BRIDGE (if paired) → URL.
+ * Same contract as `/v1/purchases`: response is either terminal (the
+ * bid is on file with eBay; agent shows the result and stops) or
+ * non-terminal with `nextAction` (user action is needed; agent
+ * directs the user to `nextAction.url` and polls
+ * `GET /v1/bids/{listingId}` until the status flips). Whether the
+ * API places the bid via Buy Offer REST, hands it to a paired
+ * Chrome extension, or returns a deeplink for the user to complete
+ * on ebay.com is an internal implementation detail.
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, NextAction, ResponseSource } from "./_common.js";
+import { Marketplace, Money, NextAction } from "./_common.js";
 
 export const BidStatus = Type.Union(
 	[
-		// `pending` = bridge or url transport queued the bid in the
-		// tracking row; the user hasn't clicked through eBay's
-		// confirmation flow yet. The reconciler in
-		// `services/bid-reconciler.ts` flips it to `active` (or
-		// `outbid`) once `GetMyeBayBuying.BidList` confirms it landed;
-		// agents poll `GET /v1/bids/{listingId}` to see the transition.
+		// `pending` = a tracking row was created and the user hasn't
+		// clicked through eBay's confirmation flow yet. Reconciler in
+		// `services/bid-reconciler.ts` flips it to `active` (or `outbid`)
+		// once `GetMyeBayBuying.BidList` confirms the bid landed; agents
+		// poll `GET /v1/bids/{listingId}` to see the transition.
 		Type.Literal("pending"),
 		Type.Literal("active"),
 		Type.Literal("outbid"),
@@ -50,9 +45,10 @@ export const Bid = Type.Object(
 		auctionEndsAt: Type.Optional(Type.String()),
 
 		/**
-		 * Deeplink to drive the bid forward when transport is "url".
-		 * Agent/UI directs the user to `nextAction.url` (the ebay.com/itm
-		 * page) to click Place Bid. Omitted in REST + bridge transports.
+		 * Set when the bid needs the user to do something on the
+		 * marketplace UI (open the listing and click Place Bid).
+		 * Absent when the bid was placed server-side or has already
+		 * reached a terminal status.
 		 */
 		nextAction: Type.Optional(NextAction),
 	},
@@ -65,16 +61,10 @@ export const BidCreate = Type.Object(
 		listingId: Type.String(),
 		amount: Money,
 		maxBid: Type.Optional(Money),
-
-		/** Force a specific transport. Auto-picks when omitted. */
-		transport: Type.Optional(Type.Union([Type.Literal("rest"), Type.Literal("bridge"), Type.Literal("url")])),
 	},
 	{ $id: "BidCreate" },
 );
 export type BidCreate = Static<typeof BidCreate>;
 
-export const BidsListResponse = Type.Object(
-	{ bids: Type.Array(Bid), source: Type.Optional(ResponseSource) },
-	{ $id: "BidsListResponse" },
-);
+export const BidsListResponse = Type.Object({ bids: Type.Array(Bid) }, { $id: "BidsListResponse" });
 export type BidsListResponse = Static<typeof BidsListResponse>;

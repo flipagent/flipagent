@@ -3,7 +3,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Page, ResponseSource } from "./_common.js";
+import { Page } from "./_common.js";
 
 export const Charity = Type.Object(
 	{
@@ -30,8 +30,7 @@ export const CharitiesListQuery = Type.Object(
 );
 export type CharitiesListQuery = Static<typeof CharitiesListQuery>;
 
-export const CharitiesListResponse = Type.Composite(
-	[Page, Type.Object({ charities: Type.Array(Charity), source: Type.Optional(ResponseSource) })],
-	{ $id: "CharitiesListResponse" },
-);
+export const CharitiesListResponse = Type.Composite([Page, Type.Object({ charities: Type.Array(Charity) })], {
+	$id: "CharitiesListResponse",
+});
 export type CharitiesListResponse = Static<typeof CharitiesListResponse>;

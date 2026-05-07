@@ -44,7 +44,6 @@ feedbackRoute.get(
 			limit: result.limit,
 			offset: result.offset,
 			...(result.total != null ? { total: result.total } : {}),
-			source: "rest" as const,
 		});
 	},
 );
@@ -64,7 +63,7 @@ feedbackRoute.get(
 		const apiKeyId = c.var.apiKey.id;
 		const role = (c.req.query("role") as "buyer" | "seller" | undefined) ?? "seller";
 		const result = await awaitingFeedback({ apiKeyId, role });
-		return c.json({ ...result, source: "rest" as const });
+		return c.json({ ...result });
 	},
 );
 
@@ -109,7 +108,7 @@ feedbackRoute.post(
 			rating: body.rating,
 			comment: hygiene.cleanBody,
 		});
-		return c.json({ id: result.id, redactions: hygiene.redactions, source: "rest" as const });
+		return c.json({ id: result.id, redactions: hygiene.redactions });
 	},
 );
 
@@ -158,6 +157,6 @@ feedbackRoute.post(
 			responseText: hygiene.cleanBody,
 			...(body.responseType ? { responseType: body.responseType } : {}),
 		});
-		return c.json({ ok: true, redactions: hygiene.redactions, source: "rest" as const });
+		return c.json({ ok: true, redactions: hygiene.redactions });
 	},
 );

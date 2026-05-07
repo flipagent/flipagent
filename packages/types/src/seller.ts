@@ -9,7 +9,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, ResponseSource } from "./_common.js";
+import { Marketplace, Money } from "./_common.js";
 
 export const SellerPrivilege = Type.Object(
 	{
@@ -20,7 +20,6 @@ export const SellerPrivilege = Type.Object(
 				quantity: Type.Optional(Type.Integer({ minimum: 0 })),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "SellerPrivilege" },
 );
@@ -36,7 +35,6 @@ export const SellerKyc = Type.Object(
 				message: Type.Optional(Type.String()),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "SellerKyc" },
 );
@@ -52,7 +50,6 @@ export const SellerSubscription = Type.Object(
 				status: Type.String({ description: "OPTED_IN | OPTED_OUT" }),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "SellerSubscription" },
 );
@@ -63,7 +60,6 @@ export const SellerPaymentsProgram = Type.Object(
 		marketplace: Marketplace,
 		status: Type.String({ description: "OPTED_IN | OPTED_OUT | NOT_OPTED_IN" }),
 		programType: Type.String({ description: "EBAY_PAYMENTS | …" }),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "SellerPaymentsProgram" },
 );
@@ -76,7 +72,6 @@ export const SellerAdvertisingEligibility = Type.Object(
 		programs: Type.Optional(
 			Type.Array(Type.String({ description: "PROMOTED_LISTINGS_LITE | PROMOTED_LISTINGS_GENERAL | …" })),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "SellerAdvertisingEligibility" },
 );
@@ -94,10 +89,7 @@ export const SalesTaxRow = Type.Object(
 );
 export type SalesTaxRow = Static<typeof SalesTaxRow>;
 
-export const SalesTaxResponse = Type.Object(
-	{ rows: Type.Array(SalesTaxRow), source: Type.Optional(ResponseSource) },
-	{ $id: "SalesTaxResponse" },
-);
+export const SalesTaxResponse = Type.Object({ rows: Type.Array(SalesTaxRow) }, { $id: "SalesTaxResponse" });
 export type SalesTaxResponse = Static<typeof SalesTaxResponse>;
 
 /* --------- Rate tables (sell/account/v1/rate_table) ------------------ */
@@ -115,7 +107,7 @@ export const RateTable = Type.Object(
 export type RateTable = Static<typeof RateTable>;
 
 export const RateTablesListResponse = Type.Object(
-	{ rateTables: Type.Array(RateTable), source: Type.Optional(ResponseSource) },
+	{ rateTables: Type.Array(RateTable) },
 	{ $id: "RateTablesListResponse" },
 );
 export type RateTablesListResponse = Static<typeof RateTablesListResponse>;
@@ -128,7 +120,6 @@ export const RateTableV2Response = Type.Object(
 	{
 		id: Type.String(),
 		raw: Type.Unknown({ description: "eBay's full RateTable shape; flipagent doesn't reshape." }),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "RateTableV2Response" },
 );
@@ -147,7 +138,6 @@ export type RateTableShippingCostUpdate = Static<typeof RateTableShippingCostUpd
 export const PayoutSettings = Type.Object(
 	{
 		raw: Type.Unknown({ description: "eBay's full payout-settings shape; flipagent doesn't reshape." }),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "PayoutSettings" },
 );
@@ -189,7 +179,7 @@ export const CustomPolicyCreate = Type.Object(
 export type CustomPolicyCreate = Static<typeof CustomPolicyCreate>;
 
 export const CustomPoliciesListResponse = Type.Object(
-	{ customPolicies: Type.Array(CustomPolicy), source: Type.Optional(ResponseSource) },
+	{ customPolicies: Type.Array(CustomPolicy) },
 	{ $id: "CustomPoliciesListResponse" },
 );
 export type CustomPoliciesListResponse = Static<typeof CustomPoliciesListResponse>;
@@ -206,7 +196,6 @@ export const SellerEligibility = Type.Object(
 				reason: Type.Optional(Type.String()),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "SellerEligibility" },
 );

@@ -25,10 +25,12 @@ const STUB_EVALUATION = {
 };
 
 const STUB_META = {
-	itemSource: "scrape" as const,
-	compsQuery: "test query",
-	compsCount: 12,
-	compsSource: "scrape" as const,
+	soldCount: 12,
+	activeCount: 8,
+	soldKept: 12,
+	soldRejected: 0,
+	activeKept: 8,
+	activeRejected: 0,
 };
 
 const STUB_ITEM = {

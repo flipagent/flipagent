@@ -114,7 +114,7 @@ export async function captureDetail(input: {
 	// Bridge/REST callers asking for other sources still fall through
 	// to their own transport — captured data benefits the most-common
 	// path without leaking cross-transport.
-	await recordDetailObservation(normalised, { rawResponse: normalised, source: "scrape" });
+	await recordDetailObservation(normalised, { rawResponse: normalised });
 
 	// Audit row: lets us later count captures per apiKey, prove provenance
 	// for any individual cached entry, and enforce rate limits without

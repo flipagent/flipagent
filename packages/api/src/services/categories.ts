@@ -90,7 +90,7 @@ export async function getCategoryChildren(
 		},
 		async () => ({
 			body: await fetchCategoryChildrenUpstream(parentId, ebayMarketplaceId),
-			source: "rest" as const,
+			source: "rest",
 		}),
 	);
 	return result.body;

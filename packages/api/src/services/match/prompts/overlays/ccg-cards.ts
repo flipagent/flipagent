@@ -9,7 +9,7 @@ export const CCG_CARDS_VERIFY_OVERLAY = `═══ CCG INDIVIDUAL CARDS ══�
 Variant axes that MUST match: card number / set, grader (PSA / BGS / CGC / SGC / HGA / TAG), numeric grade, edition (1st Edition / Unlimited / Shadowless / etc.), language / region of print.
 
 Edition discipline:
-- "1st Edition" / "1st Ed" / "OG" (collector slang for original print) ≠ "Unlimited" / "Unlim" / "later print" — different products at different price tiers (1st Ed typically commands 2-5× premium).
+- "1st Edition" / "1st Ed" / "OG" (collector slang for original print) ≠ "Unlimited" / "Unlim" / "later print" — different products.
 - If candidate title says "1st Edition" / "OG" / nothing-explicit and item title says "Unlimited" → REJECT.
 - If candidate title says "Unlimited" and item title says "1st Edition" → REJECT.
 - If both silent on edition → match on other axes (cards from older sets default to whatever's stated in aspects, otherwise indeterminate).
@@ -17,7 +17,7 @@ Edition discipline:
 Card identity:
 - Card NUMBER is the unique product key. "#NNN", "NNN/MMM", "No. NNN" all name the same number; numeric mismatch → REJECT.
 - Sellers use varied rarity descriptors for the SAME number ("Hyper Rare", "Gold Hyper Rare", "Hyper Rare Gold", "GOLD #NNN", "Illustration Rare #NNN"). Same number = same card regardless of rarity-name aliasing. Don't reject for rarity-descriptor differences when numbers match.
-- Different number IDs WITHIN the same set ARE different cards — distinct rarities/SKUs/price tiers. Cross-number → REJECT.
+- Different number IDs WITHIN the same set ARE different cards — distinct rarities/SKUs. Cross-number → REJECT.
 - Foreign-language prints (Chinese, Japanese, Korean, German) are different products from the English print → REJECT unless candidate explicitly is the foreign print.
 
 Grade discipline:

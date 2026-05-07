@@ -23,7 +23,7 @@
  * silent no-ops. Result is identical regardless (deterministic upstream).
  */
 
-import type { EvaluatePartial, TransportSource } from "@flipagent/types";
+import type { EvaluatePartial } from "@flipagent/types";
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "../../db/client.js";
@@ -38,6 +38,7 @@ import { marketFromSold } from "./adapter.js";
 import { buildActiveDigest, buildFilterSummary, buildSoldDigest } from "./digest.js";
 import { buildPath, EvaluateError, emitPartial, type PipelineListener, runMatchFilter, withStep } from "./pipeline.js";
 import { extractReturns } from "./returns.js";
+import { partitionSuspicious } from "./suspicious.js";
 
 /* --------------------------------- types --------------------------------- */
 
@@ -48,18 +49,40 @@ import { extractReturns } from "./returns.js";
  */
 export interface MarketDataDigest {
 	item: unknown;
+	/** Default-view market stats — computed from `cleanSold` (suspicious comps excluded). */
 	market: unknown;
+	/** Default-view sold digest — over `cleanSold`. */
 	sold: unknown;
+	/** Default-view active digest — over `cleanActive`. */
 	active: unknown;
+	/** Toggle-view market stats — computed from full matched pool (suspicious comps included). */
+	marketAll: unknown;
+	/** Toggle-view sold digest — over `matchedSold`. */
+	soldAll: unknown;
+	/** Toggle-view active digest — over `matchedActive`. */
+	activeAll: unknown;
 	filter: unknown;
 	returns: unknown;
 	meta: unknown;
+	/** Default-view sold pool (suspicious removed). */
 	matchedSold: ItemSummary[];
+	/** Default-view active pool (suspicious removed). */
 	matchedActive: ItemSummary[];
+	/** Toggle-view sold pool (everything the matcher kept, including suspicious). */
+	matchedSoldAll: ItemSummary[];
+	/** Toggle-view active pool (everything the matcher kept, including suspicious). */
+	matchedActiveAll: ItemSummary[];
 	rejectedSold: ItemSummary[];
 	rejectedActive: ItemSummary[];
 	rejectionReasons: Record<string, string>;
 	rejectionCategories: Record<string, string>;
+	/**
+	 * Per-itemId suspicious-listing reasons. Keyed on every comp the
+	 * matcher kept but `assessSuspicious` flagged (likely-fake price /
+	 * Bayesian fraud risk / new-seller anomaly). UI uses this to render
+	 * the "N hidden — show all" toggle and the per-row dim/explanation.
+	 */
+	suspiciousIds: Record<string, { reason: string; pFraud: number }>;
 }
 
 export interface FetchMarketDataInput {
@@ -285,7 +308,7 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 			return {
 				value: detailResult,
 				result: detailResult.body,
-				source: detailResult.source as TransportSource,
+				source: detailResult.source,
 			};
 		},
 	);
@@ -338,9 +361,9 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 				// partial channel, single source of truth for state.
 				emitPartial(onStep, { soldPool: items });
 				return {
-					value: { items, source: r.source as TransportSource },
+					value: { items, source: r.source },
 					result: { count: items.length },
-					source: r.source as TransportSource,
+					source: r.source,
 				};
 			},
 		),
@@ -361,9 +384,9 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 				const items = r.body.itemSummaries ?? [];
 				emitPartial(onStep, { activePool: items });
 				return {
-					value: { items, source: r.source as TransportSource },
+					value: { items, source: r.source },
 					result: { count: items.length },
-					source: r.source as TransportSource,
+					source: r.source,
 				};
 			},
 		),
@@ -396,7 +419,14 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 	// Seed (detail.body) feeds the per-listing rate blend so multi-quantity
 	// listings surface a faster `salesPerDay` when their own sell-through
 	// outpaces the comp pool — see `applySeedBlend` in adapter.ts.
-	const prelimMarket = marketFromSold(soldPool, undefined, undefined, activePool, detail.body);
+	// Pass the request's lookback through as `windowDays` so the
+	// recency-weighted rate (salesPerDayRecency) sees the same window
+	// the data was fetched for. Without this, market.windowDays falls
+	// back to 30 even on a 90-day query, and the exponential decay
+	// (tau = max(7, windowDays/3) = 10) flattens any sale older than
+	// ~30d to ~zero — surfacing "0.00/day" on items that actually have
+	// regular monthly sales.
+	const prelimMarket = marketFromSold(soldPool, { windowDays: lookbackDays }, undefined, activePool, detail.body);
 	const prelimSold = buildSoldDigest(
 		soldPool,
 		(prelimMarket as { windowDays: number }).windowDays,
@@ -441,15 +471,42 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 		};
 	});
 
+	// suspicious filter — runs over the LLM-matched pool. Splits into
+	// `clean` (default view) and `suspicious` (toggle view). Both versions
+	// of market/sold/active stats are assembled below so the UI's toggle
+	// can swap them client-side without a re-fetch.
+	const { suspiciousIds, cleanSold, cleanActive } = partitionSuspicious(filtered.matchedSold, filtered.matchedActive);
+
 	// assemble digest (pure transforms — no step emission) -------------
-	const market = marketFromSold(filtered.matchedSold, undefined, undefined, filtered.matchedActive, detail.body);
+	// Default view (clean): suspicious comps excluded from the median /
+	// digest / queue model.
+	const market = marketFromSold(cleanSold, { windowDays: lookbackDays }, undefined, cleanActive, detail.body);
 	const sold = buildSoldDigest(
-		filtered.matchedSold,
+		cleanSold,
 		(market as { windowDays: number }).windowDays,
 		(market as { salesPerDay: number }).salesPerDay,
 		(market as { meanDaysToSell: number | null }).meanDaysToSell ?? null,
 	);
-	const active = buildActiveDigest(filtered.matchedActive);
+	const active = buildActiveDigest(cleanActive);
+
+	// Toggle view (all): suspicious comps included. Same compute, fed the
+	// full matched pool — UI flips between the two via the "show suspicious"
+	// toggle without a server roundtrip.
+	const marketAll = marketFromSold(
+		filtered.matchedSold,
+		{ windowDays: lookbackDays },
+		undefined,
+		filtered.matchedActive,
+		detail.body,
+	);
+	const soldAll = buildSoldDigest(
+		filtered.matchedSold,
+		(marketAll as { windowDays: number }).windowDays,
+		(marketAll as { salesPerDay: number }).salesPerDay,
+		(marketAll as { meanDaysToSell: number | null }).meanDaysToSell ?? null,
+	);
+	const activeAll = buildActiveDigest(filtered.matchedActive);
+
 	const filter = buildFilterSummary(
 		filtered.matchedSold.length,
 		filtered.rejectedSold.length,
@@ -460,11 +517,11 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 	);
 	const returns = returnsValue;
 	const meta = {
-		itemSource: detail.source as TransportSource,
-		soldCount: filtered.matchedSold.length,
-		soldSource,
-		activeCount: filtered.matchedActive.length,
-		activeSource,
+		// `*Count` reflects the DEFAULT view (clean) — what the headline
+		// median / evaluation actually used. The toggle-on counts are
+		// derivable from `matchedSoldAll.length` etc. on the wire.
+		soldCount: cleanSold.length,
+		activeCount: cleanActive.length,
 		soldKept: filtered.matchedSold.length,
 		soldRejected: filtered.rejectedSold.length,
 		activeKept: filtered.matchedActive.length,
@@ -476,21 +533,33 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 		market,
 		sold,
 		active,
+		marketAll,
+		soldAll,
+		activeAll,
 		filter,
 		returns,
 		meta,
-		matchedSold: filtered.matchedSold,
-		matchedActive: filtered.matchedActive,
+		matchedSold: cleanSold,
+		matchedActive: cleanActive,
+		matchedSoldAll: filtered.matchedSold,
+		matchedActiveAll: filtered.matchedActive,
 		rejectedSold: filtered.rejectedSold,
 		rejectedActive: filtered.rejectedActive,
 		rejectionReasons: filtered.rejectionReasons,
 		rejectionCategories: filtered.rejectionCategories,
+		suspiciousIds,
 	};
 
 	// Confirmed digest. Replaces the preliminary partial in one merge —
 	// matched pools become the new soldPool/activePool, rejected pools
 	// land alongside, and `preliminary: false` flips the UI's verifying
 	// indicator off. Single typed patch, no synthetic step row.
+	//
+	// `soldPool`/`activePool` carry the FULL matched pool (including
+	// suspicious) so the UI's toggle-on view has data; the headline
+	// `market`/`sold`/`active` reflect the clean (suspicious-excluded)
+	// view. `suspiciousIds` lets the UI dim flagged rows in the toggle-off
+	// view and explain the exclusion on hover.
 	emitPartial(onStep, {
 		market: market as EvaluatePartial["market"],
 		sold,
@@ -503,6 +572,10 @@ async function runUpstreamAndCache(input: FetchMarketDataInput): Promise<MarketD
 		rejectedActivePool: filtered.rejectedActive,
 		rejectionReasons: filtered.rejectionReasons,
 		rejectionCategories: filtered.rejectionCategories,
+		suspiciousIds,
+		marketAll: marketAll as EvaluatePartial["market"],
+		soldAll,
+		activeAll,
 		preliminary: false,
 	});
 

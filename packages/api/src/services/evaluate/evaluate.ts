@@ -7,10 +7,11 @@ import {
 	veto as listingVeto,
 	percentile,
 	recommendListPrice,
+	shrinkPosteriorMean,
 } from "../quant/index.js";
 import { toCents } from "../shared/money.js";
 import { landedCost } from "../ship.js";
-import { legitMarketReference, marketFromSold, toQuantListing } from "./adapter.js";
+import { isAuthenticityGuaranteed, legitMarketReference, marketFromSold, toQuantListing } from "./adapter.js";
 import type { EvaluableItem, EvaluateOptions, Evaluation, NetRangeCents } from "./types.js";
 
 // Below this, percentile estimates are noise — IQR cleaning needs ≥4 anyway.
@@ -36,11 +37,44 @@ const MIN_SOLD_FOR_RATING = 6;
 const DEFAULT_OUTBOUND_SHIPPING_CENTS = 1000;
 
 /**
- * Default minimum expected-net per trade. Below this, a deal is "skip"
- * regardless of how clean the rest of the math looks — flippers don't
- * pick up dimes. $30 matches `netMargin`'s default `cleared` floor.
+ * Default rating gate — any positive risk-adjusted expected net clears.
+ * Reseller utility above zero (capital efficiency, opportunity cost,
+ * time/effort floor) is captured by `recommendedExit.dollarsPerDay`
+ * and friends; the rating itself just answers "is this a profitable
+ * trade?". Callers with a specific dollar floor pass `opts.minNetCents`.
  */
-const DEFAULT_MIN_NET_CENTS = 3000;
+const DEFAULT_MIN_NET_CENTS = 0;
+
+/**
+ * Sample-size shrinkage strength on the sale-price anchor. With κ=5,
+ * n=1 leans 83% on the prior (active-ask floor); n=5 splits 50/50;
+ * n≥30 is essentially sample-only. Calibrated against 157 stored
+ * evaluations — kills the "n=1 single-auction comp" false positives
+ * without regressing healthy markets. See `scripts/audit-enet-liquidity.ts`.
+ */
+const SHRINKAGE_KAPPA = 5;
+
+/**
+ * Annualized capital opportunity cost used to NPV the resale inflow.
+ * 30%/yr matches what resellers actually demand for the alternative
+ * use of locked capital (other flips, Treasury, etc.). At 15-day
+ * cycles the discount is ~1%; at 90 days ~7%; at 1+ year it bites
+ * hard — which is exactly what should happen to "this'll never sell"
+ * candidates. Tunable; see audit script.
+ */
+const OPPORTUNITY_RATE_PER_YEAR = 0.3;
+
+/**
+ * NPV discount factor for a buy→cash cycle of `cycleDays`. Continuous-
+ * compounded so chained cycles compose cleanly. Applied to the
+ * **inflow only** (sale proceeds), never to net — discounting a
+ * negative net would make slow losses look less bad than fast losses,
+ * which is the wrong direction.
+ */
+function discountFactor(cycleDays: number): number {
+	if (!Number.isFinite(cycleDays) || cycleDays <= 0) return 1;
+	return Math.exp((-OPPORTUNITY_RATE_PER_YEAR * cycleDays) / 365);
+}
 
 /**
  * Evaluate one listing against a sold pool and an optional forwarder leg.
@@ -68,7 +102,19 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 	// the only signal we have. Multi-quantity listings (PDP "10 sold of 17")
 	// carry the strongest single-listing demand evidence — the blend
 	// surfaces it whether or not comps came back.
-	const market = marketFromSold(opts.sold ?? [], undefined, undefined, opts.asks, item);
+	// `windowDays` here must match the lookback the sold pool was fetched
+	// for — the recency-weighted velocity estimator in `salesPerDayRecency`
+	// decays observations on a tau ∝ windowDays scale, so a 30-day window
+	// applied to a 90-day sample silently flattens 60+ day-old sales to
+	// ~zero salesPerDay. Default 30 keeps back-compat for callers that
+	// haven't wired the option yet.
+	const market = marketFromSold(
+		opts.sold ?? [],
+		opts.lookbackDays != null ? { windowDays: opts.lookbackDays } : undefined,
+		undefined,
+		opts.asks,
+		item,
+	);
 
 	let outboundShippingCents: number;
 	let landedCostCents: number | null = null;
@@ -132,12 +178,40 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		.filter((a) => a.itemId !== candidateId)
 		.map((a) => toCents(a.price?.value))
 		.filter((p) => p > 0);
-	const advice = recommendListPrice(market, {
-		fees: DEFAULT_FEES,
-		outboundShippingCents: outbound,
-		activeAskPrices: askPriceCents,
-		buyPriceCents,
-	});
+
+	// Bayes-Stein shrinkage on the sale-price anchor before the queue
+	// model runs. The reseller's mental model is "1 sale isn't a market;
+	// what's the cheapest realistic ask going for?" — so the prior is
+	// the conservative ask floor (p25 of active asks), with the sample
+	// p25 as a safety net when no asks are listed. With κ=5, n=1 collapses
+	// 83% to the prior, n=5 splits 50/50, n≥30 is sample-only.
+	//
+	// `recommendListPrice` consumes only `medianCents` from the market;
+	// passing it the shrunken value lets the existing cooling-drift /
+	// queue / Erlang logic compose cleanly on top — no second knob.
+	const askP25Cents = market.asks?.p25Cents;
+	const sampleP25Cents = market.p25Cents;
+	const shrinkagePrior =
+		askP25Cents && askP25Cents > 0
+			? Math.min(askP25Cents, sampleP25Cents > 0 ? sampleP25Cents : askP25Cents)
+			: sampleP25Cents > 0
+				? sampleP25Cents
+				: market.medianCents;
+	const nSold = opts.sold?.length ?? 0;
+	const saleHatCents =
+		market.medianCents > 0
+			? shrinkPosteriorMean(nSold, market.medianCents, shrinkagePrior, SHRINKAGE_KAPPA)
+			: market.medianCents;
+
+	const advice = recommendListPrice(
+		{ ...market, medianCents: saleHatCents },
+		{
+			fees: DEFAULT_FEES,
+			outboundShippingCents: outbound,
+			activeAskPrices: askPriceCents,
+			buyPriceCents,
+		},
+	);
 
 	// Risk assessment: P_fraud × max-loss with cycle-vs-return-window
 	// gating. Only meaningful when we have an exit prediction (need
@@ -179,6 +253,7 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 				expectedDaysToSell: advice.expectedDaysToSell,
 				marketMedianCents: legit?.medianCents,
 				marketStdDevCents: legit?.stdDevCents,
+				authenticityGuaranteed: isAuthenticityGuaranteed(item),
 			})
 		: null;
 
@@ -205,23 +280,31 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 
 	// Three honest numbers (each tells a different story to the reseller):
 	//
-	//   successNet   = gross flip net IF the sale succeeds.
-	//                  "If it sells, what do I net?" Happy-path headline.
+	//   successNet   = gross flip net IF the sale succeeds at the
+	//                  shrunken-anchor list price. "Best-case if it sells."
 	//
-	//   expectedNet  = TRUE probabilistic E[net per trade]
-	//                = (1 − P_fraud) × successNet − P_fraud × maxLoss
-	//                  Folds fraud probability + maxLoss into a single
-	//                  honest expectation. THIS is what the rating uses.
+	//   expectedNet  = TRUE probabilistic E[net per trade], NPV form:
+	//                    PV    = grossInflow · D(cycleDays) − buy
+	//                    E[net] = (1 − P_fraud) · PV − P_fraud · maxLoss
+	//                  Three independent random variables — sale price R,
+	//                  time-to-cash T, fraud F — folded into one honest
+	//                  expectation. Discount applies to the **inflow
+	//                  only** (the buy is paid today, in today's dollars);
+	//                  putting D on net would make slow losses look less
+	//                  bad than fast ones, which is backwards.
+	//                  THIS is what the rating uses.
 	//
 	//   maxLoss      = worst case downside (capital-preservation focus).
-	//
-	// When advice is null (no market velocity), there's no price to net
-	// against — surface 0 and the rating gate below catches it. `risk`
-	// is always non-null when advice is non-null (set together above), so
-	// the probabilistic branch fires whenever there's anything to score.
 	const successNetCents = advice?.netCents ?? null;
-	const expectedNetCents =
-		advice && risk ? Math.round((1 - risk.P_fraud) * advice.netCents - risk.P_fraud * risk.maxLossCents) : 0;
+	let expectedNetCents = 0;
+	let discountFactorUsed = 1;
+	if (advice && risk) {
+		const fees = feeBreakdown(advice.listPriceCents, DEFAULT_FEES);
+		const grossInflowCents = advice.listPriceCents - fees.totalCents - outbound;
+		discountFactorUsed = discountFactor(risk.cycleDays);
+		const pvCents = grossInflowCents * discountFactorUsed - buyPriceCents;
+		expectedNetCents = Math.round((1 - risk.P_fraud) * pvCents - risk.P_fraud * risk.maxLossCents);
+	}
 
 	// Rating: single criterion on risk-adjusted expectedNet.
 	//   - veto (factual broken condition)         → skip
@@ -229,7 +312,6 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 	//   - expectedNet < minNet                    → skip
 	//   - else                                     → buy
 	const minNet = opts.minNetCents ?? DEFAULT_MIN_NET_CENTS;
-	const nSold = opts.sold?.length ?? 0;
 	let rating: "buy" | "skip";
 	let reasonCode: Evaluation["reasonCode"];
 	let reason: string;
@@ -250,7 +332,8 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		reasonCode = "below_min_net";
 		if (risk && successNetCents != null) {
 			const fraudPct = (risk.P_fraud * 100).toFixed(1);
-			reason = `(1−${fraudPct}%) × $${(successNetCents / 100).toFixed(0)} − ${fraudPct}% × $${(risk.maxLossCents / 100).toFixed(0)} = $${(expectedNetCents / 100).toFixed(0)} below $${(minNet / 100).toFixed(0)} threshold`;
+			const dStr = discountFactorUsed.toFixed(2);
+			reason = `NPV $${(expectedNetCents / 100).toFixed(0)} (success $${(successNetCents / 100).toFixed(0)} · D=${dStr} over ${risk.cycleDays}d cycle, P_fraud=${fraudPct}%) below $${(minNet / 100).toFixed(0)} threshold`;
 		} else {
 			reason = `expected net $${(expectedNetCents / 100).toFixed(0)} below $${(minNet / 100).toFixed(0)} threshold`;
 		}
@@ -258,10 +341,11 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 		rating = "buy";
 		reasonCode = "cleared";
 		const dollarsStr = `$${(expectedNetCents / 100).toFixed(0)}`;
+		const dStr = discountFactorUsed.toFixed(2);
 		reason =
 			risk && risk.P_fraud > 0.001
-				? `${dollarsStr} expected (success $${((successNetCents ?? 0) / 100).toFixed(0)} × ${(100 * (1 - risk.P_fraud)).toFixed(1)}%); ${risk.reason}`
-				: `${dollarsStr} expected net`;
+				? `${dollarsStr} expected (success $${((successNetCents ?? 0) / 100).toFixed(0)} · D=${dStr} · ${(100 * (1 - risk.P_fraud)).toFixed(1)}% no-fraud); ${risk.reason}`
+				: `${dollarsStr} expected net (D=${dStr} over ${risk?.cycleDays ?? 0}d cycle)`;
 	}
 
 	// Bid ceiling derives from the SAME exit price the recommendation row
@@ -274,7 +358,7 @@ export function evaluate(item: EvaluableItem, opts: EvaluateOptions = {}): Evalu
 	//
 	// Bid ceiling targets the same `minNet` floor the rating uses, so the
 	// "highest you can pay and still earn $X" answer matches the rating
-	// gate. Default $30 — pair it with the rating threshold.
+	// gate. Default 0 (break-even) — pass `opts.minNetCents` to tighten.
 	const exitBasisCents = advice?.listPriceCents ?? market.meanCents;
 	const bidCeilingCents =
 		exitBasisCents > 0

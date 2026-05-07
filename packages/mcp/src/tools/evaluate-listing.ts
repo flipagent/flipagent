@@ -256,6 +256,31 @@ async function pollEvaluateUntilTerminal(client: ReturnType<typeof getClient>, j
 	});
 }
 
+/* ----------------- flipagent_cancel_evaluate_job ----------------- */
+
+export const evaluateCancelInput = Type.Object(
+	{
+		jobId: Type.String({
+			format: "uuid",
+			description: "Job id returned by `flipagent_evaluate_item`.",
+		}),
+	},
+	{ $id: "EvaluateCancelInput" },
+);
+
+export const evaluateCancelDescription =
+	'Request cooperative cancel for an in-flight evaluate job. Calls POST /v1/evaluate/jobs/{id}/cancel. **When to use** — you fired `flipagent_evaluate_item` and realised it was a duplicate / wrong itemId / variant before it finished, and want to release the worker slot. Idempotent — calling on a terminal job is a no-op. **Cost** — free; does NOT refund the submit charge (the usage event was already charged at `flipagent_evaluate_item` time, regardless of whether the pipeline runs to completion). The savings are in releasing the worker slot + skipping the rest of the run\'s scrape/LLM cost on the server side; the user-facing credit is already spent. **Cancel timing** — `queued` jobs flip to `cancelled` immediately; `running` jobs set `cancel_requested=true` and the worker tears down at the next pipeline step boundary (≤ a few seconds typically; mid-step IO like an eBay scrape or LLM call cannot be aborted). **Inputs** — `jobId` (UUID from `flipagent_evaluate_item`). **Output** — `{ id, status }` where status is the post-cancel state (`cancelled` if it transitioned, otherwise the current terminal state if too late). **Prereqs** — `FLIPAGENT_API_KEY`. **Example** — `{ jobId: "abcd1234-..." }`.';
+
+export async function evaluateCancelExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
+	const jobId = String(args.jobId);
+	try {
+		const client = getClient(config);
+		return await client.evaluate.jobs.cancel(jobId);
+	} catch (err) {
+		return toolErrorEnvelope(err, "cancel_evaluate_job_failed", `/v1/evaluate/jobs/${jobId}/cancel`);
+	}
+}
+
 /* ---------------- flipagent_get_evaluation_pool (drill-down) ---------------- */
 
 export const evaluationPoolInput = Type.Object(

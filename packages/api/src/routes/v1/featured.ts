@@ -46,7 +46,7 @@ featuredRoute.get(
 			offset: Number(c.req.query("offset") ?? 0),
 			categoryIds: c.req.query("categoryIds"),
 		});
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -63,7 +63,7 @@ featuredRoute.get(
 	async (c) => {
 		const q = c.req.valid("query");
 		const r = await listMerchandisedProducts(q, ebayMarketplaceId());
-		return c.json({ ...r, source: "rest" as const } satisfies MerchandisedProductsResponse);
+		return c.json({ ...r } satisfies MerchandisedProductsResponse);
 	},
 );
 
@@ -80,7 +80,7 @@ featuredRoute.get(
 	async (c) => {
 		const q = c.req.valid("query");
 		const r = await listAlsoBoughtByProduct(q, ebayMarketplaceId());
-		return c.json({ ...r, source: "rest" as const } satisfies RelatedByProductResponse);
+		return c.json({ ...r } satisfies RelatedByProductResponse);
 	},
 );
 
@@ -97,6 +97,6 @@ featuredRoute.get(
 	async (c) => {
 		const q = c.req.valid("query");
 		const r = await listAlsoViewedByProduct(q, ebayMarketplaceId());
-		return c.json({ ...r, source: "rest" as const } satisfies RelatedByProductResponse);
+		return c.json({ ...r } satisfies RelatedByProductResponse);
 	},
 );

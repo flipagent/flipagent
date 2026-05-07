@@ -15,7 +15,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Page } from "./_common.js";
 
 export const ConversationType = Type.Union(
 	[
@@ -82,7 +82,7 @@ export const ConversationsListQuery = Type.Object(
 export type ConversationsListQuery = Static<typeof ConversationsListQuery>;
 
 export const ConversationsListResponse = Type.Composite(
-	[Page, Type.Object({ conversations: Type.Array(Conversation), source: Type.Optional(ResponseSource) })],
+	[Page, Type.Object({ conversations: Type.Array(Conversation) })],
 	{ $id: "ConversationsListResponse" },
 );
 export type ConversationsListResponse = Static<typeof ConversationsListResponse>;
@@ -109,7 +109,6 @@ export const ConversationThreadResponse = Type.Composite(
 		Type.Object({
 			conversation: Conversation,
 			messages: Type.Array(ThreadMessage),
-			source: Type.Optional(ResponseSource),
 		}),
 	],
 	{ $id: "ConversationThreadResponse" },
@@ -148,7 +147,6 @@ export const MessageSendResponse = Type.Object(
 		subject: Type.Optional(Type.String()),
 		body: Type.String(),
 		createdAt: Type.String(),
-		source: Type.Optional(ResponseSource),
 		redactions: Type.Optional(Type.Array(Type.Object({ kind: Type.String(), original: Type.String() }))),
 	},
 	{ $id: "MessageSendResponse" },
@@ -181,8 +179,5 @@ export const ConversationsBulkUpdateRequest = Type.Object(
 );
 export type ConversationsBulkUpdateRequest = Static<typeof ConversationsBulkUpdateRequest>;
 
-export const ConversationUpdateResponse = Type.Object(
-	{ ok: Type.Boolean(), source: Type.Optional(ResponseSource) },
-	{ $id: "ConversationUpdateResponse" },
-);
+export const ConversationUpdateResponse = Type.Object({ ok: Type.Boolean() }, { $id: "ConversationUpdateResponse" });
 export type ConversationUpdateResponse = Static<typeof ConversationUpdateResponse>;

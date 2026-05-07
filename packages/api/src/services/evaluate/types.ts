@@ -30,7 +30,9 @@ export interface EvaluateOptions {
 	asks?: ReadonlyArray<ItemSummary>;
 	/** Forwarder leg input. When set, `landedCostCents` is computed; otherwise null. */
 	forwarder?: ForwarderInput;
-	/** Risk-adjusted net threshold under which a deal is "skip". Default 3000 cents ($30). */
+	/** Risk-adjusted net threshold under which a deal is "skip".
+	 *  Default 0 — any positive expected net clears. Pass a stricter
+	 *  floor when the caller has a time/effort cutoff in mind. */
 	minNetCents?: number;
 	/**
 	 * Outbound shipping in cents. Defaults to $10 (USPS Ground Advantage
@@ -38,4 +40,11 @@ export interface EvaluateOptions {
 	 * Used in both the bidCeiling math and the per-listing net distribution.
 	 */
 	outboundShippingCents?: number;
+	/**
+	 * Window (days) the `sold` pool was fetched for. Surfaced into
+	 * `MarketStats.windowDays`, which the recency-weighted velocity
+	 * estimator uses to normalize. Default 30 — match this to your
+	 * Marketplace Insights `filter` so old sales aren't decayed to zero.
+	 */
+	lookbackDays?: number;
 }

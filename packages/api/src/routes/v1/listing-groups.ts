@@ -30,7 +30,7 @@ listingGroupsRoute.put(
 			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "group_not_found" }, 404);
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -48,7 +48,7 @@ listingGroupsRoute.get(
 			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "group_not_found" }, 404);
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 

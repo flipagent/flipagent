@@ -5,7 +5,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Page } from "./_common.js";
 
 export const Recommendation = Type.Object(
 	{
@@ -36,7 +36,7 @@ export const RecommendationsListQuery = Type.Object(
 export type RecommendationsListQuery = Static<typeof RecommendationsListQuery>;
 
 export const RecommendationsListResponse = Type.Composite(
-	[Page, Type.Object({ recommendations: Type.Array(Recommendation), source: Type.Optional(ResponseSource) })],
+	[Page, Type.Object({ recommendations: Type.Array(Recommendation) })],
 	{ $id: "RecommendationsListResponse" },
 );
 export type RecommendationsListResponse = Static<typeof RecommendationsListResponse>;

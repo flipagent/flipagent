@@ -118,13 +118,11 @@ notificationsRoute.post(
 		tags: ["Notifications"],
 		summary: "Subscribe the connected eBay seller to flipagent notifications",
 		description:
-			"Calls Trading API SetNotificationPreferences with EBAY_NOTIFY_URL as the callback and enables ItemSold + AuctionCheckoutComplete + FixedPriceTransaction + OutBid + ItemUnsold for this user. Idempotent — safe to retry.",
+			"Calls Trading API SetNotificationPreferences and enables ItemSold + AuctionCheckoutComplete + FixedPriceTransaction + OutBid + ItemUnsold for this user, pointing eBay at the operator-configured callback URL. Idempotent — safe to retry.",
 		responses: {
 			200: { description: "Subscription updated." },
 			401: errorResponse("API key missing or eBay account not connected."),
-			503: errorResponse(
-				"EBAY_DEV_ID / EBAY_NOTIFY_URL unset — set both alongside EBAY_CLIENT_ID/SECRET to enable.",
-			),
+			503: errorResponse("This api instance does not have eBay notifications configured."),
 			502: errorResponse("Upstream Trading API call failed."),
 		},
 	}),
@@ -172,7 +170,7 @@ notificationsRoute.get(
 		responses: {
 			200: { description: "Current ApplicationURL + enabled events." },
 			401: errorResponse("API key missing or eBay account not connected."),
-			503: errorResponse("EBAY_DEV_ID / EBAY_NOTIFY_URL unset."),
+			503: errorResponse("This api instance does not have eBay notifications configured."),
 		},
 	}),
 	requireApiKey,
@@ -255,7 +253,7 @@ notificationsRoute.get(
 		responses: { 200: { description: "Topics." }, ...SUBS_COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await listTopics({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await listTopics({ apiKeyId: c.var.apiKey.id })) }),
 );
 
 notificationsRoute.get(
@@ -266,7 +264,7 @@ notificationsRoute.get(
 		responses: { 200: { description: "Destinations." }, ...SUBS_COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await listDestinations({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await listDestinations({ apiKeyId: c.var.apiKey.id })) }),
 );
 
 notificationsRoute.get(
@@ -277,7 +275,7 @@ notificationsRoute.get(
 		responses: { 200: jsonResponse("Subscriptions.", NotificationSubscriptionsListResponse), ...SUBS_COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await listSubscriptions({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await listSubscriptions({ apiKeyId: c.var.apiKey.id })) }),
 );
 
 notificationsRoute.post(

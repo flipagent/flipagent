@@ -66,30 +66,6 @@ export const Page = Type.Object(
 export type Page = Static<typeof Page>;
 
 /**
- * Source of a fetched response — strictly the data origin. Mirrors
- * `X-Flipagent-Source` header so SDK clients reading the body alone can
- * render which transport ran. Cache hits flip the separate `fromCache`
- * field; `source` keeps naming the underlying transport.
- *
- * `url` covers human-driven actions where flipagent doesn't place the
- * call itself but hands the agent/user a deeplink to ebay.com / a
- * forwarder dashboard. The created tracking row is reconciled async via
- * Trading API once the user completes the action.
- */
-export const ResponseSource = Type.Union(
-	[
-		Type.Literal("rest"),
-		Type.Literal("scrape"),
-		Type.Literal("bridge"),
-		Type.Literal("trading"),
-		Type.Literal("llm"),
-		Type.Literal("url"),
-	],
-	{ $id: "ResponseSource" },
-);
-export type ResponseSource = Static<typeof ResponseSource>;
-
-/**
  * `nextAction` — standard remediation field on flipagent responses.
  * When the API needs the caller to do something (open a URL, install
  * the extension, run an OAuth flow, …), the body carries this shape.

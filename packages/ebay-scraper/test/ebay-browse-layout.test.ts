@@ -126,4 +126,47 @@ describe("eBay browse-layout (/b/_/<id>) parser", () => {
 			'<script>$brwweb_C=(window.$brwweb_C||[]).concat({"w":[["s0",1,{"model":{"modules":{"OTHER_MODULE":{"_type":"X"}}}}]]});</script>';
 		expect(parseEbayBrowseLayoutHtml(html)).toEqual([]);
 	});
+
+	it("emits authenticityGuarantee + qualifiedPrograms when __search.authorizedSeller carries the AUTHORIZED_SELLER icon", () => {
+		// Per-card AG signal in the hydration JSON: `__search.authorizedSeller`
+		// is an `IconAndText` block whose icon name is the JSON-stable
+		// identifier `AUTHORIZED_SELLER`. eBay also fills the visible label
+		// in `accessibilityText` / `text.textSpans`, but probing the icon
+		// name keeps the detector locale-agnostic.
+		const cardJson = {
+			_type: "ListingItemCard",
+			listingId: "377153137412",
+			title: { textSpans: [{ text: "Breitling Colt A17380" }] },
+			action: { URL: "https://www.ebay.com/itm/377153137412" },
+			displayPrice: { value: { value: 890.0, currency: "USD" } },
+			__search: {
+				authorizedSeller: {
+					_type: "IconAndText",
+					icon: { _type: "Icon", name: "AUTHORIZED_SELLER", accessibilityText: "Authenticity Guarantee" },
+					text: { _type: "TextualDisplay", textSpans: [{ _type: "TextSpan", text: "Authenticity Guarantee" }] },
+				},
+			},
+		};
+		const html = `<script>$brwweb_C=(window.$brwweb_C||[]).concat({"w":[["s0",1,{"model":{"modules":{"ITEMS_LIST_VERTICAL_1":{"_type":"ITEMS_LIST_VERTICAL","containers":[{"cards":[${JSON.stringify(cardJson)}]}]}}}}]]});</script>`;
+		const items = parseEbayBrowseLayoutHtml(html);
+		expect(items).toHaveLength(1);
+		expect(items[0]!.authenticityGuarantee).toEqual({ description: "Authenticity Guarantee" });
+		expect(items[0]!.qualifiedPrograms).toEqual(["AUTHENTICITY_GUARANTEE"]);
+	});
+
+	it("leaves AG fields undefined when __search.authorizedSeller is absent", () => {
+		const cardJson = {
+			_type: "ListingItemCard",
+			listingId: "100000000001",
+			title: { textSpans: [{ text: "Generic listing" }] },
+			action: { URL: "https://www.ebay.com/itm/100000000001" },
+			displayPrice: { value: { value: 25.0, currency: "USD" } },
+			__search: {},
+		};
+		const html = `<script>$brwweb_C=(window.$brwweb_C||[]).concat({"w":[["s0",1,{"model":{"modules":{"ITEMS_LIST_VERTICAL_1":{"_type":"ITEMS_LIST_VERTICAL","containers":[{"cards":[${JSON.stringify(cardJson)}]}]}}}}]]});</script>`;
+		const items = parseEbayBrowseLayoutHtml(html);
+		expect(items).toHaveLength(1);
+		expect(items[0]!.authenticityGuarantee).toBeUndefined();
+		expect(items[0]!.qualifiedPrograms).toBeUndefined();
+	});
 });

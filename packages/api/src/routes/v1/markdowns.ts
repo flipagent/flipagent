@@ -37,7 +37,6 @@ markdownsRoute.get(
 					marketplace: ebayMarketplaceId(),
 				},
 			)),
-			source: "rest" as const,
 		}),
 );
 
@@ -74,7 +73,7 @@ markdownsRoute.get(
 			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "markdown_not_found" }, 404);
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -92,7 +91,7 @@ markdownsRoute.put(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -109,6 +108,6 @@ markdownsRoute.delete(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ok: true, source: "rest" as const });
+		return c.json({ ok: true });
 	},
 );

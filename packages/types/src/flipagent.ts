@@ -95,41 +95,6 @@ export const Health = Type.Object(
 );
 export type Health = Static<typeof Health>;
 
-/* ----------------------------- /v1/health/features ----------------------------- */
-
-/**
- * Feature flags driven by env presence — used by the dashboard to hide panels
- * for unconfigured features (self-host) and by the docs to render the right
- * onboarding step. Public, no auth required: knowing what's wired is fine.
- */
-export const FeaturesResponse = Type.Object(
-	{
-		ebayOAuth: Type.Boolean({ description: "EBAY_CLIENT_ID/SECRET/RU_NAME all set." }),
-		orderApi: Type.Boolean({ description: "EBAY_ORDER_APPROVED=1 (Limited Release tenant approval)." }),
-		insightsApi: Type.Boolean({
-			description: "EBAY_INSIGHTS_APPROVED=1 (Marketplace Insights program approval — REST sold history).",
-		}),
-		biddingApi: Type.Boolean({
-			description:
-				"EBAY_BIDDING_APPROVED=1 (Buy Offer / Bidding API — Limited Release per-tenant approval; gates /v1/bids).",
-		}),
-		scraperApi: Type.Boolean({
-			description:
-				"SCRAPER_API_USERNAME/PASSWORD set — `EBAY_*_SOURCE=scrape` lights up (vendor: SCRAPER_API_VENDOR).",
-		}),
-		betterAuth: Type.Boolean({ description: "BETTER_AUTH_SECRET + GitHub OAuth — gates /v1/me/* and signup." }),
-		googleOAuth: Type.Boolean({ description: "GOOGLE_CLIENT_ID/SECRET — `Continue with Google` lights up." }),
-		email: Type.Boolean({ description: "RESEND_API_KEY — password reset + email verification." }),
-		stripe: Type.Boolean({ description: "All four STRIPE_* vars — gates /v1/billing/*." }),
-		llm: Type.Boolean({
-			description:
-				"At least one of ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY set — gates the same-product matcher used internally by /v1/evaluate.",
-		}),
-	},
-	{ $id: "FeaturesResponse" },
-);
-export type FeaturesResponse = Static<typeof FeaturesResponse>;
-
 /* ---------------------------- /v1/me/permissions --------------------------- */
 
 /**

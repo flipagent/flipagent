@@ -1,7 +1,9 @@
 /**
  * `client.purchases.*` — items I've bought (buy-side, write).
- * Wraps `/v1/purchases/*`. One-shot create compresses eBay's
- * initiate + place_order; transport (REST/bridge) auto-picked.
+ * Wraps `/v1/purchases/*`. The response is either terminal (the
+ * order is fully placed) or non-terminal with `nextAction.url`
+ * (open the URL for the user to complete on the marketplace UI).
+ * Poll `get(id)` until terminal.
  */
 
 import type { Purchase, PurchaseCreate, PurchasesListQuery, PurchasesListResponse } from "@flipagent/types";

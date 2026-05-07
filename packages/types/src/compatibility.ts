@@ -4,8 +4,6 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { ResponseSource } from "./_common.js";
-
 export const CompatibilityCheckRequest = Type.Object(
 	{
 		itemId: Type.String(),
@@ -19,7 +17,6 @@ export const CompatibilityCheckResponse = Type.Object(
 	{
 		compatible: Type.Boolean(),
 		warnings: Type.Optional(Type.Array(Type.String())),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "CompatibilityCheckResponse" },
 );
@@ -46,7 +43,6 @@ export type CompatibilityPropertyValueQuery = Static<typeof CompatibilityPropert
 export const CompatibilityPropertiesResponse = Type.Object(
 	{
 		properties: Type.Array(CompatibilityProperty),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "CompatibilityPropertiesResponse" },
 );

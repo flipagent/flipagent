@@ -33,7 +33,6 @@ interface Probe {
 const tierA: Probe[] = [
 	// First-call discovery
 	{ tier: "A", method: "GET", path: "/healthz" },
-	{ tier: "A", method: "GET", path: "/v1/health/features" },
 	{ tier: "A", method: "GET", path: "/v1/capabilities" },
 	{ tier: "A", method: "GET", path: "/v1/keys/me" },
 	{ tier: "A", method: "GET", path: "/v1/keys/permissions" },

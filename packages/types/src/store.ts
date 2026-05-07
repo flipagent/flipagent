@@ -3,8 +3,6 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { ResponseSource } from "./_common.js";
-
 export const StoreCategory = Type.Object(
 	{
 		id: Type.String(),
@@ -17,7 +15,7 @@ export const StoreCategory = Type.Object(
 export type StoreCategory = Static<typeof StoreCategory>;
 
 export const StoreCategoriesResponse = Type.Object(
-	{ categories: Type.Array(StoreCategory), source: Type.Optional(ResponseSource) },
+	{ categories: Type.Array(StoreCategory) },
 	{ $id: "StoreCategoriesResponse" },
 );
 export type StoreCategoriesResponse = Static<typeof StoreCategoriesResponse>;

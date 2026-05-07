@@ -327,9 +327,9 @@ export const MOCK_CANON50: EvaluateFixture = {
 	},
 	evaluation: {
 		rating: "buy",
-		// expectedNet on this row is small ($13). With the new $30 default
-		// floor this would actually rate "skip" — kept "buy" here because
-		// the mock's reseller has set a custom $10 floor (targetNetCents).
+		// Small expectedNet ($13). Cleared because the mock reseller set
+		// a custom $10 floor via targetNetCents — the rating gate itself
+		// just requires positive risk-adjusted EV.
 		expectedNetCents: 1296,
 		bidCeilingCents: 7050,
 		reason: "$82 — 14% below the 30-day median ($95). Nifty-fifty clears in 3d at p50; $9 net at $92 exit (custom $10 floor).",

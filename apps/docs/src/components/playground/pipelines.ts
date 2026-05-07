@@ -81,13 +81,25 @@ export const EVALUATE_STEPS: ReadonlyArray<{ key: string; label: string; parent?
 
 export interface EvaluateOutcome {
 	item: ItemDetail;
+	/**
+	 * Matched comp pool (sold side) — INCLUDES suspicious comps. The UI
+	 * filters them out by default via `suspiciousIds` and re-includes
+	 * them when the "show suspicious" toggle is on.
+	 */
 	soldPool: ItemSummary[];
+	/** Matched comp pool (active side) — INCLUDES suspicious comps. Same convention as `soldPool`. */
 	activePool: ItemSummary[];
 	rejectedSoldPool: ItemSummary[];
 	rejectedActivePool: ItemSummary[];
 	rejectionReasons: Record<string, string>;
+	/** Default-view market stats — computed from `soldPool` minus `suspiciousIds`. */
 	market: EvaluateResponse["market"];
+	/** Toggle-view market stats — computed from full `soldPool` (suspicious INcluded). */
+	marketAll?: EvaluateResponse["market"];
+	/** Default-view evaluation — scored against the cleaned pool. */
 	evaluation: EvaluateResponse["evaluation"];
+	/** Toggle-view evaluation — scored against the full pool. */
+	evaluationAll?: EvaluateResponse["evaluation"];
 	returns: EvaluateResponse["returns"];
 	meta: EvaluateMeta;
 	/**
@@ -104,6 +116,14 @@ export interface EvaluateOutcome {
 	 * final counts then.
 	 */
 	filterProgress?: { processed: number; total: number };
+	/**
+	 * Per-itemId map of comps the post-match risk filter flagged as
+	 * likely-fake (Bayesian P_fraud > 0.4). UI uses this to
+	 * (a) exclude flagged comps from the default-view median + histogram,
+	 * (b) render a "show N suspicious" toggle, and
+	 * (c) tint flagged rows + show the reason on hover when toggled on.
+	 */
+	suspiciousIds?: Record<string, { reason: string; pFraud: number }>;
 }
 
 export interface EvaluateInputs {
@@ -503,7 +523,11 @@ async function consumeEvaluateStream(
 					break;
 				}
 				case "done": {
-					final = evt.result;
+					// Server's `EvaluateResponse` and the playground's local
+					// mirror diverge on a few eBay-shape fields (e.g.
+					// `authenticityGuarantee`); cast at the boundary since
+					// the playground only reads a subset.
+					final = evt.result as unknown as EvaluateResponse;
 					break;
 				}
 				case "error": {
@@ -533,6 +557,11 @@ async function consumeEvaluateStream(
 	}
 
 	if (!final) return { kind: "failed", message: "stream ended without a result" };
+	const f = final as EvaluateResponse & {
+		marketAll?: EvaluateResponse["market"];
+		evaluationAll?: EvaluateResponse["evaluation"];
+		suspiciousIds?: Record<string, { reason: string; pFraud: number }>;
+	};
 	return {
 		kind: "success",
 		value: {
@@ -547,6 +576,9 @@ async function consumeEvaluateStream(
 			returns: final.returns ?? null,
 			meta: final.meta,
 			preliminary: false,
+			...(f.marketAll ? { marketAll: f.marketAll } : {}),
+			...(f.evaluationAll ? { evaluationAll: f.evaluationAll } : {}),
+			...(f.suspiciousIds ? { suspiciousIds: f.suspiciousIds } : {}),
 		},
 	};
 }
@@ -704,11 +736,8 @@ export async function runEvaluateMock(
 
 		// 4. evaluate
 		const meta: EvaluateMeta = {
-			itemSource: "scrape",
 			soldCount: fixture.soldPool.length,
-			soldSource: "scrape",
 			activeCount: fixture.activePool.length,
-			activeSource: "scrape",
 			soldKept: fixture.soldPool.length,
 			soldRejected: 0,
 			activeKept: fixture.activePool.length,

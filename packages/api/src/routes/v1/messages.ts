@@ -61,7 +61,6 @@ messagesRoute.get(
 			limit: result.limit,
 			offset: result.offset,
 			...(result.total != null ? { total: result.total } : {}),
-			source: "rest" as const,
 		});
 	},
 );
@@ -102,7 +101,6 @@ messagesRoute.get(
 			limit: result.limit,
 			offset: result.offset,
 			...(result.total != null ? { total: result.total } : {}),
-			source: "rest" as const,
 		});
 	},
 );
@@ -169,7 +167,6 @@ messagesRoute.post(
 			...(result.subject ? { subject: result.subject } : {}),
 			body: result.body,
 			createdAt: result.createdAt,
-			source: "rest" as const,
 			...(hygiene.redactions.length > 0 ? { redactions: hygiene.redactions } : {}),
 		});
 	},
@@ -192,7 +189,7 @@ messagesRoute.patch(
 	async (c) => {
 		const body = c.req.valid("json");
 		await bulkUpdateConversations(body.conversationIds, body.action, c.var.apiKey.id);
-		return c.json({ ok: true, source: "rest" as const } satisfies ConversationUpdateResponse);
+		return c.json({ ok: true } satisfies ConversationUpdateResponse);
 	},
 );
 
@@ -213,6 +210,6 @@ messagesRoute.patch(
 	async (c) => {
 		const body = c.req.valid("json");
 		await updateConversation(c.req.param("id"), body.action, c.var.apiKey.id);
-		return c.json({ ok: true, source: "rest" as const } satisfies ConversationUpdateResponse);
+		return c.json({ ok: true } satisfies ConversationUpdateResponse);
 	},
 );

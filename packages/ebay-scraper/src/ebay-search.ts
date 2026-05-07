@@ -1,4 +1,6 @@
 import {
+	applyAuthenticityGuaranteeFields,
+	authenticityGuaranteeDescriptorFromFlag,
 	endDateFromTimeLeft,
 	extractEbayDetail,
 	extractEbayItems,
@@ -109,6 +111,21 @@ export interface EbayItemSummary {
 	thumbnailImages?: { imageUrl: string }[];
 	seller?: { username?: string; feedbackPercentage?: string; feedbackScore?: number };
 	topRatedBuyingExperience?: boolean;
+	/**
+	 * Authenticity Guarantee descriptor block. Mirror of Browse REST
+	 * `getItem.authenticityGuarantee` so consumers read the same shape
+	 * on both transports. SRP markup only carries the label (no
+	 * `termsWebUrl`); REST passthrough still emits the canonical link.
+	 */
+	authenticityGuarantee?: { description?: string; termsWebUrl?: string };
+	/**
+	 * eBay program enum the listing qualifies for —
+	 * `["AUTHENTICITY_GUARANTEE"]` when the AG badge is present. Mirror
+	 * of REST `getItem.qualifiedPrograms`. REST itself only emits this
+	 * on detail; scrape enriches summary cards from the SRP badge
+	 * because evaluate's comp pipeline reads summaries.
+	 */
+	qualifiedPrograms?: string[];
 	/**
 	 * eBay product identifier — captured from the listing card's catalog
 	 * link (`/p/{epid}`) when present. Roughly 30–40% of cards on a
@@ -235,6 +252,7 @@ export function parseEbaySearchHtml(
 			itemWebUrl: r.url,
 		};
 		if (r.topRatedBuyingExperience) item.topRatedBuyingExperience = true;
+		applyAuthenticityGuaranteeFields(item, authenticityGuaranteeDescriptorFromFlag(r.authenticityGuaranteed));
 		if (subtitle.condition) item.condition = subtitle.condition;
 		if (subtitle.conditionId) item.conditionId = subtitle.conditionId;
 		// `itemAttributes` (sub-SKU descriptors from the subtitle tail) is

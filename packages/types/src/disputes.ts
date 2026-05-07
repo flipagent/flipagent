@@ -6,7 +6,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Money, Page } from "./_common.js";
 
 export const DisputeType = Type.Union(
 	[
@@ -109,7 +109,6 @@ export const DisputeActivityResponse = Type.Object(
 	{
 		disputeId: Type.String(),
 		activity: Type.Array(DisputeActivityEntry),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "DisputeActivityResponse" },
 );
@@ -135,7 +134,6 @@ export const CancellationCreateResponse = Type.Object(
 	{
 		cancelId: Type.Union([Type.String(), Type.Null()]),
 		status: Type.Union([Type.String(), Type.Null()]),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "CancellationCreateResponse" },
 );
@@ -155,7 +153,6 @@ export type CancellationEligibilityRequest = Static<typeof CancellationEligibili
 export const EvidenceFileUploadResponse = Type.Object(
 	{
 		fileId: Type.String(),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "EvidenceFileUploadResponse" },
 );
@@ -174,7 +171,6 @@ export type EvidenceAddRequest = Static<typeof EvidenceAddRequest>;
 export const EvidenceAddResponse = Type.Object(
 	{
 		evidenceId: Type.String(),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "EvidenceAddResponse" },
 );
@@ -189,7 +185,6 @@ export const CancellationEligibilityResponse = Type.Object(
 	{
 		eligible: Type.Boolean(),
 		reasons: Type.Array(Type.String()),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "CancellationEligibilityResponse" },
 );
@@ -208,13 +203,12 @@ export const DisputesListQuery = Type.Object(
 );
 export type DisputesListQuery = Static<typeof DisputesListQuery>;
 
-export const DisputesListResponse = Type.Composite(
-	[Page, Type.Object({ disputes: Type.Array(Dispute), source: Type.Optional(ResponseSource) })],
-	{ $id: "DisputesListResponse" },
-);
+export const DisputesListResponse = Type.Composite([Page, Type.Object({ disputes: Type.Array(Dispute) })], {
+	$id: "DisputesListResponse",
+});
 export type DisputesListResponse = Static<typeof DisputesListResponse>;
 
-export const DisputeResponse = Type.Composite([Dispute, Type.Object({ source: Type.Optional(ResponseSource) })], {
+export const DisputeResponse = Type.Composite([Dispute], {
 	$id: "DisputeResponse",
 });
 export type DisputeResponse = Static<typeof DisputeResponse>;

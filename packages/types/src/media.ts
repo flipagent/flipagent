@@ -10,8 +10,6 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { ResponseSource } from "./_common.js";
-
 export const MediaType = Type.Union([Type.Literal("image"), Type.Literal("video")], { $id: "MediaType" });
 export type MediaType = Static<typeof MediaType>;
 
@@ -24,7 +22,6 @@ export const MediaUpload = Type.Object(
 		publicUrl: Type.Optional(
 			Type.String({ description: "Public URL the blob will be reachable at after the PUT (image uploads only)." }),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "MediaUpload" },
 );
@@ -93,7 +90,6 @@ export const Media = Type.Object(
 		type: MediaType,
 		url: Type.Optional(Type.String()),
 		status: Type.String({ description: "READY | PROCESSING | FAILED | …" }),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "Media" },
 );

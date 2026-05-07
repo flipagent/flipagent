@@ -329,6 +329,27 @@ export const ItemSummary = Type.Object(
 		additionalImages: Type.Optional(Type.Array(Image)),
 		topRatedBuyingExperience: Type.Optional(Type.Boolean()),
 		/**
+		 * eBay programs the listing qualifies for — `["AUTHENTICITY_GUARANTEE"]`
+		 * when AG-routed. Browse REST emits this on detail (not on item_summary),
+		 * but our scraper enriches summaries from the SRP / browse-layout AG
+		 * badge so downstream scoring (`legitMarketReference`, `assessRisk`)
+		 * doesn't read AG comps as anonymous-zero-trust.
+		 */
+		qualifiedPrograms: Type.Optional(Type.Array(Type.String())),
+		/**
+		 * Authenticity Guarantee descriptor block — present when eBay routes
+		 * the listing through a third-party authenticator before delivery.
+		 * Mirror of Browse REST `getItem.authenticityGuarantee`. SRP / browse-
+		 * layout sources only have the visible label (no `termsWebUrl`); REST
+		 * passthrough fills the canonical link from upstream.
+		 */
+		authenticityGuarantee: Type.Optional(
+			Type.Object({
+				termsWebUrl: Type.Optional(Type.String()),
+				description: Type.Optional(Type.String()),
+			}),
+		),
+		/**
 		 * eBay product identifier — present when the listing is linked to a
 		 * catalog product. Same `epid` across every listing of the same SKU,
 		 * so a single search response can be deterministically grouped by

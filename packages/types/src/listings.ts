@@ -11,7 +11,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Money, Page } from "./_common.js";
 
 /**
  * Listing condition. Lower-snake versions of eBay's `condition` enum
@@ -287,14 +287,13 @@ export const ListingsListResponse = Type.Composite(
 		Page,
 		Type.Object({
 			listings: Type.Array(Listing),
-			source: Type.Optional(ResponseSource),
 		}),
 	],
 	{ $id: "ListingsListResponse" },
 );
 export type ListingsListResponse = Static<typeof ListingsListResponse>;
 
-export const ListingResponse = Type.Composite([Listing, Type.Object({ source: Type.Optional(ResponseSource) })], {
+export const ListingResponse = Type.Composite([Listing], {
 	$id: "ListingResponse",
 });
 export type ListingResponse = Static<typeof ListingResponse>;
@@ -339,7 +338,6 @@ export const ItemGroupPublishResponse = Type.Object(
 	{
 		listingId: Type.Union([Type.String(), Type.Null()]),
 		warnings: Type.Array(Type.Object({ message: Type.String(), errorId: Type.Optional(Type.Integer()) })),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ItemGroupPublishResponse" },
 );
@@ -367,7 +365,6 @@ export type CompatibilityRow = Static<typeof CompatibilityRow>;
 export const ProductCompatibilityResponse = Type.Object(
 	{
 		compatibleProducts: Type.Array(CompatibilityRow),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ProductCompatibilityResponse" },
 );
@@ -404,7 +401,7 @@ export const SkuLocationsRequest = Type.Object(
 export type SkuLocationsRequest = Static<typeof SkuLocationsRequest>;
 
 export const SkuLocationsResponse = Type.Object(
-	{ locations: Type.Array(SkuLocationAvailability), source: Type.Optional(ResponseSource) },
+	{ locations: Type.Array(SkuLocationAvailability) },
 	{ $id: "SkuLocationsResponse" },
 );
 export type SkuLocationsResponse = Static<typeof SkuLocationsResponse>;
@@ -421,7 +418,6 @@ export const ListingPreviewFeesResponse = Type.Object(
 				),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ListingPreviewFeesResponse" },
 );
@@ -448,7 +444,6 @@ export const ListingDraftResponse = Type.Object(
 	{
 		itemDraftId: Type.String(),
 		listingRedirectUrl: Type.Optional(Type.String()),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ListingDraftResponse" },
 );

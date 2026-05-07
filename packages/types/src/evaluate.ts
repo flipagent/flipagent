@@ -10,14 +10,6 @@ import { type Static, Type } from "@sinclair/typebox";
 import { ItemDetail, ItemSummary } from "./ebay/buy.js";
 import { ForwarderInput } from "./ship.js";
 
-/* ----------------------------- shared meta ----------------------------- */
-
-/** Transport that served an upstream lookup. Mirrors `services/items/search`. */
-export const TransportSource = Type.Union([Type.Literal("rest"), Type.Literal("scrape"), Type.Literal("bridge")], {
-	$id: "TransportSource",
-});
-export type TransportSource = Static<typeof TransportSource>;
-
 /* ----------------------------- market stats ----------------------------- */
 
 export const AskStats = Type.Object(
@@ -386,15 +378,10 @@ export type Returns = Static<typeof Returns>;
 /** What the server fetched, for caller audit + playground trace. */
 export const EvaluateMeta = Type.Object(
 	{
-		itemSource: TransportSource,
 		/** Same-product sold listings (kept after the LLM filter). Feeds margin math + win-probability. */
 		soldCount: Type.Integer(),
-		/** Source the sold pool came from. Null when the sold search failed (active still ran). */
-		soldSource: Type.Union([TransportSource, Type.Null()]),
 		/** Same-product active listings (kept after the LLM filter). Feeds the asks side. */
 		activeCount: Type.Integer(),
-		/** Source the active pool came from. Null when the active search failed (sold still ran). */
-		activeSource: Type.Union([TransportSource, Type.Null()]),
 		/** LLM filter outcome (rejected = different product). Useful for showing "12 kept / 8 rejected" in a trace. */
 		soldKept: Type.Integer(),
 		soldRejected: Type.Integer(),
@@ -448,12 +435,28 @@ export const EvaluateResponse = Type.Object(
 		/** The fetched item detail — surfaced so UIs can render thumbnail/title/price without a second fetch. */
 		item: ItemDetail,
 		evaluation: Evaluation,
-		/** Distribution stats over `soldPool` (median, IQR, salesPerDay, meanDaysToSell, …). */
+		/**
+		 * Toggle-view companion to `evaluation` — scored against the full
+		 * matched pool (suspicious comps INcluded). The default
+		 * `evaluation` is scored against the cleaned pool (suspicious
+		 * EXcluded). UI swaps which one drives the headline numbers based
+		 * on the "show suspicious" toggle.
+		 */
+		evaluationAll: Type.Optional(Evaluation),
+		/** Distribution stats over `soldPool` minus suspicious comps (median, IQR, salesPerDay, meanDaysToSell, …). */
 		market: MarketStats,
-		/** Sold-side digest: distribution + histogram + cadence + recent trend + condition mix + last-sale anchor. */
+		/** Sold-side digest over the cleaned pool: distribution + histogram + cadence + recent trend + condition mix + last-sale anchor. */
 		sold: SoldDigest,
-		/** Active-side digest: distribution + histogram + condition mix + best price + seller concentration. */
+		/** Active-side digest over the cleaned pool: distribution + histogram + condition mix + best price + seller concentration. */
 		active: ActiveDigest,
+		/**
+		 * Toggle-view market / sold / active companions, computed from
+		 * the FULL matched pool (suspicious INcluded). UI's "show
+		 * suspicious" toggle flips between these and the default view.
+		 */
+		marketAll: Type.Optional(MarketStats),
+		soldAll: Type.Optional(SoldDigest),
+		activeAll: Type.Optional(ActiveDigest),
 		/** Filter summary: kept/rejected counts + categorized rejection reasons. */
 		filter: FilterSummary,
 		/**
@@ -489,6 +492,26 @@ export const EvaluateResponse = Type.Object(
 		 * `EvaluatePoolResponse.{sold,active}.rejected[].rejectionCategory`.
 		 */
 		rejectionCategories: Type.Optional(Type.Record(Type.String(), Type.String())),
+		/**
+		 * Per-itemId map of comps the LLM matched as same-product but the
+		 * post-match risk filter (`evaluate/suspicious.ts`) flagged as
+		 * likely-fake. Each entry carries a short reason string, the
+		 * Bayesian fraud probability, and the buy-price ratio against the
+		 * trust-weighted matched-pool median. Default `market` / `sold` /
+		 * `active` digests EXCLUDE these; `marketAll` / `soldAll` /
+		 * `activeAll` INCLUDE them. UI's "show suspicious" toggle uses
+		 * this map to dim flagged rows in the default view and explain
+		 * the exclusion on hover.
+		 */
+		suspiciousIds: Type.Optional(
+			Type.Record(
+				Type.String(),
+				Type.Object({
+					reason: Type.String(),
+					pFraud: Type.Number(),
+				}),
+			),
+		),
 	},
 	{ $id: "EvaluateResponse" },
 );
@@ -604,11 +627,43 @@ export const EvaluatePartial = Type.Object(
 		market: Type.Optional(MarketStats),
 		sold: Type.Optional(SoldDigest),
 		active: Type.Optional(ActiveDigest),
+		/**
+		 * Toggle-view companions to `market` / `sold` / `active`. Computed
+		 * from the FULL matched pool (suspicious comps included) so the
+		 * UI's "show suspicious" switch can swap which set drives the
+		 * headline numbers without a server roundtrip. Default-view
+		 * `market`/`sold`/`active` exclude the suspicious comps listed in
+		 * `suspiciousIds`.
+		 */
+		marketAll: Type.Optional(MarketStats),
+		soldAll: Type.Optional(SoldDigest),
+		activeAll: Type.Optional(ActiveDigest),
 		filter: Type.Optional(FilterSummary),
 		filterProgress: Type.Optional(FilterProgress),
 		returns: Type.Optional(Type.Union([Returns, Type.Null()])),
 		meta: Type.Optional(EvaluateMeta),
 		evaluation: Type.Optional(Evaluation),
+		/** Toggle-view companion to `evaluation` — scored against the full matched pool (suspicious comps included). */
+		evaluationAll: Type.Optional(Evaluation),
+		/**
+		 * Per-itemId map of comps the LLM matched as same-product but the
+		 * post-match risk filter (`evaluate/suspicious.ts`) flagged as
+		 * likely-fake (Bayesian P_fraud > 0.4 from `quant.assessRisk`).
+		 * Default `market` / `sold` / `active` digests exclude these;
+		 * `marketAll` / `soldAll` / `activeAll` include them. UI dims
+		 * flagged rows in the default view and exposes the toggle to
+		 * unhide them.
+		 */
+		suspiciousIds: Type.Optional(
+			Type.Record(
+				Type.String(),
+				Type.Object({
+					reason: Type.String(),
+					/** Bayesian fraud probability from `quant.assessRisk`. 0..0.85. */
+					pFraud: Type.Number(),
+				}),
+			),
+		),
 		/**
 		 * True while `market` / `sold` / `active` are computed from the raw
 		 * pool (pre-LLM-filter). UIs render those values in a "verifying"

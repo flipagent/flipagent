@@ -6,7 +6,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Money, Page } from "./_common.js";
 
 export const PolicyType = Type.Union([Type.Literal("return"), Type.Literal("payment"), Type.Literal("fulfillment")], {
 	$id: "PolicyType",
@@ -55,13 +55,12 @@ export const Policy = Type.Object(
 );
 export type Policy = Static<typeof Policy>;
 
-export const PoliciesListResponse = Type.Composite(
-	[Page, Type.Object({ policies: Type.Array(Policy), source: Type.Optional(ResponseSource) })],
-	{ $id: "PoliciesListResponse" },
-);
+export const PoliciesListResponse = Type.Composite([Page, Type.Object({ policies: Type.Array(Policy) })], {
+	$id: "PoliciesListResponse",
+});
 export type PoliciesListResponse = Static<typeof PoliciesListResponse>;
 
-export const PolicyResponse = Type.Composite([Policy, Type.Object({ source: Type.Optional(ResponseSource) })], {
+export const PolicyResponse = Type.Composite([Policy], {
 	$id: "PolicyResponse",
 });
 export type PolicyResponse = Static<typeof PolicyResponse>;

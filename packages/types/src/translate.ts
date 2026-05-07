@@ -3,8 +3,6 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { ResponseSource } from "./_common.js";
-
 export const TranslateRequest = Type.Object(
 	{
 		from: Type.String({ description: "BCP-47 source language, e.g. en-US." }),
@@ -26,7 +24,6 @@ export const TranslateResponse = Type.Object(
 				translatedTextAlternatives: Type.Optional(Type.Array(Type.String())),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "TranslateResponse" },
 );

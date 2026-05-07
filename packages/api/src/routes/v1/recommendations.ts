@@ -36,7 +36,6 @@ recommendationsRoute.get(
 			limit: r.limit,
 			offset: r.offset,
 			...(r.total !== undefined ? { total: r.total } : {}),
-			source: "rest" as const,
 		} satisfies RecommendationsListResponse);
 	},
 );

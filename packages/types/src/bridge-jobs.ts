@@ -2,13 +2,12 @@
  * Internal flipagent `BridgeJob` schema — the bridge queue's job
  * envelope, also serialized as the payload of outbound purchase-event
  * webhooks. NOT a public REST surface: the user-facing buy surface is
- * `/v1/purchases` (REST + bridge transports).
+ * `/v1/purchases`.
  *
- * The bridge-job queue (`services/bridge-jobs.ts`) backs every
- * bridge-driven public surface — `/v1/purchases` (when REST is
- * unapproved), `/v1/forwarder/{provider}/*`, `/v1/browser/*`. Each
- * source enqueues a `BridgeJob` row; the extension claims via
- * `/v1/bridge/poll` and reports via `/v1/bridge/result`.
+ * The bridge-job queue (`services/bridge-jobs.ts`) backs the internal
+ * tracking rows for `/v1/purchases`, `/v1/forwarder/{provider}/*`, and
+ * `/v1/browser/*`. The Chrome extension (when paired) claims rows via
+ * `/v1/bridge/poll` and reports outcomes via `/v1/bridge/result`.
  *
  * `awaiting_user_confirm` is the default for buy-side jobs — the
  * extension stops at "Confirm and pay" and waits for the user to OK

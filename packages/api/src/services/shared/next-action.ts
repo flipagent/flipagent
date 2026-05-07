@@ -15,16 +15,20 @@
 import type { Context } from "hono";
 import { planetExpressSignupUrl } from "./forwarder.js";
 
+/**
+ * Every kind here represents an action the **caller** (the agent or end
+ * user) can take to unblock themselves. Operator-side concerns (server
+ * env config, REST program approvals, …) never appear here — those
+ * surface as plain 503/412 with a clean message and live on
+ * `/v1/health` for operators to inspect, not on consumer responses.
+ */
 export type NextActionKind =
 	| "ebay_oauth" // caller must run /v1/connect/ebay
 	| "extension_install" // user must install + pair the Chrome extension (PE inbox / authenticated reads only)
 	| "open_url" // human-driven action: agent should open `url` for the user to click through (Buy It Now, Place Bid, forwarder dispatch). Service supplies a per-call URL + instructions via `openUrlAction()`.
 	| "forwarder_signin" // user must re-sign-in to the forwarder (PE) — session expired
 	| "forwarder_signup" // user has no PE account — direct them to sign up (referral-attributed)
-	| "setup_seller_policies" // agent must collect prefs + POST /v1/policies/setup
-	| "configure_ebay" // operator must set EBAY_CLIENT_ID/SECRET/RU_NAME
-	| "configure_bidding_api" // operator must set EBAY_BIDDING_APPROVED=1 after Buy Offer LR approval (otherwise the API auto-falls-back to url transport)
-	| "configure_stripe"; // operator must set STRIPE_* env
+	| "setup_seller_policies"; // agent must collect prefs + POST /v1/policies/setup
 
 export interface NextAction {
 	readonly kind: NextActionKind;
@@ -95,27 +99,6 @@ export function nextAction(c: Context, kind: NextActionKind): NextAction {
 				url: `${origin}/v1/policies/setup`,
 				instructions:
 					"Cannot list — the seller's eBay account is missing return and/or fulfillment policies. Ask the user 5 quick questions and POST /v1/policies/setup (MCP: flipagent_create_seller_policies) with their answers — the call is idempotent and only creates what's missing. Questions: (1) Accept returns? (2) If yes, return window — 14, 30, or 60 days? (3) If yes, who pays return shipping — buyer or seller? (4) Handling time — business days from sale to shipment, typically 1-3? (5) Shipping mode — free / flat-rate (cents) / calculated by carrier? Plus shipping service code (USPSPriority is the safe default; USPSGroundAdvantage works for most accounts; UPSGround / FedExGround are alternatives). Acceptable to offer the user a 'use defaults' shortcut: 30-day buyer-pays returns, 1-day handling, free USPSPriority — but show those values explicitly, not silently.",
-			};
-		case "configure_ebay":
-			return {
-				kind,
-				url: `${origin}/v1/health`,
-				instructions:
-					"The api operator must set EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, and EBAY_RU_NAME before any eBay-bound flow can run. This is a server config issue, not something the end user can fix.",
-			};
-		case "configure_bidding_api":
-			return {
-				kind,
-				url: `${origin}/v1/health`,
-				instructions:
-					"The api operator must apply at developer.ebay.com → Buy APIs → Buy Offer for Limited Release access and set EBAY_BIDDING_APPROVED=1 to use eBay's REST bidding surface. Until then, /v1/bids auto-falls-back to url transport — the response carries `next_action.url` pointing at the eBay listing for the user to click Place Bid manually.",
-			};
-		case "configure_stripe":
-			return {
-				kind,
-				url: `${origin}/v1/health`,
-				instructions:
-					"The api operator must set STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and STRIPE_PRICE_* before billing flows can run. This is a server config issue, not something the end user can fix.",
 			};
 	}
 }

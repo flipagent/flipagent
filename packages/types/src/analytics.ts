@@ -3,7 +3,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, ResponseSource } from "./_common.js";
+import { Marketplace } from "./_common.js";
 
 export const TrafficReportRow = Type.Object(
 	{
@@ -25,7 +25,6 @@ export const TrafficReport = Type.Object(
 		from: Type.String(),
 		to: Type.String(),
 		rows: Type.Array(TrafficReportRow),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "TrafficReport" },
 );
@@ -53,7 +52,6 @@ export const SellerStandards = Type.Object(
 				}),
 			),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "SellerStandards" },
 );
@@ -74,7 +72,6 @@ export const ServiceMetricsResponse = Type.Object(
 	{
 		marketplace: Marketplace,
 		metrics: Type.Array(ServiceMetric),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ServiceMetricsResponse" },
 );

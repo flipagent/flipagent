@@ -751,7 +751,13 @@ type EvaluateResultLike = {
 		recommendedExit?: { listPriceCents?: number; expectedDaysToSell?: number } | null;
 		risk?: { P_fraud?: number } | null;
 	};
-	market?: { marketplace?: string; medianCents?: number; salesPerDay?: number };
+	market?: {
+		marketplace?: string;
+		medianCents?: number;
+		salesPerDay?: number;
+		nObservations?: number;
+		asks?: { nActive?: number };
+	};
 	meta?: { lookbackDays?: number };
 };
 
@@ -784,7 +790,9 @@ function toEvaluationRow(jobId: string, r: EvaluateResultLike, completedAt: Date
 		successNetCents: ev.successNetCents ?? null,
 		maxLossCents: ev.maxLossCents ?? null,
 		medianSoldCents: market.medianCents ?? 0,
+		nSold: market.nObservations ?? 0,
 		salesPerDay: market.salesPerDay ?? 0,
+		nActive: market.asks?.nActive ?? 0,
 		expectedDaysToSell: ev.recommendedExit?.expectedDaysToSell ?? null,
 		recommendedListPriceCents: ev.recommendedExit?.listPriceCents ?? null,
 		pFraud: typeof ev.risk?.P_fraud === "number" ? ev.risk.P_fraud : null,

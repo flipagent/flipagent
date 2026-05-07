@@ -46,7 +46,7 @@ promotionsRoute.get(
 				marketplace: ebayMarketplaceId(),
 			},
 		);
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -82,7 +82,7 @@ promotionsRoute.get(
 			marketplace: ebayMarketplaceId(),
 		});
 		if (!r) return c.json({ error: "promotion_not_found" }, 404);
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -100,7 +100,7 @@ promotionsRoute.put(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ...r, source: "rest" as const });
+		return c.json({ ...r });
 	},
 );
 
@@ -117,7 +117,7 @@ promotionsRoute.delete(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ok: true, source: "rest" as const });
+		return c.json({ ok: true });
 	},
 );
 
@@ -134,7 +134,7 @@ promotionsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ok: true, source: "rest" as const });
+		return c.json({ ok: true });
 	},
 );
 
@@ -151,7 +151,7 @@ promotionsRoute.post(
 			apiKeyId: c.var.apiKey.id,
 			marketplace: ebayMarketplaceId(),
 		});
-		return c.json({ ok: true, source: "rest" as const });
+		return c.json({ ok: true });
 	},
 );
 
@@ -169,7 +169,6 @@ promotionsRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		}),
 );
 
@@ -186,7 +185,6 @@ promotionsRoute.get(
 	async (c) =>
 		c.json({
 			...(await listReportTasks("promotion_summary", { apiKeyId: c.var.apiKey.id })),
-			source: "rest" as const,
 		}),
 );
 

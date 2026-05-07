@@ -1,18 +1,23 @@
 /**
  * `summariseDetail` is the prompt builder that hands a candidate or
- * pool item to the verify-pass LLM. The bug we just fixed: it ignored
- * `variations[]` on multi-SKU listings, so the LLM saw only the page's
- * generic top-of-fold aspects and couldn't tell PS 3Y kids' shoes
- * apart from US M8 men's at the same brand+title. With variations
- * rendered, the LLM has the per-SKU price + axis values to pick the
- * right one.
+ * pool item to the verify-pass LLM. Multi-SKU listings render their
+ * variations[] block as `axis: value` lines so the LLM can confirm
+ * the seed's specific variant exists in the listing (Rule 3 path 2).
+ *
+ * Top-level listing price + per-variation prices are intentionally
+ * OMITTED — the matcher decides product identity only; price-based
+ * fraud / "too cheap to be real" reasoning belongs to the downstream
+ * `evaluate/suspicious.ts` filter. Showing price here primed the LLM
+ * to rationalize low-price comps as "different model" (BoomX seed:
+ * same title at $70 → match, $79 → reject, only differentiator was
+ * price).
  */
 
 import { describe, expect, it } from "vitest";
 import { __summariseDetailForTest as summariseDetail } from "../../../src/services/match/matcher.js";
 
 describe("summariseDetail — multi-variation rendering", () => {
-	it("emits one line per variation with axis values + price", () => {
+	it("emits one line per variation with axis values (no price)", () => {
 		const out = summariseDetail({
 			title: "Nike Air Jordan 4 Retro Black Cat 2025",
 			brand: "Nike",
@@ -33,8 +38,9 @@ describe("summariseDetail — multi-variation rendering", () => {
 			],
 		});
 		expect(out).toContain("variations (2 SKUs in this listing):");
-		expect(out).toContain("- Size: US M8 / W9.5 — $359.90");
-		expect(out).toContain("- Size: PS 3Y / W4.5 — $135.00");
+		expect(out).toContain("- Size: US M8 / W9.5");
+		expect(out).toContain("- Size: PS 3Y / W4.5");
+		expect(out).not.toMatch(/\$\d/);
 	});
 
 	it("renders multi-axis variations as `axis: value, axis: value`", () => {
@@ -52,7 +58,8 @@ describe("summariseDetail — multi-variation rendering", () => {
 				},
 			],
 		});
-		expect(out).toContain("- Size: L, Color: Black — $50.00");
+		expect(out).toContain("- Size: L, Color: Black");
+		expect(out).not.toMatch(/\$\d/);
 	});
 
 	it("renders `(no aspect)` when a variation has no axis values", () => {
@@ -60,15 +67,7 @@ describe("summariseDetail — multi-variation rendering", () => {
 			title: "Mystery SKU",
 			variations: [{ variationId: "x", priceCents: 1000, currency: "USD", aspects: [] }],
 		});
-		expect(out).toContain("- (no aspect) — $10.00");
-	});
-
-	it("renders `n/a` for missing prices", () => {
-		const out = summariseDetail({
-			title: "Stockless SKU",
-			variations: [{ variationId: "x", priceCents: null, currency: "USD", aspects: [{ name: "Size", value: "S" }] }],
-		});
-		expect(out).toContain("- Size: S — n/a");
+		expect(out).toContain("- (no aspect)");
 	});
 
 	it("omits the variations block on single-SKU listings", () => {
@@ -79,5 +78,20 @@ describe("summariseDetail — multi-variation rendering", () => {
 		});
 		expect(out).not.toContain("variations");
 		expect(out).toContain("title: Canon EF 50mm");
+	});
+
+	it("omits top-level price + marketingPrice — matcher is identity-only", () => {
+		const out = summariseDetail({
+			title: "iPhone 15 Pro 256GB",
+			price: { value: "899.00", currency: "USD" },
+			marketingPrice: {
+				originalPrice: { value: "1199.00", currency: "USD" },
+				discountPercentage: "25",
+			},
+		});
+		expect(out).not.toContain("$899");
+		expect(out).not.toContain("$1199");
+		expect(out).not.toContain("price:");
+		expect(out).not.toContain("marketingPrice:");
 	});
 });

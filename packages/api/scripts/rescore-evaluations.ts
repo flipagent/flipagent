@@ -31,6 +31,7 @@ const BATCH = Number.parseInt(process.env.BATCH ?? "500", 10);
 
 type EvalParams = {
 	itemId?: string;
+	lookbackDays?: number;
 	opts?: EvaluateOptions;
 };
 
@@ -86,13 +87,22 @@ async function main(): Promise<void> {
 			try {
 				const soldPool = sold as ReadonlyArray<ItemSummary>;
 				const activePool = active as ReadonlyArray<ItemSummary>;
+				// `lookbackDays` lives on the request, not under `opts`. Read
+				// the original request lookback so the rescored salesPerDay
+				// uses the same window the data was fetched for — without
+				// this, the recency-weighted estimator decays old-but-real
+				// sales to ~zero (windowDays defaults to 30, but sold pools
+				// are 90-day fetches by default). Falls back to 90 (run.ts
+				// default) for old rows that didn't store the field.
+				const lookbackDays = params.lookbackDays ?? 90;
 				const opts: EvaluateOptions = {
 					...(params.opts ?? {}),
 					sold: soldPool,
 					asks: activePool,
+					lookbackDays,
 				};
 				const newEvaluation = evaluate(item as EvaluableItem, opts);
-				const newMarket = marketFromSold(soldPool, undefined, undefined, activePool);
+				const newMarket = marketFromSold(soldPool, { windowDays: lookbackDays }, undefined, activePool);
 				const newSold = buildSoldDigest(
 					soldPool,
 					(newMarket as { windowDays: number }).windowDays,

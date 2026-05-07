@@ -29,7 +29,6 @@ feedsRoute.get(
 				apiKeyId: c.var.apiKey.id,
 				marketplace: ebayMarketplaceId(),
 			})),
-			source: "rest" as const,
 		});
 	},
 );

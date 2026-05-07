@@ -27,7 +27,7 @@ locationsRoute.get(
 		responses: { 200: jsonResponse("Locations.", LocationsListResponse), ...COMMON },
 	}),
 	requireApiKey,
-	async (c) => c.json({ ...(await listLocations({ apiKeyId: c.var.apiKey.id })), source: "rest" as const }),
+	async (c) => c.json({ ...(await listLocations({ apiKeyId: c.var.apiKey.id })) }),
 );
 
 locationsRoute.get(

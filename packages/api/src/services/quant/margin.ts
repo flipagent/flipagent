@@ -23,9 +23,14 @@ export interface Margin {
 
 /**
  * @param inputs see types.ts MarginInputs
- * @param minNetCents threshold for `cleared` flag. Default $30.
+ * @param minNetCents threshold for the `cleared` flag. Default 0 — any
+ *        positive-net trade clears. Pass a stricter floor when the caller
+ *        has a specific time/effort threshold in mind. Reseller utility
+ *        beyond positive EV (capital efficiency, opportunity cost) is
+ *        better expressed via `dollarsPerDay` on the recommendation, not
+ *        a flat absolute floor.
  */
-export function netMargin(inputs: MarginInputs, minNetCents = 3000): Margin {
+export function netMargin(inputs: MarginInputs, minNetCents = 0): Margin {
 	const fees = inputs.fees ?? DEFAULT_FEES;
 	const breakdown = feeBreakdown(inputs.estimatedSaleCents, fees);
 	const inbound = inputs.inboundShippingCents ?? 0;

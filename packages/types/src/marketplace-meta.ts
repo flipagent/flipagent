@@ -5,7 +5,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, ResponseSource } from "./_common.js";
+import { Marketplace, Money } from "./_common.js";
 
 export const ReturnPolicyOption = Type.Object(
 	{
@@ -37,7 +37,6 @@ export const MarketplaceMetadata = Type.Object(
 		ebayMarketplaceId: Type.String({ description: "Underlying eBay marketplace code, e.g. EBAY_US." }),
 		returnPolicies: Type.Optional(Type.Array(ReturnPolicyOption)),
 		salesTaxJurisdictions: Type.Optional(Type.Array(SalesTaxJurisdiction)),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "MarketplaceMetadata" },
 );
@@ -66,7 +65,7 @@ export const DigitalSignatureRoute = Type.Object(
 export type DigitalSignatureRoute = Static<typeof DigitalSignatureRoute>;
 
 export const DigitalSignatureRoutesResponse = Type.Object(
-	{ routes: Type.Array(DigitalSignatureRoute), source: Type.Optional(ResponseSource) },
+	{ routes: Type.Array(DigitalSignatureRoute) },
 	{ $id: "DigitalSignatureRoutesResponse" },
 );
 export type DigitalSignatureRoutesResponse = Static<typeof DigitalSignatureRoutesResponse>;

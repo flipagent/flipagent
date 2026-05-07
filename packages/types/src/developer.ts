@@ -9,8 +9,6 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { ResponseSource } from "./_common.js";
-
 export const DeveloperAppRegisterRequest = Type.Object(
 	{
 		applicationName: Type.String({ description: "Display name shown to eBay users when authorizing." }),
@@ -26,7 +24,6 @@ export const DeveloperAppRegisterResponse = Type.Object(
 		appId: Type.Optional(Type.String()),
 		clientId: Type.Optional(Type.String()),
 		raw: Type.Optional(Type.Unknown()),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "DeveloperAppRegisterResponse" },
 );

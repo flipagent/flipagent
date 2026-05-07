@@ -4,7 +4,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Page } from "./_common.js";
 
 export const ViolationSeverity = Type.Union(
 	[Type.Literal("info"), Type.Literal("warning"), Type.Literal("critical"), Type.Literal("listing_blocked")],
@@ -46,10 +46,9 @@ export const ViolationsListQuery = Type.Object(
 );
 export type ViolationsListQuery = Static<typeof ViolationsListQuery>;
 
-export const ViolationsListResponse = Type.Composite(
-	[Page, Type.Object({ violations: Type.Array(Violation), source: Type.Optional(ResponseSource) })],
-	{ $id: "ViolationsListResponse" },
-);
+export const ViolationsListResponse = Type.Composite([Page, Type.Object({ violations: Type.Array(Violation) })], {
+	$id: "ViolationsListResponse",
+});
 export type ViolationsListResponse = Static<typeof ViolationsListResponse>;
 
 export const ViolationSummary = Type.Object(
@@ -63,7 +62,7 @@ export const ViolationSummary = Type.Object(
 export type ViolationSummary = Static<typeof ViolationSummary>;
 
 export const ViolationsSummaryResponse = Type.Object(
-	{ summaries: Type.Array(ViolationSummary), source: Type.Optional(ResponseSource) },
+	{ summaries: Type.Array(ViolationSummary) },
 	{ $id: "ViolationsSummaryResponse" },
 );
 export type ViolationsSummaryResponse = Static<typeof ViolationsSummaryResponse>;
@@ -83,8 +82,5 @@ export const ViolationSuppressRequest = Type.Object(
 );
 export type ViolationSuppressRequest = Static<typeof ViolationSuppressRequest>;
 
-export const ViolationSuppressResponse = Type.Object(
-	{ ok: Type.Boolean(), source: Type.Optional(ResponseSource) },
-	{ $id: "ViolationSuppressResponse" },
-);
+export const ViolationSuppressResponse = Type.Object({ ok: Type.Boolean() }, { $id: "ViolationSuppressResponse" });
 export type ViolationSuppressResponse = Static<typeof ViolationSuppressResponse>;

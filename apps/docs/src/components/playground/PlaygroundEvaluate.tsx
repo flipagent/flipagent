@@ -208,7 +208,10 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 	const [input, setInput] = useState("");
 	const [lookbackDays, setLookbackDays] = useState("90");
 	const [sampleLimit, setSampleLimit] = useState("50");
-	const [minProfit, setMinProfit] = useState("10");
+	// Default 0 matches the API's `DEFAULT_MIN_NET_CENTS` and the deals
+	// page's empty-input fallback — every surface reads "no target" the
+	// same way. Users who want a hard floor type one in.
+	const [minProfit, setMinProfit] = useState("0");
 	// More panel — detail-level cost assumptions. "" means "use server
 	// default" (currently $10 shipping, $0 floor); typing a number
 	// overrides per-call. The pill row keeps coarse presets; this panel
@@ -588,7 +591,7 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 					// any of the panel-resident knobs are non-default. Keeps the
 					// pill row honest about whether hidden settings are active.
 					const moreActive =
-						(minProfit !== "10" ? 1 : 0) +
+						(minProfit !== "0" ? 1 : 0) +
 						(shippingDollars !== "10" ? 1 : 0);
 					return (
 						<>
@@ -681,6 +684,10 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 								outcome={outcome}
 								steps={steps}
 								pending={pending}
+								minNetCents={(() => {
+									const mp = Number.parseInt(minProfit, 10);
+									return Number.isFinite(mp) && mp > 0 ? mp * 100 : 0;
+								})()}
 								onCancel={cancel}
 								onRerun={() => run(input)}
 							/>

@@ -3,7 +3,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Address, Money, ResponseSource } from "./_common.js";
+import { Address, Money } from "./_common.js";
 
 export const LabelQuoteRequest = Type.Object(
 	{
@@ -44,10 +44,7 @@ export const LabelOption = Type.Object(
 );
 export type LabelOption = Static<typeof LabelOption>;
 
-export const LabelQuoteResponse = Type.Object(
-	{ options: Type.Array(LabelOption), source: Type.Optional(ResponseSource) },
-	{ $id: "LabelQuoteResponse" },
-);
+export const LabelQuoteResponse = Type.Object({ options: Type.Array(LabelOption) }, { $id: "LabelQuoteResponse" });
 export type LabelQuoteResponse = Static<typeof LabelQuoteResponse>;
 
 export const LabelPurchaseRequest = Type.Object(
@@ -66,7 +63,6 @@ export const Label = Type.Object(
 		cost: Money,
 		voidable: Type.Boolean(),
 		purchasedAt: Type.String(),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "Label" },
 );

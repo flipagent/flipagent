@@ -23,7 +23,7 @@ watchingRoute.get(
 	}),
 	requireApiKey,
 	withTradingAuth(async (c, accessToken) =>
-		c.json({ ...(await fetchWatchList(accessToken)), source: "trading" as const } satisfies WatchListResponse),
+		c.json({ ...(await fetchWatchList(accessToken)) } satisfies WatchListResponse),
 	),
 );
 

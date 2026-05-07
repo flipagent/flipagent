@@ -84,9 +84,13 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 		cancelCheck,
 	});
 
-	const { evaluation } = await scoreFromDigest({
+	const { evaluation, evaluationAll } = await scoreFromDigest({
 		digest,
-		opts,
+		// Forward the resolved lookback so `evaluate()` can stamp it
+		// onto MarketStats.windowDays. Without this the scoring path
+		// runs `marketFromSold` with the default 30-day window even on
+		// 90-day fetches, decaying real older sales to ~zero salesPerDay.
+		opts: { ...opts, lookbackDays },
 		itemId,
 		onStep,
 		cancelCheck,
@@ -95,20 +99,31 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 	return {
 		item: digest.item,
 		evaluation,
+		evaluationAll,
 		market: digest.market as MarketStats,
 		sold: digest.sold,
 		active: digest.active,
+		marketAll: digest.marketAll as MarketStats,
+		soldAll: digest.soldAll,
+		activeAll: digest.activeAll,
 		filter: digest.filter,
 		returns: digest.returns,
 		meta: digest.meta as EvaluateMeta,
 		// Back-compat: heavy pools still here for the playground dashboard.
 		// MCP / SDK consumers should prefer `sold` + `active` digests and
 		// `client.evaluate.pool(itemId)` for drill-down.
-		soldPool: digest.matchedSold,
-		activePool: digest.matchedActive,
+		//
+		// `soldPool` / `activePool` carry the FULL matched pool (suspicious
+		// included) so the UI's toggle-on view has data; the headline
+		// `market` / `sold` / `active` reflect the cleaned (suspicious-
+		// excluded) view, and `suspiciousIds` lets the UI mark the
+		// flagged rows.
+		soldPool: digest.matchedSoldAll,
+		activePool: digest.matchedActiveAll,
 		rejectedSoldPool: digest.rejectedSold,
 		rejectedActivePool: digest.rejectedActive,
 		rejectionReasons: digest.rejectionReasons,
 		rejectionCategories: digest.rejectionCategories,
+		suspiciousIds: digest.suspiciousIds,
 	} as EvaluateResponse;
 }

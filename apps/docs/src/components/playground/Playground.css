@@ -312,9 +312,17 @@
 
 .pg-result-chart-head {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	justify-content: space-between;
 	margin-bottom: 6px;
+	gap: 12px;
+}
+
+.pg-result-chart-head-left {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
 }
 
 .pg-result-chart-title {
@@ -323,6 +331,51 @@
 	letter-spacing: 0.06em;
 	color: var(--text-3);
 	text-transform: uppercase;
+}
+
+/* Segmented toggle in the chart head — flips between "By price" (the
+ * histogram) and "Over time" (the date scatter). Same visual weight as
+ * the title, sits next to it so the user's eye reads "what view is this"
+ * left-to-right without an extra control row. */
+.pg-result-chart-toggle {
+	display: inline-flex;
+	align-items: center;
+	border: 1px solid var(--border-faint);
+	border-radius: 6px;
+	overflow: hidden;
+	background: var(--surface);
+}
+
+.pg-result-chart-toggle-btn {
+	font: inherit;
+	font-size: 11px;
+	color: var(--text-3);
+	background: transparent;
+	border: 0;
+	padding: 3px 8px;
+	cursor: pointer;
+	letter-spacing: 0.02em;
+	transition: color 0.12s ease, background 0.12s ease;
+}
+.pg-result-chart-toggle-btn:hover:not(:disabled):not([data-active]) {
+	color: var(--text);
+	background: var(--surface-2);
+}
+.pg-result-chart-toggle-btn[data-active] {
+	color: var(--text);
+	background: var(--surface-2);
+	font-weight: 500;
+}
+.pg-result-chart-toggle-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.pg-result-chart-toggle-btn:focus-visible {
+	outline: 2px solid var(--brand);
+	outline-offset: -2px;
+}
+.pg-result-chart-toggle-btn + .pg-result-chart-toggle-btn {
+	border-left: 1px solid var(--border-faint);
 }
 
 .pg-result-chart-meta {
@@ -345,11 +398,20 @@
 .pg-result-chart-key--active { background: var(--brand); }
 .pg-result-chart-key--sold { background: var(--text-4); }
 
-/* Recharts wraps everything in .recharts-wrapper — strip the focus
-   outline its default tooltip behaviour adds. */
+/* Recharts wraps everything in `.recharts-wrapper` (tabindex=0) and
+   the inner `<svg class="recharts-surface">` — both can pick up the
+   browser focus ring when the user clicks a bar. Strip on every
+   focus pseudo (`:focus-visible` survives `:focus` removal in modern
+   Chromium). `!important` guards against UA stylesheet specificity
+   on the SVG element. */
+.pg-result-chart .recharts-wrapper,
 .pg-result-chart .recharts-wrapper:focus,
-.pg-result-chart .recharts-surface:focus {
-	outline: none;
+.pg-result-chart .recharts-wrapper:focus-visible,
+.pg-result-chart .recharts-wrapper:focus-within,
+.pg-result-chart .recharts-surface,
+.pg-result-chart .recharts-surface:focus,
+.pg-result-chart .recharts-surface:focus-visible {
+	outline: none !important;
 }
 
 /* ---------- no-matches banner ---------- */
@@ -644,8 +706,7 @@
 
 .pg-result-facts-warn {
 	font-size: 11.5px;
-	color: var(--brand);
-	font-style: italic;
+	color: var(--danger);
 }
 
 .pg-result-facts-toggle {
@@ -771,7 +832,6 @@
 .pg-result-matches-reason {
 	font-size: 11px;
 	color: var(--text-3);
-	font-style: italic;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -923,7 +983,72 @@
 	font-size: 11.5px;
 	line-height: 1.45;
 	color: var(--text-3);
-	font-style: italic;
+}
+
+/* ---------- suspicious-comp filter ---------- */
+
+/* Tiny inline toggle at the top-right of the analysis area. "3 sus ·
+ * show" → click → "3 sus · hide" + numbers swap. No border / no fill
+ * baseline so it doesn't compete with the headline; only the action
+ * verb gets brand-orange when on. Mirrors the existing `[View]` row
+ * togglers in weight. Absolute-positioned so it floats above the
+ * histogram without taking layout flow space (the analysis container
+ * is `position: relative`). */
+.pg-suspicious-toggle {
+	position: absolute;
+	top: 4px;
+	right: 0;
+	display: inline-flex;
+	align-items: baseline;
+	gap: 4px;
+	padding: 0;
+	background: transparent;
+	border: 0;
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-3);
+	cursor: pointer;
+	transition: color 120ms ease;
+	z-index: 1;
+}
+.pg-suspicious-toggle:hover {
+	color: var(--text-2);
+}
+
+.pg-suspicious-toggle-action {
+	color: var(--text-2);
+	text-decoration: underline;
+	text-decoration-color: var(--border);
+	text-underline-offset: 2px;
+}
+.pg-suspicious-toggle:hover .pg-suspicious-toggle-action {
+	text-decoration-color: var(--text-3);
+}
+.pg-suspicious-toggle[data-on="true"] .pg-suspicious-toggle-action {
+	color: var(--brand);
+	text-decoration-color: var(--brand);
+}
+
+/* Flagged comp row in the View panel — only visible when the toggle
+ * is ON (otherwise filtered out upstream). Tinted treatment so the
+ * reseller sees at a glance which rows would be excluded from the
+ * default median, with the fraud-risk chip + reason inline. */
+.pg-result-matches-row[data-suspicious="true"] {
+	background: var(--surface-2);
+}
+.pg-result-matches-row[data-suspicious="true"] .pg-result-matches-thumb img {
+	opacity: 0.7;
+}
+
+.pg-result-matches-tag--suspicious {
+	color: var(--brand);
+	border-color: var(--brand);
+}
+
+.pg-result-matches-reason--suspicious {
+	color: var(--text-2);
 }
 
 /* ---------- comparison (usually vs this listing) ---------- */
@@ -1021,7 +1146,6 @@
 	font-size: 12.5px;
 	line-height: 1.55;
 	color: var(--text-3);
-	font-style: italic;
 }
 
 /* ---------- recommendation (verdict line: prefix + rating + reason) ---------- */
@@ -1323,7 +1447,7 @@
 }
 
 .pg-step-error { margin: 12px 0 4px; font-size: 12px; color: #c0392b; }
-.pg-step-empty { margin: 12px 0 4px; font-size: 12px; color: var(--text-3); font-style: italic; }
+.pg-step-empty { margin: 12px 0 4px; font-size: 12px; color: var(--text-3); }
 
 .pg-step-section + .pg-step-section { margin-top: 12px; }
 .pg-step-section-h {

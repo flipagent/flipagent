@@ -3,7 +3,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, ResponseSource } from "./_common.js";
+import { Marketplace } from "./_common.js";
 
 export const FeedKind = Type.Union(
 	[
@@ -62,8 +62,5 @@ export const FeedTaskCreate = Type.Object(
 );
 export type FeedTaskCreate = Static<typeof FeedTaskCreate>;
 
-export const FeedsListResponse = Type.Object(
-	{ tasks: Type.Array(FeedTask), source: Type.Optional(ResponseSource) },
-	{ $id: "FeedsListResponse" },
-);
+export const FeedsListResponse = Type.Object({ tasks: Type.Array(FeedTask) }, { $id: "FeedsListResponse" });
 export type FeedsListResponse = Static<typeof FeedsListResponse>;

@@ -5,7 +5,12 @@
  * wire shape is identical regardless of transport).
  */
 
-import { canonicaliseConditionText, type EbayItemDetail, resolveConditionId } from "@flipagent/ebay-scraper";
+import {
+	applyAuthenticityGuaranteeFields,
+	canonicaliseConditionText,
+	type EbayItemDetail,
+	resolveConditionId,
+} from "@flipagent/ebay-scraper";
 import type { ItemDetail, ItemLocation, LocalizedAspect, PaymentMethod } from "@flipagent/types/ebay/buy";
 
 // Browse REST publishes a top-level `gtin` whenever the listing carries
@@ -274,13 +279,6 @@ export function ebayDetailToBrowse(raw: EbayItemDetail, variationId?: string): I
 		shipToLocations: raw.shipToLocations ?? undefined,
 		immediatePay: raw.immediatePay ?? undefined,
 		enabledForGuestCheckout: raw.guestCheckout ?? undefined,
-		// Mirror Browse REST: when the listing carries the AG badge, surface
-		// both `authenticityGuarantee` (the descriptor block) and
-		// `qualifiedPrograms` (the program enum REST emits). PDP markup
-		// doesn't expose `termsWebUrl` so we omit it here — REST callers
-		// still get the canonical link from upstream.
-		authenticityGuarantee: raw.authenticityGuarantee ?? undefined,
-		qualifiedPrograms: raw.authenticityGuarantee ? ["AUTHENTICITY_GUARANTEE"] : undefined,
 		// `returnTerms` is now declared on the schema (mirror parity with
 		// REST). REST passthrough already populates it; scrape fills from
 		// the JSON-LD `hasMerchantReturnPolicy` block parsed in
@@ -309,6 +307,12 @@ export function ebayDetailToBrowse(raw: EbayItemDetail, variationId?: string): I
 					}
 				: undefined,
 	};
+	// Mirror Browse REST: AG-routed listings get the descriptor block +
+	// `qualifiedPrograms` enum. PDP markup doesn't expose `termsWebUrl`
+	// (REST upstream is the only source), so the descriptor we hand off
+	// carries `description` only. Single helper across SRP / browse-layout
+	// / detail keeps the wire shape identical regardless of source.
+	applyAuthenticityGuaranteeFields(item, raw.authenticityGuarantee);
 	// Surface the full variation list as a runtime extension so callers
 	// (MCP, SDK, dashboard) can render "this listing has 6 sizes, here are
 	// the prices" without re-fetching. Mirror's ItemDetail intentionally

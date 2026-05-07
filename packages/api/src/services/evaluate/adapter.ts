@@ -17,16 +17,40 @@ import {
 import { toCents } from "../shared/money.js";
 
 /**
+ * Whether a listing is fronted by eBay's Authenticity Guarantee program.
+ * The badge replaces the seller-feedback line on the active SRP entirely
+ * (~0% seller-presence on AG categories like luxury watches), so seller-
+ * trust over those listings reads as zero — and gets weighted out of the
+ * legit reference + over-flagged as fraud. AG presence is the explicit
+ * trust signal eBay underwrites; treat it as max trust independent of
+ * feedback fields. Used both here (cohort weighting) and in
+ * `evaluate/suspicious.ts` + `evaluate/evaluate.ts` (per-item trust
+ * shortcut). Single predicate so the two sides never drift.
+ *
+ * Structural input — accepts `ItemSummary`, `ItemDetail`, or any shape
+ * that exposes the same two fields, so callers don't need a cast.
+ */
+export function isAuthenticityGuaranteed(item: {
+	authenticityGuarantee?: { description?: string; termsWebUrl?: string };
+	qualifiedPrograms?: ReadonlyArray<string>;
+}): boolean {
+	if (item.authenticityGuarantee) return true;
+	return Array.isArray(item.qualifiedPrograms) && item.qualifiedPrograms.includes("AUTHENTICITY_GUARANTEE");
+}
+
+/**
  * Trust-weighted legit market reference for the price-anomaly Bayes update
  * in `assessRisk`. Each sold listing contributes to the median/std with
- * weight = its seller's `sellerTrust(...)`. Returns null when total trust
- * weight is below 1 — the market is dominated by unverified sellers and
- * there is no clean reference. The price-anomaly signal is then suppressed
- * (priceBF = 1) rather than fabricated from noise.
+ * weight = its seller's `sellerTrust(...)`, OR weight = 1 when the listing
+ * is AG-routed (eBay-underwritten authenticity). Returns null when total
+ * trust weight is below 1 — the market is dominated by unverified sellers
+ * and there is no clean reference. The price-anomaly signal is then
+ * suppressed (priceBF = 1) rather than fabricated from noise.
  *
  * Symmetric: the same `sellerTrust(fb, pct)` from `quant/risk` runs both
  * here (filtering the supply-side cohort) and inside `assessRisk` (tempering
- * the candidate's price evidence). One knob (K=20), no cliff.
+ * the candidate's price evidence). AG short-circuits both sides identically
+ * — a credible identity (the program itself) doesn't price like fraud-bait.
  */
 export function legitMarketReference(
 	sold: ReadonlyArray<ItemSummary>,
@@ -34,10 +58,12 @@ export function legitMarketReference(
 	const samples = sold
 		.map((s) => ({
 			value: toCents(s.price?.value),
-			weight: sellerTrust(
-				s.seller?.feedbackScore,
-				s.seller?.feedbackPercentage ? Number.parseFloat(s.seller.feedbackPercentage) : undefined,
-			),
+			weight: isAuthenticityGuaranteed(s)
+				? 1
+				: sellerTrust(
+						s.seller?.feedbackScore,
+						s.seller?.feedbackPercentage ? Number.parseFloat(s.seller.feedbackPercentage) : undefined,
+					),
 		}))
 		.filter((s) => s.value > 0);
 	const totalTrust = samples.reduce((acc, s) => acc + s.weight, 0);

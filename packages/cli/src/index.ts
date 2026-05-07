@@ -247,18 +247,6 @@ async function runWhoami(): Promise<void> {
 
 /* ────────────────────────────── doctor ──────────────────────────────────── */
 
-type FeaturesResponse = {
-	ebayOAuth: boolean;
-	orderApi: boolean;
-	insightsApi: boolean;
-	biddingApi: boolean;
-	scraperApi: boolean;
-	betterAuth: boolean;
-	googleOAuth: boolean;
-	email: boolean;
-	stripe: boolean;
-	llm: boolean;
-};
 type ScopeStatus = "ok" | "scrape" | "needs_oauth" | "approval_pending" | "unavailable";
 type PermissionsResponse = {
 	ebayConnected: boolean;
@@ -274,37 +262,19 @@ type PermissionsResponse = {
 	};
 };
 
-const SCOPE_HINT: Record<ScopeStatus, string> = {
-	ok: "",
-	scrape: "Served via the scrape transport (REST not approved/wired or resource is scrape-only).",
-	needs_oauth: "Open the dashboard → Connect eBay account, or hit /v1/connect/ebay with this key.",
-	approval_pending: "Apply at developer.ebay.com, then set EBAY_*_APPROVED=1 once granted.",
-	unavailable: "Host has no eBay env wired. See /docs/self-host/.",
-};
 const SCOPE_TITLE: Record<keyof PermissionsResponse["scopes"], string> = {
 	browse: "Browse listings",
-	marketplaceInsights: "Sold history (Marketplace Insights)",
+	marketplaceInsights: "Sold history",
 	inventory: "Inventory",
 	fulfillment: "Fulfillment",
 	finance: "Finance",
-	order: "Buy Order (Limited Release)",
-	bidding: "Buy Offer / Bidding (Limited Release)",
+	order: "Buy orders",
+	bidding: "Auction bids",
 };
 
-async function fetchPublic<T>(baseUrl: string, path: string): Promise<T> {
-	const res = await fetch(baseUrl.replace(/\/+$/, "") + path, { headers: { Accept: "application/json" } });
-	if (!res.ok) throw new Error(`HTTP ${res.status} ${path}`);
-	return (await res.json()) as T;
-}
-
-function formatFlag(name: string, enabled: boolean): string {
-	const mark = enabled ? "✓" : "·";
-	return `  ${mark} ${name.padEnd(14)} ${enabled ? "configured" : "not configured"}`;
-}
 function formatScope(label: string, status: ScopeStatus): string {
-	const mark = status === "ok" ? "✓" : status === "needs_oauth" || status === "approval_pending" ? "!" : "·";
-	const hint = SCOPE_HINT[status];
-	return `  ${mark} ${label.padEnd(38)} ${status}${hint ? `  — ${hint}` : ""}`;
+	const mark = status === "ok" ? "✓" : status === "needs_oauth" ? "!" : "·";
+	return `  ${mark} ${label.padEnd(28)} ${status}`;
 }
 
 async function runDoctor(): Promise<void> {
@@ -312,54 +282,23 @@ async function runDoctor(): Promise<void> {
 	const baseUrl = resolveBaseUrl(cfg);
 	stdout.write(`flipagent doctor — ${baseUrl}\n\n`);
 
-	// Section 1 — host capabilities (no auth needed)
-	stdout.write("Host features (from /v1/health/features):\n");
-	let features: FeaturesResponse | null = null;
-	try {
-		features = await fetchPublic<FeaturesResponse>(baseUrl, "/v1/health/features");
-		stdout.write(`${formatFlag("ebayOAuth", features.ebayOAuth)}\n`);
-		stdout.write(`${formatFlag("orderApi", features.orderApi)}\n`);
-		stdout.write(`${formatFlag("insightsApi", features.insightsApi)}\n`);
-		stdout.write(`${formatFlag("biddingApi", features.biddingApi)}\n`);
-		stdout.write(`${formatFlag("scraperApi", features.scraperApi)}\n`);
-		stdout.write(`${formatFlag("betterAuth", features.betterAuth)}\n`);
-		stdout.write(`${formatFlag("googleOAuth", features.googleOAuth)}\n`);
-		stdout.write(`${formatFlag("email", features.email)}\n`);
-		stdout.write(`${formatFlag("stripe", features.stripe)}\n`);
-		stdout.write(`${formatFlag("llm", features.llm)}\n`);
-	} catch (err) {
-		stdout.write(`  · could not reach ${baseUrl} — ${err instanceof Error ? err.message : String(err)}\n`);
-		stdout.write("\nHint: is the api running? Start with `npm run --workspace @flipagent/api dev`.\n");
-		return;
-	}
-
-	// Section 2 — your key + per-scope permission status
-	stdout.write("\nYour key:\n");
 	let apiKey: string | null = null;
 	try {
 		apiKey = resolveApiKey(cfg);
 	} catch {
-		stdout.write("  · no key stored. Run `flipagent login` (hosted) or\n");
-		stdout.write("    `npm run --workspace @flipagent/api issue-key -- you@example.com` (self-host)\n");
+		stdout.write("  · no key stored. Run `flipagent login` first.\n");
 		return;
 	}
-	stdout.write(`  ✓ key: ${apiKey.slice(0, 12)}…\n`);
+	stdout.write(`  ✓ key: ${apiKey.slice(0, 12)}…\n\n`);
 
-	stdout.write("\nPer-endpoint access (from /v1/keys/permissions):\n");
+	stdout.write("Per-endpoint access:\n");
 	try {
 		const perms = await api<PermissionsResponse>("GET", "/v1/keys/permissions", undefined, { apiKey, baseUrl });
-		// "Not connected" is actionable (!) when the host has eBay OAuth wired —
-		// the user just hasn't completed the consent flow. It's only informational
-		// (·) when the host can't do OAuth at all (self-host without eBay env).
-		let ebayLine: string;
-		if (perms.ebayConnected) {
-			ebayLine = `  ✓ eBay connected as @${perms.ebayUserName ?? "?"}`;
-		} else if (features.ebayOAuth) {
-			ebayLine = "  ! eBay not connected — open the dashboard → Connect eBay account.";
-		} else {
-			ebayLine = "  · eBay OAuth not wired on this host. See /docs/self-host/.";
-		}
-		stdout.write(`${ebayLine}\n`);
+		stdout.write(
+			perms.ebayConnected
+				? `  ✓ eBay connected as @${perms.ebayUserName ?? "?"}\n`
+				: "  ! eBay not connected — open the dashboard → Connect eBay account.\n",
+		);
 		stdout.write(`${formatScope(SCOPE_TITLE.browse, perms.scopes.browse)}\n`);
 		stdout.write(`${formatScope(SCOPE_TITLE.marketplaceInsights, perms.scopes.marketplaceInsights)}\n`);
 		stdout.write(`${formatScope(SCOPE_TITLE.inventory, perms.scopes.inventory)}\n`);
@@ -849,9 +788,9 @@ async function main(): Promise<void> {
 		case "daemon":
 			stdout.write(
 				"`flipagent daemon` was removed. Buy-side execution runs through\n" +
-					"`/v1/purchases` — REST transport (with eBay Buy Order API approval)\n" +
-					"or the flipagent Chrome extension. Install + setup:\n" +
-					"https://flipagent.dev/docs/extension/\n",
+					"`/v1/purchases` — the response either places the order or returns\n" +
+					"`nextAction.url` for the user to complete on the marketplace UI.\n" +
+					"Optional Chrome extension adds in-page UX: https://flipagent.dev/docs/extension/\n",
 			);
 			process.exit(1);
 			return; // unreachable after process.exit, kept to satisfy no-fallthrough

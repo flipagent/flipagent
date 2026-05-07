@@ -26,7 +26,6 @@ charitiesRoute.get(
 	async (c) =>
 		c.json({
 			...(await listCharities(c.req.valid("query"), { apiKeyId: c.var.apiKey.id })),
-			source: "rest" as const,
 		}),
 );
 

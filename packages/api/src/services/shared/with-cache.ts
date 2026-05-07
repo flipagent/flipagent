@@ -9,7 +9,7 @@
  *     { scope: "listings:active", ttlSec: 60 * 60, path, queryHash },
  *     async () => {
  *       const body = await dispatchToUpstream();
- *       return { body, source: "rest" };
+ *       return { body };
  *     },
  *   );
  *   // result : FlipagentResult<typeof body>

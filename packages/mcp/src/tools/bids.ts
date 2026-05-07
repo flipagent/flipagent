@@ -27,7 +27,7 @@ export async function bidsListExecute(config: Config, _args: Record<string, unkn
 
 export { BidCreate as bidsPlaceInput };
 export const bidsPlaceDescription =
-	'Place a proxy bid on an auction. Calls POST /v1/bids. **When to use** — items only available at auction (not Buy-It-Now). For BIN, use `flipagent_create_purchase`. eBay\'s proxy system handles the increment ladder: your `maxBid` (or `amount` if `maxBid` omitted) is the ceiling; eBay places the minimum needed to be high bidder. For safe ceilings, use `evaluation.bidCeilingCents` from `flipagent_evaluate_item`. **Inputs** — `listingId` (auction itemId), `amount` (`{value: cents-int, currency}`), optional `maxBid` (proxy ceiling, defaults to `amount`), optional `transport` (`rest | bridge | url`, auto). **Output** — `Bid { id, marketplace, listingId, amount, maxBid?, status, placedAt, auctionEndsAt?, nextAction? }`. Initial `status` is `pending` for bridge/url or `active` for REST. When `pending`, response also carries `poll_with: "flipagent_get_bid_status"` + `poll_args` + `terminal_states`. **Transport auto-pick** — REST when `EBAY_BIDDING_APPROVED=1` + eBay OAuth bound (server places); bridge when the Chrome extension is paired (extension surfaces a Place-Bid panel observer); otherwise url (response carries `nextAction.url` pointing at the ebay.com listing — direct the user there to click Place Bid manually). **Async** — for bridge + url, the Trading-API reconciler diffs the user\'s BidList for the requested `maxBid` and flips to `active` (winning) or `outbid` once eBay confirms. **Polling cadence** — 2-5 s via `flipagent_get_bid_status` until `status !== \'pending\'`. **DO NOT** re-call `flipagent_place_bid` on a pending result — that double-bids. **Prereqs** — eBay account connected. None for url transport (always works); REST needs `EBAY_BIDDING_APPROVED=1`. **Example** — `{ listingId: "234567890123", amount: { value: 4500, currency: "USD" } }` (cap at $45).';
+	'Place a proxy bid on an auction. Calls POST /v1/bids. **When to use** — items only available at auction (not Buy-It-Now). For BIN, use `flipagent_create_purchase`. eBay\'s proxy system handles the increment ladder: your `maxBid` (or `amount` if `maxBid` omitted) is the ceiling; eBay places the minimum needed to be high bidder. For safe ceilings, use `evaluation.bidCeilingCents` from `flipagent_evaluate_item`. **Inputs** — `listingId` (auction itemId), `amount` (`{value: cents-int, currency}`), optional `maxBid` (proxy ceiling, defaults to `amount`). **Output** — `Bid { id, marketplace, listingId, amount, maxBid?, status, placedAt, auctionEndsAt?, nextAction? }`. **Outcomes** — terminal status on the response (the bid is on file with eBay) **or** non-terminal `pending` with `nextAction.url` (direct the user to that URL to click Place Bid on the marketplace UI). When `pending`, response also carries `poll_with: "flipagent_get_bid_status"` + `poll_args` + `terminal_states`. **Polling cadence** — 2-5 s via `flipagent_get_bid_status` until `status !== \'pending\'` (each call runs the BidList reconciler inline). **DO NOT** re-call `flipagent_place_bid` on a pending result — that double-bids. **Prereqs** — eBay account connected. **Example** — `{ listingId: "234567890123", amount: { value: 4500, currency: "USD" } }` (cap at $45).';
 export async function bidsPlaceExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	try {
 		const client = getClient(config);
@@ -35,10 +35,10 @@ export async function bidsPlaceExecute(config: Config, args: Record<string, unkn
 			status?: string;
 			listingId?: string;
 		};
-		// `pending` = bridge transport queued the bid in the user's browser
-		// and the reconciler hasn't yet seen confirmation in their BidList.
-		// Surface polling instructions inline so the calling agent doesn't
-		// retry POST /v1/bids (would double-bid).
+		// `pending` = the bid is queued and the reconciler hasn't yet
+		// seen confirmation in the user's BidList. Surface polling
+		// instructions inline so the calling agent doesn't retry
+		// POST /v1/bids (would double-bid).
 		if (result.status === "pending" && result.listingId) {
 			return {
 				...result,

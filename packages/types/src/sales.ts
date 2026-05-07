@@ -12,7 +12,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Address, Marketplace, Money, Page, ResponseSource } from "./_common.js";
+import { Address, Marketplace, Money, Page } from "./_common.js";
 
 export const SaleStatus = Type.Union(
 	[
@@ -119,14 +119,13 @@ export const SalesListResponse = Type.Composite(
 		Page,
 		Type.Object({
 			sales: Type.Array(Sale),
-			source: Type.Optional(ResponseSource),
 		}),
 	],
 	{ $id: "SalesListResponse" },
 );
 export type SalesListResponse = Static<typeof SalesListResponse>;
 
-export const SaleResponse = Type.Composite([Sale, Type.Object({ source: Type.Optional(ResponseSource) })], {
+export const SaleResponse = Type.Composite([Sale], {
 	$id: "SaleResponse",
 });
 export type SaleResponse = Static<typeof SaleResponse>;

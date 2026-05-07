@@ -141,6 +141,7 @@ export function EvaluateResult({
 	outcome,
 	steps,
 	sellWithinDays,
+	minNetCents,
 	pending = false,
 	onCancel,
 	onRerun,
@@ -150,6 +151,12 @@ export function EvaluateResult({
 	steps: Step[];
 	/** When set and the market's typical wait exceeds this, the rec block flags it. */
 	sellWithinDays?: number;
+	/** Caller's profit target. Drives the "below target net" aside on the
+	 *  Est. profit row — shown only when (a) the server flagged the row
+	 *  as below_min_net AND (b) the caller actually set a non-zero target.
+	 *  Default zero / undefined means "no target", and the aside stays
+	 *  hidden (the red E[net] number already conveys the loss). */
+	minNetCents?: number;
 	/** True while the chain is still running — sections without data show skeletons. */
 	pending?: boolean;
 	/** Pending → Cancel button on the footer-left. Complete → Re-run. Both
@@ -178,6 +185,7 @@ export function EvaluateResult({
 			<EvaluateResultBody
 				outcome={outcome}
 				sellWithinDays={sellWithinDays}
+				minNetCents={minNetCents}
 				pending={pending}
 				hideHero={hideHero}
 			/>
@@ -210,11 +218,13 @@ export function EvaluateResult({
 export function EvaluateResultBody({
 	outcome,
 	sellWithinDays,
+	minNetCents,
 	pending = false,
 	hideHero = false,
 }: {
 	outcome: Partial<EvaluateOutcome>;
 	sellWithinDays?: number;
+	minNetCents?: number;
 	pending?: boolean;
 	hideHero?: boolean;
 }) {
@@ -233,37 +243,45 @@ export function EvaluateResultBody({
 		}
 		prevPreliminary.current = outcome.preliminary;
 	}, [outcome.preliminary]);
-	const candidatePriceCents = outcome.item?.price
-		? Math.round(Number.parseFloat(outcome.item.price.value) * 100)
+	// Suspicious-comp toggle. Default OFF — flagged comps are excluded
+	// from the displayed pools, headline `market`/`evaluation`, histogram,
+	// and Facts rows. Toggling ON swaps to `marketAll`/`evaluationAll`
+	// (server-precomputed against the full pool) and re-includes the
+	// flagged rows in the displayed lists with a tint + reason on hover.
+	const [showSuspicious, setShowSuspicious] = useState(false);
+	const suspiciousIds = outcome.suspiciousIds ?? {};
+	const suspiciousCount = Object.keys(suspiciousIds).length;
+	const view = useEffectiveOutcome(outcome, showSuspicious);
+	const candidatePriceCents = view.item?.price
+		? Math.round(Number.parseFloat(view.item.price.value) * 100)
 		: null;
 	// Matcher rejected every candidate — empty matched pool. Distinct from
 	// "still loading" (where meta is undefined). The downstream rows
 	// (Avg sold, Resells at, Est. profit) all degrade to placeholders or
 	// misleading numbers computed against a zero market; surface the real
 	// reason up here instead so the user knows the rec block isn't broken.
+	// Uses the cleaned (default-view) counts so the empty-state message
+	// reflects what the user is actually looking at.
+	const effSoldKept = (view.soldPool ?? []).length;
+	const effActiveKept = (view.activePool ?? []).length;
 	const noMatches =
-		outcome.meta != null &&
-		outcome.meta.soldKept === 0 &&
-		outcome.meta.activeKept === 0 &&
-		(outcome.meta.soldRejected > 0 || outcome.meta.activeRejected > 0);
-	// Per-pool gates — sold-driven rows (Avg sold, Est. profit fallback)
-	// and active-driven rows (Active asks, Active bids) need to degrade
-	// independently. The half-empty case (one side 0, other side > 0)
-	// otherwise either shows `$0` placeholders or a misleading
-	// `expectedNetCents` computed against an empty market.
+		view.meta != null &&
+		effSoldKept === 0 &&
+		effActiveKept === 0 &&
+		(view.meta.soldRejected > 0 || view.meta.activeRejected > 0);
 	const noSoldMatched =
-		outcome.meta != null &&
-		outcome.meta.soldKept === 0 &&
-		(outcome.meta.soldRejected > 0 || outcome.meta.activeRejected > 0);
+		view.meta != null &&
+		effSoldKept === 0 &&
+		(view.meta.soldRejected > 0 || view.meta.activeRejected > 0);
 	const noActiveMatched =
-		outcome.meta != null &&
-		outcome.meta.activeKept === 0 &&
-		(outcome.meta.soldRejected > 0 || outcome.meta.activeRejected > 0);
+		view.meta != null &&
+		effActiveKept === 0 &&
+		(view.meta.soldRejected > 0 || view.meta.activeRejected > 0);
 	return (
 		<>
 			{!hideHero && (outcome.item ? <ItemHero item={outcome.item} /> : <ItemHeroSkeleton />)}
 
-			{noMatches && <NoMatchesBanner meta={outcome.meta!} />}
+			{noMatches && <NoMatchesBanner meta={view.meta!} />}
 
 			{/* Analysis area — chart + facts. Wrapped so CSS can flash
 			    every value brand-orange for 700ms when the post-filter
@@ -275,20 +293,27 @@ export function EvaluateResultBody({
 				className="pg-result-analysis"
 				data-just-confirmed={justConfirmed ? "true" : undefined}
 			>
+				{suspiciousCount > 0 && (
+					<SuspiciousToggle
+						count={suspiciousCount}
+						on={showSuspicious}
+						onChange={setShowSuspicious}
+					/>
+				)}
 				{(() => {
 					// Histogram active series is BIN-only — auction `price`
 					// values are starting/current bids, unstable until
 					// close, so mixing them flattens the BIN distribution.
 					// Auctions get their own row (Active bids) below.
-					const binActive = (outcome.activePool ?? []).filter((a) =>
+					const binActive = (view.activePool ?? []).filter((a) =>
 						(a.buyingOptions ?? []).includes("FIXED_PRICE"),
 					);
-					const haveSold = (outcome.soldPool?.length ?? 0) > 0;
+					const haveSold = (view.soldPool?.length ?? 0) > 0;
 					const haveBinActive = binActive.length > 0;
 					if (haveSold || haveBinActive) {
 						return (
 							<PriceHistogram
-								sold={outcome.soldPool ?? []}
+								sold={view.soldPool ?? []}
 								active={binActive}
 								candidatePriceCents={candidatePriceCents}
 							/>
@@ -298,15 +323,80 @@ export function EvaluateResultBody({
 				})()}
 
 				<Facts
-					outcome={outcome}
+					outcome={view}
 					pending={pending}
-					returns={outcome.returns ?? null}
+					returns={view.returns ?? null}
 					sellWithinDays={sellWithinDays}
+					minNetCents={minNetCents}
 					noSoldMatched={noSoldMatched}
 					noActiveMatched={noActiveMatched}
 				/>
 			</div>
 		</>
+	);
+}
+
+/**
+ * Derive the "current view" outcome from the raw outcome + the
+ * suspicious toggle state. Default (off) excludes flagged comps from
+ * the pools and uses the server-precomputed `market` / `evaluation`
+ * (also computed against the cleaned pool). Toggle on swaps to
+ * `marketAll` / `evaluationAll` and re-includes flagged comps in the
+ * pools — UI-only swap, no server roundtrip.
+ *
+ * Memoised against the toggle state + outcome identity so downstream
+ * `Facts` / `PriceHistogram` stay referentially stable across other
+ * unrelated re-renders.
+ */
+function useEffectiveOutcome(outcome: Partial<EvaluateOutcome>, showSuspicious: boolean): Partial<EvaluateOutcome> {
+	const suspiciousIds = outcome.suspiciousIds ?? {};
+	if (showSuspicious) {
+		return {
+			...outcome,
+			...(outcome.marketAll ? { market: outcome.marketAll } : {}),
+			...(outcome.evaluationAll ? { evaluation: outcome.evaluationAll } : {}),
+		};
+	}
+	if (Object.keys(suspiciousIds).length === 0) return outcome;
+	const cleanSold = (outcome.soldPool ?? []).filter((it) => !suspiciousIds[it.itemId]);
+	const cleanActive = (outcome.activePool ?? []).filter((it) => !suspiciousIds[it.itemId]);
+	return {
+		...outcome,
+		soldPool: cleanSold,
+		activePool: cleanActive,
+	};
+}
+
+/**
+ * Compact inline toggle: `N hidden · show / hide`. Sits at the top of
+ * the analysis area, right-aligned. Tiny mono caps, no border, behaves
+ * like the existing `[View]` row togglers — minimal visual weight.
+ * Renders only when `count > 0`.
+ */
+function SuspiciousToggle({
+	count,
+	on,
+	onChange,
+}: {
+	count: number;
+	on: boolean;
+	onChange: (next: boolean) => void;
+}) {
+	return (
+		<button
+			type="button"
+			className="pg-suspicious-toggle"
+			data-on={on ? "true" : undefined}
+			onClick={() => onChange(!on)}
+			aria-pressed={on}
+			title={
+				on
+					? "Showing suspicious comps in the median + recommendation. Hidden by default — flagged by the post-match risk filter (Bayesian P_fraud > 40%)."
+					: `${count} comp${count === 1 ? "" : "s"} flagged by the post-match risk filter (Bayesian P_fraud > 40%). Excluded from median + recommendation.`
+			}
+		>
+			{count} sus · <span className="pg-suspicious-toggle-action">{on ? "hide" : "show"}</span>
+		</button>
 	);
 }
 
@@ -486,6 +576,7 @@ function Facts({
 	pending,
 	returns,
 	sellWithinDays,
+	minNetCents,
 	noSoldMatched = false,
 	noActiveMatched = false,
 }: {
@@ -496,6 +587,10 @@ function Facts({
 	 *  Net profit row appends a "· over your N-day window" warn aside so
 	 *  the buyer sees the timeline mismatch without a separate block. */
 	sellWithinDays?: number;
+	/** Caller's profit target (cents). Gates the "below your $X target"
+	 *  aside so it only shows when the user actually set a target —
+	 *  default 0 leaves the aside hidden (the red number says enough). */
+	minNetCents?: number;
 	/** Sold pool empty after the matcher (active may still have matches).
 	 *  Hides the misleading `expectedNetCents` fallback on Est. profit and
 	 *  swaps Avg. sold's value for a placeholder + a View into the rejected
@@ -521,6 +616,29 @@ function Facts({
 	const [soldOpen, setSoldOpen] = useState(false);
 	const [activeOpen, setActiveOpen] = useState(false);
 	const [bidsOpen, setBidsOpen] = useState(false);
+	// Est. profit row defaults to the success-case net ("if it sells, what
+	// do I make"). Toggling reveals the risk-adjusted NPV (E[net]) which
+	// folds in P_fraud + time discount + max-loss. Persisted per-user so
+	// power users who prefer the risk-adj view stay in it across sessions.
+	const [riskAdjOpen, setRiskAdjOpen] = useState<boolean>(() => {
+		if (typeof window === "undefined") return false;
+		try {
+			return window.localStorage.getItem("flipagent.eval.riskAdjView") === "1";
+		} catch {
+			return false;
+		}
+	});
+	const toggleRiskAdj = (): void => {
+		setRiskAdjOpen((prev) => {
+			const next = !prev;
+			try {
+				window.localStorage.setItem("flipagent.eval.riskAdjView", next ? "1" : "0");
+			} catch {
+				/* private mode / quota — fine to drop persistence */
+			}
+			return next;
+		});
+	};
 	// Prefer server-computed market stats (have CI + meanDaysToSell);
 	// fall back to a quick client-side soldStats for the ad-hoc cases.
 	const stats = outcome.soldPool ? soldStats(outcome.soldPool) : null;
@@ -653,6 +771,7 @@ function Facts({
 					kept={outcome.soldPool ?? []}
 					rejected={outcome.rejectedSoldPool ?? []}
 					reasons={outcome.rejectionReasons}
+					suspiciousIds={outcome.suspiciousIds}
 				/>
 			)}
 
@@ -749,6 +868,7 @@ function Facts({
 					kept={activePool}
 					rejected={outcome.rejectedActivePool ?? []}
 					reasons={outcome.rejectionReasons}
+					suspiciousIds={outcome.suspiciousIds}
 				/>
 			)}
 
@@ -953,30 +1073,68 @@ function Facts({
 
 			{/* Est. profit — the bottom-line answer. Color is driven by the
 			    `evaluation.rating` (the actual verdict from the math), not
-			    just the sign — so a positive successNet that's still below
-			    the minNet floor reads red as "skip" instead of green. We
-			    surface `expectedNetCents` (the rating-driving probabilistic
-			    number) and append the reason when the model rated skip,
-			    so it's clear *why* this isn't a buy. */}
-			<Row label="Est. profit">
+			    just the sign or the toggle — so a positive successNet that
+			    reads red because the rating is skip stays red whether the
+			    user is looking at the success or risk-adjusted number. The
+			    default value is `successNetCents` ("if it sells") because
+			    that matches the user's mental model; `expectedNetCents`
+			    (NPV after P_fraud + time discount) is one click away on
+			    the per-row toggle for power users. */}
+			<Row
+				label="Est. profit"
+				info="How much you make if the listing actually sells. Toggle to a smaller, risk-adjusted version that factors in how often this kind of listing falls through, how long it takes to sell, and how bad a worst-case loss would be."
+			>
 				{evaluation?.recommendedExit ? (
-					<>
-						<span
-							className={`pg-result-facts-val${
-								evaluation.rating === "skip"
-									? " pg-result-facts-val--warn"
-									: evaluation.rating === "buy"
-										? " pg-result-facts-val--good"
-										: ""
-							}`}
-						>
-							{(evaluation.expectedNetCents ?? 0) >= 0 ? "+" : "−"}
-							{fmtUsdRound(Math.abs(evaluation.expectedNetCents ?? 0))}
-						</span>
-						{evaluation.rating === "skip" && (
-							<span className="pg-result-facts-aside pg-result-facts-aside--warn">
-								skip — below target net
-							</span>
+					(() => {
+						const successNet = evaluation.successNetCents ?? null;
+						const riskNet = evaluation.expectedNetCents ?? 0;
+						// Show the toggle only when the two numbers actually
+						// differ — when P_fraud≈0 and discountFactor≈1 they
+						// collapse to the same value and a toggle would be
+						// pointless UI noise.
+						const canToggle = successNet != null && successNet !== riskNet;
+						const showRiskAdj = canToggle && riskAdjOpen;
+						const displayedNet = showRiskAdj ? riskNet : (successNet ?? riskNet);
+						return (
+							<>
+								<span
+									className={`pg-result-facts-val${
+										evaluation.rating === "skip"
+											? " pg-result-facts-val--warn"
+											: evaluation.rating === "buy"
+												? " pg-result-facts-val--good"
+												: ""
+									}`}
+								>
+									{displayedNet >= 0 ? "+" : "−"}
+									{fmtUsdRound(Math.abs(displayedNet))}
+								</span>
+						{/* Only flag "below target" when the user explicitly set
+						    a non-zero profit target AND the server reasoned the
+						    skip on it. With minNet=0 (default) the red E[net]
+						    number already conveys the loss; the aside would just
+						    repeat in words what the colour says. Other skip
+						    reasons (insufficient_data, no_market, vetoed) are
+						    not target-related and don't get this aside. */}
+						{evaluation.reasonCode === "below_min_net" &&
+							minNetCents != null &&
+							minNetCents > 0 && (
+								<span className="pg-result-facts-aside pg-result-facts-aside--warn">
+									below your {fmtUsdRound(minNetCents)} target
+								</span>
+							)}
+						{/* Silent-red guard: when the value is positive but the
+						    rating is skip for non-target reasons, the colour
+						    alone is mute. Surface a short reason chip so the
+						    user knows why they're being told "no". */}
+						{evaluation.reasonCode === "insufficient_data" && (
+							<span className="pg-result-facts-aside pg-result-facts-aside--warn">low sample</span>
+						)}
+						{evaluation.reasonCode === "no_market" && (
+							<span className="pg-result-facts-aside pg-result-facts-aside--warn">no market</span>
+						)}
+						{evaluation.reasonCode === "vetoed" && (
+							<span className="pg-result-facts-aside pg-result-facts-aside--warn">vetoed</span>
 						)}
 						{sellWithinDays != null &&
 							sellWithinDays > 0 &&
@@ -985,7 +1143,23 @@ function Facts({
 									over your {sellWithinDays}-day window
 								</span>
 							)}
-					</>
+								{canToggle && (
+									<button
+										type="button"
+										onClick={toggleRiskAdj}
+										className="pg-result-facts-toggle"
+										title={
+											showRiskAdj
+												? "Show success-case net (if it sells, what you make)"
+												: "Show risk-adjusted NPV (P_fraud + time discount + max-loss)"
+										}
+									>
+										{showRiskAdj ? "Show success" : "Show risk-adj"}
+									</button>
+								)}
+							</>
+						);
+					})()
 				) : evaluation && !noSoldMatched ? (
 					// True null path — hazard model couldn't run (no duration
 					// data, σ=0, etc) but a sold pool existed. Surface what we
@@ -1033,10 +1207,17 @@ function MatchInline({
 	kept,
 	rejected,
 	reasons,
+	suspiciousIds,
 }: {
 	kept: ItemSummary[];
 	rejected: ItemSummary[];
 	reasons?: Record<string, string>;
+	/**
+	 * Per-itemId map of comps the post-match risk filter flagged. When
+	 * provided AND the parent's "show suspicious" toggle is on, flagged
+	 * rows in `kept` get a tinted treatment + the fraud reason inline.
+	 */
+	suspiciousIds?: Record<string, { reason: string; pFraud: number }>;
 }) {
 	if (kept.length === 0 && rejected.length === 0) return null;
 	return (
@@ -1046,9 +1227,17 @@ function MatchInline({
 					<div className="pg-result-matches-head">
 						<span>Kept · {kept.length}</span>
 					</div>
-					{kept.map((item) => (
-						<MatchRow key={`k-${item.itemId}`} item={item} bucket="match" />
-					))}
+					{kept.map((item) => {
+						const sus = suspiciousIds?.[item.itemId];
+						return (
+							<MatchRow
+								key={`k-${item.itemId}`}
+								item={item}
+								bucket="match"
+								suspicious={sus}
+							/>
+						);
+					})}
 				</>
 			)}
 			{rejected.length > 0 && (
@@ -1126,11 +1315,19 @@ function MatchRow({
 	item,
 	bucket,
 	reason,
+	suspicious,
 }: {
 	item: ItemSummary;
 	bucket: "match" | "reject";
 	/** LLM's verdict text, surfaced under the meta line for rejected rows. */
 	reason?: string;
+	/**
+	 * Post-match risk-filter result. When present, the comp was flagged
+	 * (Bayesian P_fraud > 0.4) — render with a "suspicious" tint and
+	 * surface the reason inline so the reseller sees WHY it would have
+	 * been excluded from the median.
+	 */
+	suspicious?: { reason: string; pFraud: number };
 }) {
 	const priceText = item.lastSoldPrice?.value ?? item.price?.value;
 	const isAuction = item.buyingOptions?.includes("AUCTION") ?? false;
@@ -1150,7 +1347,10 @@ function MatchRow({
 		modeTag = "Best Offer";
 	}
 	return (
-		<div className={`pg-result-matches-row pg-result-matches-row--${bucket}`}>
+		<div
+			className={`pg-result-matches-row pg-result-matches-row--${bucket}`}
+			data-suspicious={suspicious ? "true" : undefined}
+		>
 			<div className="pg-result-matches-thumb">
 				{item.image?.imageUrl ? (
 					<img src={item.image.imageUrl} alt="" loading="lazy" />
@@ -1168,8 +1368,18 @@ function MatchRow({
 					{priceText && <span className="font-mono">${priceText}</span>}
 					{modeTag && <span className="pg-result-matches-tag">{modeTag}</span>}
 					{item.authenticityGuarantee && <AuthenticityGuaranteeBadge />}
+					{suspicious && (
+						<span className="pg-result-matches-tag pg-result-matches-tag--suspicious">
+							{(suspicious.pFraud * 100).toFixed(0)}% fraud risk
+						</span>
+					)}
 				</div>
 				{reason && <p className="pg-result-matches-reason">{reason}</p>}
+				{suspicious && !reason && (
+					<p className="pg-result-matches-reason pg-result-matches-reason--suspicious">
+						Hidden by default — {suspicious.reason}
+					</p>
+				)}
 			</div>
 			<a
 				href={cleanItemUrl(item.itemWebUrl)}

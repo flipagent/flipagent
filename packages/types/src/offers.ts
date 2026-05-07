@@ -6,7 +6,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Marketplace, Money, Page, ResponseSource } from "./_common.js";
+import { Marketplace, Money, Page } from "./_common.js";
 
 export const OfferDirection = Type.Union([Type.Literal("incoming"), Type.Literal("outgoing")], {
 	$id: "OfferDirection",
@@ -80,13 +80,12 @@ export const OffersListQuery = Type.Object(
 );
 export type OffersListQuery = Static<typeof OffersListQuery>;
 
-export const OffersListResponse = Type.Composite(
-	[Page, Type.Object({ offers: Type.Array(Offer), source: Type.Optional(ResponseSource) })],
-	{ $id: "OffersListResponse" },
-);
+export const OffersListResponse = Type.Composite([Page, Type.Object({ offers: Type.Array(Offer) })], {
+	$id: "OffersListResponse",
+});
 export type OffersListResponse = Static<typeof OffersListResponse>;
 
-export const OfferResponse = Type.Composite([Offer, Type.Object({ source: Type.Optional(ResponseSource) })], {
+export const OfferResponse = Type.Composite([Offer], {
 	$id: "OfferResponse",
 });
 export type OfferResponse = Static<typeof OfferResponse>;

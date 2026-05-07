@@ -159,8 +159,7 @@ export interface NextActionPanelProps {
 	message?: string;
 	next_action?: {
 		/** "ebay_oauth" | "extension_install" | "open_url" |
-		 *  "forwarder_signin" | "forwarder_signup" | "setup_seller_policies" |
-		 *  "configure_ebay" | "configure_bidding_api" | "configure_stripe".
+		 *  "forwarder_signin" | "forwarder_signup" | "setup_seller_policies".
 		 *  String-typed so future kinds render as the generic fallback
 		 *  without a code change. */
 		kind?: string;
@@ -318,7 +317,14 @@ export function EvaluatePanel({
 	const enriched = useRejectedPool(itemId, completed, merged);
 	return (
 		<div className="msg-ui-panel msg-ui-eval">
-			<div className="msg-ui-eyebrow">{describeEvaluatePhase(merged, pending)}</div>
+			<div className="msg-ui-eyebrow">
+				{/* `EvaluateOutcome` is the playground's local mirror of the
+				 * server's `EvaluatePartial`; the structural overlap is
+				 * complete on the fields `describeEvaluatePhase` reads
+				 * (item, evaluation, filterProgress, preliminary, pools).
+				 * Cast to bridge the nominal mismatch. */}
+				{describeEvaluatePhase(merged as never, pending)}
+			</div>
 			<div className="msg-ui-eval-body pg-result">
 				<EvaluateResultBody outcome={enriched ?? merged ?? {}} pending={pending} />
 			</div>
@@ -948,12 +954,6 @@ const NEXT_ACTION_PRESENTATION: Record<
 		title: "Open this listing to complete the action",
 		ctaLabel: "Open listing",
 	},
-	configure_bidding_api: {
-		icon: <GearIcon />,
-		eyebrow: "Operator config needed",
-		title: "Buy Offer (Bidding) API not approved on this server",
-		ctaLabel: "View health page",
-	},
 	forwarder_signin: {
 		icon: <LinkIcon />,
 		eyebrow: "Sign in to Planet Express",
@@ -971,18 +971,6 @@ const NEXT_ACTION_PRESENTATION: Record<
 		eyebrow: "Set up seller policies",
 		title: "Your eBay account is missing return + fulfillment policies",
 		ctaLabel: "Set them up now",
-	},
-	configure_ebay: {
-		icon: <GearIcon />,
-		eyebrow: "Operator config needed",
-		title: "eBay client credentials aren't set on this server",
-		ctaLabel: "View health page",
-	},
-	configure_stripe: {
-		icon: <GearIcon />,
-		eyebrow: "Operator config needed",
-		title: "Stripe credentials aren't set on this server",
-		ctaLabel: "View health page",
 	},
 };
 
@@ -1084,15 +1072,6 @@ function DocIcon() {
 		<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
 			<path d="M4 2.5h5L12 5.5V13a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 4 13z" />
 			<path d="M9 2.5V6h3M6 8h4M6 10.5h4" />
-		</svg>
-	);
-}
-
-function GearIcon() {
-	return (
-		<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-			<circle cx="8" cy="8" r="2" />
-			<path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4M12.6 12.6l-1.4-1.4M4.8 4.8L3.4 3.4" />
 		</svg>
 	);
 }

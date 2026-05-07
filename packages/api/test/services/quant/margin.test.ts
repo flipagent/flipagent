@@ -2,15 +2,16 @@ import { describe, expect, it } from "vitest";
 import { bidCeiling, netMargin } from "../../../src/services/quant/margin.js";
 
 describe("netMargin", () => {
-	it("clears when margin > $30", () => {
+	it("clears when net is positive (default floor 0)", () => {
 		const r = netMargin({ estimatedSaleCents: 10_000, buyPriceCents: 5000 });
 		expect(r.cleared).toBe(true);
-		expect(r.netCents).toBeGreaterThan(3000);
+		expect(r.netCents).toBeGreaterThan(0);
 	});
 
-	it("rejects when buy price too high", () => {
+	it("rejects when buy price drives net negative", () => {
 		const r = netMargin({ estimatedSaleCents: 10_000, buyPriceCents: 9000 });
 		expect(r.cleared).toBe(false);
+		expect(r.netCents).toBeLessThan(0);
 	});
 
 	it("subtracts shipping costs", () => {

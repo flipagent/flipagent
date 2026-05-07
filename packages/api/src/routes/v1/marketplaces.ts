@@ -31,6 +31,6 @@ marketplacesRoute.get(
 	async (c) => {
 		const country = c.req.param("country");
 		const meta = await getMarketplaceMetadata(country, { apiKeyId: c.var.apiKey.id });
-		return c.json({ ...meta, source: "rest" as const });
+		return c.json({ ...meta });
 	},
 );

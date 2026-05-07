@@ -46,7 +46,7 @@ categoriesRoute.get(
 	async (c) => {
 		const q = c.req.valid("query");
 		const suggestions = await suggestCategory(q.title, ebayMarketplaceId(q.marketplace));
-		return c.json({ suggestions, source: "rest" as const } satisfies CategorySuggestResponse);
+		return c.json({ suggestions } satisfies CategorySuggestResponse);
 	},
 );
 
@@ -62,7 +62,6 @@ categoriesRoute.get(
 		const treeId = c.req.query("categoryTreeId") ?? "0";
 		return c.json({
 			...(await getCompatibilityProperties(c.req.param("id"), treeId)),
-			source: "rest" as const,
 		});
 	},
 );
@@ -79,7 +78,7 @@ categoriesRoute.get(
 	requireApiKey,
 	async (c) => {
 		const r = await fetchItemAspects(ebayMarketplaceId());
-		return c.json({ ...r, source: "rest" as const } satisfies CategoryFetchItemAspectsResponse);
+		return c.json({ ...r } satisfies CategoryFetchItemAspectsResponse);
 	},
 );
 
@@ -94,7 +93,7 @@ categoriesRoute.get(
 	async (c) => {
 		const id = c.req.param("id");
 		const aspects = await getCategoryAspects(id, ebayMarketplaceId());
-		return c.json({ categoryId: id, aspects, source: "rest" as const } satisfies CategoryAspectsResponse);
+		return c.json({ categoryId: id, aspects } satisfies CategoryAspectsResponse);
 	},
 );
 
@@ -111,6 +110,6 @@ categoriesRoute.get(
 	async (c) => {
 		const q = c.req.valid("query");
 		const categories = await getCategoryChildren(q.parentId, ebayMarketplaceId(q.marketplace));
-		return c.json({ categories, source: "rest" as const } satisfies CategoriesListResponse);
+		return c.json({ categories } satisfies CategoriesListResponse);
 	},
 );

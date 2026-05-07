@@ -68,6 +68,14 @@ export interface ItemSummary {
 	 * for AUCTION listings, so the row can render a countdown without
 	 * fetching detail. */
 	itemEndDate?: string;
+	/** ISO 8601 — when the listing was created. Spliced onto sold + active
+	 *  comps by the matcher's verify pass (Option B); used by histogram
+	 *  cohort sub-binning to bucket comps by listing age. */
+	itemCreationDate?: string;
+	/** ISO 8601 — when the listing actually sold. Sold-search rows only;
+	 *  drives the histogram's recent-sale highlight + the recent-trend
+	 *  digest. */
+	lastSoldDate?: string;
 	image?: { imageUrl: string };
 	/** Eyebrow trust signal — feedback %, score. Server-populated on detail; sometimes on summary too. */
 	seller?: Seller;
@@ -166,6 +174,10 @@ export interface MarketSummary {
 
 export interface Evaluation {
 	rating?: string;
+	/** Programmatic rationale code from `evaluate.ts`:
+	 *  `cleared` | `vetoed` | `no_market` | `insufficient_data` | `below_min_net`.
+	 *  UI uses it to attach context-specific asides (e.g. "below your $X target"). */
+	reasonCode?: "cleared" | "vetoed" | "no_market" | "insufficient_data" | "below_min_net";
 	successNetCents?: number | null;
 	expectedNetCents?: number;
 	maxLossCents?: number | null;
@@ -209,18 +221,13 @@ export interface BrowseSearchResponse {
 	/** Page offset / size the server actually applied. Drives the pager's "1–N of M" eyebrow. */
 	offset?: number;
 	limit?: number;
-	/** Transport that produced this body — `"rest" | "scrape" | "bridge"`. */
+	/** Internal observability label — mirrors `X-Flipagent-Source`. */
 	source?: string;
 }
 
-export type TransportSource = "rest" | "scrape" | "bridge";
-
 export interface EvaluateMeta {
-	itemSource: TransportSource;
 	soldCount: number;
-	soldSource: TransportSource | null;
 	activeCount: number;
-	activeSource: TransportSource | null;
 	soldKept: number;
 	soldRejected: number;
 	activeKept: number;

@@ -20,6 +20,7 @@ import { Field } from "../ui/Field";
 import type { SelectOption } from "../compose/FilterPill";
 
 export const MIN_PROFIT_OPTIONS: ReadonlyArray<SelectOption<string>> = [
+	{ value: "0", label: "Any positive" },
 	{ value: "5", label: "$5" },
 	{ value: "10", label: "$10" },
 	{ value: "30", label: "$30" },
@@ -35,10 +36,11 @@ export const SHIPPING_OPTIONS: ReadonlyArray<SelectOption<string>> = [
 	{ value: "50", label: "$50" },
 ];
 
-// minProfit "30" matches the backend's DEFAULT_MIN_NET_CENTS — flippers
-// don't pick up dimes, and the rating gate uses this floor.
+// minProfit "0" matches the backend's DEFAULT_MIN_NET_CENTS — the rating
+// gate is "is this a profitable trade?" (positive risk-adjusted EV);
+// reseller-specific dollar floors are an opt-in tightening.
 export const EVALUATE_SETTINGS_DEFAULTS = {
-	minProfit: "30",
+	minProfit: "0",
 	shipping: "10",
 } as const;
 

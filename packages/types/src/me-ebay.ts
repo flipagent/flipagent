@@ -5,7 +5,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
-import { Money, ResponseSource } from "./_common.js";
+import { Money } from "./_common.js";
 import { Item } from "./items.js";
 
 export const SellingOverview = Type.Object(
@@ -28,7 +28,6 @@ export const SellingOverview = Type.Object(
 				total: Type.Integer({ minimum: 0 }),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "SellingOverview" },
 );
@@ -60,7 +59,6 @@ export const BuyingOverview = Type.Object(
 				total: Type.Integer({ minimum: 0 }),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "BuyingOverview" },
 );
@@ -79,7 +77,6 @@ export const FeedbackAwaiting = Type.Object(
 				transactionDate: Type.String(),
 			}),
 		),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "FeedbackAwaiting" },
 );
@@ -107,7 +104,6 @@ export const ListingVerifyResponse = Type.Object(
 		fees: Type.Optional(Money),
 		errors: Type.Optional(Type.Array(Type.Object({ code: Type.String(), message: Type.String() }))),
 		warnings: Type.Optional(Type.Array(Type.Object({ code: Type.String(), message: Type.String() }))),
-		source: Type.Optional(ResponseSource),
 	},
 	{ $id: "ListingVerifyResponse" },
 );
@@ -121,7 +117,7 @@ export const WatchEntry = Type.Composite([Item, Type.Object({ addedAt: Type.Opti
 export type WatchEntry = Static<typeof WatchEntry>;
 
 export const WatchListResponse = Type.Object(
-	{ items: Type.Array(WatchEntry), total: Type.Integer({ minimum: 0 }), source: Type.Optional(ResponseSource) },
+	{ items: Type.Array(WatchEntry), total: Type.Integer({ minimum: 0 }) },
 	{ $id: "WatchListResponse" },
 );
 export type WatchListResponse = Static<typeof WatchListResponse>;
