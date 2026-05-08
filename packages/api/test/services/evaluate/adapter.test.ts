@@ -1,6 +1,6 @@
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import { describe, expect, it } from "vitest";
-import { isAuthenticityGuaranteed, legitMarketReference } from "../../../src/services/market-data/adapter.js";
+import { isAuthenticityGuaranteed, legitMarketReference } from "../../../src/services/evaluate/adapter.js";
 
 function comp(over: Partial<ItemSummary>): ItemSummary {
 	return {

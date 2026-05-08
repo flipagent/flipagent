@@ -6,7 +6,7 @@
  * hands-off reseller cycle (source → buy → receive → list → sell →
  * communicate → resolve → analyze).
  *
- *   Source:        items, categories, products, marketplaces.ebay.catalog, evaluate
+ *   Source:        items, categories, products, evaluate
  *   Buy + Receive: purchases, bids, forwarder
  *   List:          listings, locations, policies, media
  *   Sell:          sales, labels, ship
@@ -34,7 +34,6 @@ import { type CapabilitiesClient, createCapabilitiesClient } from "./capabilitie
 import { type CategoriesClient, createCategoriesClient } from "./categories.js";
 import { type ConnectClient, createConnectClient } from "./connect.js";
 import { createDisputesClient, type DisputesClient } from "./disputes.js";
-import { createEbayCatalogClient, type EbayCatalogClient } from "./ebay-catalog.js";
 import { createEvaluateClient, type EvaluateClient } from "./evaluate.js";
 import { createFeedbackClient, type FeedbackClient } from "./feedback.js";
 import { createForwarderClient, type ForwarderClient } from "./forwarder.js";
@@ -67,13 +66,10 @@ export interface FlipagentClientOptions {
 }
 
 export interface FlipagentClient {
-	// Source — flipagent-native Products + per-marketplace catalogs.
+	// Source
 	items: ItemsClient;
 	categories: CategoriesClient;
 	products: ProductsClient;
-	marketplaces: {
-		ebay: { catalog: EbayCatalogClient };
-	};
 	evaluate: EvaluateClient;
 
 	// Buy + Receive
@@ -139,9 +135,6 @@ export function createFlipagentClient(opts: FlipagentClientOptions): FlipagentCl
 		items: createItemsClient(http),
 		categories: createCategoriesClient(http),
 		products: createProductsClient(http),
-		marketplaces: {
-			ebay: { catalog: createEbayCatalogClient(http) },
-		},
 		evaluate: createEvaluateClient(http),
 
 		purchases: createPurchasesClient(http),
@@ -195,7 +188,6 @@ export type { CapabilitiesClient } from "./capabilities.js";
 export type { CategoriesClient } from "./categories.js";
 export type { ConnectClient } from "./connect.js";
 export type { DisputesClient } from "./disputes.js";
-export type { EbayCatalogClient } from "./ebay-catalog.js";
 export type { EvaluateClient } from "./evaluate.js";
 export type { FeedbackAwaiting, FeedbackClient } from "./feedback.js";
 export type { ForwarderClient } from "./forwarder.js";

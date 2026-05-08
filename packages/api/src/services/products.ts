@@ -17,13 +17,13 @@
  * `X-Flipagent-Source` for callers that want to know which path served.
  */
 
-import type { EbayCatalogProduct, EbayCatalogSearchQuery, Marketplace } from "@flipagent/types";
-import { config, isEbayAppConfigured } from "../../config.js";
-import { getFreshProduct, recordProductObservation } from "../observations.js";
-import type { FlipagentResult } from "../shared/result.js";
-import { appRequest } from "./rest/app-client.js";
-import { sellRequest } from "./rest/user-client.js";
-import { scrapeCatalogProduct } from "./scrape/catalog.js";
+import type { Marketplace, Product, ProductSearchQuery } from "@flipagent/types";
+import { config, isEbayAppConfigured } from "../config.js";
+import { appRequest } from "./ebay/rest/app-client.js";
+import { sellRequest } from "./ebay/rest/user-client.js";
+import { scrapeCatalogProduct } from "./ebay/scrape/catalog.js";
+import { getFreshProduct, recordProductObservation } from "./observations.js";
+import type { FlipagentResult } from "./shared/result.js";
 
 /** Catalog products are stable; revalidate every 24h. */
 const PRODUCT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -59,18 +59,18 @@ interface EbayProduct {
 	productWebUrl?: string;
 }
 
-export class EbayCatalogError extends Error {
+export class ProductsError extends Error {
 	readonly status: number;
 	readonly code: string;
 	constructor(code: string, status: number, message: string) {
 		super(message);
-		this.name = "EbayCatalogError";
+		this.name = "ProductsError";
 		this.code = code;
 		this.status = status;
 	}
 }
 
-export function ebayProductToCatalog(p: EbayProduct, marketplace: Marketplace = "ebay_us"): EbayCatalogProduct {
+export function ebayProductToProduct(p: EbayProduct, marketplace: Marketplace = "ebay_us"): Product {
 	const images: string[] = [];
 	if (p.image?.imageUrl) images.push(p.image.imageUrl);
 	for (const i of p.additionalImages ?? []) if (i.imageUrl) images.push(i.imageUrl);
@@ -126,11 +126,11 @@ async function fetchCatalogRest<T = EbayProduct>(
 	return null;
 }
 
-export async function getEbayCatalogByEpid(
+export async function getProductByEpid(
 	epid: string,
 	marketplace?: string,
 	apiKeyId?: string,
-): Promise<FlipagentResult<EbayCatalogProduct> | null> {
+): Promise<FlipagentResult<Product> | null> {
 	// Lake-as-cache: latest fresh `product_observations` row short-circuits
 	// upstream. Same row that ML iteration reads from — single source of truth.
 	const cached = await getFreshProduct(epid, PRODUCT_TTL_MS, marketplace ?? "ebay_us");
@@ -149,7 +149,7 @@ export async function getEbayCatalogByEpid(
 		apiKeyId,
 	);
 	if (restRes) {
-		const body = ebayProductToCatalog(restRes);
+		const body = ebayProductToProduct(restRes);
 		void recordProductObservation(body, "rest", marketplace);
 		return { body, source: "rest", fromCache: false };
 	}
@@ -168,7 +168,7 @@ export async function getEbayCatalogByEpid(
 		const url = typeof i === "string" ? i : i?.imageUrl;
 		if (url) images.push(url);
 	}
-	const body: EbayCatalogProduct = {
+	const body: Product = {
 		epid: scraped.epid ?? epid,
 		marketplace: "ebay_us",
 		title: scraped.title ?? "",
@@ -184,7 +184,7 @@ export async function getEbayCatalogByEpid(
 }
 
 export interface ProductsSearchResult {
-	products: EbayCatalogProduct[];
+	products: Product[];
 	limit: number;
 	offset: number;
 	total?: number;
@@ -197,8 +197,8 @@ export interface ProductsSearchResult {
  * without `EBAY_CATALOG_APPROVED=1`. Anonymous-key paths still 503
  * unless the env flag is set.
  */
-export async function searchEbayCatalog(
-	q: EbayCatalogSearchQuery,
+export async function searchProducts(
+	q: ProductSearchQuery,
 	apiKeyId?: string,
 ): Promise<FlipagentResult<ProductsSearchResult>> {
 	const limit = q.limit ?? 50;
@@ -222,7 +222,7 @@ export async function searchEbayCatalog(
 		res = await appRequest({ path, marketplace: q.marketplace });
 	}
 	if (!res) {
-		throw new EbayCatalogError(
+		throw new ProductsError(
 			"catalog_search_rest_only",
 			503,
 			"Commerce Catalog search needs either an eBay-connected api key (user OAuth) or EBAY_CATALOG_APPROVED=1 + app credentials. Single-EPID lookup at /v1/products/{epid} also works through the scrape fallback.",
@@ -230,7 +230,7 @@ export async function searchEbayCatalog(
 	}
 	return {
 		body: {
-			products: (res.productSummaries ?? []).map((p) => ebayProductToCatalog(p, q.marketplace)),
+			products: (res.productSummaries ?? []).map((p) => ebayProductToProduct(p, q.marketplace)),
 			limit,
 			offset,
 			...(res.total !== undefined ? { total: res.total } : {}),
@@ -267,7 +267,7 @@ function ebayMetadataAspectsToFlipagent(
  * and sample values for a given EPID (or category). Useful for filling
  * `aspects` correctly before listing.
  */
-export async function getEbayCatalogMetadata(
+export async function getProductMetadata(
 	q: { epid?: string; categoryId?: string; marketplace?: string },
 	apiKeyId?: string,
 ): Promise<
@@ -278,7 +278,7 @@ export async function getEbayCatalogMetadata(
 	}>
 > {
 	if (!q.epid && !q.categoryId) {
-		throw new EbayCatalogError("missing_epid_or_category", 400, "Provide ?epid= or ?categoryId=.");
+		throw new ProductsError("missing_epid_or_category", 400, "Provide ?epid= or ?categoryId=.");
 	}
 	const params = new URLSearchParams();
 	if (q.epid) params.set("epid", q.epid);
@@ -286,7 +286,7 @@ export async function getEbayCatalogMetadata(
 	const path = `/commerce/catalog/v1_beta/get_product_metadata?${params.toString()}`;
 	const res = await fetchCatalogRest<{ aspects?: EbayMetadataAspect[] }>(path, q.marketplace, apiKeyId);
 	if (!res) {
-		throw new EbayCatalogError(
+		throw new ProductsError(
 			"catalog_metadata_rest_only",
 			503,
 			"Commerce Catalog metadata needs an eBay-connected api key (user OAuth) or EBAY_CATALOG_APPROVED=1.",
@@ -307,7 +307,7 @@ export async function getEbayCatalogMetadata(
  * Catalog `get_product_metadata_for_categories` — bulk variant. Same
  * shape per category, multiple categories in one call.
  */
-export async function getEbayCatalogMetadataForCategories(
+export async function getProductMetadataForCategories(
 	q: { categoryIds: string; marketplace?: string },
 	apiKeyId?: string,
 ): Promise<
@@ -321,7 +321,7 @@ export async function getEbayCatalogMetadataForCategories(
 		categoryAspects?: Array<{ categoryId: string; aspects?: EbayMetadataAspect[] }>;
 	}>(path, q.marketplace, apiKeyId);
 	if (!res) {
-		throw new EbayCatalogError(
+		throw new ProductsError(
 			"catalog_metadata_rest_only",
 			503,
 			"Commerce Catalog metadata needs an eBay-connected api key (user OAuth) or EBAY_CATALOG_APPROVED=1.",

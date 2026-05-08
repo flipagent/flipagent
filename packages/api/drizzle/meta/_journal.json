@@ -337,6 +337,13 @@
       "when": 1779696000007,
       "tag": "0047_market_view_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1779696000008,
+      "tag": "0048_revert_evaluate_refactor",
+      "breakpoints": true
     }
   ]
 }

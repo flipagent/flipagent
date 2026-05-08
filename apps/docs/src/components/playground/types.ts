@@ -90,16 +90,6 @@ export interface ItemSummary {
 	 * `EBAY_REFURBISHED`, `EBAY_PLUS`, etc. Same source as `authenticityGuarantee`
 	 * (matcher splice). Reserved for future per-program badges. */
 	qualifiedPrograms?: ReadonlyArray<string>;
-	/** True when the seller meets eBay's Top Rated Seller program criteria
-	 *  on this listing — quality / shipping signal. Browse summary returns it. */
-	topRatedBuyingExperience?: boolean;
-	/** Watcher count for the listing — high signal on auctions before bids
-	 *  start landing, surfaces the same crowd-interest data eBay shows. */
-	watchCount?: number;
-	/** Where the item ships from. Country code mostly — `"US"`, `"CN"`,
-	 *  `"HK"`, etc. REST returns it on summary; scrape currently only emits
-	 *  the raw text, structured emit is a follow-up. */
-	itemLocation?: { city?: string; region?: string; country?: string };
 }
 
 export interface LocalizedAspect {
@@ -115,11 +105,17 @@ export interface ItemDetail extends ItemSummary {
 	categoryId?: string;
 	categoryIdPath?: string;
 	description?: string;
+	topRatedBuyingExperience?: boolean;
+	authenticityGuarantee?: boolean;
 	localizedAspects?: LocalizedAspect[];
 	/** All listing images in seller-supplied order. First is primary. */
 	images?: string[];
 	/** ISO 8601 — auction end time. */
 	endsAt?: string;
+	/** Number of buyers watching the listing right now (when surfaced). */
+	watchCount?: number;
+	/** Where it ships from. */
+	itemLocation?: { city?: string; region?: string; country?: string };
 	/** Seller's return policy. */
 	returnTerms?: { accepted?: boolean; periodDays?: number; shippingCostPayer?: "buyer" | "seller" };
 	/** Original / strikethrough price for marked-down items. */

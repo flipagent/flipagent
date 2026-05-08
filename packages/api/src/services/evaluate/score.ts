@@ -1,63 +1,65 @@
 /**
- * Scoring phase — the per-user, listing-decision layer that sits on top
- * of `MarketViewDigest`. Takes the upstream MarketView (item + matched
- * pools + market stats) plus the caller's own opts (forwarder cost,
- * minNet thresholds) and produces the `evaluation` field: rating,
- * expectedNet, bid ceiling, recommended exit, risk.
+ * Scoring phase of the evaluate pipeline — the per-user layer that
+ * sits on top of `MarketDataDigest`. Takes the cached upstream digest
+ * (item + matched pools + market stats) plus the caller's own opts
+ * (forwarder destination, minNetCents threshold, …) and produces the
+ * `evaluation` field: rating, expectedNet, bid ceiling, recommended
+ * exit, signals.
  *
- * Two evaluations run side-by-side — one against the cleaned pool
- * (suspicious EXcluded, the default UI view), one against the full
- * matched pool (suspicious INcluded). UI's "show suspicious" toggle
- * flips the headline numbers in lockstep with which comps are visible.
- * Pure quant math; no extra IO because the duration-enriched dates ride
- * along on the comp objects from the same enrich call.
- *
- * Pure: no DB, no upstream IO.
+ * Pure-ish: no DB, no upstream IO. The only async is the LLM call
+ * inside `evaluateWithContext` (when an explanation/signals model is
+ * configured). Trace surface is one `evaluate` step, matching the
+ * pre-split shape so existing trace UIs render identically.
  */
 
 import type { EvaluatePartial } from "@flipagent/types";
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
-import type { MarketViewDigest } from "../market-data/market.js";
-import { emitPartial, type PipelineListener, withStep } from "../market-data/pipeline.js";
 import { evaluateWithContext } from "./evaluate-with-context.js";
+import type { MarketDataDigest } from "./market-data.js";
+import { emitPartial, type PipelineListener, withStep } from "./pipeline.js";
 import type { EvaluateOptions } from "./types.js";
 
 export interface ScoreInput {
-	digest: MarketViewDigest;
+	digest: MarketDataDigest;
 	opts?: EvaluateOptions;
-	/** Echoed in the trace request body for observability — the same ProductRef the caller passed. */
-	ref: { kind: string; [k: string]: unknown };
+	itemId: string;
 	onStep?: PipelineListener;
 	cancelCheck?: () => Promise<void>;
 }
 
 export async function scoreFromDigest(input: ScoreInput): Promise<{ evaluation: unknown; evaluationAll: unknown }> {
-	const { digest, opts, ref, onStep, cancelCheck } = input;
+	const { digest, opts, itemId, onStep, cancelCheck } = input;
 
 	const result = await withStep(
 		{
 			key: "evaluate",
 			label: "Evaluate",
-			request: { method: "POST", path: "/v1/evaluate", body: { ref, opts } },
+			request: { method: "POST", path: "/v1/evaluate", body: { itemId, opts } },
 			onStep,
 			cancelCheck,
 		},
 		async () => {
 			// Default view — suspicious comps already excluded from
 			// `matchedSold` / `matchedActive` upstream.
-			const ev = await evaluateWithContext(digest.anchor as ItemSummary, {
+			const ev = await evaluateWithContext(digest.item as ItemSummary, {
 				...opts,
 				sold: digest.matchedSold,
 				asks: digest.matchedActive,
 			});
-			// Toggle view — same scoring against the full matched pool
-			// (suspicious comps included). Hydrates the UI's "show
-			// suspicious" toggle without a server roundtrip.
-			const evAll = await evaluateWithContext(digest.anchor as ItemSummary, {
+			// Toggle view — same scoring against the full pool. The UI's
+			// "show suspicious" switch flips display + headline numbers
+			// (recommended exit, expected net, queue position) in lockstep
+			// with which comps are visible. Pure quant math; no extra IO
+			// because the duration-enriched dates ride along on the comp
+			// objects from the first call.
+			const evAll = await evaluateWithContext(digest.item as ItemSummary, {
 				...opts,
 				sold: digest.matchedSoldAll,
 				asks: digest.matchedActiveAll,
 			});
+			// Hydrate the verdict card the moment scoring resolves —
+			// don't make the UI wait for the route's terminal `done`
+			// event to render BUY/HOLD/SKIP + expected net.
 			emitPartial(onStep, {
 				evaluation: ev as EvaluatePartial["evaluation"],
 				evaluationAll: evAll as EvaluatePartial["evaluation"],

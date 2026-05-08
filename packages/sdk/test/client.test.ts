@@ -140,7 +140,7 @@ describe("createFlipagentClient", () => {
 		});
 		const client = createFlipagentClient({ apiKey: "fk_test", fetch });
 
-		await client.evaluate.run({ ref: { kind: "external", marketplace: "ebay_us", listingId: "v1|9|0" } });
+		await client.evaluate.listing({ itemId: "v1|9|0" });
 
 		expect(calls[0]!.init.method).toBe("POST");
 		expect(new URL(calls[0]!.url).pathname).toBe("/v1/evaluate");

@@ -1,90 +1,81 @@
 /**
- * `/v1/evaluate` pipeline. Universal Product/listing intelligence.
+ * `/v1/evaluate` pipeline entry. Splits into two phases:
  *
- *   ProductRef (id | external | query)
- *     → resolveProductRef → flipagent Product (auto-create on miss)
- *     → fetchMarketView   → cross-marketplace MarketView digest
- *     → scoreFromDigest   → buy-decision overlay (only when ref carries
- *                            a specific listing — `kind: "external"`)
+ *   1. **Upstream** (`fetchOrAwaitMarketData` in `market-data.ts`) —
+ *      detail + sold/active search + LLM same-product filter + market
+ *      stats + digest assembly. Cached cross-user in
+ *      `market_data_cache` keyed on `(itemId, lookbackDays, soldLimit)`.
+ *      A second caller asking for the same key inside the TTL window
+ *      hits the cache; a second caller mid-fetch attaches to the
+ *      in-flight leader's run instead of duplicating cost.
  *
- * Two questions, one route:
- *   - `evaluation: null`  → "what's this product worth"
- *   - `evaluation: {…}`   → "should I buy this listing"
+ *   2. **Scoring** (`scoreFromDigest` in `score.ts`) — the per-user
+ *      `evaluation` field, using the caller's `opts` (forwarder cost,
+ *      minNetCents threshold). Always runs locally; never cached
+ *      cross-user since opts diverge.
  *
- * The MarketView is cached cross-user at the product level — two eBay
- * listings of the same SKU share the digest. Per-user scoring (forwarder,
- * minNet) runs on top of every call, never cached cross-user.
+ * The wire shape (`EvaluateResponse`) is unchanged from the pre-split
+ * version — routes, SDK clients, and trace UIs see no surface diff.
+ *
+ * `onStep` listener semantics:
+ *   - cache HIT       → one synthetic `cached` step + the `evaluate` step
+ *   - cross-user attach → one `attached` step + the `evaluate` step
+ *   - MISS (full run) → `detail` + `search` (parent for parallel
+ *                       `search.sold`/`search.active`) + `filter` + `evaluate`
  */
 
-import type { EvaluateResponse } from "@flipagent/types";
-import type { ItemDetail, ItemSummary } from "@flipagent/types/ebay/buy";
+import type { EvaluateMeta, EvaluateResponse, MarketStats } from "@flipagent/types";
 import type { ApiKey } from "../../db/schema.js";
-import { getItemDetail } from "../items/detail.js";
-import { searchActiveListings } from "../items/search.js";
-import { fetchMarketView } from "../market-data/index.js";
-import { EvaluateError, type PipelineListener } from "../market-data/pipeline.js";
-import { type ProductRefInput, resolveProductRef } from "../products/index.js";
+import { parseItemId } from "../../utils/item-id.js";
+import { fetchOrAwaitMarketData } from "./market-data.js";
+import { EvaluateError, type PipelineListener } from "./pipeline.js";
 import { scoreFromDigest } from "./score.js";
 import type { EvaluateOptions } from "./types.js";
 
-export type { PipelineEvent, PipelineListener, StepRequestInfo } from "../market-data/pipeline.js";
-export { EvaluateError, wasEmittedAsStep } from "../market-data/pipeline.js";
+export type { PipelineEvent, PipelineListener, StepRequestInfo } from "./pipeline.js";
+export { EvaluateError, wasEmittedAsStep } from "./pipeline.js";
+
+/* --------------------------------- types --------------------------------- */
 
 export interface RunEvaluateInput {
-	ref: ProductRefInput;
+	itemId: string;
 	lookbackDays?: number;
 	soldLimit?: number;
 	apiKey?: ApiKey;
 	opts?: EvaluateOptions;
 	onStep?: PipelineListener;
+	/** Cooperative cancel — supplied by the compute-job dispatcher; throws `CancelledError` when the user cancelled. */
 	cancelCheck?: () => Promise<void>;
+	/**
+	 * compute_jobs row id of the caller. Threaded into the upstream
+	 * cache layer so cross-user in-flight lookups can exclude self,
+	 * and so cache writes record an audit pointer back to the row that
+	 * paid for the fetch.
+	 */
 	jobId?: string;
 }
 
 export type RunEvaluateResult = EvaluateResponse;
 
-const DEFAULT_MARKETPLACE = "ebay_us";
+/* -------------------------------- pipeline -------------------------------- */
 
 export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunEvaluateResult> {
-	const { ref, lookbackDays = 90, soldLimit = 50, apiKey, opts, onStep, cancelCheck, jobId } = input;
+	const { itemId, lookbackDays = 90, soldLimit = 50, apiKey, opts, onStep, cancelCheck, jobId } = input;
 
-	if (cancelCheck) await cancelCheck();
-	const resolved = await resolveProductRef(ref, { apiKey });
-	if (resolved.outcome === "ambiguous") {
+	const parsed = parseItemId(itemId);
+	if (!parsed) {
 		throw new EvaluateError(
-			"item_not_found",
-			404,
-			'Multiple plausible products matched. Re-call with `kind: "id"` once you\'ve picked one.',
+			"validation_failed",
+			400,
+			`Invalid itemId "${itemId}". Pass v1|<legacy>|<variationId>, the legacy numeric id, or a full eBay /itm/ URL.`,
 		);
 	}
-	if (!resolved.product) {
-		throw new EvaluateError("item_not_found", 404, "Could not resolve product.");
-	}
+	const { legacyId, variationId } = parsed;
 
-	// `external` mode carries the anchor detail back from the resolver
-	// (the listing the caller pointed at). For `id` / `query` modes we
-	// pick an anchor via marketplace search keyed on the product title —
-	// the matcher needs a seed regardless of how the caller named the
-	// product.
-	let anchorDetail: ItemDetail | null = resolved.anchorDetail ?? null;
-	if (!anchorDetail) {
-		anchorDetail = await pickAnchorFromTitle(resolved.product.title, apiKey);
-		if (!anchorDetail) {
-			throw new EvaluateError(
-				"no_market",
-				404,
-				`No active marketplace listings found for product "${resolved.product.title}".`,
-			);
-		}
-	}
-
-	if (cancelCheck) await cancelCheck();
-
-	const digest = await fetchMarketView({
-		product: resolved.product,
-		variant: resolved.variant ?? null,
-		anchorDetail,
-		marketplace: DEFAULT_MARKETPLACE,
+	const digest = await fetchOrAwaitMarketData({
+		itemId,
+		legacyId,
+		variationId,
 		lookbackDays,
 		soldLimit,
 		apiKey,
@@ -93,83 +84,46 @@ export async function runEvaluatePipeline(input: RunEvaluateInput): Promise<RunE
 		cancelCheck,
 	});
 
-	// Buy-decision overlay only fires when the caller pointed at a
-	// specific listing (`external` ref). For `query` / `id` inputs the
-	// "anchor" was synthesised from a title search — scoring it would
-	// be a lie (the seller / price weren't what the caller asked about).
-	let evaluation: unknown = null;
-	let evaluationAll: unknown = null;
-	if (ref.kind === "external") {
-		const scored = await scoreFromDigest({
-			digest,
-			opts: { ...opts, lookbackDays },
-			ref,
-			onStep,
-			cancelCheck,
-		});
-		evaluation = scored.evaluation;
-		evaluationAll = scored.evaluationAll;
-	}
+	const { evaluation, evaluationAll } = await scoreFromDigest({
+		digest,
+		// Forward the resolved lookback so `evaluate()` can stamp it
+		// onto MarketStats.windowDays. Without this the scoring path
+		// runs `marketFromSold` with the default 30-day window even on
+		// 90-day fetches, decaying real older sales to ~zero salesPerDay.
+		opts: { ...opts, lookbackDays },
+		itemId,
+		onStep,
+		cancelCheck,
+	});
 
 	return {
-		product: toWireProduct(resolved.product),
-		variant: resolved.variant ? toWireVariant(resolved.variant) : null,
-		anchor: anchorDetail,
-		evaluation: evaluation as EvaluateResponse["evaluation"],
-		evaluationAll: evaluationAll as EvaluateResponse["evaluationAll"],
-		market: digest.market as EvaluateResponse["market"],
-		sold: digest.sold as EvaluateResponse["sold"],
-		active: digest.active as EvaluateResponse["active"],
-		marketAll: digest.marketAll as EvaluateResponse["marketAll"],
-		soldAll: digest.soldAll as EvaluateResponse["soldAll"],
-		activeAll: digest.activeAll as EvaluateResponse["activeAll"],
-		filter: digest.filter as EvaluateResponse["filter"],
-		returns: digest.returns as EvaluateResponse["returns"],
-		byCondition: digest.byCondition as EvaluateResponse["byCondition"],
-		byVariant: digest.byVariant as EvaluateResponse["byVariant"],
-		listingFloor: digest.listingFloor as EvaluateResponse["listingFloor"],
-		...(digest.headlineConditionTier ? { headlineConditionTier: digest.headlineConditionTier } : {}),
-		meta: digest.meta as EvaluateResponse["meta"],
-		soldPool: digest.matchedSold,
-		activePool: digest.matchedActive,
+		item: digest.item,
+		evaluation,
+		evaluationAll,
+		market: digest.market as MarketStats,
+		sold: digest.sold,
+		active: digest.active,
+		marketAll: digest.marketAll as MarketStats,
+		soldAll: digest.soldAll,
+		activeAll: digest.activeAll,
+		filter: digest.filter,
+		returns: digest.returns,
+		meta: digest.meta as EvaluateMeta,
+		// Back-compat: heavy pools still here for the playground dashboard.
+		// MCP / SDK consumers should prefer `sold` + `active` digests and
+		// `client.evaluate.pool(itemId)` for drill-down.
+		//
+		// `soldPool` / `activePool` carry the FULL matched pool (suspicious
+		// included) so the UI's toggle-on view has data; the headline
+		// `market` / `sold` / `active` reflect the cleaned (suspicious-
+		// excluded) view, and `suspiciousIds` lets the UI mark the
+		// flagged rows.
+		soldPool: digest.matchedSoldAll,
+		activePool: digest.matchedActiveAll,
 		rejectedSoldPool: digest.rejectedSold,
 		rejectedActivePool: digest.rejectedActive,
 		rejectionReasons: digest.rejectionReasons,
 		rejectionCategories: digest.rejectionCategories,
 		suspiciousIds: digest.suspiciousIds,
 	} as EvaluateResponse;
-}
-
-async function pickAnchorFromTitle(title: string, apiKey: ApiKey | undefined): Promise<ItemDetail | null> {
-	const search = await searchActiveListings({ q: title, limit: 5 }, { apiKey });
-	const top = search.body.itemSummaries?.find((it: ItemSummary) => !!it.title?.trim() && !!it.legacyItemId);
-	if (!top || !top.legacyItemId) return null;
-	const detail = await getItemDetail(top.legacyItemId, { apiKey });
-	return detail?.body ?? null;
-}
-
-function toWireProduct(row: import("../../db/schema.js").Product): EvaluateResponse["product"] {
-	return {
-		id: row.id,
-		title: row.title,
-		brand: row.brand ?? undefined,
-		modelNumber: row.modelNumber ?? undefined,
-		categoryPath: row.categoryPath ?? undefined,
-		catalogStatus: row.catalogStatus as "curated" | "auto" | "pending",
-		attributes: row.attributes as Record<string, unknown>,
-		hasVariants: row.hasVariants,
-		createdAt: row.createdAt.toISOString(),
-		updatedAt: row.updatedAt.toISOString(),
-	};
-}
-
-function toWireVariant(row: import("../../db/schema.js").ProductVariant): NonNullable<EvaluateResponse["variant"]> {
-	return {
-		id: row.id,
-		productId: row.productId,
-		variantKey: row.variantKey,
-		attributes: row.attributes as Record<string, string>,
-		createdAt: row.createdAt.toISOString(),
-		updatedAt: row.updatedAt.toISOString(),
-	};
 }

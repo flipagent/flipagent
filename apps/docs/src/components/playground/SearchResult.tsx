@@ -13,10 +13,10 @@
  */
 
 import { useState } from "react";
-import { AuthenticityGuaranteeBadge, CopyTitleButton, cleanItemUrl, Skel } from "./EvaluateResult";
+import { CopyTitleButton, cleanItemUrl, Skel } from "./EvaluateResult";
 import { cancelEvalForItem, runEvalForItem, useEvalState } from "./evalStore";
 import { Trace } from "./Trace";
-import type { BrowseSearchResponse, ItemSummary, Seller, ShippingOption, Step } from "./types";
+import type { BrowseSearchResponse, ItemSummary, Step } from "./types";
 
 export interface SearchOutcome {
 	mode: "active" | "sold";
@@ -143,76 +143,6 @@ function formatCompactCount(n: number): string {
 	return COMPACT_COUNT.format(n);
 }
 
-/**
- * `+$8 ship` for paid shipping; `free ship` when zero. Returned as a
- * trailing fragment so the price + shipping read as one landed-cost
- * line (`$42 + $8 ship`) instead of two disjoint chips. `null` when no
- * shipping data — the row falls back to bare price, which is honest
- * about the gap rather than implying "free".
- */
-export function formatShipping(opt: ShippingOption | undefined): string | null {
-	if (!opt) return null;
-	const v = opt.shippingCost?.value;
-	if (v == null) return null;
-	const num = Number(v);
-	if (!Number.isFinite(num)) return null;
-	if (num === 0) return "free ship";
-	return `+$${v} ship`;
-}
-
-/**
- * Auction heat — bid count is the load-bearing number once bidding is
- * live. When no bids have landed yet but the listing has watchers, fall
- * back to "{n} watching" — a hot pre-bid auction reads correctly that
- * way. Otherwise "no bids" so the row distinguishes "no activity yet"
- * from "no auction format at all".
- */
-export function formatAuctionStat(item: ItemSummary): string {
-	const bids = item.bidCount ?? 0;
-	if (bids > 0) return `${bids} bid${bids === 1 ? "" : "s"}`;
-	if (item.watchCount && item.watchCount > 0) return `${formatCompactCount(item.watchCount)} watching`;
-	return "no bids";
-}
-
-/**
- * Compact seller signal for the row — feedback % with total count in
- * parens. `level` mirrors `sellerMetaText` in EvaluateResult so the
- * row, drawer, and Evaluate matches list agree on what's a flag:
- *   warn (red): zero feedback — burner / banned-and-relisted shape.
- *   caution (orange): thin (<10) or sub-95% positive — model trusts less.
- */
-export function sellerChip(seller: Seller | undefined): { text: string; level: "ok" | "caution" | "warn" } | null {
-	if (!seller) return null;
-	const pctStr = seller.feedbackPercentage;
-	const score = seller.feedbackScore ?? null;
-	if (!pctStr && score == null) return null;
-	const pct = pctStr ? Number.parseFloat(pctStr) : null;
-	let level: "ok" | "caution" | "warn" = "ok";
-	if (score === 0) level = "warn";
-	else if ((score != null && score < 10) || (pct != null && pct < 95)) level = "caution";
-	let text: string;
-	if (pctStr) {
-		const trimmed = pctStr.includes(".") ? pctStr.replace(/\.?0+$/, "") : pctStr;
-		text = score != null ? `${trimmed}% (${formatCompactCount(score)})` : `${trimmed}%`;
-	} else {
-		text = `${formatCompactCount(score ?? 0)} sales`;
-	}
-	return { text, level };
-}
-
-/**
- * "ships from CN" when the listing's origin country is something the
- * buyer should know about. Suppress the US case — the playground is
- * US-default and a "ships from US" chip on every domestic row is just
- * noise. TODO: pass the active marketplace once the playground is
- * non-US-aware so this filter follows the user.
- */
-export function formatShipsFrom(loc: ItemSummary["itemLocation"]): string | null {
-	const c = loc?.country;
-	if (!c || c === "US") return null;
-	return `ships from ${c}`;
-}
-
 function formatEndsIn(iso: string | undefined): string | null {
 	if (!iso) return null;
 	const end = Date.parse(iso);
@@ -273,19 +203,13 @@ function SearchRow({
 	const priceText = item.lastSoldPrice?.value ?? item.price?.value;
 	const isAuction = item.buyingOptions?.includes("AUCTION") ?? false;
 	const acceptsOffer = item.buyingOptions?.includes("BEST_OFFER") ?? false;
-	// Line 1 enrichments — landed-cost shipping, auction heat (bids /
-	// watchers fallback / "no bids"), Best Offer pill for FP listings,
-	// auction countdown.
-	const shipText = formatShipping(item.shippingOptions?.[0]);
-	const auctionStat = mode === "active" && isAuction ? formatAuctionStat(item) : null;
-	const offerTag = mode === "active" && !isAuction && acceptsOffer ? "Best Offer" : null;
+	const currentBid = item.currentBidPrice?.value;
+	let modeTag: string | null = null;
+	if (mode === "active") {
+		if (isAuction) modeTag = currentBid ? `Auction · $${currentBid} bid` : "Auction · no bids";
+		else if (acceptsOffer) modeTag = "Best Offer";
+	}
 	const endsTag = mode === "active" && isAuction ? formatEndsIn(item.itemEndDate) : null;
-	// Line 2 trust strip — only renders when at least one signal is present.
-	const showAg = item.authenticityGuarantee === true;
-	const showTrs = item.topRatedBuyingExperience === true;
-	const sellerInfo = sellerChip(item.seller);
-	const shipsFromText = formatShipsFrom(item.itemLocation);
-	const showTrustLine = showAg || showTrs || sellerInfo !== null || shipsFromText !== null;
 
 	// Shared per-itemId eval state — flipping in the store also updates
 	// the RowDrawer when it's open for this item, so running progress and
@@ -344,46 +268,10 @@ function SearchRow({
 				</div>
 				<div className="pg-result-matches-meta">
 					{item.condition && <span>{item.condition}</span>}
-					{priceText && (
-						<span className="font-mono">
-							${priceText}
-							{shipText && <span className="pg-result-matches-ship"> {shipText}</span>}
-						</span>
-					)}
-					{auctionStat && <span className="pg-result-matches-tag">{auctionStat}</span>}
-					{offerTag && <span className="pg-result-matches-tag">{offerTag}</span>}
+					{priceText && <span className="font-mono">${priceText}</span>}
+					{modeTag && <span className="pg-result-matches-tag">{modeTag}</span>}
 					{endsTag && <span className="pg-result-matches-tag">{endsTag}</span>}
 				</div>
-				{showTrustLine && (
-					<div className="pg-result-matches-meta pg-result-matches-trust">
-						{showAg && <AuthenticityGuaranteeBadge />}
-						{showTrs && (
-							<span
-								className="pg-result-matches-trust-chip pg-result-matches-trust-chip--trs"
-								title="Top Rated Seller"
-							>
-								Top Rated
-							</span>
-						)}
-						{sellerInfo && (
-							<span
-								className="pg-result-matches-trust-chip"
-								data-level={sellerInfo.level}
-								title={item.seller?.username ? `Seller ${item.seller.username}` : undefined}
-							>
-								{sellerInfo.text}
-							</span>
-						)}
-						{shipsFromText && (
-							<span
-								className="pg-result-matches-trust-chip pg-result-matches-trust-chip--origin"
-								title="Item ships from outside the US"
-							>
-								{shipsFromText}
-							</span>
-						)}
-					</div>
-				)}
 			</div>
 			<div className="pg-search-row-actions">
 				{/* When the parent owns eval, force the visual to the idle "Run

@@ -14,7 +14,6 @@ export * from "./compatibility.js";
 export * from "./compute-jobs.js";
 export * from "./developer.js";
 export * from "./disputes.js";
-export * from "./ebay-catalog.js";
 export * from "./edelivery.js";
 export * from "./evaluate.js";
 export * from "./expenses.js";

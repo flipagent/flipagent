@@ -313,7 +313,7 @@ export function worstCaseCreditsForEndpoint(endpoint: string, method?: string): 
 	// pricing). Internal Oxylabs cost is absorbed by the credit
 	// calibration ($0.0025/credit covers a single scrape with margin).
 	if (endpoint.startsWith("/v1/items")) return 1;
-	if (endpoint.startsWith("/v1/marketplaces/ebay/catalog")) return 1;
+	if (endpoint.startsWith("/v1/products")) return 1;
 	if (endpoint.startsWith("/v1/categories")) return 1;
 	if (endpoint.startsWith("/v1/trends")) return 1;
 	return 0;
@@ -347,7 +347,7 @@ export function creditsForCall(args: {
 	}
 	if (
 		endpoint.startsWith("/v1/items") ||
-		endpoint.startsWith("/v1/marketplaces/ebay/catalog") ||
+		endpoint.startsWith("/v1/products") ||
 		endpoint.startsWith("/v1/categories") ||
 		endpoint.startsWith("/v1/trends")
 	) {

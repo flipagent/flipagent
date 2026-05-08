@@ -20,7 +20,7 @@ import type { EvaluatePartial } from "@flipagent/types";
  */
 export function describeEvaluatePhase(partial: Partial<EvaluatePartial> | undefined, pending: boolean): string {
 	if (!pending) return "Evaluation";
-	if (!partial || !partial.anchor) return "Looking up listing…";
+	if (!partial || !partial.item) return "Looking up listing…";
 
 	// Evaluation field set ⇒ scoring step has resolved; we're past the
 	// final digest and just doing the per-user math.

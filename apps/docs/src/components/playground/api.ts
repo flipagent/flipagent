@@ -115,20 +115,17 @@ interface FlipagentItem {
 	images?: string[];
 	seller?: { username: string; feedbackScore?: number; feedbackPercentage?: string };
 	shipping?: { cost?: FlipagentMoney; free?: boolean };
-	/* Trust + signal fields — present on both summary (search) and detail
-	 * (`/v1/items/{id}`). REST Browse + the api's items/transform both
-	 * emit them on summary too. */
-	topRatedBuyingExperience?: boolean;
-	authenticityGuarantee?: boolean;
-	watchCount?: number;
-	location?: { city?: string; region?: string; country?: string };
-	endsAt?: string;
 	/* Detail-only fields — only populated by `/v1/items/{id}`, not search. */
 	category?: { id: string; path?: string };
 	aspects?: Record<string, string>;
 	gtin?: string;
 	mpn?: string;
 	epid?: string;
+	topRatedBuyingExperience?: boolean;
+	authenticityGuarantee?: boolean;
+	endsAt?: string;
+	watchCount?: number;
+	location?: { city?: string; region?: string; country?: string };
 	returnTerms?: {
 		accepted?: boolean;
 		periodDays?: number;
@@ -178,10 +175,6 @@ export function flipagentItemToSummary(item: FlipagentItem) {
 		image: item.images?.[0] ? { imageUrl: item.images[0] } : undefined,
 		seller: item.seller,
 		shippingOptions,
-		topRatedBuyingExperience: item.topRatedBuyingExperience,
-		authenticityGuarantee: item.authenticityGuarantee,
-		watchCount: item.watchCount,
-		itemLocation: item.location,
 	};
 }
 
@@ -204,9 +197,13 @@ function flipagentItemToDetail(item: FlipagentItem): ItemDetail {
 		gtin: item.gtin,
 		categoryId: item.category?.id,
 		categoryPath: item.category?.path,
+		topRatedBuyingExperience: item.topRatedBuyingExperience,
+		authenticityGuarantee: item.authenticityGuarantee,
 		localizedAspects: aspects,
 		images: item.images,
 		endsAt: item.endsAt,
+		watchCount: item.watchCount,
+		itemLocation: item.location,
 		returnTerms: item.returnTerms,
 		originalPrice: moneyCentsToDollarString(item.marketingPrice?.originalPrice),
 		discountPercentage: item.marketingPrice?.discountPercentage,
@@ -278,14 +275,7 @@ export const playgroundApi = {
 	},
 
 	evaluate: (req: {
-		ref:
-			| { kind: "id"; productId: string; variantId?: string }
-			| { kind: "external"; marketplace: string; listingId: string }
-			| {
-					kind: "query";
-					q: string;
-					hints?: { size?: string; color?: string; condition?: string; marketplace?: string };
-			  };
+		itemId: string;
 		lookbackDays?: number;
 		soldLimit?: number;
 		opts?: {
@@ -312,5 +302,4 @@ export const playgroundApi = {
 			"GET",
 			`/v1/evaluate/featured${limit ? `?limit=${limit}` : ""}`,
 		),
-
 };

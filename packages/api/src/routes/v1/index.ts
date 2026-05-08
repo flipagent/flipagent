@@ -49,7 +49,6 @@ import { keysRoute } from "./keys.js";
 import { labelsRoute } from "./labels.js";
 import { listingsRoute } from "./listings.js";
 import { locationsRoute } from "./locations.js";
-import { ebayCatalogRoute } from "./marketplaces/ebay-catalog.js";
 import { meRoute } from "./me.js";
 import { meOverviewRoute } from "./me-overview.js";
 import { mediaRoute } from "./media.js";
@@ -74,7 +73,6 @@ export const v1Routes = new Hono();
 v1Routes.route("/items", itemsRoute);
 v1Routes.route("/categories", categoriesRoute);
 v1Routes.route("/products", productsRoute);
-v1Routes.route("/marketplaces/ebay/catalog", ebayCatalogRoute);
 v1Routes.route("/evaluate", evaluateRoute);
 v1Routes.route("/jobs", jobsRoute);
 
@@ -102,6 +100,12 @@ v1Routes.route("/feedback", feedbackRoute);
 v1Routes.route("/notifications", notificationsRoute);
 v1Routes.route("/webhooks", webhooksRoute);
 v1Routes.route("/offers", offersRoute);
+
+// ---- eBay-required compliance endpoints (path pinned by eBay portal) ---
+// /v1/ebay/notifications/account-deletion is registered with eBay as the
+// Marketplace Account Deletion handler — eBay marks the app down 24h
+// after we stop 200-acking, and revokes keys at 30 days non-compliance.
+v1Routes.route("/ebay/notifications", ebayNotificationsRoute);
 
 // ---- Resolve -----------------------------------------------------------
 v1Routes.route("/disputes", disputesRoute);
@@ -137,13 +141,6 @@ v1Routes.route("/admin", adminRoute);
 // pipe, three regulatory regimes. Counter-notice (§512(g)) hangs off the
 // same router. Unauthenticated by design — requesters don't need a key.
 v1Routes.route("/takedown", takedownRoute);
-
-// `/ebay/notifications/*` carries eBay-required compliance endpoints
-// whose URLs are pinned by the eBay developer portal (Marketplace
-// Account Deletion today). Path deviates from the `/v1/<resource>`
-// convention because eBay registered this exact URL — see
-// routes/v1/ebay-notifications.ts.
-v1Routes.route("/ebay/notifications", ebayNotificationsRoute);
 
 // ---- Agent (preview) ---------------------------------------------------
 // `/agent/*` is the chat surface backed by OpenAI's Responses API.

@@ -1,10 +1,4 @@
 import {
-	isAuthenticityGuaranteed,
-	legitMarketReference,
-	marketFromSold,
-	toQuantListing,
-} from "../market-data/adapter.js";
-import {
 	assessRisk,
 	bidCeiling,
 	DEFAULT_FEES,
@@ -17,6 +11,7 @@ import {
 } from "../quant/index.js";
 import { toCents } from "../shared/money.js";
 import { landedCost } from "../ship.js";
+import { isAuthenticityGuaranteed, legitMarketReference, marketFromSold, toQuantListing } from "./adapter.js";
 import type { EvaluableItem, EvaluateOptions, Evaluation, NetRangeCents } from "./types.js";
 
 // Below this, percentile estimates are noise — IQR cleaning needs ≥4 anyway.

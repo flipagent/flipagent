@@ -15,13 +15,13 @@
  */
 
 import { describeEvaluatePhase, streamEvaluateJob } from "@flipagent/sdk";
+import type { ItemSummary } from "@flipagent/types/ebay/buy";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { apiBase } from "../../lib/authClient";
 import { flipagentItemToSummary, playgroundApi, type FlipagentItem } from "./api";
 import { EvaluateResultBody } from "./EvaluateResult";
 import type { EvaluateOutcome } from "./pipelines";
 import { SearchResult } from "./SearchResult";
-import type { ItemSummary } from "./types";
 import "./MessageUiPanel.css";
 
 /** MCP-Apps inline UI hint shape. */

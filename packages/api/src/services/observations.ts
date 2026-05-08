@@ -32,7 +32,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { EbayCatalogProduct } from "@flipagent/types";
+import type { Product } from "@flipagent/types";
 import type { ItemDetail } from "@flipagent/types/ebay/buy";
 import { and, desc, eq, gt, isNotNull, isNull } from "drizzle-orm";
 import { config } from "../config.js";
@@ -158,7 +158,7 @@ export async function getFreshProduct(
 	epid: string,
 	ttlMs: number,
 	marketplace = "ebay_us",
-): Promise<{ body: EbayCatalogProduct; source: string; observedAt: Date } | null> {
+): Promise<{ body: Product; source: string; observedAt: Date } | null> {
 	try {
 		const cutoff = new Date(Date.now() - ttlMs);
 		const rows = await db
@@ -181,7 +181,7 @@ export async function getFreshProduct(
 		const row = rows[0];
 		if (!row) return null;
 		return {
-			body: row.snapshot as EbayCatalogProduct,
+			body: row.snapshot as Product,
 			source: row.source,
 			observedAt: row.observedAt,
 		};
@@ -227,7 +227,7 @@ type ObservableItem = {
  * compat: future Product field additions don't need migrations.
  */
 export async function recordProductObservation(
-	product: EbayCatalogProduct,
+	product: Product,
 	source: "rest" | "scrape",
 	marketplace = "ebay_us",
 ): Promise<void> {

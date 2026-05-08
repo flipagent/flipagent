@@ -34,9 +34,6 @@ export interface CreateComputeJobInput {
 	userId: string | null;
 	kind: ComputeJob["kind"];
 	params: Record<string, unknown>;
-	/** Typed subject pointer — drives indexed (subject_kind, subject_id) lookups for cross-surface dedup. */
-	subjectKind?: string;
-	subjectId?: string;
 }
 
 export async function createJob(input: CreateComputeJobInput): Promise<ComputeJob> {
@@ -47,8 +44,6 @@ export async function createJob(input: CreateComputeJobInput): Promise<ComputeJo
 		kind: input.kind,
 		params: input.params as object,
 		expiresAt,
-		subjectKind: input.subjectKind ?? null,
-		subjectId: input.subjectId ?? null,
 	};
 	const [row] = await db.insert(computeJobs).values(insert).returning();
 	if (!row) throw new Error("compute_jobs insert returned no row");
@@ -56,19 +51,17 @@ export async function createJob(input: CreateComputeJobInput): Promise<ComputeJo
 }
 
 /**
- * Find an in-progress evaluate job for `(apiKeyId, subjectId)`. Returns
+ * Find an in-progress evaluate job for `(apiKeyId, itemId)`. Returns
  * null if no non-terminal job exists. Used by the route layer to make
  * `POST /v1/evaluate(/jobs)` idempotent — when a second client (e.g.
- * the Chrome extension) hits Evaluate for the same ref the dashboard
- * has already kicked off, both surfaces converge on the same job and
+ * the Chrome extension) hits Evaluate for an item the dashboard has
+ * already kicked off, both surfaces converge on the same job and
  * stream the same trace instead of spawning a duplicate.
  *
- * `subjectId` is the canonical ref key (`listing:ebay_us:123`, `product:prod_X`,
- * `query:seiko skx007`) — see `refKey` in `routes/v1/evaluate.ts`. Indexed
- * on the `(subject_kind, subject_id, status)` partial index from migration
- * 0046, so the lookup is sub-millisecond.
+ * Indexed on `(api_key_id, kind, params->>'itemId')` filtered to
+ * non-terminal status, so the lookup is sub-millisecond.
  */
-export async function findInProgressEvaluateJob(apiKeyId: string, subjectId: string): Promise<ComputeJob | null> {
+export async function findInProgressEvaluateJob(apiKeyId: string, itemId: string): Promise<ComputeJob | null> {
 	const rows = await db
 		.select()
 		.from(computeJobs)
@@ -76,8 +69,7 @@ export async function findInProgressEvaluateJob(apiKeyId: string, subjectId: str
 			and(
 				eq(computeJobs.apiKeyId, apiKeyId),
 				eq(computeJobs.kind, "evaluate"),
-				eq(computeJobs.subjectKind, "evaluate_ref"),
-				eq(computeJobs.subjectId, subjectId),
+				sql`${computeJobs.params}->>'itemId' = ${itemId}`,
 				or(eq(computeJobs.status, "queued"), eq(computeJobs.status, "running")),
 			),
 		)
@@ -88,39 +80,36 @@ export async function findInProgressEvaluateJob(apiKeyId: string, subjectId: str
 
 /**
  * Cross-user upstream-dedup lookup. Finds any non-terminal evaluate
- * job (across all api keys) whose ref matches the same canonical key
- * + lookback/limit — excluding `excludeJobId` so the caller doesn't
- * match itself.
+ * job (across all api keys) whose params match the upstream cache key
+ * `(itemId, lookbackDays, soldLimit)` — excluding `excludeJobId` so the
+ * caller doesn't match itself.
  *
- * Pairs with `services/market-data/market.ts`: when User B kicks off
- * evaluate against the same product as User A who's mid-pipeline, B
- * attaches to A's run, waits for A to populate `product_market_cache`,
- * then runs scoring with B's own opts. B never sees A's identity or
- * opts — purely an internal optimization to avoid duplicate scrape +
- * LLM cost.
- *
- * NOTE: `excludeJobId` may be undefined when the caller hasn't created
- * its own row yet (rare — most callers create then look up).
+ * Pairs with `services/evaluate/market-data.ts`: when User B kicks off
+ * evaluate(itemId=X) and User A is already mid-pipeline on X with the
+ * same lookback/limit, B attaches to A's run, waits for A to populate
+ * `market_data_cache`, then runs scoring with B's own opts. B never
+ * sees A's identity or opts — this is purely an internal optimization
+ * to avoid duplicate scrape + LLM cost.
  */
 export async function findInProgressUpstreamJob(
-	subjectId: string,
+	itemId: string,
 	lookbackDays: number,
 	soldLimit: number,
-	excludeJobId?: string,
+	excludeJobId: string,
 ): Promise<ComputeJob | null> {
-	const conds = [
-		eq(computeJobs.kind, "evaluate"),
-		eq(computeJobs.subjectKind, "evaluate_ref"),
-		eq(computeJobs.subjectId, subjectId),
-		or(eq(computeJobs.status, "queued"), eq(computeJobs.status, "running")),
-		sql`(${computeJobs.params}->>'lookbackDays')::int = ${lookbackDays}`,
-		sql`(${computeJobs.params}->>'soldLimit')::int = ${soldLimit}`,
-	];
-	if (excludeJobId) conds.push(sql`${computeJobs.id} != ${excludeJobId}::uuid`);
 	const rows = await db
 		.select()
 		.from(computeJobs)
-		.where(and(...conds))
+		.where(
+			and(
+				eq(computeJobs.kind, "evaluate"),
+				or(eq(computeJobs.status, "queued"), eq(computeJobs.status, "running")),
+				sql`${computeJobs.params}->>'itemId' = ${itemId}`,
+				sql`(${computeJobs.params}->>'lookbackDays')::int = ${lookbackDays}`,
+				sql`(${computeJobs.params}->>'soldLimit')::int = ${soldLimit}`,
+				sql`${computeJobs.id} != ${excludeJobId}::uuid`,
+			),
+		)
 		.orderBy(asc(computeJobs.createdAt))
 		.limit(1);
 	return rows[0] ?? null;
