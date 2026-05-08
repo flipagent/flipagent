@@ -1,6 +1,6 @@
 {
 	"name": "@flipagent/types",
-	"version": "1.3.0",
+	"version": "1.4.0",
 	"description": "TypeBox schemas for flipagent — `/v1/*` API surface at the root (one file per resource: items, evaluate, ship, listings, locations, purchases, bids, sales, payouts, money, messages, feedback, offers, disputes, recommendations, forwarder, notifications, webhooks, bridge, browser, categories, products, media, seller, me-account, me-ebay, agent, legal, capabilities, plus shared compute-jobs / bridge-jobs envelopes); eBay-shape responses (Browse, Marketplace Insights, Sell Inventory, Sell Fulfillment, Sell Account) under `/ebay/{buy,sell}` subpaths.",
 	"type": "module",
 	"main": "./dist/index.js",
