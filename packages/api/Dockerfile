@@ -1,7 +1,7 @@
 # flipagent api runtime image. Multi-stage: builder compiles every workspace
 # package the api depends on, runtime ships only dist + production node_modules.
 
-FROM node:20-bookworm-slim AS builder
+FROM flipagentprod.azurecr.io/node:20-bookworm-slim AS builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
@@ -29,7 +29,7 @@ RUN cd packages/types && npm run build \
 	&& cd ../mcp && npm run build \
 	&& cd ../api && npm run build
 
-FROM node:20-bookworm-slim AS runtime
+FROM flipagentprod.azurecr.io/node:20-bookworm-slim AS runtime
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tini \
 	&& rm -rf /var/lib/apt/lists/*
