@@ -67,6 +67,18 @@ resource "azurerm_postgresql_flexible_server_firewall_rule" "allow_azure" {
   end_ip_address   = "0.0.0.0"
 }
 
+# Azure Database for PostgreSQL ships with a closed extension allow-list:
+# `CREATE EXTENSION` fails on anything not enumerated under
+# `azure.extensions`. Drizzle migration 0046_catalog enables `pg_trgm`
+# for fuzzy title/brand lookup in catalog/match.ts; without this
+# parameter on the server, MIGRATE_ON_BOOT crashes the api revision.
+# Comma-separate as new extensions land. Dynamic param, no restart.
+resource "azurerm_postgresql_flexible_server_configuration" "azure_extensions" {
+  name      = "azure.extensions"
+  server_id = azurerm_postgresql_flexible_server.pg.id
+  value     = "PG_TRGM"
+}
+
 locals {
   # urlencode the password — random_password emits chars like :?+ that
   # collide with URL grammar, so the postgres-js client throws "URI
