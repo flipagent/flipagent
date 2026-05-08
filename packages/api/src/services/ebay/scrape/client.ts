@@ -29,8 +29,10 @@ import {
 } from "@flipagent/ebay-scraper";
 import type { BrowseSearchResponse, ItemDetail } from "@flipagent/types/ebay/buy";
 import { JSDOM } from "jsdom";
+import { config } from "../../../config.js";
 import { ebayDetailToBrowse } from "./normalize.js";
 import { fetchHtmlViaScraperApi } from "./scraper-api/index.js";
+import { sprdItemDetail, sprdSearch } from "./scraper-api/sprd.js";
 
 const domFactory = (html: string) => new JSDOM(html).window.document as unknown as ParentNode;
 
@@ -168,6 +170,11 @@ export function parseAspectFilter(input: string): {
 }
 
 export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSearchResponse> {
+	// SPRD vendor short-circuits the URL-build → HTML-fetch → parse pipe:
+	// it accepts the same flat input and returns a Browse-shape response
+	// directly. Keep the offset-ceiling guard below as a defensive no-op
+	// when the vendor flag isn't `sprd`.
+	if (config.SCRAPER_API_VENDOR === "sprd") return sprdSearch(input);
 	const offset = Math.max(0, input.offset ?? 0);
 	if (offset > EBAY_PAGINATION_OFFSET_CEILING) {
 		// Match REST's behaviour: deep paging beyond 10K is not exposed.
@@ -267,6 +274,7 @@ export async function scrapeSearch(input: ScrapeSearchInput): Promise<BrowseSear
 }
 
 export async function scrapeItemDetail(itemId: string, variationId?: string): Promise<ItemDetail | null> {
+	if (config.SCRAPER_API_VENDOR === "sprd") return sprdItemDetail(itemId, variationId);
 	// eBay's web /itm/ path uses the legacy numeric id, not the v1 envelope.
 	// Strip `v1|<legacy>|<version>` → `<legacy>` so callers can pass either form.
 	const legacyMatch = /^v1\|(\d+)\|\d+$/.exec(itemId);

@@ -112,8 +112,9 @@ Available namespaces (every endpoint at `api.flipagent.dev/v1/*`):
 |---|---|
 | `client.items.*` | active + sold marketplace search + detail |
 | `client.categories.*` | taxonomy tree + suggestions + per-category aspects |
-| `client.products.*` | universal product lookup by EPID + product summary search |
-| `client.evaluate.*` | score one listing → buy/skip + expectedNet + risk + recommendedExit (Decisions pillar) |
+| `client.products.*` | flipagent-native cross-marketplace Products: list / get / resolve (ProductRef → Product) |
+| `client.marketplaces.ebay.catalog.*` | eBay's authoritative catalog (EPID), used to fill aspects before listing |
+| `client.evaluate.*` | Product/listing intelligence — pass a ProductRef (id / external listing / free-text query). Returns full MarketView + (when ref points to a specific listing) buy-decision overlay (rating / expectedNet / bidCeiling / risk). |
 | `client.ship.*` | forwarder quote + provider catalog (Operations pillar) |
 | `client.purchases.*` | buy flow — REST passthrough or bridge transport (needs `/v1/connect/ebay`) |
 | `client.listings.*` | seller-side inventory + offer + publish (needs `/v1/connect/ebay`) |

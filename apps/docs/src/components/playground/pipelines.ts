@@ -80,7 +80,8 @@ export const EVALUATE_STEPS: ReadonlyArray<{ key: string; label: string; parent?
 ];
 
 export interface EvaluateOutcome {
-	item: ItemDetail;
+	/** Canonical listing the digest was anchored to — full ItemDetail. */
+	anchor: ItemDetail;
 	/**
 	 * Matched comp pool (sold side) — INCLUDES suspicious comps. The UI
 	 * filters them out by default via `suspiciousIds` and re-includes
@@ -127,6 +128,7 @@ export interface EvaluateOutcome {
 }
 
 export interface EvaluateInputs {
+	/** Marketplace listing key (eBay legacy id, full /itm/ URL, v1|...|... form). For now we wrap it as `{ kind: "external", marketplace: "ebay_us" }` server-side. */
 	itemId: string;
 	/** Sold-search lookback window in days. Default 90. */
 	lookbackDays?: number;
@@ -210,7 +212,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 export async function createEvaluateJob(params: EvaluateInputs): Promise<ComputeJobAck> {
 	return postJson<ComputeJobAck>("/v1/evaluate/jobs", {
-		itemId: params.itemId,
+		ref: { kind: "external", marketplace: "ebay_us", listingId: params.itemId },
 		lookbackDays: params.lookbackDays,
 		soldLimit: params.soldLimit,
 		opts: pickEvaluateOpts(params),

@@ -23,7 +23,7 @@ export const takedownStatusEnum = pgEnum("takedown_status", ["pending", "approve
  * closes the P&L loop without polling eBay Finances.
  */
 export const expenseEventKindEnum = pgEnum("expense_event_kind", ["purchased", "forwarder_fee", "expense", "sold"]);
-export const computeJobKindEnum = pgEnum("compute_job_kind", ["evaluate", "search"]);
+export const computeJobKindEnum = pgEnum("compute_job_kind", ["evaluate", "search", "appraise"]);
 export const computeJobStatusEnum = pgEnum("compute_job_status", [
 	"queued",
 	"running",
@@ -434,6 +434,16 @@ export const listingObservations = pgTable(
 		rawResponse: jsonb("raw_response"),
 		/** Which transport served the underlying fetch — `rest` | `scrape` | `bridge`. NULL for legacy rows. */
 		source: text("source"),
+		/**
+		 * Catalog link — flipagent product this listing observation
+		 * resolved to. NULL until the catalog resolver runs against the
+		 * row (lazily, as evaluate/appraise traffic flows through it).
+		 * Once linked, queries can pivot from raw observations to the
+		 * canonical product without re-resolving via title/aspects.
+		 */
+		productId: text("product_id"),
+		/** Catalog variant. NULL when the product has no variants or the resolver hasn't disambiguated yet. */
+		variantId: text("variant_id"),
 	},
 	(t) => ({
 		legacyIdx: index("listing_obs_legacy_idx").on(t.marketplace, t.legacyItemId, t.observedAt),
@@ -441,6 +451,9 @@ export const listingObservations = pgTable(
 		sellerIdx: index("listing_obs_seller_idx").on(t.sellerUsername, t.observedAt),
 		takedownIdx: index("listing_obs_takedown_idx").on(t.takedownAt),
 		soldDateIdx: index("listing_obs_sold_date_idx").on(t.lastSoldDate),
+		// Partial indexes — only rows that have been resolved carry catalog ids.
+		productIdx: index("listing_obs_product_idx").on(t.productId, t.observedAt.desc()),
+		variantIdx: index("listing_obs_variant_idx").on(t.variantId, t.observedAt.desc()),
 	}),
 );
 
@@ -526,7 +539,7 @@ export const matchHistory = pgTable(
 
 /**
  * Append-only catalog product capture — parallel to
- * `listing_observations` but for `/v1/products/{epid}` reads (Catalog
+ * `listing_observations` but for `/v1/marketplaces/ebay/catalog/{epid}` reads (Catalog
  * REST + scrape JSON-LD). One row per upstream fetch (deduped at the
  * transport layer's in-flight Map; the cache hit path doesn't insert).
  *
@@ -579,6 +592,118 @@ export const categorySnapshots = pgTable(
 	},
 	(t) => ({
 		rootIdx: index("category_snapshots_root_observed_idx").on(t.marketplace, t.root, t.observedAt.desc()),
+	}),
+);
+
+/* -------------------------- catalog (cross-marketplace) -------------------------- */
+
+/**
+ * flipagent-native Product catalog. The canonical SKU we trade in,
+ * marketplace-agnostic by design. eBay listings, StockX asks, GOAT bids
+ * etc. all attach as observations referencing a product (and optionally
+ * a variant). External keys (eBay epid, GTIN, MPN, StockX product id)
+ * live in `productIdentifiers` for indexed resolve.
+ *
+ * `catalog_status`:
+ *   - `curated` — manually verified canonical entry
+ *   - `auto`    — auto-created by the resolver from a marketplace listing
+ *   - `pending` — auto-created but flagged for review (low confidence,
+ *                 contradictory signals, etc.)
+ *
+ * `attributes` carries free-form normalised attribute slots — color,
+ * release year, material, etc. Variant-discriminating attributes (size,
+ * colorway when offered as separate SKUs) live on `productVariants`
+ * instead.
+ */
+export const products = pgTable(
+	"products",
+	{
+		id: text("id").primaryKey(),
+		title: text("title").notNull(),
+		brand: text("brand"),
+		modelNumber: text("model_number"),
+		/** flipagent canonical category path (NOT eBay's). */
+		categoryPath: text("category_path"),
+		catalogStatus: text("catalog_status").notNull().default("auto"),
+		attributes: jsonb("attributes").notNull().default(sql`'{}'::jsonb`),
+		hasVariants: boolean("has_variants").notNull().default(false),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+		takedownAt: timestamp("takedown_at", { withTimezone: true }),
+	},
+	(t) => ({
+		statusIdx: index("products_status_idx").on(t.catalogStatus),
+		takedownIdx: index("products_takedown_idx").on(t.takedownAt),
+		// pg_trgm GIN indexes for fuzzy title/brand lookup — declared in SQL,
+		// not redeclared here (drizzle-kit does not introspect GIN ops).
+	}),
+);
+
+/**
+ * Variant of a Product. Sized / colored / configured sub-units of the
+ * same canonical Product (Air Jordan 1 size 10, iPhone 15 Pro Max 256GB
+ * Natural). `variantKey` is the canonical aspect string — lower-cased
+ * names, alpha-sorted, `|` separated:
+ *
+ *   `size:10`
+ *   `color:mocha|size:10`
+ *   `capacity:256gb|color:natural`
+ *
+ * `attributes` mirrors the same data structured for direct read.
+ *
+ * Products without variants leave `products.has_variants=false` and skip
+ * this table entirely; observations on those products store
+ * `variantId IS NULL`.
+ */
+export const productVariants = pgTable(
+	"product_variants",
+	{
+		id: text("id").primaryKey(),
+		productId: text("product_id")
+			.notNull()
+			.references(() => products.id, { onDelete: "cascade" }),
+		variantKey: text("variant_key").notNull(),
+		attributes: jsonb("attributes").notNull().default(sql`'{}'::jsonb`),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => ({
+		keyUnique: uniqueIndex("product_variants_key_unique").on(t.productId, t.variantKey),
+	}),
+);
+
+/**
+ * External-system → flipagent product/variant lookup. Each row maps one
+ * external identifier (eBay epid, GTIN, MPN, StockX product id, GOAT id)
+ * to a Product and optionally a Variant.
+ *
+ *   marketplace : 'ebay_us' | 'stockx' | 'goat' | 'mercari_jp' | 'global'
+ *                 ('global' for cross-marketplace identifiers like GTIN /
+ *                 MPN that aren't owned by one marketplace)
+ *   kind        : 'epid' | 'gtin' | 'mpn' | 'sku' | 'stockx_id' | 'goat_id'
+ *   value       : the identifier itself
+ *
+ * `(marketplace, kind, value)` is globally unique — same external key
+ * cannot map to two different products. Variant-level rows attach to a
+ * specific variant; product-level rows leave `variant_id` NULL.
+ */
+export const productIdentifiers = pgTable(
+	"product_identifiers",
+	{
+		id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
+		productId: text("product_id")
+			.notNull()
+			.references(() => products.id, { onDelete: "cascade" }),
+		variantId: text("variant_id").references(() => productVariants.id, { onDelete: "cascade" }),
+		marketplace: text("marketplace").notNull(),
+		kind: text("kind").notNull(),
+		value: text("value").notNull(),
+		addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => ({
+		externalUnique: uniqueIndex("product_identifiers_external_unique").on(t.marketplace, t.kind, t.value),
+		productIdx: index("product_identifiers_product_idx").on(t.productId),
+		variantIdx: index("product_identifiers_variant_idx").on(t.variantId),
 	}),
 );
 
@@ -1084,6 +1209,23 @@ export const computeJobs = pgTable(
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+		/**
+		 * Typed subject pointer — what this job is computing about.
+		 * Replaces `params->>'itemId'` JSON probes with an indexed
+		 * `(subject_kind, subject_id)` lookup so cross-surface dedup
+		 * (evaluate / appraise on the same product converging to one
+		 * leader) becomes cheap.
+		 *
+		 * `subject_kind` ∈ ('product' | 'listing' | 'ingest_marketplace' | …),
+		 * `subject_id` is whatever the kind defines:
+		 *   - 'product'             → catalog product_id
+		 *   - 'listing'             → marketplace listing key (e.g. eBay legacy id)
+		 *   - 'ingest_marketplace'  → e.g. 'stockx:trending:sneakers'
+		 *
+		 * NULL on legacy rows; populated by job creators going forward.
+		 */
+		subjectKind: text("subject_kind"),
+		subjectId: text("subject_id"),
 	},
 	(t) => ({
 		apiKeyIdx: index("compute_jobs_api_key_idx").on(t.apiKeyId, t.createdAt.desc()),
@@ -1092,44 +1234,46 @@ export const computeJobs = pgTable(
 		// Drives the worker's `claimNextJob` query: scan claimable rows
 		// (status='queued' OR expired lease) in FIFO order.
 		claimIdx: index("compute_jobs_claim_idx").on(t.status, t.leaseUntil, t.createdAt),
+		// Cross-surface dedup / attach lookup.
+		subjectIdx: index("compute_jobs_subject_idx").on(t.subjectKind, t.subjectId, t.status),
 	}),
 );
 
 /**
- * Cross-user cache of the upstream digest assembled by the evaluate
- * pipeline (item detail + sold pool + active pool + same-product LLM
- * filter + market stats). Keyed on the **itemId-side** inputs only —
- * `(itemId, lookbackDays, soldLimit)` — never on user opts. Per-user
- * scoring (forwarder cost, minNet thresholds) runs on top and lands in
- * `compute_jobs.result` as a self-contained snapshot; this table is
- * the dedup/cache layer below it.
+ * Cross-marketplace MarketView cache. Keyed on the catalog product (and
+ * optionally a variant). Two listings of the same SKU on eBay — or the
+ * same SKU spread across eBay + StockX — converge to the same cache
+ * entry. Real cross-listing dedup, not the listing-keyed approximation
+ * the legacy `market_data_cache` did.
  *
- * Lifecycle: a compute_job that misses cache fetches upstream and
- * inserts here on success. Concurrent fetches lose the unique-index
- * race — one redundant fetch is cheaper than coordinating a lock. TTL
- * aligns with the sold-search transport cache (12h).
+ * `digest` carries the full `MarketView` shape — headline stats,
+ * `byCondition` + `byVariant` slices, pools, suspicious flags, listing-
+ * floor recommendation. Per-user scoring (forwarder cost, minNet
+ * thresholds) lives on top in `compute_jobs.result`.
  *
- * Takedown: `/v1/takedown` approval deletes by `item_id`; subsequent
- * evaluate calls see a miss and the takedown blocklist short-circuits
- * before any re-fetch.
+ * Concurrent fetches race on the unique index; the second insert
+ * silently no-ops via ON CONFLICT DO NOTHING. TTL aligns with the
+ * sold-search transport cache (12h). Takedown of a Product cascades
+ * delete here.
  */
-export const marketDataCache = pgTable(
-	"market_data_cache",
+export const productMarketCache = pgTable(
+	"product_market_cache",
 	{
 		id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-		itemId: text("item_id").notNull(),
+		productId: text("product_id").notNull(),
+		/** NULL when the digest aggregates the product across all variants (or the product has none). */
+		variantId: text("variant_id"),
 		lookbackDays: integer("lookback_days").notNull(),
 		soldLimit: integer("sold_limit").notNull(),
-		/** Assembled upstream digest. Shape: { item, soldPool, activePool, filter, returns, market, meta }. Pre-scoring. */
 		digest: jsonb("digest").notNull(),
-		/** compute_jobs row that originally produced this digest. Audit / debugging only — readers don't need it. */
 		sourceJobId: uuid("source_job_id").references(() => computeJobs.id, { onDelete: "set null" }),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 	},
 	(t) => ({
-		keyIdx: uniqueIndex("market_data_cache_key").on(t.itemId, t.lookbackDays, t.soldLimit),
-		expiresIdx: index("market_data_cache_expires_idx").on(t.expiresAt),
+		expiresIdx: index("product_market_cache_expires_idx").on(t.expiresAt),
+		// Unique indexes declared in SQL with WHERE clauses (drizzle-kit
+		// doesn't introspect partial uniqueness reliably).
 	}),
 );
 
@@ -1207,8 +1351,8 @@ export type BridgeJob = typeof bridgeJobs.$inferSelect;
 export type NewBridgeJob = typeof bridgeJobs.$inferInsert;
 export type ComputeJob = typeof computeJobs.$inferSelect;
 export type NewComputeJob = typeof computeJobs.$inferInsert;
-export type MarketDataCache = typeof marketDataCache.$inferSelect;
-export type NewMarketDataCache = typeof marketDataCache.$inferInsert;
+export type ProductMarketCache = typeof productMarketCache.$inferSelect;
+export type NewProductMarketCache = typeof productMarketCache.$inferInsert;
 export type BuyCheckoutSession = typeof buyCheckoutSessions.$inferSelect;
 export type NewBuyCheckoutSession = typeof buyCheckoutSessions.$inferInsert;
 export type ForwarderInventory = typeof forwarderInventory.$inferSelect;
@@ -1231,6 +1375,12 @@ export type ProductObservation = typeof productObservations.$inferSelect;
 export type NewProductObservation = typeof productObservations.$inferInsert;
 export type CategorySnapshot = typeof categorySnapshots.$inferSelect;
 export type NewCategorySnapshot = typeof categorySnapshots.$inferInsert;
+export type Product = typeof products.$inferSelect;
+export type NewProduct = typeof products.$inferInsert;
+export type ProductVariant = typeof productVariants.$inferSelect;
+export type NewProductVariant = typeof productVariants.$inferInsert;
+export type ProductIdentifier = typeof productIdentifiers.$inferSelect;
+export type NewProductIdentifier = typeof productIdentifiers.$inferInsert;
 export type CreditGrant = typeof creditGrants.$inferSelect;
 export type NewCreditGrant = typeof creditGrants.$inferInsert;
 

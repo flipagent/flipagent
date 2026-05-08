@@ -223,6 +223,10 @@ resource "azurerm_container_app" "api" {
     value = var.scraper_api_password
   }
   secret {
+    name  = "sprd-api-key"
+    value = var.sprd_api_key
+  }
+  secret {
     name  = "stripe-secret-key"
     value = var.stripe_secret_key
   }
@@ -384,6 +388,14 @@ resource "azurerm_container_app" "api" {
       env {
         name        = "SCRAPER_API_PASSWORD"
         secret_name = "scraper-api-password"
+      }
+      env {
+        name  = "SPRD_API_URL"
+        value = var.sprd_api_url
+      }
+      env {
+        name        = "SPRD_API_KEY"
+        secret_name = "sprd-api-key"
       }
       env {
         name        = "STRIPE_SECRET_KEY"
@@ -672,6 +684,10 @@ resource "azurerm_container_app" "worker" {
     name  = "scraper-api-password"
     value = var.scraper_api_password
   }
+  secret {
+    name  = "sprd-api-key"
+    value = var.sprd_api_key
+  }
   # eBay OAuth — needed for token refresh during pipeline runs that hit
   # user-scoped REST endpoints. Empty values are fine for app-only flows.
   secret {
@@ -759,6 +775,14 @@ resource "azurerm_container_app" "worker" {
       env {
         name        = "SCRAPER_API_PASSWORD"
         secret_name = "scraper-api-password"
+      }
+      env {
+        name  = "SPRD_API_URL"
+        value = var.sprd_api_url
+      }
+      env {
+        name        = "SPRD_API_KEY"
+        secret_name = "sprd-api-key"
       }
       env {
         name        = "EBAY_CLIENT_ID"

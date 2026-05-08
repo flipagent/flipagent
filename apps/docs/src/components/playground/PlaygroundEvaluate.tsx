@@ -380,7 +380,7 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 						}),
 					onPartial: (patch) => {
 						setOutcome((prev) => ({ ...prev, ...patch }));
-						const title = patch.item?.title?.trim();
+						const title = patch.anchor?.title?.trim();
 						if (title && title !== label) {
 							label = title;
 							recent.update(recentBase.id, { label });
@@ -519,7 +519,7 @@ export function PlaygroundEvaluate<TabId extends string = "sourcing" | "evaluate
 						// Upgrade the Recent label to the listing title once the
 						// detail step replays — covers reopens of rows that were
 						// abandoned mid-run before detail landed the first time.
-						const title = patch.item?.title?.trim();
+						const title = patch.anchor?.title?.trim();
 						if (title && title !== rec.label) recent.update(rec.id, { label: title });
 					},
 				},

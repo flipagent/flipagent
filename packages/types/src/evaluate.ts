@@ -1,13 +1,21 @@
 /**
- * `/v1/evaluate/*` schema — id-driven single-listing judgment.
+ * `/v1/evaluate/*` schema — Product/listing intelligence.
  *
- * Composite endpoint: caller passes `itemId`, the server fetches the
- * detail, searches sold + active listings of the same product, runs
- * the LLM same-product filter, and scores.
+ * Composite endpoint: caller passes a `ProductRef` (id / external
+ * marketplace listing / free-text query), server resolves to a flipagent
+ * Product (auto-creating on miss), runs the cross-marketplace
+ * MarketView pipeline, and — when buy-decision context is computable
+ * (i.e. ref points to a specific listing with a price) — lays the
+ * `evaluation` block on top.
+ *
+ * Two questions, one surface:
+ *   - `evaluation: null`  → "what's this product worth" (the appraise mode)
+ *   - `evaluation: {…}`   → "should I buy this listing" (the original evaluate mode)
  */
 
 import { type Static, Type } from "@sinclair/typebox";
 import { ItemDetail, ItemSummary } from "./ebay/buy.js";
+import { Product, ProductRef, ProductVariant } from "./products.js";
 import { ForwarderInput } from "./ship.js";
 
 /* ----------------------------- market stats ----------------------------- */
@@ -373,6 +381,64 @@ export const Returns = Type.Object(
 );
 export type Returns = Static<typeof Returns>;
 
+/* ------------------------------ slices ------------------------------ */
+
+/**
+ * Listing-floor surface — pure queue-model output, no buy-cycle math.
+ * Buy-decision callers compose net + dollarsPerDay on top using the
+ * candidate listing's buy price.
+ */
+export const ListingFloor = Type.Object(
+	{
+		listPriceCents: Type.Integer(),
+		expectedDaysToSell: Type.Number(),
+		daysLow: Type.Number(),
+		daysHigh: Type.Number(),
+		queueAhead: Type.Integer({ description: "Realistic asks at-or-below the recommended list price." }),
+		asksAbove: Type.Integer({ description: "Realistic asks above the recommended list price." }),
+	},
+	{ $id: "ListingFloor" },
+);
+export type ListingFloor = Static<typeof ListingFloor>;
+
+/**
+ * One condition-tier slice — same shape as the headline trio scoped to
+ * listings of one condition tier. Slice keys are eBay-condition
+ * normalized for most categories (`new`, `used_like_new`, `used_good`).
+ * Graded-card categories augment with grade-aware keys (`graded:psa_9`,
+ * `graded:bgs_9.5`) parsed off `conditionDescriptors`.
+ */
+export const ConditionSlice = Type.Object(
+	{
+		conditionTier: Type.String(),
+		count: Type.Integer(),
+		market: MarketStats,
+		sold: SoldDigest,
+		active: ActiveDigest,
+	},
+	{ $id: "ConditionSlice" },
+);
+export type ConditionSlice = Static<typeof ConditionSlice>;
+
+/**
+ * Sibling-variant summary. Mini-digest only (median + count + velocity)
+ * — enough to render a "size 9 $a · 10 $b · 11 $c" comparison row
+ * without shipping every variant's full pool. Cache-only: only variants
+ * with a fresh product_market_cache row appear.
+ */
+export const VariantSummary = Type.Object(
+	{
+		variantId: Type.String(),
+		variantKey: Type.String(),
+		attributes: Type.Record(Type.String(), Type.String()),
+		count: Type.Integer(),
+		medianCents: Type.Union([Type.Integer(), Type.Null()]),
+		salesPerDay: Type.Number(),
+	},
+	{ $id: "VariantSummary" },
+);
+export type VariantSummary = Static<typeof VariantSummary>;
+
 /* -------------------------------- meta -------------------------------- */
 
 /** What the server fetched, for caller audit + playground trace. */
@@ -397,20 +463,21 @@ export type EvaluateMeta = Static<typeof EvaluateMeta>;
 export const EvaluateRequest = Type.Object(
 	{
 		/**
-		 * eBay item id. Accepts:
+		 * Universal Product reference. Three flavors:
 		 *
-		 *   - `v1|<legacy>|0`           — parent (no variation)
-		 *   - `v1|<legacy>|<variationId>` — specific SKU of a multi-variation listing
-		 *   - bare legacy numeric         — same as `v1|<n>|0`
-		 *   - full eBay URL               — `https://www.ebay.com/itm/<n>?var=<v>`,
-		 *                                   variation honored when present
-		 *
-		 * For multi-SKU listings (sneakers, clothes, bags) pass the variation
-		 * form so the detail fetch pulls the right SKU's price + aspects.
-		 * Without it eBay default-renders one variation server-side, which
-		 * gives evaluate the wrong listing-side price.
+		 *   - `{ kind: "id", productId, variantId? }` — already-resolved
+		 *     flipagent Product
+		 *   - `{ kind: "external", marketplace: "ebay_us", listingId }` —
+		 *     marketplace listing key (eBay legacy id, full /itm/ URL,
+		 *     `v1|<n>|<v>` form all accepted). Resolver fetches detail,
+		 *     looks up identifiers, auto-creates Product on miss. The
+		 *     buy-decision `evaluation` block is computed against the
+		 *     listing's price + seller signals.
+		 *   - `{ kind: "query", q, hints? }` — free text. Resolver does
+		 *     catalog text search → marketplace anchor → auto-create.
+		 *     `evaluation` returns null (no specific listing to score).
 		 */
-		itemId: Type.String({ minLength: 1 }),
+		ref: ProductRef,
 		/**
 		 * Sold-search lookback window in days. Filters the sold pool to
 		 * `lastSoldDate within [now - lookbackDays, now]`. Default 90 (eBay
@@ -432,17 +499,38 @@ export type EvaluateRequest = Static<typeof EvaluateRequest>;
 
 export const EvaluateResponse = Type.Object(
 	{
-		/** The fetched item detail — surfaced so UIs can render thumbnail/title/price without a second fetch. */
-		item: ItemDetail,
-		evaluation: Evaluation,
+		/** The flipagent Product the input ref resolved to. */
+		product: Product,
+		/** Resolved variant when applicable (sized / coloured SKUs); `null` for variant-less products. */
+		variant: Type.Union([ProductVariant, Type.Null()]),
+		/**
+		 * Canonical listing the digest was anchored to — the listing whose
+		 * detail seeded the same-product matcher. For `external` ref input
+		 * this is the listing being evaluated; for `query` / `id` input
+		 * it's the resolver's pick. Detail-level shape so UIs render
+		 * thumbnail / title / price without a second fetch.
+		 *
+		 * `null` when no anchor could be found (rare — only when the
+		 * marketplace search came back empty for a query / id resolution).
+		 */
+		anchor: Type.Union([ItemDetail, Type.Null()]),
+		/**
+		 * Buy-decision overlay. Computed when the input ref points to a
+		 * specific listing with a price (i.e. `ref.kind === "external"`)
+		 * AND the resolver successfully returned an anchor. `null` for
+		 * `query` / `id` inputs — those callers wanted the market view
+		 * only, no specific listing to score.
+		 */
+		evaluation: Type.Union([Evaluation, Type.Null()]),
 		/**
 		 * Toggle-view companion to `evaluation` — scored against the full
 		 * matched pool (suspicious comps INcluded). The default
 		 * `evaluation` is scored against the cleaned pool (suspicious
 		 * EXcluded). UI swaps which one drives the headline numbers based
-		 * on the "show suspicious" toggle.
+		 * on the "show suspicious" toggle. Same null-when-no-buy-decision
+		 * behaviour as `evaluation`.
 		 */
-		evaluationAll: Type.Optional(Evaluation),
+		evaluationAll: Type.Union([Evaluation, Type.Null()]),
 		/** Distribution stats over `soldPool` minus suspicious comps (median, IQR, salesPerDay, meanDaysToSell, …). */
 		market: MarketStats,
 		/** Sold-side digest over the cleaned pool: distribution + histogram + cadence + recent trend + condition mix + last-sale anchor. */
@@ -466,6 +554,28 @@ export const EvaluateResponse = Type.Object(
 		 * `ItemDetail`, so the mirror stays a verbatim mirror.
 		 */
 		returns: Type.Union([Returns, Type.Null()]),
+		/**
+		 * Per-condition-tier slices — same shape as the headline trio
+		 * scoped to one condition cohort. Always populated; UI decides
+		 * whether to render the comparison row.
+		 */
+		byCondition: Type.Array(ConditionSlice),
+		/**
+		 * Sibling-variant mini-digests — same product, different variants
+		 * (size 9 vs 10 vs 11). Populated cache-only: variants with a
+		 * fresh `product_market_cache` row appear; misses are silently
+		 * dropped.
+		 */
+		byVariant: Type.Array(VariantSummary),
+		/**
+		 * Pure queue-model recommendation — what to ASK for if you sold
+		 * one. No buy-cycle math. Buy-decision callers compose net /
+		 * dollarsPerDay on top via `evaluation.recommendedExit`. Null when
+		 * no exit forecast could be computed (no sold pool, zero velocity).
+		 */
+		listingFloor: Type.Union([ListingFloor, Type.Null()]),
+		/** Condition tier the headline corresponds to — echoed for client clarity. */
+		headlineConditionTier: Type.Optional(Type.String()),
 		meta: EvaluateMeta,
 		/**
 		 * Same-product sold listings the evaluation was scored against.
@@ -617,7 +727,9 @@ export type FilterProgress = Static<typeof FilterProgress>;
  */
 export const EvaluatePartial = Type.Object(
 	{
-		item: Type.Optional(ItemDetail),
+		product: Type.Optional(Product),
+		variant: Type.Optional(Type.Union([ProductVariant, Type.Null()])),
+		anchor: Type.Optional(ItemDetail),
 		soldPool: Type.Optional(Type.Array(ItemSummary)),
 		activePool: Type.Optional(Type.Array(ItemSummary)),
 		rejectedSoldPool: Type.Optional(Type.Array(ItemSummary)),
@@ -641,10 +753,14 @@ export const EvaluatePartial = Type.Object(
 		filter: Type.Optional(FilterSummary),
 		filterProgress: Type.Optional(FilterProgress),
 		returns: Type.Optional(Type.Union([Returns, Type.Null()])),
+		byCondition: Type.Optional(Type.Array(ConditionSlice)),
+		byVariant: Type.Optional(Type.Array(VariantSummary)),
+		listingFloor: Type.Optional(Type.Union([ListingFloor, Type.Null()])),
+		headlineConditionTier: Type.Optional(Type.String()),
 		meta: Type.Optional(EvaluateMeta),
-		evaluation: Type.Optional(Evaluation),
-		/** Toggle-view companion to `evaluation` — scored against the full matched pool (suspicious comps included). */
-		evaluationAll: Type.Optional(Evaluation),
+		/** Buy-decision overlay — null when ref didn't carry a specific buy listing. */
+		evaluation: Type.Optional(Type.Union([Evaluation, Type.Null()])),
+		evaluationAll: Type.Optional(Type.Union([Evaluation, Type.Null()])),
 		/**
 		 * Per-itemId map of comps the LLM matched as same-product but the
 		 * post-match risk filter (`evaluate/suspicious.ts`) flagged as

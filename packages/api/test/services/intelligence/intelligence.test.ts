@@ -1,8 +1,8 @@
 import type { BrowseSearchResponse, ItemSummary } from "@flipagent/types/ebay/buy";
 import { describe, expect, it } from "vitest";
-import { toQuantListing } from "../../../src/services/evaluate/adapter.js";
 import { evaluate } from "../../../src/services/evaluate/evaluate.js";
 import { rankCandidates } from "../../../src/services/evaluate/rank-candidates.js";
+import { toQuantListing } from "../../../src/services/market-data/adapter.js";
 import { toCents } from "../../../src/services/shared/money.js";
 import { landedCost } from "../../../src/services/ship.js";
 

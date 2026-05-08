@@ -124,7 +124,7 @@ ready and re-enables with one uncomment.
 | Connect | `/v1/connect/ebay/*` | API key | eBay OAuth handshake |
 | Billing | `POST /v1/billing/{checkout,portal,webhook}` | mixed | Stripe-driven |
 | Dashboard | `GET /v1/me/*` | session | Dashboard backend |
-| **Marketplace data** | `GET /v1/items/*` (`?status=sold` for sold listings), `GET /v1/categories/*`, `GET /v1/products/*`, `GET /v1/media/*` | API key | scrape or app-token REST (selectTransport) |
+| **Marketplace data** | `GET /v1/items/*` (`?status=sold` for sold listings), `GET /v1/categories/*`, `GET /v1/marketplaces/ebay/catalog/*`, `GET /v1/media/*` | API key | scrape or app-token REST (selectTransport) |
 | **Decisions** | `POST /v1/evaluate` (sync) + `/v1/evaluate/jobs/*` (async + SSE + cancel) | API key | composite — detail + sold/active search + LLM same-product filter + score |
 | **Operations** | `POST /v1/ship/quote`, `GET /v1/ship/providers` | API key | forwarder math |
 | Buy-side | `/v1/purchases/*`, `/v1/bids/*`, `/v1/forwarder/*` | API key | response either places the order or returns `nextAction.url` for the user to complete |

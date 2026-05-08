@@ -14,12 +14,21 @@ postgres_sku = "B_Standard_B1ms"
 # `:latest` so a fresh apply always pulls the most recent CI build.
 # api_image = "<acr-name>.azurecr.io/api:latest"
 
-# Managed scraper vendor for eBay HTML fetches. Today only `oxylabs` is wired
-# (Web Scraper API). Leaving username/password empty disables managed scraping
-# — fine for low-volume but expect to hit eBay's bot wall fast.
+# Managed scraper vendor for eBay reads. Two wired vendors:
+#   `oxylabs` — POST URL → rendered HTML → parsed by @flipagent/ebay-scraper.
+#               Auth: scraper_api_username / scraper_api_password.
+#   `sprd`    — peer flipagent-shape API at api-dev.sprd.app. Returns
+#               already-parsed Browse/Catalog JSON; the four scrape*()
+#               entry points short-circuit our HTML→parser pipe. Auth:
+#               sprd_api_key (`x-api-key`); base via sprd_api_url.
+# Leaving the vendor's auth fields empty disables managed scraping —
+# fine for low-volume self-host (point EBAY_*_SOURCE at `bridge` or
+# `rest`), but expect to hit eBay's bot wall fast on direct egress.
 # scraper_api_vendor   = "oxylabs"
 # scraper_api_username = "USER"
 # scraper_api_password = "PASS"
+# sprd_api_url         = "https://api-dev.sprd.app"
+# sprd_api_key         = "..."
 
 # Stripe — leave empty to ship with /v1/billing/* returning 503.
 # stripe_secret_key     = "sk_live_..."

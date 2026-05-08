@@ -16,6 +16,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { InfoTooltip } from "../ui/InfoTooltip";
 import { PriceHistogram } from "./PriceHistogram";
+import { formatAuctionStat, formatShipping, formatShipsFrom, sellerChip } from "./SearchResult";
 import { Trace } from "./Trace";
 import type { EvaluateOutcome } from "./pipelines";
 import type { EvaluateMeta, ItemDetail, ItemSummary, MarketStats, Returns, Step } from "./types";
@@ -279,7 +280,7 @@ export function EvaluateResultBody({
 		(view.meta.soldRejected > 0 || view.meta.activeRejected > 0);
 	return (
 		<>
-			{!hideHero && (outcome.item ? <ItemHero item={outcome.item} /> : <ItemHeroSkeleton />)}
+			{!hideHero && (outcome.anchor ? <ItemHero item={outcome.anchor} /> : <ItemHeroSkeleton />)}
 
 			{noMatches && <NoMatchesBanner meta={view.meta!} />}
 
@@ -699,8 +700,8 @@ function Facts({
 		.filter((c): c is number => c != null);
 	const highestBidCents = auctionBidCents.length > 0 ? Math.max(...auctionBidCents) : null;
 
-	const candCents = outcome.item?.price
-		? Math.round(Number.parseFloat(outcome.item.price.value) * 100)
+	const candCents = outcome.anchor?.price
+		? Math.round(Number.parseFloat(outcome.anchor.price.value) * 100)
 		: null;
 	const lowSample = outcome.meta != null && outcome.meta.soldCount > 0 && outcome.meta.soldCount < 5;
 
@@ -948,9 +949,9 @@ function Facts({
 			    so they sit next to the buy decision rather than buried
 			    in the item hero overhead. */}
 			<Row label="Buy at" decisionStart>
-				{outcome.item ? (
+				{outcome.anchor ? (
 					(() => {
-						const item = outcome.item!;
+						const item = outcome.anchor!;
 						const ship = shippingCents(item);
 						const sellerInfo = sellerMetaText(item.seller);
 						const returnsInfo = returnsMetaText(returns);
@@ -1332,20 +1333,27 @@ function MatchRow({
 	const priceText = item.lastSoldPrice?.value ?? item.price?.value;
 	const isAuction = item.buyingOptions?.includes("AUCTION") ?? false;
 	const acceptsOffer = item.buyingOptions?.includes("BEST_OFFER") ?? false;
-	const currentBid = item.currentBidPrice?.value;
-	// One tag per row, picked by the seller's listing mode. AUCTION is
-	// the dominant case to flag (price moves) so it wins over BEST_OFFER
-	// when both are present (eBay technically allows it, rare in
-	// practice). The bid sub-tag tells the reseller whether the auction
-	// is hot ("$X bid") or sitting cold ("no bids") — matters for
-	// pricing inference: cold auctions mean the visible asks may be
-	// over-anchored vs actual demand.
-	let modeTag: string | null = null;
-	if (isAuction) {
-		modeTag = currentBid ? `Auction · $${currentBid} bid` : "Auction · no bids";
-	} else if (acceptsOffer) {
-		modeTag = "Best Offer";
-	}
+	// Line 1 enrichments — match SearchRow's anatomy so a comp reads
+	// the same way whether it landed via Search/Sourcing or via the
+	// Evaluate matches pool. `auctionStat` gives final-bid-count heat on
+	// sold comps too (eBay leaves the count populated post-close), which
+	// tells the reseller whether the comp's price reflects competitive
+	// bidding or a soft 1-bid close. Suspicious tag stays on line 1 — it
+	// describes *this comp's standing in the pool*, distinct from the
+	// seller-trust signals that go on line 2.
+	const shipText = formatShipping(item.shippingOptions?.[0]);
+	const auctionStat = isAuction ? formatAuctionStat(item) : null;
+	const offerTag = !isAuction && acceptsOffer ? "Best Offer" : null;
+	// Line 2 trust strip — only renders when at least one signal is
+	// present so the median match row stays one meta line tall. AG splice
+	// runs in the matcher (`spliceDateFields`); TRS / watchCount /
+	// itemLocation come from the underlying summary when REST returned
+	// them.
+	const showAg = item.authenticityGuarantee === true;
+	const showTrs = item.topRatedBuyingExperience === true;
+	const sellerInfo = sellerChip(item.seller);
+	const shipsFromText = formatShipsFrom(item.itemLocation);
+	const showTrustLine = showAg || showTrs || sellerInfo !== null || shipsFromText !== null;
 	return (
 		<div
 			className={`pg-result-matches-row pg-result-matches-row--${bucket}`}
@@ -1365,15 +1373,50 @@ function MatchRow({
 				</div>
 				<div className="pg-result-matches-meta">
 					{item.condition && <span>{item.condition}</span>}
-					{priceText && <span className="font-mono">${priceText}</span>}
-					{modeTag && <span className="pg-result-matches-tag">{modeTag}</span>}
-					{item.authenticityGuarantee && <AuthenticityGuaranteeBadge />}
+					{priceText && (
+						<span className="font-mono">
+							${priceText}
+							{shipText && <span className="pg-result-matches-ship"> {shipText}</span>}
+						</span>
+					)}
+					{auctionStat && <span className="pg-result-matches-tag">{auctionStat}</span>}
+					{offerTag && <span className="pg-result-matches-tag">{offerTag}</span>}
 					{suspicious && (
 						<span className="pg-result-matches-tag pg-result-matches-tag--suspicious">
 							{(suspicious.pFraud * 100).toFixed(0)}% fraud risk
 						</span>
 					)}
 				</div>
+				{showTrustLine && (
+					<div className="pg-result-matches-meta pg-result-matches-trust">
+						{showAg && <AuthenticityGuaranteeBadge />}
+						{showTrs && (
+							<span
+								className="pg-result-matches-trust-chip pg-result-matches-trust-chip--trs"
+								title="Top Rated Seller"
+							>
+								Top Rated
+							</span>
+						)}
+						{sellerInfo && (
+							<span
+								className="pg-result-matches-trust-chip"
+								data-level={sellerInfo.level}
+								title={item.seller?.username ? `Seller ${item.seller.username}` : undefined}
+							>
+								{sellerInfo.text}
+							</span>
+						)}
+						{shipsFromText && (
+							<span
+								className="pg-result-matches-trust-chip pg-result-matches-trust-chip--origin"
+								title="Item ships from outside the US"
+							>
+								{shipsFromText}
+							</span>
+						)}
+					</div>
+				)}
 				{reason && <p className="pg-result-matches-reason">{reason}</p>}
 				{suspicious && !reason && (
 					<p className="pg-result-matches-reason pg-result-matches-reason--suspicious">
@@ -1418,7 +1461,7 @@ function MatchRow({
  * The seal shape is a 12-petal scalloped circle (Lucide-style
  * `BadgeCheck` outline, recolored to eBay's program blue).
  */
-function AuthenticityGuaranteeBadge() {
+export function AuthenticityGuaranteeBadge() {
 	return (
 		<span
 			className="pg-result-matches-ag"

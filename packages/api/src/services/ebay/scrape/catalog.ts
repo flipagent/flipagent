@@ -36,7 +36,9 @@ import type {
 	CatalogSearchQuery,
 } from "@flipagent/types/ebay/commerce";
 import { JSDOM } from "jsdom";
+import { config } from "../../../config.js";
 import { fetchHtmlViaScraperApi } from "./scraper-api/index.js";
+import { sprdCatalogProduct, sprdCatalogSearch } from "./scraper-api/sprd.js";
 
 const domFactory = (html: string) => new JSDOM(html).window.document;
 
@@ -120,6 +122,7 @@ function pickRepresentativeListingId(html: string): string | null {
  *  scraping `ebay.com/p/{epid}` plus a representative listing under
  *  that EPID. Returns null when /p/ is not found (404). */
 export async function scrapeCatalogProduct(epid: string): Promise<CatalogProduct | null> {
+	if (config.SCRAPER_API_VENDOR === "sprd") return sprdCatalogProduct(epid);
 	const productUrl = `https://www.ebay.com/p/${encodeURIComponent(epid)}`;
 	let productHtml: string;
 	try {
@@ -329,6 +332,7 @@ function buildRefinement(products: ReadonlyArray<CatalogProduct>, searchTerm: st
  *  to limit=50 — with REST that's free; on scrape we trade some 1:1
  *  fidelity at the page-size frontier for predictable latency. */
 export async function scrapeCatalogSearch(query: CatalogSearchQuery): Promise<CatalogProductSearchResponse> {
+	if (config.SCRAPER_API_VENDOR === "sprd") return sprdCatalogSearch(query);
 	const limit = Math.min(query.limit ?? 50, SCRAPE_HYDRATION_CAP);
 	const offset = query.offset ?? 0;
 	const searchUrl = buildSearchUrl(query);

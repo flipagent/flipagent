@@ -47,7 +47,7 @@ const tierA: Probe[] = [
 	{ tier: "A", method: "GET", path: "/v1/categories/suggest?title=mens%20watch", expect: [200, 502] },
 
 	// Products (EPID lookup — REST app or scrape)
-	{ tier: "A", method: "GET", path: "/v1/products/123456?marketplace=ebay", expect: [200, 404, 502] },
+	{ tier: "A", method: "GET", path: "/v1/marketplaces/ebay/catalog/123456?marketplace=ebay", expect: [200, 404, 502] },
 ];
 
 const tierB: Probe[] = [

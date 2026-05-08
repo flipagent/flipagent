@@ -35,7 +35,7 @@ import {
 	FeaturedEvaluationsResponse,
 } from "@flipagent/types";
 import type { ItemSummary } from "@flipagent/types/ebay/buy";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { describeRoute } from "hono-openapi";
@@ -51,8 +51,8 @@ import {
 	getJob,
 } from "../../services/compute-jobs/queue.js";
 import { streamComputeJobEvents } from "../../services/compute-jobs/sse-stream.js";
-import { buildPoolResponse } from "../../services/evaluate/digest.js";
 import { listFeaturedEvaluations } from "../../services/evaluate/featured.js";
+import { buildPoolResponse } from "../../services/market-data/digest.js";
 import { nextAction } from "../../services/shared/next-action.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
@@ -60,10 +60,16 @@ export const evaluateRoute = new Hono();
 
 /**
  * Resolve the compute job for an evaluate request. If an in-progress
- * job already exists for `(apiKey, itemId)` we return it instead of
+ * job already exists for `(apiKey, ref-key)` we return it instead of
  * creating a new row — the second client (e.g. the Chrome extension
  * after the dashboard playground) attaches to the same job's stream
  * and sees the same trace, instead of paying for a duplicate run.
+ *
+ * The dedup key folds the ProductRef into a stable string:
+ *   - external → marketplace listing key (so the extension chip on
+ *     `/itm/X` finds the playground's run by URL)
+ *   - id       → product:<productId>(:<variantId>)
+ *   - query    → q:<lowercased q>
  *
  * Race window: two simultaneous POSTs that both miss the lookup will
  * each insert. Worst case is one extra run; the result cache dedups
@@ -71,17 +77,28 @@ export const evaluateRoute = new Hono();
  */
 async function startOrAttachEvaluateJob(
 	apiKey: { id: string; userId: string | null },
-	params: { itemId: string } & Record<string, unknown>,
+	params: import("@flipagent/types").EvaluateRequest,
 ): Promise<{ job: import("../../db/schema.js").ComputeJob; reused: boolean }> {
-	const existing = await findInProgressEvaluateJob(apiKey.id, params.itemId);
+	const subjectId = refKey(params.ref);
+	const existing = await findInProgressEvaluateJob(apiKey.id, subjectId);
 	if (existing) return { job: existing, reused: true };
 	const job = await createJob({
 		apiKeyId: apiKey.id,
 		userId: apiKey.userId,
 		kind: "evaluate",
-		params,
+		params: params as unknown as Record<string, unknown>,
+		subjectKind: "evaluate_ref",
+		subjectId,
 	});
 	return { job, reused: false };
+}
+
+/** Stable string for dedup / `subject_id` indexing across surface calls. */
+function refKey(ref: import("@flipagent/types").EvaluateRequest["ref"]): string {
+	if (ref.kind === "external") return `listing:${ref.marketplace}:${ref.listingId}`;
+	if (ref.kind === "id")
+		return ref.variantId ? `product:${ref.productId}:${ref.variantId}` : `product:${ref.productId}`;
+	return `query:${ref.q.trim().toLowerCase()}`;
 }
 
 /** Hard deadline for sync evaluate. Container Apps default ingress
@@ -115,10 +132,7 @@ evaluateRoute.post(
 	async (c) => {
 		const params = c.req.valid("json");
 		const apiKey = c.var.apiKey;
-		const { job } = await startOrAttachEvaluateJob(
-			apiKey,
-			params as unknown as { itemId: string } & Record<string, unknown>,
-		);
+		const { job } = await startOrAttachEvaluateJob(apiKey, params);
 		// Worker container claims and runs the pipeline; this route waits
 		// for the row to reach terminal status. Abort signal stops the
 		// poll loop early when the client disconnects (no point holding
@@ -185,8 +199,10 @@ evaluateRoute.get(
 	async (c) => {
 		const itemId = c.req.param("itemId");
 		const apiKey = c.var.apiKey;
-		// Most recent completed evaluate job for this api key + itemId,
-		// from the last 24h. Indexed on (apiKeyId, createdAt desc).
+		// Most recent completed evaluate job for this api key whose
+		// `external` ref pointed at this listing. Indexed on
+		// (subject_kind, subject_id, status) — sub-millisecond.
+		const subjectId = `listing:ebay_us:${itemId}`;
 		const [row] = await db
 			.select()
 			.from(computeJobs)
@@ -195,7 +211,8 @@ evaluateRoute.get(
 					eq(computeJobs.apiKeyId, apiKey.id),
 					eq(computeJobs.kind, "evaluate"),
 					eq(computeJobs.status, "completed"),
-					sql`${computeJobs.params}->>'itemId' = ${itemId}`,
+					eq(computeJobs.subjectKind, "evaluate_ref"),
+					eq(computeJobs.subjectId, subjectId),
 				),
 			)
 			.orderBy(desc(computeJobs.completedAt))
@@ -284,10 +301,7 @@ evaluateRoute.post(
 	async (c) => {
 		const params = c.req.valid("json");
 		const apiKey = c.var.apiKey;
-		const { job } = await startOrAttachEvaluateJob(
-			apiKey,
-			params as unknown as { itemId: string } & Record<string, unknown>,
-		);
+		const { job } = await startOrAttachEvaluateJob(apiKey, params);
 		// The worker container picks the row up via `claimNextJob`. A
 		// /stream subscriber (or /jobs/{id} poll) sees the same progress
 		// regardless of when it connects. Idempotent — if another client
@@ -350,7 +364,7 @@ evaluateRoute.get(
 	async (c) => {
 		const itemId = c.req.query("itemId");
 		if (!itemId) return c.json({ error: "itemId_required" }, 400);
-		const job = await findInProgressEvaluateJob(c.var.apiKey.id, itemId);
+		const job = await findInProgressEvaluateJob(c.var.apiKey.id, `listing:ebay_us:${itemId}`);
 		return c.json(job ? { id: job.id, status: job.status } : null);
 	},
 );

@@ -52,7 +52,7 @@ const updated = "2026-05-01";
 			<h2>Don't train AI on eBay REST data</h2>
 			<p>eBay's Developer Program License Agreement (June 24, 2025 amendment) prohibits using Restricted API data to train, fine-tune, or otherwise condition generative AI models. flipagent passes that obligation through:</p>
 			<ul>
-				<li>If you receive responses from <code>/v1/items</code>, <code>/v1/products</code>, <code>/v1/categories</code>, <code>/v1/trends</code>, <code>/v1/me/seller</code>, or any other surface where the active transport is <code>rest</code> (visible in the <code>X-Flipagent-Source</code> response header), you may not feed those responses into model training, fine-tuning, embedding generation for retrieval-augmented generation, or any analogous AI conditioning step.</li>
+				<li>If you receive responses from <code>/v1/items</code>, <code>/v1/marketplaces/ebay/catalog</code>, <code>/v1/categories</code>, <code>/v1/trends</code>, <code>/v1/me/seller</code>, or any other surface where the active transport is <code>rest</code> (visible in the <code>X-Flipagent-Source</code> response header), you may not feed those responses into model training, fine-tuning, embedding generation for retrieval-augmented generation, or any analogous AI conditioning step.</li>
 				<li>Using LLMs to draft listing copy, evaluate margins, or summarize results from your own product data is fine — that is inference, not training.</li>
 				<li>If your use case requires LLM ingestion of marketplace data, route through the <code>scrape</code> transport (set per-request via <code>?transport=scrape</code> where supported, or via your account's default), which is not bound by the DPLA.</li>
 			</ul>

@@ -21,7 +21,7 @@ any other vendor-side concern.
 | `packages/types` | `@flipagent/types` | MIT | TypeBox schemas for the flipagent-native `/v1/*` surface. One file per resource (`items`, `listings`, `purchases`, `sales`, `payouts`, `messages`, `offers`, `disputes`, `policies`, `evaluate`, `ship`, `expenses`, …). |
 | `packages/types/ebay` | `@flipagent/types/ebay` | MIT | TypeBox schemas mirroring eBay's REST shapes (`buy`, `sell`, `commerce`). Used by the api internally for upstream wire shape, and by the Chrome extension + MCP mock for typing eBay-shape responses. |
 | `packages/ebay-scraper` | `@flipagent/ebay-scraper` | MIT | eBay HTML parsers + a plain-HTTPS fetcher (`fetchHtml`, `fetchEbaySearch`, `fetchEbayItemDetail`) for BYO-proxy / standalone use. The hosted api still wraps them with its own managed-vendor dispatcher in `packages/api/src/services/ebay/scrape/` so production traffic flows through Oxylabs et al., but the package itself is fully usable on its own. |
-| `packages/sdk` | `@flipagent/sdk` | MIT | Typed thin client for `api.flipagent.dev`. Namespaces match the route resources: `items`, `listings`, `purchases`, `sales`, `payouts`, `transactions`, `disputes`, `policies`, `categories`, `products`, `forwarder`, `evaluate`, `ship`, `expenses`, `webhooks`, `capabilities`. |
+| `packages/sdk` | `@flipagent/sdk` | MIT | Typed thin client for `api.flipagent.dev`. Namespaces match the route resources: `items`, `categories`, `products` (flipagent-native catalog), `marketplaces.ebay.catalog` (eBay EPID mirror), `evaluate` (Product/listing intelligence — accepts ProductRef, returns MarketView + optional buy-decision), `listings`, `purchases`, `bids`, `forwarder`, `sales`, `labels`, `ship`, `messages`, `feedback`, `notifications`, `webhooks`, `offers`, `disputes`, `policies`, `payouts`, `transactions`, `analytics`, `recommendations`, `me`, `seller`, `keys`, `billing`, `connect`, `capabilities`, `browser`, `agent`, `jobs`. |
 | `packages/mcp` | `flipagent-mcp` | MIT | MCP server — exposes flipagent tools (search, evaluate, buy, list, …) to Claude Code and other MCP hosts. |
 | `packages/cli` | `flipagent-cli` | MIT | One-command MCP setup. Writes the `flipagent` server entry to Claude Code's MCP config. `npx -y flipagent-cli init --mcp --keys`. |
 | `packages/extension` | `@flipagent/extension` | MIT | Chrome extension — local executor for the bridge surfaces (`/v1/purchases`, `/v1/forwarder/*`, `/v1/browser/*`). Runs jobs inside the user's existing Chrome (their cookies, their marketplace logins). |
@@ -73,11 +73,12 @@ get the same scoring without re-implementing it.
   promoted (see the bottom block of `routes/v1/index.ts`).
 
   Phase 1 (live):
-  - **Marketplace data (read)** — `/v1/{items,categories,products,media}`
+  - **Marketplace data (read)** — `/v1/{items,categories,media}`, plus per-marketplace catalog mirror at `/v1/marketplaces/{marketplace}/catalog/*` (today: `ebay`)
+  - **flipagent-native Products** — `/v1/products/*` (the canonical SKU surface; cross-marketplace by design — eBay listings, StockX asks, etc. all attach as observations referencing a product)
   - **My side (write)** — `/v1/{listings,locations,purchases,bids,sales}`
   - **Money + comms + disputes** —
     `/v1/{payouts,transactions,messages,offers,feedback,disputes,policies,recommendations}`
-  - **Intelligence** — `/v1/{evaluate,ship}`
+  - **Intelligence** — `/v1/{evaluate,ship}` (`evaluate` is the unified Product/listing intelligence surface — takes a `ProductRef`, returns MarketView; the buy-decision overlay (`evaluation` block) is computed only when the ref points to a specific listing — so the same route answers both "what's this worth" and "should I buy this")
   - **Storefront ops** — `/v1/{analytics,labels}`
   - **My eBay surfaces** — `/v1/me/seller`, `/v1/me/{selling,buying,programs,quota,…}`
   - **Account / ops** — `/v1/{forwarder,connect,me,keys,billing,health,capabilities,takedown,admin}`

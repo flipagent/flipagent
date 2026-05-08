@@ -32,6 +32,7 @@ import { BillingTopUp } from "./dashboard/BillingTopUp";
 import { EbayConnectConsentModal } from "./dashboard/EbayConnectConsentModal";
 import { TermsConsentModal } from "./dashboard/TermsConsentModal";
 import { PlaygroundAgent } from "./playground/PlaygroundAgent";
+import { PlaygroundAppraise } from "./playground/PlaygroundAppraise";
 import { PlaygroundDeals } from "./playground/PlaygroundDeals";
 import { PlaygroundEvaluate } from "./playground/PlaygroundEvaluate";
 import { PlaygroundSearch } from "./playground/PlaygroundSearch";
@@ -46,6 +47,7 @@ type View =
 	| "overview"
 	| "playground/search"
 	| "playground/sourcing"
+	| "playground/appraise"
 	| "playground/evaluate"
 	| "playground/deals"
 	| "playground/agent"
@@ -445,6 +447,7 @@ export default function Dashboard() {
 					)}
 					{(view === "playground/search" ||
 						view === "playground/sourcing" ||
+						view === "playground/appraise" ||
 						view === "playground/evaluate" ||
 						view === "playground/deals" ||
 						view === "playground/agent") && (
@@ -454,11 +457,13 @@ export default function Dashboard() {
 									? "search"
 									: view === "playground/sourcing"
 										? "sourcing"
-										: view === "playground/evaluate"
-											? "evaluate"
-											: view === "playground/deals"
-												? "deals"
-												: "agent"
+										: view === "playground/appraise"
+											? "appraise"
+											: view === "playground/evaluate"
+												? "evaluate"
+												: view === "playground/deals"
+													? "deals"
+													: "agent"
 							}
 							onChange={(next) =>
 								setView(
@@ -466,11 +471,13 @@ export default function Dashboard() {
 										? "playground/search"
 										: next === "sourcing"
 											? "playground/sourcing"
-											: next === "evaluate"
-												? "playground/evaluate"
-												: next === "deals"
-													? "playground/deals"
-													: "playground/agent",
+											: next === "appraise"
+												? "playground/appraise"
+												: next === "evaluate"
+													? "playground/evaluate"
+													: next === "deals"
+														? "playground/deals"
+														: "playground/agent",
 								)
 							}
 							evaluateSeed={evaluateSeed}
@@ -841,7 +848,8 @@ function Sidebar({
 	const pgItems: { v: View; icon: keyof typeof ICONS; label: string; pill?: string }[] = [
 		{ v: "playground/search", icon: "search", label: "Search" },
 		{ v: "playground/sourcing", icon: "tree", label: "Sourcing" },
-		{ v: "playground/evaluate", icon: "gauge", label: "Evaluate" },
+		{ v: "playground/appraise", icon: "gauge", label: "Worth" },
+		{ v: "playground/evaluate", icon: "gauge", label: "Buy decision" },
 		// Admin-only for now — the underlying `/v1/admin/evaluations` route
 		// is gated by `requireAdmin`, and we hide the entry until the public
 		// surface is ready. Drop the `isAdmin` filter to roll it out.
@@ -1841,7 +1849,7 @@ const PG_TAB_ICONS = {
 	),
 };
 
-type PgTabId = "search" | "sourcing" | "evaluate" | "agent" | "deals";
+type PgTabId = "search" | "sourcing" | "appraise" | "evaluate" | "agent" | "deals";
 
 const PG_TABS: ReadonlyArray<ComposeTab<PgTabId>> = [
 	{
@@ -1857,8 +1865,14 @@ const PG_TABS: ReadonlyArray<ComposeTab<PgTabId>> = [
 		caption: "No keyword in mind? Browse by category to see what's selling there.",
 	},
 	{
+		id: "appraise",
+		label: "Worth",
+		icon: PG_TAB_ICONS.evaluate,
+		caption: "What's this product worth? Title or URL — flipagent resolves the catalog and reads the market.",
+	},
+	{
 		id: "evaluate",
-		label: "Evaluate",
+		label: "Buy decision",
 		icon: PG_TAB_ICONS.evaluate,
 		caption: "Pick a listing. Get its profit, sell-through, and a buy or skip call.",
 	},
@@ -1903,6 +1917,9 @@ function PlaygroundShell({
 			</div>
 			<div className={active === "sourcing" ? "" : "hidden"}>
 				<PlaygroundSourcing tabsProps={tabsProps} />
+			</div>
+			<div className={active === "appraise" ? "" : "hidden"}>
+				<PlaygroundAppraise tabsProps={tabsProps} />
 			</div>
 			<div className={active === "evaluate" ? "" : "hidden"}>
 				<PlaygroundEvaluate tabsProps={tabsProps} seed={evaluateSeed} />
@@ -2412,6 +2429,7 @@ function creditsForEndpoint(endpoint: string): number {
 	if (endpoint.startsWith("/v1/evaluate")) return 80;
 	if (endpoint.startsWith("/v1/items")) return 1;
 	if (endpoint.startsWith("/v1/products")) return 1;
+	if (endpoint.startsWith("/v1/marketplaces/ebay/catalog")) return 1;
 	if (endpoint.startsWith("/v1/categories")) return 1;
 	if (endpoint.startsWith("/v1/trends")) return 1;
 	return 0;
@@ -2601,7 +2619,7 @@ function ActivityPanel() {
 							{events.map((e) => {
 								const isExpanded = expanded.has(e.id);
 								const replayState = replays[e.id];
-								const replayable = e.endpoint.startsWith("/v1/items") || e.endpoint.startsWith("/v1/categories") || e.endpoint.startsWith("/v1/products");
+								const replayable = e.endpoint.startsWith("/v1/items") || e.endpoint.startsWith("/v1/categories") || e.endpoint.startsWith("/v1/products") || e.endpoint.startsWith("/v1/marketplaces/ebay/catalog");
 								return (
 									<Fragment key={e.id}>
 										<tr>

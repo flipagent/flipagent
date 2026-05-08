@@ -26,7 +26,7 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>.env</span></div>
 <pre><code>{`DATABASE_URL=postgres://user:pass@host:5432/flipagent`}</code></pre>
 				</div>
-				<p>That's enough for the scrape-only path: <code>/v1/items/search</code>, <code>/v1/items/:id</code>, <code>/v1/categories</code>, <code>/v1/products</code>, <code>/v1/evaluate</code>, <code>/v1/ship/*</code>, <code>/v1/health</code>. Keys are issued by a CLI script. No GitHub OAuth, no Stripe, no eBay developer account needed.</p>
+				<p>That's enough for the scrape-only path: <code>/v1/items/search</code>, <code>/v1/items/:id</code>, <code>/v1/categories</code>, <code>/v1/marketplaces/ebay/catalog</code>, <code>/v1/evaluate</code>, <code>/v1/ship/*</code>, <code>/v1/health</code>. Keys are issued by a CLI script. No GitHub OAuth, no Stripe, no eBay developer account needed.</p>
 
 				<div class="code">
 					<div class="code-head"><div class="dot-row"><span></span><span></span><span></span></div><span>shell</span></div>
@@ -164,7 +164,7 @@ LLM_PROVIDER=anthropic`}</code></pre>
 					<tbody>
 						<tr><td><code>/v1/items/*</code> (active read)</td><td>App</td><td>—</td></tr>
 						<tr><td><code>/v1/items/search?status=sold</code> (when Insights approved)</td><td>App</td><td>—</td></tr>
-						<tr><td><code>/v1/categories/*</code>, <code>/v1/products/*</code></td><td>App</td><td>—</td></tr>
+						<tr><td><code>/v1/categories/*</code>, <code>/v1/marketplaces/ebay/catalog/*</code></td><td>App</td><td>—</td></tr>
 						<tr><td><code>/v1/listings/*</code></td><td>User</td><td>Yes</td></tr>
 						<tr><td><code>/v1/sales/*</code> (orders, shipments)</td><td>User</td><td>Yes</td></tr>
 						<tr><td><code>/v1/payouts/*</code>, <code>/v1/transactions/*</code></td><td>User</td><td>Yes</td></tr>

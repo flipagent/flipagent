@@ -7,9 +7,9 @@
  * shell commands and the same shape `flipagent_create_purchase` already
  * uses (jobId + `poll_with` metadata).
  *
- *   flipagent_evaluate_item            — POST /v1/evaluate/jobs (returns immediately)
+ *   flipagent_evaluate_item            — POST /v1/evaluate/jobs (ProductRef in; returns immediately)
  *   flipagent_get_evaluate_job         — GET  /v1/evaluate/jobs/{id} (polled)
- *   flipagent_get_evaluation_pool      — GET  /v1/evaluate/{itemId}/pool (drill-down)
+ *   flipagent_get_evaluation_pool      — GET  /v1/evaluate/{itemId}/pool (drill-down; listing-mode only)
  */
 
 import { EvaluateRequest as EvaluateListingInputSchema, type EvaluateRequest } from "@flipagent/types";
@@ -21,7 +21,7 @@ import { uiResource } from "../ui-resource.js";
 export { EvaluateListingInputSchema as evaluateListingInput };
 
 export const evaluateListingDescription =
-	'Score one listing as a flip opportunity (the headline decision tool). Calls POST /v1/evaluate/jobs. **Async** — heavy server-side work (detail fetch + sold/active search + LLM same-product filter + scoring) takes 10–60s typically, longer with scrape fallback. Returns **immediately** with a `jobId`; poll `flipagent_get_evaluate_job` until terminal. **When to use** — "should I buy this?" / "what should I bid?" / "what\'s a fair list price?". For batch screening, fire many of these in parallel — each returns a jobId immediately, then poll all jobs in parallel. **Inputs** — `itemId` (12-digit legacy, `v1|<n>|<v>` form, or full eBay URL — same grammar as `flipagent_create_purchase`). For multi-SKU listings (sneakers, sized clothing) include the variation. Optional `lookbackDays` (1–90, default 90), `soldLimit` (1–200, default 50), `opts.{forwarder, minNetCents, outboundShippingCents}`. **Output (immediate)** — `{ jobId, status: "queued", poll_with: "flipagent_get_evaluate_job", terminal_states: ["completed", "failed", "cancelled"] }`. **Polling** — wait ~5–10s, call `flipagent_get_evaluate_job(jobId)`, repeat until status is terminal. Typical evaluations finish in 10–30s; some take 60s+. **Cost** — 80 credits on submit (this call); polling and pool reads are free. **Prereqs** — `FLIPAGENT_API_KEY`; no eBay OAuth needed. **Example** — `{ itemId: "v1|234567890123|0", opts: { forwarder: { destState: "NY", weightG: 250 }, minNetCents: 1000 } }`.';
+	'Product/listing intelligence — the headline tool. Calls POST /v1/evaluate/jobs. **Async** — heavy server-side work (catalog resolve + sold/active search + LLM same-product filter + scoring) takes 10–60s typically, longer with scrape fallback. Returns immediately with a `jobId`; poll `flipagent_get_evaluate_job` until terminal. **When to use** — "should I buy this?" / "what\'s this product worth?" / "what should I bid?" / "what\'s a fair list price?". For batch screening, fire many in parallel. **Inputs** — `ref` is one of three discriminated kinds: `{ kind: "id", productId, variantId? }` for an already-resolved flipagent Product; `{ kind: "external", marketplace: "ebay_us", listingId }` for a marketplace listing (12-digit legacy / `v1|<n>|<v>` / full eBay URL all accepted; auto-creates Product on miss); `{ kind: "query", q, hints? }` for free text. Optional `lookbackDays` (1–90, default 90), `soldLimit` (1–200, default 50), `opts.{forwarder, minNetCents, outboundShippingCents}`. **Output** — full MarketView digest: `{ product, variant, anchor, market, sold, active, byCondition, byVariant, listingFloor, filter, returns, meta, suspiciousIds, …pools }` plus `evaluation` (rating / expectedNet / bidCeiling / risk) **only when ref.kind === "external"** — for `query` / `id` inputs `evaluation` is `null` (no specific listing to score). **Cost** — 80 credits on submit; polling and pool reads are free. **Prereqs** — `FLIPAGENT_API_KEY`; no eBay OAuth needed. **Examples** — `{ ref: { kind: "external", marketplace: "ebay_us", listingId: "234567890123" }, opts: { forwarder: { destState: "NY", weightG: 250 } } }`, `{ ref: { kind: "query", q: "Seiko SKX007 black dial" } }`.';
 
 export async function evaluateListingExecute(config: Config, args: Record<string, unknown>): Promise<unknown> {
 	const client = getClient(config);

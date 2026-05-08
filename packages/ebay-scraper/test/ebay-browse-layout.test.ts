@@ -43,14 +43,14 @@ describe("eBay browse-layout (/b/_/<id>) parser", () => {
 	it("extracts cards from the inline $brwweb_C hydration script", async () => {
 		const html = await readFile(join(here, "fixtures", "ebay-browse-layout.html"), "utf8");
 		const cards = extractBrowseLayoutCards(html);
-		// Fixture has 4 cards (3 real + 1 filler without listingId).
-		expect(cards.length).toBe(4);
+		// Fixture has 5 cards (4 real + 1 filler without listingId).
+		expect(cards.length).toBe(5);
 	});
 
 	it("parses richest card to REST item_summary shape with marketingPrice + conditionId", async () => {
 		const html = await readFile(join(here, "fixtures", "ebay-browse-layout.html"), "utf8");
 		const items = parseEbayBrowseLayoutHtml(html);
-		expect(items).toHaveLength(3); // filler skipped
+		expect(items).toHaveLength(4); // filler skipped
 		const iphone = items.find((i) => i.legacyItemId === "100000000001");
 		if (!iphone) throw new Error("expected iphone card");
 
@@ -106,6 +106,30 @@ describe("eBay browse-layout (/b/_/<id>) parser", () => {
 		expect(lems.price?.value).toBe("150.00");
 		expect(lems.totalSoldQuantity).toBe(25);
 		expect(lems.shippingOptions?.[0]?.shippingCost?.value).toBe("30.00");
+	});
+
+	it("extracts auction bidCount + itemEndDate + AUCTION buying option from timer + bidCount fields", async () => {
+		// Auction-only category-browse pages ship `bidCount` (TextualDisplay
+		// "N bid(s)") + `timer.endTime.value` (ISO 8601 close time) per
+		// card. Old parser missed both — and worse, misclassified auctions
+		// with "or Best Offer" purchaseOptions text as FIXED_PRICE because
+		// it text-matched on `bid` in poText. Fix: bidCount presence is
+		// the deterministic auction signal; text regex on poText is only
+		// used for BEST_OFFER detection.
+		const html = await readFile(join(here, "fixtures", "ebay-browse-layout.html"), "utf8");
+		const items = parseEbayBrowseLayoutHtml(html);
+		const auc = items.find((i) => i.legacyItemId === "100000000004");
+		if (!auc) throw new Error("expected auction card");
+		expect(auc.bidCount).toBe(7);
+		expect(auc.itemEndDate).toBe("2026-05-08T12:34:56.000Z");
+		// AUCTION + BEST_OFFER stack — auction listings can also accept
+		// BIN/Best Offer overlays. The BEST_OFFER flag still derives from
+		// purchaseOptions text.
+		expect(auc.buyingOptions).toEqual(["AUCTION", "BEST_OFFER"]);
+		// Auctions mirror displayPrice into currentBidPrice so REST/SRP/
+		// browse-layout consumers all read the same shape.
+		expect(auc.currentBidPrice?.value).toBe("225.00");
+		expect(auc.price?.value).toBe("225.00");
 	});
 
 	it("skips cards without listingId (filler placeholders)", async () => {

@@ -949,6 +949,66 @@
 	line-height: 14px;
 }
 
+/* Inline shipping fragment — rides on the price span as `$42 + $8 ship`
+ * / `$42 free ship` so price and landed-cost read as one unit. Slightly
+ * muted so the bare price still reads as the primary number. */
+.pg-result-matches-ship {
+	color: var(--text-3);
+	font-size: 10.5px;
+}
+
+/* Line-2 trust strip — AG seal, Top Rated, seller %, ships-from. Sits
+ * under the facts meta and only renders when at least one signal is
+ * present, so the median row stays one meta line tall. Slightly larger
+ * top-gap visually separates the two lines without a divider. */
+.pg-result-matches-trust {
+	margin-top: 2px;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.pg-result-matches-trust-chip {
+	font-size: 10px;
+	letter-spacing: 0.02em;
+	color: var(--text-2);
+	border: 1px solid var(--border-faint);
+	border-radius: 3px;
+	padding: 0 5px;
+	line-height: 14px;
+	white-space: nowrap;
+}
+
+/* Top Rated chip — eBay's TRS program is a quality / shipping reliability
+ * signal. Subtle warm tint distinguishes it from the neutral seller %
+ * chip, but it's still quiet enough not to compete with AG's blue seal. */
+.pg-result-matches-trust-chip--trs {
+	color: #8a5a00;
+	border-color: rgba(180, 120, 0, 0.35);
+	background: rgba(255, 196, 87, 0.12);
+}
+
+/* Seller % chip risk states — caution (sub-95% or thin feedback) and
+ * warn (zero feedback / banned-and-relisted shape) mirror the tiers in
+ * sellerMetaText so the row, drawer, and Evaluate matches list flag the
+ * same listings. Default `data-level="ok"` keeps the neutral chip frame. */
+.pg-result-matches-trust-chip[data-level="caution"] {
+	color: #b85c00;
+	border-color: rgba(184, 92, 0, 0.4);
+	background: rgba(255, 168, 64, 0.08);
+}
+.pg-result-matches-trust-chip[data-level="warn"] {
+	color: #b91c1c;
+	border-color: rgba(185, 28, 28, 0.45);
+	background: rgba(185, 28, 28, 0.06);
+}
+
+/* Ships-from-non-US chip — informational, not a flag. Faint frame so it
+ * doesn't read as a warning by itself; it's a fact the buyer should
+ * know, and the seller % chip carries the actual risk read. */
+.pg-result-matches-trust-chip--origin {
+	color: var(--text-3);
+}
+
 /* Authenticity Guarantee badge — visually mirrors eBay's own AG chip
  * (scalloped blue seal + "Authenticity Guarantee" wordmark) so resellers
  * recognise it instantly. Inline icon + text, no chip frame, sits in
@@ -967,10 +1027,12 @@
 	display: block;
 }
 
-/* Rejected rows: dim the AG seal alongside the thumb / title so the
- * row reads as a coherent rejection — without this the bright blue
- * seal kept the row visually "hot" while everything around it muted. */
-.pg-result-matches-row--reject .pg-result-matches-ag {
+/* Rejected rows: dim the AG seal + every line-2 trust chip alongside
+ * the thumb / title so the row reads as a coherent rejection —
+ * without this the bright blue seal / colored seller % kept the row
+ * visually "hot" while everything around it muted. */
+.pg-result-matches-row--reject .pg-result-matches-ag,
+.pg-result-matches-row--reject .pg-result-matches-trust-chip {
 	opacity: 0.55;
 	filter: grayscale(0.4);
 }

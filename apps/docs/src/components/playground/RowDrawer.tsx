@@ -77,10 +77,10 @@ export function RowDrawer({
 
 	useEffect(() => {
 		// When an eval is running or already complete, the pipeline's first
-		// step (`detail`) populates `evalState.outcome.item` with the same
+		// step (`detail`) populates `evalState.outcome.anchor` with the same
 		// data this standalone fetch would return — same server cache key
 		// either way. Skip the duplicate browser→server round-trip and
-		// merge `outcome.item` into the rendered card instead.
+		// merge `outcome.anchor` into the rendered card instead.
 		if (evalState.status === "running" || evalState.status === "complete") {
 			detailAbortRef.current?.abort();
 			detailAbortRef.current = null;
@@ -147,13 +147,13 @@ export function RowDrawer({
 		cancelEvalForItem(item.itemId);
 	}
 
-	// When eval has produced (or is producing) an `outcome.item`, prefer
+	// When eval has produced (or is producing) an `outcome.anchor`, prefer
 	// it over the standalone-fetched `detail` — it's the same server data,
 	// but having a single source of truth here means the card and the
 	// EvaluateResultBody never disagree mid-stream.
 	const evalItem =
 		evalState.status === "running" || evalState.status === "complete"
-			? evalState.outcome.item
+			? evalState.outcome.anchor
 			: null;
 	const merged = useMemo<ItemDetail>(
 		() => ({ ...item, ...(detail ?? {}), ...(evalItem ?? {}) }),

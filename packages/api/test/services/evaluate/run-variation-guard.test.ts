@@ -38,9 +38,9 @@ vi.mock("../../../src/services/items/sold.js", () => ({
 	searchSoldListings: (...args: unknown[]) => searchSoldMock(...args),
 }));
 
-import { EvaluateError } from "../../../src/services/evaluate/pipeline.js";
 import { runEvaluatePipeline } from "../../../src/services/evaluate/run.js";
 import { MultiVariationParentError } from "../../../src/services/items/errors.js";
+import { EvaluateError } from "../../../src/services/market-data/pipeline.js";
 
 const VARIATIONS: EbayVariation[] = [
 	{
@@ -75,7 +75,7 @@ describe("runEvaluatePipeline variation_required", () => {
 
 		let caught: unknown;
 		try {
-			await runEvaluatePipeline({ itemId: "357966166544" });
+			await runEvaluatePipeline({ ref: { kind: "external", marketplace: "ebay_us", listingId: "357966166544" } });
 		} catch (err) {
 			caught = err;
 		}
@@ -103,7 +103,7 @@ describe("runEvaluatePipeline variation_required", () => {
 
 		let caught: unknown;
 		try {
-			await runEvaluatePipeline({ itemId: "357966166544" });
+			await runEvaluatePipeline({ ref: { kind: "external", marketplace: "ebay_us", listingId: "357966166544" } });
 		} catch (err) {
 			caught = err;
 		}
@@ -131,7 +131,9 @@ describe("runEvaluatePipeline variation_required", () => {
 
 		let caught: unknown;
 		try {
-			await runEvaluatePipeline({ itemId: "v1|357966166544|626578342371" });
+			await runEvaluatePipeline({
+				ref: { kind: "external", marketplace: "ebay_us", listingId: "v1|357966166544|626578342371" },
+			});
 		} catch (err) {
 			caught = err;
 		}

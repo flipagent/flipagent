@@ -323,6 +323,20 @@
       "when": 1779696000005,
       "tag": "0045_marketplace_ebay_us",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1779696000006,
+      "tag": "0046_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1779696000007,
+      "tag": "0047_market_view_cache",
+      "breakpoints": true
     }
   ]
 }

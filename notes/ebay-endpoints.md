@@ -1163,3 +1163,52 @@ Field-diff: improved `$ref` follower to dive one level into nested response obje
 - `notes/ebay-field-diff.json` (NEW — field-level spec ↔ wrapper diff raw output)
 - `references/ebay-mcp/docs/_mirror/*` (NEW — 35 OAS3 specs sourced from `github.com/hendt/ebay-api/specs/*` to fill gaps where eBay's dev portal blocks programmatic download; covers Buy*, Sell Finances/Logistics/Stores v2/Feed, Commerce Charity/Catalog/Taxonomy/Media, post-order/v2)
 
+## Section 9: Phantom quota — `getRateLimits` lies about LR access (2026-05-07)
+
+`GET /developer/analytics/v1_beta/rate_limit` (= `flipagent_get_quota`,
+= `/v1/me/quota`) returns full numeric `limit` / `remaining` for **every
+resource registered in eBay's metadata store**, regardless of whether
+the calling app is actually approved for that resource's program. The
+dashboard is the program **registry**, not the app's effective grant
+list. Treat any LR / app-approval-gated resource as "404 confirmed not
+authorized" until a live probe says otherwise.
+
+**Re-verified live 2026-05-07** with `ONLY=buy-feed` against
+`/buy/feed/v1_beta/item` (app credential, single call):
+`403 errorId=1100 ("Insufficient permissions to access the API")`.
+
+Same phantom pattern across the LR set:
+
+| Resource | `getRateLimits` shows | Live probe | Reality |
+|---|---|---|---|
+| `buy.feed.v1` | 75,000 / day | 403 errorId 1100 | Buy Feed Limited Release — not approved |
+| `buy.feed.snapshot` | 75,000 / day | (same family) | Buy Feed Limited Release — not approved |
+| `buy.deal.{event,event_item,deal_item}` | (no limit field) | 403 errorId 1100 | Deals API — not approved (no quota row at all is a tell) |
+| `sell.logistics` | 2,500,000 / day | 403 errorId 1100 | Scope name not in eBay's published prod/sandbox catalog; API itself gated |
+| `buy.offer.bidding` | 5,000 / day | 403 errorId 1100 | `buy.offer.auction` scope is sandbox-only in prod catalog; LR app-approval needed |
+| `buy.order` | 5,000 / day | 404 (no JSON envelope on session GET) | Buy Order Limited Release; gated upstream of the bidding scope by `EBAY_ORDER_APPROVED` |
+| `buy.marketplaceinsight` | 5,000 / day | (scope absent) | We don't request `buy.marketplace.insights`; flagged via `EBAY_INSIGHTS_APPROVED`. Calling without scope returns invalid_scope before any rate-limit decrement. |
+| `sell.negotiation` | (no limit field) | not probed | Best Offer auto-negotiation — not approved (missing limit field is the tell) |
+
+**Two distinct "not authorized" signals in the quota response:**
+1. **Numeric `limit` present + `403 errorId 1100` on call** — most common.
+   eBay published a default per-resource cap in their metadata, but the
+   app-credential isn't bound to the program. Always live-probe.
+2. **`limit` field absent entirely on the resource row** — stronger
+   signal of "no program registration at all" (e.g. `buy.deal.event`,
+   `sell.negotiation`). These almost certainly 403, but still worth
+   probing once to confirm.
+
+**Operational rule:** never trust `flipagent_get_quota` numbers alone
+for the LR set. Before claiming an API has headroom, run
+`ONLY=<tag> node --env-file=.env --import tsx scripts/ebay-endpoint-probe.ts`
+once and confirm 200/204. The probe burns one call against the real
+quota; if the call 403s, the quota dashboard never decrements (hence
+the phantom).
+
+**Action items:** Buy Feed / Buy Order / Buy Offer (auction) / Sell
+Logistics / Sell Stores — applications go through eBay developer
+portal → "Application Growth Check" → respective program form.
+DPLA-2025-06 (no AI training on REST data) compliance language is now
+mandatory in any Buy-API form; expect 2–6 wk turnaround.
+

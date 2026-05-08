@@ -70,7 +70,7 @@ describe("creditsForCall — transport-uniform endpoint pricing", () => {
 	it("items/products/categories/trends — uniform 1 credit per call (transport hidden from user)", () => {
 		expect(creditsForCall({ endpoint: "/v1/items/search", source: "scrape" })).toBe(1);
 		expect(creditsForCall({ endpoint: "/v1/items/search", source: "rest" })).toBe(1);
-		expect(creditsForCall({ endpoint: "/v1/products/abc", source: "scrape" })).toBe(1);
+		expect(creditsForCall({ endpoint: "/v1/marketplaces/ebay/catalog/abc", source: "scrape" })).toBe(1);
 		expect(creditsForCall({ endpoint: "/v1/categories/tree", source: "rest" })).toBe(1);
 		expect(creditsForCall({ endpoint: "/v1/trends/popular", source: "scrape" })).toBe(1);
 	});
@@ -114,7 +114,7 @@ describe("worstCaseCreditsForEndpoint — pre-charge gate", () => {
 
 	it("items/products/categories/trends worst case = 1 (transport-uniform)", () => {
 		expect(worstCaseCreditsForEndpoint("/v1/items/search")).toBe(1);
-		expect(worstCaseCreditsForEndpoint("/v1/products/123")).toBe(1);
+		expect(worstCaseCreditsForEndpoint("/v1/marketplaces/ebay/catalog/123")).toBe(1);
 		expect(worstCaseCreditsForEndpoint("/v1/categories/tree")).toBe(1);
 		expect(worstCaseCreditsForEndpoint("/v1/trends/popular")).toBe(1);
 	});

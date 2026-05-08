@@ -24,6 +24,17 @@ const Schema = Type.Object({
 	// (https://dev.flipagent.dev/v1/notifications/ebay/inbound). In prod:
 	// the api's own external URL with /v1/notifications/ebay/inbound.
 	EBAY_NOTIFY_URL: Type.Optional(Type.String()),
+	// Marketplace Account Deletion/Closure compliance endpoint —
+	// `/v1/ebay/notifications/account-deletion` (path is the one registered
+	// in the eBay developer portal under Alerts & Notifications →
+	// Marketplace Account Deletion). Verification token is a random 32–80
+	// char string ([A-Za-z0-9_-]) we generate and paste into the same form;
+	// eBay then mirrors it back during the GET handshake. Endpoint URL is
+	// the full HTTPS URL registered (used in the hash). When either is
+	// unset, the GET handshake returns 503 and POSTs are still 200-acked
+	// (eBay won't retry) but get logged as "not_configured".
+	EBAY_DELETION_VERIFICATION_TOKEN: Type.Optional(Type.String()),
+	EBAY_DELETION_ENDPOINT_URL: Type.Optional(Type.String()),
 	// Per-route data-source dispatch. Caller-explicit, no fallback chain —
 	// the API picks exactly one primitive per request and surfaces it via
 	// X-Flipagent-Source. Set per route to manage Browse REST quota
@@ -88,11 +99,11 @@ const Schema = Type.Object({
 	// 2026-05-03 that USER OAuth works without this flag, so any
 	// connected eBay account hits Catalog REST automatically — this flag
 	// only controls the app-credential fallback path used when an
-	// `/v1/products/*` call comes without a connected api-key (rare;
+	// `/v1/marketplaces/ebay/catalog/*` call comes without a connected api-key (rare;
 	// every flipagent api-key path requires an api-key). When unset and
-	// no user OAuth is available, `/v1/products/{epid}` falls back to
+	// no user OAuth is available, `/v1/marketplaces/ebay/catalog/{epid}` falls back to
 	// scraping `/p/{epid}` + a representative listing and emits the same
-	// `Product` shape; `/v1/products/search` 503s.
+	// `Product` shape; `/v1/marketplaces/ebay/catalog/search` 503s.
 	EBAY_CATALOG_APPROVED: Type.Boolean({ default: false }),
 	// Better-Auth + GitHub OAuth. All three required to enable session auth
 	// (the /api/auth/* handler + /v1/me/* routes return 503 if not set).
@@ -127,18 +138,27 @@ const Schema = Type.Object({
 	// When unset, "Forgot your password?" surfaces a not-configured message.
 	RESEND_API_KEY: Type.Optional(Type.String()),
 	EMAIL_FROM: Type.String({ default: "flipagent <noreply@flipagent.dev>" }),
-	// Managed-scraping vendor for `EBAY_*_SOURCE=scrape`. We POST a URL,
-	// the vendor returns rendered HTML — whatever rendering / IP routing
-	// they perform on their side is their product, under their own
-	// upstream-marketplace ToS. flipagent's own code is just an HTTPS
-	// client; it does not implement residential-proxy rotation, UA
-	// shuffling, or any other vendor-side concern.
-	//
-	// Today only `oxylabs` is wired. Adding a vendor = drop an adapter
-	// at `services/ebay/scrape/scraper-api/<vendor>.ts` and a case in the dispatcher.
-	SCRAPER_API_VENDOR: Type.Union([Type.Literal("oxylabs")], { default: "oxylabs" }),
+	// Managed-scraping vendor for `EBAY_*_SOURCE=scrape`. Two wired vendors:
+	//   `oxylabs` — POST a URL, get rendered HTML back; we then run our
+	//               own parsers (`@flipagent/ebay-scraper`) over it. Auth:
+	//               SCRAPER_API_USERNAME / SCRAPER_API_PASSWORD. Whatever
+	//               rendering / IP routing Oxylabs performs is their
+	//               product, under their own upstream-marketplace ToS —
+	//               flipagent is just an HTTPS client and does no UA
+	//               rotation / fingerprinting itself.
+	//   `sprd`    — peer flipagent-shape API at api-dev.sprd.app (Azure
+	//               App Service, TLS). Returns already-parsed JSON in the
+	//               same Browse / Catalog wire shapes we emit, so the
+	//               high-level `scrape*()` entry points short-circuit the
+	//               HTML→parser path. Auth: SPRD_API_KEY (sent as
+	//               `x-api-key`); base URL via SPRD_API_URL.
+	// Adding a vendor = drop an adapter at
+	// `services/ebay/scrape/scraper-api/<vendor>.ts` and a case in the dispatcher.
+	SCRAPER_API_VENDOR: Type.Union([Type.Literal("oxylabs"), Type.Literal("sprd")], { default: "oxylabs" }),
 	SCRAPER_API_USERNAME: Type.Optional(Type.String()),
 	SCRAPER_API_PASSWORD: Type.Optional(Type.String()),
+	SPRD_API_URL: Type.String({ default: "https://api-dev.sprd.app" }),
+	SPRD_API_KEY: Type.Optional(Type.String()),
 	// Stripe billing — all five required to enable /v1/billing/*. When any
 	// are missing, those routes return 503 billing_not_configured.
 	// HOBBY → $19, STANDARD → $99, GROWTH → $399.
@@ -213,6 +233,8 @@ const raw = {
 	EBAY_RU_NAME: process.env.EBAY_RU_NAME,
 	EBAY_DEV_ID: process.env.EBAY_DEV_ID,
 	EBAY_NOTIFY_URL: process.env.EBAY_NOTIFY_URL,
+	EBAY_DELETION_VERIFICATION_TOKEN: process.env.EBAY_DELETION_VERIFICATION_TOKEN,
+	EBAY_DELETION_ENDPOINT_URL: process.env.EBAY_DELETION_ENDPOINT_URL,
 	EBAY_LISTINGS_SOURCE: process.env.EBAY_LISTINGS_SOURCE,
 	EBAY_DETAIL_SOURCE: process.env.EBAY_DETAIL_SOURCE,
 	EBAY_SOLD_SOURCE: process.env.EBAY_SOLD_SOURCE,
@@ -237,6 +259,8 @@ const raw = {
 	SCRAPER_API_VENDOR: process.env.SCRAPER_API_VENDOR ?? "oxylabs",
 	SCRAPER_API_USERNAME: process.env.SCRAPER_API_USERNAME,
 	SCRAPER_API_PASSWORD: process.env.SCRAPER_API_PASSWORD,
+	SPRD_API_URL: process.env.SPRD_API_URL ?? "https://api-dev.sprd.app",
+	SPRD_API_KEY: process.env.SPRD_API_KEY,
 	STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
 	STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
 	STRIPE_PRICE_HOBBY: process.env.STRIPE_PRICE_HOBBY,
@@ -273,6 +297,8 @@ export const config = decoded as {
 	EBAY_RU_NAME?: string;
 	EBAY_DEV_ID?: string;
 	EBAY_NOTIFY_URL?: string;
+	EBAY_DELETION_VERIFICATION_TOKEN?: string;
+	EBAY_DELETION_ENDPOINT_URL?: string;
 	EBAY_LISTINGS_SOURCE?: "rest" | "scrape" | "bridge";
 	EBAY_DETAIL_SOURCE?: "rest" | "scrape" | "bridge";
 	EBAY_SOLD_SOURCE?: "rest" | "scrape" | "bridge";
@@ -294,9 +320,11 @@ export const config = decoded as {
 	GOOGLE_CLIENT_SECRET?: string;
 	RESEND_API_KEY?: string;
 	EMAIL_FROM: string;
-	SCRAPER_API_VENDOR: "oxylabs";
+	SCRAPER_API_VENDOR: "oxylabs" | "sprd";
 	SCRAPER_API_USERNAME?: string;
 	SCRAPER_API_PASSWORD?: string;
+	SPRD_API_URL: string;
+	SPRD_API_KEY?: string;
 	STRIPE_SECRET_KEY?: string;
 	STRIPE_WEBHOOK_SECRET?: string;
 	STRIPE_PRICE_HOBBY?: string;
@@ -359,6 +387,17 @@ export function isEbayNotificationsConfigured(): boolean {
 	return Boolean(config.EBAY_CLIENT_ID && config.EBAY_CLIENT_SECRET && config.EBAY_DEV_ID && config.EBAY_NOTIFY_URL);
 }
 
+/**
+ * True when the Marketplace Account Deletion compliance endpoint
+ * (`/v1/ebay/notifications/account-deletion`) has both the verification
+ * token and the registered endpoint URL set. eBay marks the application
+ * as down 24h after the endpoint stops 200-acking and disables keys
+ * after 30 days non-compliance.
+ */
+export function isEbayDeletionConfigured(): boolean {
+	return Boolean(config.EBAY_DELETION_VERIFICATION_TOKEN && config.EBAY_DELETION_ENDPOINT_URL);
+}
+
 /** True when Better-Auth + GitHub OAuth are fully configured. */
 export function isAuthConfigured(): boolean {
 	return Boolean(config.BETTER_AUTH_SECRET && config.GITHUB_CLIENT_ID && config.GITHUB_CLIENT_SECRET);
@@ -371,6 +410,7 @@ export function isEmailConfigured(): boolean {
 
 /** True when managed-scraping vendor creds are set — required for `EBAY_*_SOURCE=scrape`. */
 export function isScraperApiConfigured(): boolean {
+	if (config.SCRAPER_API_VENDOR === "sprd") return Boolean(config.SPRD_API_KEY);
 	return Boolean(config.SCRAPER_API_USERNAME && config.SCRAPER_API_PASSWORD);
 }
 

@@ -335,11 +335,59 @@ function extractEpidAndVariation(card: Record<string, unknown>): { epid?: string
 	return { epid, variationId };
 }
 
-function extractBuyingOptions(card: Record<string, unknown>): EbayItemSummary["buyingOptions"] | undefined {
+/**
+ * Auction bid count — eBay ships it as a `TextualDisplayValue` with
+ * text `"0 bids"`, `"1 bid"`, `"12 bids"`. Parse the leading integer.
+ * Returns `undefined` when the field is absent (FP listings) — the
+ * caller treats absence as "not an auction".
+ */
+function extractBidCount(card: Record<string, unknown>): number | undefined {
+	const text = textJoin(card.bidCount);
+	if (!text) return undefined;
+	const m = /^(\d+(?:,\d+)*)\s+bid/i.exec(text);
+	if (!m) return undefined;
+	return Number.parseInt(m[1]!.replace(/,/g, ""), 10);
+}
+
+/**
+ * Auction end timestamp — `card.timer.endTime.value` carries the ISO 8601
+ * close time directly. `card.displayTime.value.value` mirrors the same
+ * value as a fallback for cards that omit `timer` (rare). Returns
+ * `undefined` for FP listings — they have no end date.
+ */
+function extractItemEndDate(card: Record<string, unknown>): string | undefined {
+	const timer = card.timer;
+	if (isObject(timer)) {
+		const end = timer.endTime;
+		if (isObject(end) && typeof end.value === "string" && end.value) return end.value;
+	}
+	const dt = card.displayTime;
+	if (isObject(dt)) {
+		const v = dt.value;
+		if (isObject(v) && typeof v.value === "string" && v.value) return v.value;
+	}
+	return undefined;
+}
+
+/**
+ * Buying-format classification. The load-bearing signal is `bidCount`
+ * presence — every auction card carries it, every FP card omits it.
+ * The textual `purchaseOptions` row is unreliable: auction listings
+ * with Buy-It-Now-or-Best-Offer overlays render as `"or Best Offer"`
+ * with no `"bid"` substring, so a regex-on-text approach silently
+ * misclassifies them as FIXED_PRICE. `bidCount` is the deterministic
+ * fix — passed in by the caller so we don't re-parse it.
+ *
+ * BEST_OFFER stacks with the dominant format on FP listings; an auction
+ * also accepting Best Offer (rare but legal) keeps both flags.
+ */
+function extractBuyingOptions(
+	card: Record<string, unknown>,
+	hasBids: boolean,
+): EbayItemSummary["buyingOptions"] | undefined {
 	const options: ("AUCTION" | "FIXED_PRICE" | "BEST_OFFER")[] = [];
 	const poText = (textJoin(card.purchaseOptions) ?? "").toLowerCase();
-	const bidText = (textJoin(card.bidStatus) ?? "").toLowerCase();
-	if (/bid|auction/.test(poText) || /bid/.test(bidText)) {
+	if (hasBids) {
 		options.push("AUCTION");
 	} else if (card.displayPrice) {
 		options.push("FIXED_PRICE");
@@ -457,8 +505,21 @@ export function browseLayoutCardToSummary(card: unknown): BrowseLayoutItem | nul
 	if (imgs.image) out.image = imgs.image;
 	if (imgs.thumbnailImages) out.thumbnailImages = imgs.thumbnailImages;
 
-	const buyingOptions = extractBuyingOptions(card);
+	const bidCount = extractBidCount(card);
+	const buyingOptions = extractBuyingOptions(card, bidCount !== undefined);
 	if (buyingOptions) out.buyingOptions = buyingOptions;
+	if (bidCount !== undefined) {
+		out.bidCount = bidCount;
+		// Mirror the displayed price into `currentBidPrice` for auctions,
+		// matching the keyword-SRP parser's behaviour. eBay's wire shape
+		// already does this on REST (Browse summary returns the same value
+		// in both `price` and `currentBidPrice` for AUCTION listings), so
+		// auction-aware downstream readers don't have to special-case
+		// browse-layout vs SRP vs REST.
+		if (out.price) out.currentBidPrice = out.price;
+	}
+	const endDate = extractItemEndDate(card);
+	if (endDate) out.itemEndDate = endDate;
 
 	const search = card.__search;
 	const wc = extractWatchCount(search);

@@ -107,7 +107,7 @@ const GROUPS: Group[] = [
 				a: (
 					<>
 						Sourcing reads against eBay's catalog (<code>/v1/items</code>,{" "}
-						<code>/v1/categories</code>, <code>/v1/products</code>) cost 1 credit per call.{" "}
+						<code>/v1/categories</code>, <code>/v1/marketplaces/ebay/catalog</code>) cost 1 credit per call.{" "}
 						<code>/v1/evaluate</code> costs 80 because one call answers "should I flip this?".
 						It pulls the actual recent sales of the same product and works out the profit,
 						demand, and risk for you. Agent chat (<code>/v1/agent/chat</code>) costs per turn

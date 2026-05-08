@@ -81,6 +81,7 @@ export type EvaluateErrorCode =
 	| "validation_failed"
 	| "item_not_found"
 	| "no_title"
+	| "no_market"
 	| "not_enough_sold"
 	| "no_candidates"
 	| "search_failed"

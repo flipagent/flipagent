@@ -70,15 +70,15 @@ export async function listFeaturedEvaluations(opts: { limit?: number } = {}): Pr
 	for (const row of rows) {
 		if (out.length >= limit) break;
 		const result = row.result as EvaluateResponse | null;
-		const item = result?.item;
-		const itemId = item?.itemId;
-		const title = item?.title;
-		const itemWebUrl = item?.itemWebUrl;
+		const anchor = result?.anchor;
+		const itemId = anchor?.itemId;
+		const title = anchor?.title;
+		const itemWebUrl = anchor?.itemWebUrl;
 		const completedAt = row.completedAt;
 		if (!itemId || !title || !itemWebUrl || !completedAt) continue;
 		if (seen.has(itemId)) continue;
 		seen.add(itemId);
-		const image = pickImage(item);
+		const image = pickImage(anchor);
 		out.push({
 			itemId,
 			title,
@@ -90,8 +90,8 @@ export async function listFeaturedEvaluations(opts: { limit?: number } = {}): Pr
 	return out;
 }
 
-function pickImage(item: EvaluateResponse["item"] | undefined): string | undefined {
-	if (!item) return undefined;
-	if (item.image?.imageUrl) return item.image.imageUrl;
-	return item.additionalImages?.[0]?.imageUrl;
+function pickImage(anchor: NonNullable<EvaluateResponse["anchor"]> | undefined): string | undefined {
+	if (!anchor) return undefined;
+	if (anchor.image?.imageUrl) return anchor.image.imageUrl;
+	return anchor.additionalImages?.[0]?.imageUrl;
 }

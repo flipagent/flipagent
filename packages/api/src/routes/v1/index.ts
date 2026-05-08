@@ -38,6 +38,7 @@ import { capabilitiesRoute } from "./capabilities.js";
 import { categoriesRoute } from "./categories.js";
 import { connectRoute } from "./connect.js";
 import { disputesRoute } from "./disputes.js";
+import { ebayNotificationsRoute } from "./ebay-notifications.js";
 import { evaluateRoute } from "./evaluate.js";
 import { feedbackRoute } from "./feedback.js";
 import { forwarderRoute } from "./forwarder.js";
@@ -48,6 +49,7 @@ import { keysRoute } from "./keys.js";
 import { labelsRoute } from "./labels.js";
 import { listingsRoute } from "./listings.js";
 import { locationsRoute } from "./locations.js";
+import { ebayCatalogRoute } from "./marketplaces/ebay-catalog.js";
 import { meRoute } from "./me.js";
 import { meOverviewRoute } from "./me-overview.js";
 import { mediaRoute } from "./media.js";
@@ -72,6 +74,7 @@ export const v1Routes = new Hono();
 v1Routes.route("/items", itemsRoute);
 v1Routes.route("/categories", categoriesRoute);
 v1Routes.route("/products", productsRoute);
+v1Routes.route("/marketplaces/ebay/catalog", ebayCatalogRoute);
 v1Routes.route("/evaluate", evaluateRoute);
 v1Routes.route("/jobs", jobsRoute);
 
@@ -134,6 +137,13 @@ v1Routes.route("/admin", adminRoute);
 // pipe, three regulatory regimes. Counter-notice (§512(g)) hangs off the
 // same router. Unauthenticated by design — requesters don't need a key.
 v1Routes.route("/takedown", takedownRoute);
+
+// `/ebay/notifications/*` carries eBay-required compliance endpoints
+// whose URLs are pinned by the eBay developer portal (Marketplace
+// Account Deletion today). Path deviates from the `/v1/<resource>`
+// convention because eBay registered this exact URL — see
+// routes/v1/ebay-notifications.ts.
+v1Routes.route("/ebay/notifications", ebayNotificationsRoute);
 
 // ---- Agent (preview) ---------------------------------------------------
 // `/agent/*` is the chat surface backed by OpenAI's Responses API.

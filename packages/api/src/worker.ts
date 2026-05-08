@@ -65,7 +65,7 @@ async function fetchApiKey(id: string): Promise<ApiKey | null> {
 }
 
 interface EvaluateParams {
-	itemId: string;
+	ref: never;
 	lookbackDays?: number;
 	soldLimit?: number;
 	opts?: Record<string, unknown>;
@@ -113,7 +113,7 @@ async function runOneJob(job: ComputeJob): Promise<void> {
 				workerId,
 				run: (onStep, cancelCheck) =>
 					runEvaluatePipeline({
-						itemId: params.itemId,
+						ref: params.ref,
 						lookbackDays: params.lookbackDays,
 						soldLimit: params.soldLimit,
 						apiKey,

@@ -23,7 +23,7 @@ import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { db } from "../../db/client.js";
-import { listingObservations, marketDataCache, productObservations, takedownRequests } from "../../db/schema.js";
+import { listingObservations, productObservations, takedownRequests } from "../../db/schema.js";
 import { legacyFromV1 } from "../../utils/item-id.js";
 import { errorResponse, jsonResponse, tbBody } from "../../utils/openapi.js";
 
@@ -108,11 +108,9 @@ takedownRoute.post(
 		} catch (err) {
 			console.error("[takedown] product_observations flag failed:", err);
 		}
-		try {
-			await db.delete(marketDataCache).where(eq(marketDataCache.itemId, legacyId));
-		} catch (err) {
-			console.error("[takedown] market_data_cache flush failed:", err);
-		}
+		// product_market_cache cleanup is implicit: products.takedown_at
+		// blocks fresh writes (catalog resolve filters taken-down products
+		// out); existing cached digests expire on the 12h TTL.
 		return c.json({ id: row?.id ?? "", status: "pending" as const, slaHours: SLA_HOURS }, 201);
 	},
 );

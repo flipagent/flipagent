@@ -1,24 +1,27 @@
 /**
- * `client.evaluate.*` — id-driven single-listing judgment. flipagent's
- * Decisions pillar over HTTP. Pass an `itemId` and the server fetches
- * the detail, derives sold + active matched listings, and returns the
- * evaluation plus a `meta` block describing what was fetched. Math runs
- * server-side so all language SDKs return identical evaluations.
+ * `client.evaluate.*` — Product/listing intelligence over HTTP. Pass a
+ * `ProductRef` (id / external listing / free-text query) and the server
+ * resolves to a flipagent Product, runs the cross-marketplace MarketView
+ * pipeline, and — when the ref carries a specific listing — lays the
+ * buy-decision overlay on top.
+ *
+ *   `evaluation: null`  → "what's this product worth"
+ *   `evaluation: {…}`   → "should I buy this listing"
+ *
+ * Math runs server-side so all language SDKs return identical numbers.
  *
  * Three surfaces:
- *   .listing(req)        — sync. Awaits the full pipeline and returns
- *                          `EvaluateResponse` (digest + back-compat
- *                          pools). Right call for one-shot agents and
- *                          notebooks.
- *   .pool(itemId)        — drill-down companion. Returns
- *                          `EvaluatePoolResponse` (kept + rejected
- *                          listings with per-item reason). Cache-only;
- *                          requires a recent `.listing()` call within
- *                          the cache TTL or it 412s.
- *   .jobs.create/get/cancel — async. Job lives 7d, survives client
- *                          disconnect, supports cooperative cancel.
- *                          Right call when you want a UI that streams
- *                          progress or a backgrounded task.
+ *   .run(req)            — sync. Awaits the full pipeline and returns
+ *                          `EvaluateResponse`. Right call for one-shot
+ *                          agents and notebooks.
+ *   .pool(itemId)        — drill-down companion (listing-mode runs
+ *                          only). Returns `EvaluatePoolResponse` (kept
+ *                          + rejected listings with per-item reason).
+ *                          Cache-only; requires a recent `.run()` call
+ *                          within the cache TTL or it 412s.
+ *   .jobs.create/get/cancel/stream — async. Job lives 7d, survives
+ *                          client disconnect, supports cooperative
+ *                          cancel + live SSE.
  */
 
 import type {
@@ -44,14 +47,14 @@ export interface EvaluateJobsClient {
 }
 
 export interface EvaluateClient {
-	listing(req: EvaluateRequest): Promise<EvaluateResponse>;
+	run(req: EvaluateRequest): Promise<EvaluateResponse>;
 	pool(itemId: string): Promise<EvaluatePoolResponse>;
 	jobs: EvaluateJobsClient;
 }
 
 export function createEvaluateClient(http: FlipagentHttp): EvaluateClient {
 	return {
-		listing: (req) => http.post("/v1/evaluate", req),
+		run: (req) => http.post("/v1/evaluate", req),
 		pool: (itemId) => http.get(`/v1/evaluate/${encodeURIComponent(itemId)}/pool`),
 		jobs: {
 			create: (req) => http.post("/v1/evaluate/jobs", req),

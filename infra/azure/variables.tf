@@ -99,24 +99,37 @@ variable "custom_domain" {
 # --- Application secrets, threaded into the Container App ----------------------
 
 variable "scraper_api_vendor" {
-  description = "Managed scraper vendor for eBay HTML fetches. Today only `oxylabs` is wired."
+  description = "Managed scraper vendor for eBay reads. `oxylabs` = POST URL → rendered HTML, parsed by @flipagent/ebay-scraper. `sprd` = peer flipagent-shape API at api-dev.sprd.app, returns already-parsed Browse/Catalog JSON."
   type        = string
   default     = "oxylabs"
   validation {
-    condition     = contains(["oxylabs"], var.scraper_api_vendor)
-    error_message = "scraper_api_vendor must be one of: oxylabs."
+    condition     = contains(["oxylabs", "sprd"], var.scraper_api_vendor)
+    error_message = "scraper_api_vendor must be one of: oxylabs, sprd."
   }
 }
 
 variable "scraper_api_username" {
-  description = "Username for the managed scraper vendor (e.g. Oxylabs Web Scraper API)."
+  description = "Username for the Oxylabs Web Scraper API. Required when scraper_api_vendor = `oxylabs`."
   type        = string
   default     = ""
   sensitive   = true
 }
 
 variable "scraper_api_password" {
-  description = "Password for the managed scraper vendor."
+  description = "Password for the Oxylabs Web Scraper API. Required when scraper_api_vendor = `oxylabs`."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "sprd_api_url" {
+  description = "Base URL for the SPRD scrape vendor. Defaults to the dev host (Azure App Service); production will switch when an `api.sprd.app` host lands. Only consulted when scraper_api_vendor = `sprd`."
+  type        = string
+  default     = "https://api-dev.sprd.app"
+}
+
+variable "sprd_api_key" {
+  description = "x-api-key for the SPRD scrape vendor. Required when scraper_api_vendor = `sprd`."
   type        = string
   default     = ""
   sensitive   = true
