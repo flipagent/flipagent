@@ -342,6 +342,13 @@ resource "azurerm_container_app" "api" {
       value = var.ebay_dev_id
     }
   }
+  dynamic "secret" {
+    for_each = var.ebay_deletion_verification_token == "" ? [] : [1]
+    content {
+      name  = "ebay-deletion-verification-token"
+      value = var.ebay_deletion_verification_token
+    }
+  }
 
   template {
     min_replicas = var.api_min_replicas
@@ -599,6 +606,17 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "EBAY_NOTIFY_URL"
         value = var.ebay_notify_url
+      }
+      dynamic "env" {
+        for_each = var.ebay_deletion_verification_token == "" ? [] : [1]
+        content {
+          name        = "EBAY_DELETION_VERIFICATION_TOKEN"
+          secret_name = "ebay-deletion-verification-token"
+        }
+      }
+      env {
+        name  = "EBAY_DELETION_ENDPOINT_URL"
+        value = var.ebay_deletion_endpoint_url
       }
       env {
         name  = "EBAY_LISTINGS_SOURCE"

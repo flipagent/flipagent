@@ -402,6 +402,19 @@ variable "ebay_notify_url" {
   default     = ""
 }
 
+variable "ebay_deletion_verification_token" {
+  description = "Verification token registered with eBay's Marketplace Account Deletion notification endpoint. 32–80 chars [A-Za-z0-9_-]. Mirrored back during the GET handshake (SHA-256 hash of challenge + token + endpoint URL). Empty = endpoint returns 503 on the handshake."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "ebay_deletion_endpoint_url" {
+  description = "Full HTTPS URL registered with eBay for Marketplace Account Deletion (e.g. https://api.flipagent.dev/v1/ebay/notifications/account-deletion). Must match exactly what's in the eBay developer portal — used as input to the SHA-256 challenge hash."
+  type        = string
+  default     = ""
+}
+
 variable "ebay_listings_source" {
   description = "Source for /v1/listings/* — rest (Browse API) | scrape | bridge."
   type        = string
